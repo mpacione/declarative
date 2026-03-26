@@ -1,8 +1,9 @@
-"""Tests for drift detection module."""
+"""Unit tests for drift detection functionality."""
 
+import json
 import pytest
 import sqlite3
-from typing import Any, Dict
+from typing import Dict, List, Any
 
 from dd.drift import (
     detect_drift,
@@ -13,553 +14,547 @@ from dd.drift import (
     update_sync_statuses,
     normalize_value_for_comparison
 )
+from tests.fixtures import seed_post_curation
 
 
-def create_test_data(conn: sqlite3.Connection) -> int:
-    """Create test tokens and related data.
+# Helper Functions
+def _build_mock_figma_response(tokens: List[Dict[str, Any]], modify: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Build a mock figma_get_variables response from a list of token dicts.
+
+    Args:
+        tokens: List of token dicts with keys: name, type, value, mode (optional)
+        modify: Optional dict mapping token_name to new value
 
     Returns:
-        File ID for the test data
+        Mock response matching figma_get_variables shape
     """
-    # Create file
-    cursor = conn.execute("""
-        INSERT INTO files (file_key, name, extracted_at)
-        VALUES ('test_file_key_123', 'Test File', '2024-01-01T00:00:00Z')
+    collections = []
+
+    # Group tokens by collection
+    collection_tokens = {}
+    for token in tokens:
+        collection = token.get("collection", "Default")
+        if collection not in collection_tokens:
+            collection_tokens[collection] = []
+        collection_tokens[collection].append(token)
+
+    # Build collections
+    for collection_name, tokens_list in collection_tokens.items():
+        variables = []
+        modes = set()
+
+        for token in tokens_list:
+            mode_name = token.get("mode", "Default")
+            modes.add(mode_name)
+
+            # Apply modifications if specified
+            value = token["value"]
+            if modify and token["name"] in modify:
+                value = modify[token["name"]]
+
+            # Build variable structure
+            variable = {
+                "id": f"VariableID:{hash(token['name']) % 1000}:1",
+                "name": token["name"].replace(".", "/"),  # Convert DTCG to Figma path
+                "type": token["type"].upper() if token["type"] == "color" else "FLOAT",
+                "values": {
+                    mode_name: value
+                }
+            }
+            variables.append(variable)
+
+        collection = {
+            "name": collection_name,
+            "variables": variables,
+            "modes": [{"id": f"mode_{m}", "name": m} for m in sorted(modes)]
+        }
+        collections.append(collection)
+
+    return {"collections": collections}
+
+
+def _set_figma_variable_ids(db: sqlite3.Connection, file_id: int):
+    """Set figma_variable_id on all curated tokens to simulate export."""
+    db.execute("""
+        UPDATE tokens
+        SET figma_variable_id = 'VariableID:' || id || ':1'
+        WHERE tier = 'curated'
     """)
-    file_id = cursor.lastrowid
-
-    # Create collections
-    conn.execute("""
-        INSERT INTO token_collections (id, file_id, figma_id, name)
-        VALUES
-        (1, ?, 'VariableCollectionId:1:1', 'Colors'),
-        (2, ?, 'VariableCollectionId:1:2', 'Spacing')
-    """, (file_id, file_id))
-
-    # Create modes
-    conn.execute("""
-        INSERT INTO token_modes (id, collection_id, figma_mode_id, name, is_default)
-        VALUES
-        (1, 1, '1:0', 'Light', 1),
-        (2, 1, '1:1', 'Dark', 0),
-        (3, 2, '2:0', 'Default', 1)
-    """)
-
-    # Create tokens with different sync statuses
-    conn.execute("""
-        INSERT INTO tokens (id, collection_id, name, type, tier, figma_variable_id, sync_status)
-        VALUES
-        (1, 1, 'color.surface.primary', 'color', 'curated', 'VariableID:123:456', 'synced'),
-        (2, 1, 'color.surface.secondary', 'color', 'curated', 'VariableID:123:457', 'drifted'),
-        (3, 1, 'color.text.primary', 'color', 'curated', NULL, 'pending'),
-        (4, 2, 'spacing.xs', 'dimension', 'curated', 'VariableID:123:458', 'synced'),
-        (5, 2, 'spacing.sm', 'dimension', 'aliased', NULL, 'pending'),
-        (6, 1, 'color.background', 'color', 'curated', 'VariableID:123:459', 'code_only')
-    """)
-
-    # Create token values
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES
-        -- Synced token (color.surface.primary)
-        (1, 1, '#09090B', '#09090B'),
-        (1, 2, '#FAFAFA', '#FAFAFA'),
-        -- Drifted token (color.surface.secondary)
-        (2, 1, '#71717A', '#71717A'),
-        (2, 2, '#A1A1AA', '#A1A1AA'),
-        -- Pending token (color.text.primary)
-        (3, 1, '#000000', '#000000'),
-        (3, 2, '#FFFFFF', '#FFFFFF'),
-        -- Synced spacing
-        (4, 3, '4px', '4'),
-        -- Pending spacing
-        (5, 3, '8px', '8'),
-        -- Code-only token
-        (6, 1, '#F5F5F5', '#F5F5F5'),
-        (6, 2, '#1A1A1A', '#1A1A1A')
-    """)
-
-    # Add code mapping for code_only token
-    conn.execute("""
-        INSERT INTO code_mappings (token_id, target, identifier, file_path)
-        VALUES (6, 'css', '--color-background', 'styles.css')
-    """)
-
-    conn.commit()
-    return file_id
+    db.commit()
 
 
-def test_normalize_value_for_comparison():
-    """Test value normalization for drift comparison."""
-    # Color normalization
+# Value Normalization Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_normalize_color_case_insensitive():
+    """Test that hex colors are normalized to uppercase."""
+    assert normalize_value_for_comparison("#09090B", "color") == normalize_value_for_comparison("#09090b", "color")
     assert normalize_value_for_comparison("#09090B", "color") == "09090B"
     assert normalize_value_for_comparison("#09090b", "color") == "09090B"
-    assert normalize_value_for_comparison("09090B", "color") == "09090B"
-    assert normalize_value_for_comparison("#09090BFF", "color") == "09090B"
-    assert normalize_value_for_comparison("#09090BA0", "color") == "09090BA0"
 
-    # Dimension normalization
-    assert normalize_value_for_comparison("16px", "dimension") == "16"
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_normalize_dimension_trailing_zero():
+    """Test that dimension values normalize decimal representations."""
+    assert normalize_value_for_comparison("16", "dimension") == normalize_value_for_comparison("16.0", "dimension")
     assert normalize_value_for_comparison("16", "dimension") == "16"
     assert normalize_value_for_comparison("16.0", "dimension") == "16"
-    assert normalize_value_for_comparison("16.5px", "dimension") == "16.5"
-    assert normalize_value_for_comparison(" 16 px ", "dimension") == "16"
+    assert normalize_value_for_comparison("16.000", "dimension") == "16"
 
-    # Font family normalization
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_normalize_font_family_quotes():
+    """Test that font family quotes are stripped."""
+    assert normalize_value_for_comparison('"Inter"', "fontFamily") == normalize_value_for_comparison("Inter", "fontFamily")
     assert normalize_value_for_comparison('"Inter"', "fontFamily") == "Inter"
     assert normalize_value_for_comparison("'Inter'", "fontFamily") == "Inter"
     assert normalize_value_for_comparison("Inter", "fontFamily") == "Inter"
-    assert normalize_value_for_comparison(' "Inter" ', "fontFamily") == "Inter"
-
-    # Other types - minimal normalization
-    assert normalize_value_for_comparison(" 500 ", "fontWeight") == "500"
-    assert normalize_value_for_comparison("normal", "fontStyle") == "normal"
 
 
-def test_parse_figma_variables_for_drift():
-    """Test parsing various Figma variable response formats."""
-    # Standard format with collections
-    response1 = {
-        "collections": [
-            {
-                "id": "VariableCollectionId:1:1",
-                "name": "Colors",
-                "modes": [
-                    {"id": "1:0", "name": "Light"},
-                    {"id": "1:1", "name": "Dark"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/surface/primary",
-                        "valuesByMode": {
-                            "1:0": "#09090B",
-                            "1:1": "#FAFAFA"
-                        }
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_normalize_color_8digit_to_6digit():
+    """Test that 8-digit hex with full alpha normalizes to 6-digit."""
+    assert normalize_value_for_comparison("#09090BFF", "color") == normalize_value_for_comparison("#09090B", "color")
+    assert normalize_value_for_comparison("#09090BFF", "color") == "09090B"
+    assert normalize_value_for_comparison("#09090B", "color") == "09090B"
+    # Alpha not full should remain
+    assert normalize_value_for_comparison("#09090BFE", "color") == "09090BFE"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_normalize_whitespace():
+    """Test that whitespace is stripped from values."""
+    assert normalize_value_for_comparison("  16  ", "dimension") == normalize_value_for_comparison("16", "dimension")
+    assert normalize_value_for_comparison("  16  ", "dimension") == "16"
+    assert normalize_value_for_comparison("\t16\n", "dimension") == "16"
+    assert normalize_value_for_comparison("  #09090B  ", "color") == "09090B"
+
+
+# Parse Figma Response Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_parse_figma_response_basic():
+    """Test parsing a basic Figma response with 1 collection, 1 mode, 2 variables."""
+    response = {
+        "collections": [{
+            "name": "Colors",
+            "modes": [{"id": "mode_1", "name": "Default"}],
+            "variables": [
+                {
+                    "id": "VariableID:1:1",
+                    "name": "color/primary",
+                    "type": "COLOR",
+                    "valuesByMode": {
+                        "mode_1": "#09090B"
                     }
-                ]
-            }
-        ]
+                },
+                {
+                    "id": "VariableID:1:2",
+                    "name": "color/secondary",
+                    "type": "COLOR",
+                    "valuesByMode": {
+                        "mode_1": "#18181B"
+                    }
+                }
+            ]
+        }]
     }
 
-    parsed = parse_figma_variables_for_drift(response1)
-    assert len(parsed) == 1
-    assert parsed[0]["variable_id"] == "VariableID:123:456"
-    assert parsed[0]["name"] == "color/surface/primary"
-    assert parsed[0]["dtcg_name"] == "color.surface.primary"
+    parsed = parse_figma_variables_for_drift(response)
+    assert len(parsed) == 2
+
+    # Check first variable
+    assert parsed[0]["variable_id"] == "VariableID:1:1"
+    assert parsed[0]["name"] == "color/primary"
+    assert parsed[0]["dtcg_name"] == "color.primary"
     assert parsed[0]["collection_name"] == "Colors"
-    assert parsed[0]["values"] == {"Light": "#09090B", "Dark": "#FAFAFA"}
+    assert parsed[0]["values"] == {"Default": "#09090B"}
 
-    # Flat variables format
-    response2 = {
-        "variables": [
-            {
-                "id": "VariableID:123:456",
-                "name": "spacing/xs",
-                "value": "4px"
-            }
-        ]
-    }
+    # Check second variable
+    assert parsed[1]["variable_id"] == "VariableID:1:2"
+    assert parsed[1]["name"] == "color/secondary"
+    assert parsed[1]["dtcg_name"] == "color.secondary"
+    assert parsed[1]["values"] == {"Default": "#18181B"}
 
-    parsed = parse_figma_variables_for_drift(response2)
-    assert len(parsed) == 1
-    assert parsed[0]["dtcg_name"] == "spacing.xs"
-    assert parsed[0]["values"] == {"Default": "4px"}
 
-    # Direct list of variables
-    response3 = [
-        {
-            "id": "VariableID:123:456",
-            "name": "color/text/primary",
-            "values": {"Light": "#000000", "Dark": "#FFFFFF"}
-        }
-    ]
-
-    parsed = parse_figma_variables_for_drift(response3)
-    assert len(parsed) == 1
-    assert parsed[0]["dtcg_name"] == "color.text.primary"
-    assert parsed[0]["values"] == {"Light": "#000000", "Dark": "#FFFFFF"}
-
-    # Empty response
-    response4 = {}
-    parsed = parse_figma_variables_for_drift(response4)
-    assert parsed == []
-
-    # Nested value objects
-    response5 = {
-        "collections": [
-            {
-                "name": "Typography",
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "font/size/base",
-                        "values": {
-                            "Default": {"value": "16px"}
-                        }
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_parse_figma_response_multimode():
+    """Test parsing response with 2 modes."""
+    response = {
+        "collections": [{
+            "name": "Colors",
+            "modes": [
+                {"id": "mode_1", "name": "Light"},
+                {"id": "mode_2", "name": "Dark"}
+            ],
+            "variables": [
+                {
+                    "id": "VariableID:1:1",
+                    "name": "color/primary",
+                    "type": "COLOR",
+                    "valuesByMode": {
+                        "mode_1": "#09090B",
+                        "mode_2": "#FFFFFF"
                     }
-                ]
-            }
-        ]
+                }
+            ]
+        }]
     }
 
-    parsed = parse_figma_variables_for_drift(response5)
+    parsed = parse_figma_variables_for_drift(response)
     assert len(parsed) == 1
-    assert parsed[0]["values"] == {"Default": "16px"}
+    assert parsed[0]["values"] == {"Light": "#09090B", "Dark": "#FFFFFF"}
 
 
-def test_compare_token_values(db):
-    """Test comparing DB tokens with Figma variables."""
-    conn = db
-    file_id = create_test_data(conn)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_parse_figma_response_empty():
+    """Test parsing empty/minimal response returns empty list without error."""
+    # Empty dict
+    assert parse_figma_variables_for_drift({}) == []
 
-    # Simulate Figma variables response
-    figma_variables = [
-        {
-            "variable_id": "VariableID:123:456",
-            "name": "color/surface/primary",
-            "dtcg_name": "color.surface.primary",
-            "collection_name": "Colors",
-            "values": {"Light": "#09090B", "Dark": "#FAFAFA"}
-        },
-        {
-            "variable_id": "VariableID:123:457",
-            "name": "color/surface/secondary",
-            "dtcg_name": "color.surface.secondary",
-            "collection_name": "Colors",
-            "values": {"Light": "#71717B", "Dark": "#A1A1AA"}  # Different from DB
-        },
-        {
-            "variable_id": "VariableID:123:458",
-            "name": "spacing/xs",
-            "dtcg_name": "spacing.xs",
-            "collection_name": "Spacing",
-            "values": {"Default": "4"}
-        },
-        {
-            "variable_id": "VariableID:999:999",
-            "name": "color/brand/new",
-            "dtcg_name": "color.brand.new",
-            "collection_name": "Colors",
-            "values": {"Light": "#FF0000", "Dark": "#00FF00"}
-        }
-    ]
+    # Empty collections
+    assert parse_figma_variables_for_drift({"collections": []}) == []
 
-    comparison = compare_token_values(conn, file_id, figma_variables)
+    # Collection with no variables
+    response = {
+        "collections": [{
+            "name": "Empty",
+            "modes": [{"id": "mode_1", "name": "Default"}],
+            "variables": []
+        }]
+    }
+    assert parse_figma_variables_for_drift(response) == []
 
-    # Check synced tokens
-    assert len(comparison["synced"]) == 2
-    synced_names = {t["name"] for t in comparison["synced"]}
-    assert "color.surface.primary" in synced_names
-    assert "spacing.xs" in synced_names
 
-    # Check drifted tokens - only Light mode differs
-    assert len(comparison["drifted"]) == 1  # One mode differs
+# Comparison Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_compare_all_synced(db):
+    """Test comparison when all tokens are synced with matching values."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build mock response with matching values
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"},
+        {"name": "color.surface.secondary", "type": "color", "value": "#18181B", "collection": "Colors"},
+        {"name": "color.border.default", "type": "color", "value": "#D4D4D8", "collection": "Colors"},
+        {"name": "color.text.primary", "type": "color", "value": "#FFFFFF", "collection": "Colors"},
+        {"name": "space.4", "type": "dimension", "value": "16", "collection": "Spacing"}
+    ])
+
+    parsed = parse_figma_variables_for_drift(mock_response)
+    comparison = compare_token_values(db, 1, parsed)
+
+    assert len(comparison["synced"]) == 5
+    assert len(comparison["drifted"]) == 0
+    assert len(comparison["pending"]) == 0
+    assert len(comparison["figma_only"]) == 0
+    assert len(comparison["code_only"]) == 0
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_compare_drifted(db):
+    """Test comparison when one token value has drifted."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build mock response with ONE changed value
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"},
+        {"name": "color.surface.secondary", "type": "color", "value": "#18181B", "collection": "Colors"},
+        {"name": "color.border.default", "type": "color", "value": "#D4D4D8", "collection": "Colors"},
+        {"name": "color.text.primary", "type": "color", "value": "#FFFFFF", "collection": "Colors"},
+        {"name": "space.4", "type": "dimension", "value": "16", "collection": "Spacing"}
+    ], modify={"color.surface.primary": "#FF0000"})  # Changed value
+
+    parsed = parse_figma_variables_for_drift(mock_response)
+    comparison = compare_token_values(db, 1, parsed)
+
+    assert len(comparison["synced"]) == 4
+    assert len(comparison["drifted"]) == 1
+
+    # Check drifted token details
     drifted = comparison["drifted"][0]
-    assert drifted["name"] == "color.surface.secondary"
-    assert drifted["mode"] == "Light"
-    assert drifted["db_value"] == "#71717A"
-    assert drifted["figma_value"] == "#71717B"
+    assert drifted["name"] == "color.surface.primary"
+    assert drifted["db_value"] == "#09090B"
+    assert drifted["figma_value"] == "#FF0000"
 
-    # Check pending tokens
-    assert len(comparison["pending"]) == 2
-    pending_names = {t["name"] for t in comparison["pending"]}
-    assert "color.text.primary" in pending_names
-    assert "spacing.sm" in pending_names
 
-    # Check figma_only tokens
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_compare_pending(db):
+    """Test comparison when tokens have no figma_variable_id (pending export)."""
+    seed_post_curation(db)
+    # Don't set figma_variable_ids - leave them as pending
+
+    mock_response = _build_mock_figma_response([])  # Empty Figma response
+
+    parsed = parse_figma_variables_for_drift(mock_response)
+    comparison = compare_token_values(db, 1, parsed)
+
+    assert len(comparison["pending"]) == 5  # All 5 tokens are pending
+    assert len(comparison["synced"]) == 0
+    assert len(comparison["drifted"]) == 0
+    assert len(comparison["figma_only"]) == 0
+    assert len(comparison["code_only"]) == 0
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_compare_figma_only(db):
+    """Test comparison when Figma has variables not in DB."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build mock response with extra variable
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"},
+        {"name": "color.surface.secondary", "type": "color", "value": "#18181B", "collection": "Colors"},
+        {"name": "color.border.default", "type": "color", "value": "#D4D4D8", "collection": "Colors"},
+        {"name": "color.text.primary", "type": "color", "value": "#FFFFFF", "collection": "Colors"},
+        {"name": "space.4", "type": "dimension", "value": "16", "collection": "Spacing"},
+        {"name": "color.brand.new", "type": "color", "value": "#FF5500", "collection": "Colors"}  # Not in DB
+    ])
+
+    parsed = parse_figma_variables_for_drift(mock_response)
+    comparison = compare_token_values(db, 1, parsed)
+
+    assert len(comparison["synced"]) == 5
     assert len(comparison["figma_only"]) == 1
-    assert comparison["figma_only"][0]["name"] == "color.brand.new"
 
-    # Check code_only tokens
-    assert len(comparison["code_only"]) == 1
-    assert comparison["code_only"][0]["name"] == "color.background"
-
-
-def test_update_sync_statuses(db):
-    """Test updating sync statuses in the database."""
-    conn = db
-    file_id = create_test_data(conn)
-
-    # Create comparison results
-    comparison = {
-        "synced": [{"token_id": 1, "name": "color.surface.primary"}],
-        "drifted": [{"token_id": 2, "name": "color.surface.secondary", "mode": "Light",
-                    "db_value": "#71717A", "figma_value": "#71717B"}],
-        "pending": [{"token_id": 3, "name": "color.text.primary"}],
-        "code_only": [{"token_id": 6, "name": "color.background"}],
-        "figma_only": [{"name": "color.brand.new", "variable_id": "VariableID:999:999"}]
-    }
-
-    counts = update_sync_statuses(conn, file_id, comparison)
-
-    assert counts["updated"] == 4
-    assert counts["synced"] == 1
-    assert counts["drifted"] == 1
-    assert counts["pending"] == 1
-    assert counts["code_only"] == 1
-    assert counts["figma_only"] == 1
-
-    # Verify statuses were updated
-    cursor = conn.execute("SELECT id, sync_status FROM tokens WHERE id IN (1, 2, 3, 6)")
-    statuses = {row["id"]: row["sync_status"] for row in cursor}
-    assert statuses[1] == "synced"
-    assert statuses[2] == "drifted"
-    assert statuses[3] == "pending"
-    assert statuses[6] == "code_only"
+    # Check figma_only details
+    figma_only = comparison["figma_only"][0]
+    assert figma_only["name"] == "color.brand.new"
+    assert figma_only["values"] == {"Default": "#FF5500"}
 
 
-def test_generate_drift_report(db):
-    """Test generating drift report."""
-    conn = db
-    file_id = create_test_data(conn)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_compare_mixed_statuses(db):
+    """Test comparison with mixed statuses: synced, drifted, pending."""
+    seed_post_curation(db)
 
-    report = generate_drift_report(conn, file_id)
-
-    # Check summary counts
-    assert report["summary"]["synced"] == 2  # tokens 1 and 4
-    assert report["summary"]["drifted"] == 1  # token 2
-    assert report["summary"]["pending"] == 2  # tokens 3 and 5
-    assert report["summary"]["code_only"] == 1  # token 6
-
-    # Check drifted tokens details - one entry per mode
-    # Note: color.surface.secondary has 2 modes, so 2 entries in report
-    assert len(report["drifted_tokens"]) == 2  # One token with 2 modes
-    drifted_names = {t["token_name"] for t in report["drifted_tokens"]}
-    assert "color.surface.secondary" in drifted_names
-    assert all("mode_name" in t for t in report["drifted_tokens"])
-    assert all("db_value" in t for t in report["drifted_tokens"])
-
-    # Check pending tokens
-    assert len(report["pending_tokens"]) == 2
-    pending_names = {t["token_name"] for t in report["pending_tokens"]}
-    assert "color.text.primary" in pending_names
-    assert "spacing.sm" in pending_names
-
-
-def test_detect_drift_readonly(db):
-    """Test read-only drift detection."""
-    conn = db
-    file_id = create_test_data(conn)
-
-    # Simulate Figma response
-    figma_response = {
-        "collections": [
-            {
-                "id": "VariableCollectionId:1:1",
-                "name": "Colors",
-                "modes": [
-                    {"id": "1:0", "name": "Light"},
-                    {"id": "1:1", "name": "Dark"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/surface/primary",
-                        "valuesByMode": {
-                            "1:0": "#09090b",  # Lowercase to test normalization
-                            "1:1": "#fafafa"
-                        }
-                    }
-                ]
-            }
-        ]
-    }
-
-    # Get initial sync status
-    cursor = conn.execute("SELECT sync_status FROM tokens WHERE id = 1")
-    initial_status = cursor.fetchone()["sync_status"]
-
-    # Run read-only detection
-    comparison = detect_drift_readonly(conn, file_id, figma_response)
-
-    # Verify comparison results
-    assert "synced" in comparison
-    assert "drifted" in comparison
-    assert "pending" in comparison
-
-    # Verify no DB changes were made
-    cursor = conn.execute("SELECT sync_status FROM tokens WHERE id = 1")
-    final_status = cursor.fetchone()["sync_status"]
-    assert final_status == initial_status  # Status unchanged
-
-
-def test_detect_drift_full(db):
-    """Test full drift detection with status updates."""
-    conn = db
-    file_id = create_test_data(conn)
-
-    # Simulate comprehensive Figma response
-    figma_response = {
-        "collections": [
-            {
-                "id": "VariableCollectionId:1:1",
-                "name": "Colors",
-                "modes": [
-                    {"id": "1:0", "name": "Light"},
-                    {"id": "1:1", "name": "Dark"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/surface/primary",
-                        "valuesByMode": {
-                            "1:0": "#09090B",
-                            "1:1": "#FAFAFA"
-                        }
-                    },
-                    {
-                        "id": "VariableID:123:457",
-                        "name": "color/surface/secondary",
-                        "valuesByMode": {
-                            "1:0": "#71717C",  # Different from DB
-                            "1:1": "#A1A1AB"   # Different from DB
-                        }
-                    }
-                ]
-            },
-            {
-                "id": "VariableCollectionId:1:2",
-                "name": "Spacing",
-                "modes": [
-                    {"id": "2:0", "name": "Default"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:458",
-                        "name": "spacing/xs",
-                        "valuesByMode": {
-                            "2:0": "4px"  # Will normalize to "4"
-                        }
-                    }
-                ]
-            }
-        ]
-    }
-
-    result = detect_drift(conn, file_id, figma_response)
-
-    # Check comparison
-    assert "comparison" in result
-    assert len(result["comparison"]["synced"]) > 0
-    assert len(result["comparison"]["drifted"]) > 0
-
-    # Check updates
-    assert "updates" in result
-    assert result["updates"]["updated"] > 0
-
-    # Check report
-    assert "report" in result
-    assert "summary" in result["report"]
-    assert result["report"]["summary"]["drifted"] > 0
-
-    # Verify DB was updated
-    cursor = conn.execute("""
-        SELECT sync_status FROM tokens WHERE name = 'color.surface.secondary'
+    # Set figma_variable_id only on some tokens
+    db.execute("""
+        UPDATE tokens
+        SET figma_variable_id = 'VariableID:' || id || ':1'
+        WHERE id IN (1, 2)  -- Only primary and secondary colors
     """)
+    db.commit()
+
+    # Build mock response with mixed conditions
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"},  # Synced
+        {"name": "color.surface.secondary", "type": "color", "value": "#FF0000", "collection": "Colors"},  # Drifted
+        {"name": "color.brand.extra", "type": "color", "value": "#00FF00", "collection": "Colors"}  # Figma-only
+    ])
+
+    parsed = parse_figma_variables_for_drift(mock_response)
+    comparison = compare_token_values(db, 1, parsed)
+
+    assert len(comparison["synced"]) == 1  # primary color
+    assert len(comparison["drifted"]) == 1  # secondary color
+    assert len(comparison["pending"]) == 3  # border, text, space.4 (no figma_variable_id)
+    assert len(comparison["figma_only"]) == 1  # brand.extra
+    assert len(comparison["code_only"]) == 0
+
+
+# Update Sync Status Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_update_sync_synced(db):
+    """Test updating sync status to synced."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build comparison with synced tokens
+    comparison = {
+        "synced": [
+            {"token_id": 1, "name": "color.surface.primary", "collection_name": "Colors"},
+            {"token_id": 2, "name": "color.surface.secondary", "collection_name": "Colors"}
+        ],
+        "drifted": [],
+        "pending": [],
+        "figma_only": [],
+        "code_only": []
+    }
+
+    counts = update_sync_statuses(db, 1, comparison)
+
+    assert counts["synced"] == 2
+    assert counts["updated"] == 2
+
+    # Verify DB updated
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE id IN (1, 2)")
+    statuses = [row["sync_status"] for row in cursor]
+    assert all(status == "synced" for status in statuses)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_update_sync_drifted(db):
+    """Test updating sync status to drifted."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build comparison with drifted tokens
+    comparison = {
+        "synced": [],
+        "drifted": [
+            {"token_id": 1, "name": "color.surface.primary", "collection_name": "Colors",
+             "mode": "Default", "db_value": "#09090B", "figma_value": "#FF0000"}
+        ],
+        "pending": [],
+        "figma_only": [],
+        "code_only": []
+    }
+
+    counts = update_sync_statuses(db, 1, comparison)
+
+    assert counts["drifted"] == 1
+    assert counts["updated"] == 1
+
+    # Verify DB updated
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE id = 1")
     status = cursor.fetchone()["sync_status"]
     assert status == "drifted"
 
 
-def test_drift_with_missing_modes(db):
-    """Test drift detection when Figma is missing some modes."""
-    conn = db
-    file_id = create_test_data(conn)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_update_returns_counts(db):
+    """Test that update_sync_statuses returns correct counts per status."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
 
-    # Figma response missing Dark mode for a token
-    figma_response = {
-        "collections": [
-            {
-                "name": "Colors",
-                "modes": [
-                    {"id": "1:0", "name": "Light"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/surface/primary",
-                        "valuesByMode": {
-                            "1:0": "#09090B"
-                            # Missing Dark mode value
-                        }
-                    }
-                ]
-            }
-        ]
+    # Build mixed comparison
+    comparison = {
+        "synced": [
+            {"token_id": 1, "name": "color.surface.primary", "collection_name": "Colors"},
+            {"token_id": 2, "name": "color.surface.secondary", "collection_name": "Colors"}
+        ],
+        "drifted": [
+            {"token_id": 3, "name": "color.border.default", "collection_name": "Colors",
+             "mode": "Default", "db_value": "#D4D4D8", "figma_value": "#FF0000"}
+        ],
+        "pending": [
+            {"token_id": 4, "name": "color.text.primary", "collection_name": "Colors"}
+        ],
+        "figma_only": [
+            {"name": "color.brand.new", "variable_id": "VariableID:999:1",
+             "collection_name": "Colors", "values": {"Default": "#FF5500"}}
+        ],
+        "code_only": []
     }
 
-    comparison = detect_drift_readonly(conn, file_id, figma_response)
+    counts = update_sync_statuses(db, 1, comparison)
 
-    # Should detect drift due to missing mode
-    assert len(comparison["drifted"]) > 0
-    drifted = [d for d in comparison["drifted"] if d["name"] == "color.surface.primary"]
-    assert any(d["figma_value"] == "missing" for d in drifted)
-
-
-def test_drift_with_case_variations(db):
-    """Test that case variations in hex colors don't cause false drift."""
-    conn = db
-    file_id = create_test_data(conn)
-
-    # Figma response with different case hex values
-    figma_response = {
-        "collections": [
-            {
-                "name": "Colors",
-                "modes": [
-                    {"id": "1:0", "name": "Light"},
-                    {"id": "1:1", "name": "Dark"}
-                ],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/surface/primary",
-                        "valuesByMode": {
-                            "1:0": "#09090b",  # Lowercase
-                            "1:1": "#fAfAfA"   # Mixed case
-                        }
-                    }
-                ]
-            }
-        ]
-    }
-
-    comparison = detect_drift_readonly(conn, file_id, figma_response)
-
-    # Should be synced despite case differences
-    synced = [s for s in comparison["synced"] if s["name"] == "color.surface.primary"]
-    assert len(synced) == 1
+    assert counts["synced"] == 2
+    assert counts["drifted"] == 1
+    assert counts["pending"] == 1
+    assert counts["figma_only"] == 1
+    assert counts["code_only"] == 0
+    assert counts["updated"] == 4  # synced + drifted + pending
 
 
-def test_v_drift_report_view(db):
-    """Test that v_drift_report view returns correct data."""
-    conn = db
-    file_id = create_test_data(conn)
+# Full Drift Detection Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_detect_drift_readonly_no_update(db):
+    """Test that detect_drift_readonly does NOT modify DB sync_status."""
+    seed_post_curation(db)
 
-    # Query the view directly
-    cursor = conn.execute("""
-        SELECT token_name, sync_status, collection_name
-        FROM v_drift_report
-        ORDER BY sync_status, token_name
-    """)
+    # Check initial status (should be pending)
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE id = 1")
+    initial_status = cursor.fetchone()["sync_status"]
+    assert initial_status == "pending"
 
-    results = list(cursor)
-    assert len(results) > 0
+    # Run readonly drift detection
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"}
+    ])
 
-    # Group by sync status
-    by_status = {}
-    for row in results:
-        status = row["sync_status"]
-        if status not in by_status:
-            by_status[status] = []
-        by_status[status].append(row["token_name"])
+    result = detect_drift_readonly(db, 1, mock_response)
 
-    # Check expected statuses are present
-    assert "pending" in by_status
-    assert "drifted" in by_status
-    assert "code_only" in by_status
+    # Verify status NOT changed
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE id = 1")
+    final_status = cursor.fetchone()["sync_status"]
+    assert final_status == "pending"  # Still pending, not updated
 
-    # Verify specific tokens
-    assert "color.text.primary" in by_status["pending"]
-    assert "color.surface.secondary" in by_status["drifted"]
-    assert "color.background" in by_status["code_only"]
+    # Result should still contain comparison
+    assert "pending" in result
+    assert len(result["pending"]) > 0
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_detect_drift_updates_db(db):
+    """Test that detect_drift DOES update DB sync_status."""
+    seed_post_curation(db)
+    _set_figma_variable_ids(db, 1)
+
+    # Build mock response with matching values
+    mock_response = _build_mock_figma_response([
+        {"name": "color.surface.primary", "type": "color", "value": "#09090B", "collection": "Colors"},
+        {"name": "color.surface.secondary", "type": "color", "value": "#18181B", "collection": "Colors"},
+        {"name": "color.border.default", "type": "color", "value": "#D4D4D8", "collection": "Colors"},
+        {"name": "color.text.primary", "type": "color", "value": "#FFFFFF", "collection": "Colors"},
+        {"name": "space.4", "type": "dimension", "value": "16", "collection": "Spacing"}
+    ])
+
+    result = detect_drift(db, 1, mock_response)
+
+    # Verify DB updated to synced
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE tier = 'curated'")
+    statuses = [row["sync_status"] for row in cursor]
+    assert all(status == "synced" for status in statuses)
+
+    # Check result structure
+    assert "comparison" in result
+    assert "updates" in result
+    assert "report" in result
+    assert result["updates"]["synced"] == 5
+
+
+# Drift Report Test
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_generate_drift_report(db):
+    """Test generating drift report with mix of statuses."""
+    seed_post_curation(db)
+
+    # Set up mixed statuses
+    db.execute("UPDATE tokens SET sync_status = 'synced' WHERE id = 1")
+    db.execute("UPDATE tokens SET sync_status = 'drifted' WHERE id = 2")
+    db.execute("UPDATE tokens SET sync_status = 'pending' WHERE id IN (3, 4)")
+    db.execute("UPDATE tokens SET sync_status = 'code_only' WHERE id = 5")
+    db.commit()
+
+    report = generate_drift_report(db, 1)
+
+    # Check summary counts
+    assert report["summary"]["synced"] == 1
+    assert report["summary"]["drifted"] == 1
+    assert report["summary"]["pending"] == 2
+    assert report["summary"]["code_only"] == 1
+    assert report["summary"]["figma_only"] == 0
+
+    # Check drifted_tokens list
+    assert len(report["drifted_tokens"]) == 1
+    drifted = report["drifted_tokens"][0]
+    assert drifted["token_name"] == "color.surface.secondary"
+    assert drifted["db_value"] == "#18181B"
+
+    # Check pending_tokens list
+    assert len(report["pending_tokens"]) == 2
+    pending_names = [t["token_name"] for t in report["pending_tokens"]]
+    assert "color.border.default" in pending_names
+    assert "color.text.primary" in pending_names

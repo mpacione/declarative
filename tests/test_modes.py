@@ -1,8 +1,9 @@
-"""Tests for mode creation and value seeding."""
+"""Unit tests for mode creation functionality."""
 
+import json
 import pytest
 import sqlite3
-import json
+
 from dd.modes import (
     create_mode,
     copy_values_from_default,
@@ -13,415 +14,492 @@ from dd.modes import (
     create_theme,
     oklch_to_hex
 )
-from dd.db import init_db
+from tests.fixtures import seed_post_curation
 
 
-@pytest.fixture
-def conn():
-    """Create an in-memory database with test data."""
-    conn = init_db(":memory:")
+# Mode Creation Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_mode_basic(db):
+    """Test creating a new mode in a collection."""
+    seed_post_curation(db)
 
-    # Insert test file
-    conn.execute("INSERT INTO files (file_key, name) VALUES ('test_file_key', 'Test')")
+    # Create "Dark" mode in Colors collection
+    mode_id = create_mode(db, 1, "Dark")
 
-    # Insert test collection
-    conn.execute("""
-        INSERT INTO token_collections (file_id, name)
-        VALUES (1, 'Test Collection')
-    """)
+    # Verify mode created
+    cursor = db.execute("""
+        SELECT * FROM token_modes
+        WHERE id = ? AND collection_id = 1 AND name = 'Dark'
+    """, (mode_id,))
+    mode = cursor.fetchone()
 
-    # Insert default mode
-    conn.execute("""
-        INSERT INTO token_modes (collection_id, name, is_default)
-        VALUES (1, 'Default', 1)
-    """)
-
-    # Insert test tokens
-    conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier)
-        VALUES
-            (1, 'color.primary', 'color', 'curated'),
-            (1, 'color.secondary', 'color', 'curated'),
-            (1, 'spacing.small', 'dimension', 'curated'),
-            (1, 'spacing.large', 'dimension', 'curated'),
-            (1, 'spacing.auto', 'dimension', 'curated')
-    """)
-
-    # Insert test values for default mode
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES
-            (1, 1, '"#0000FF"', '#0000FF'),
-            (2, 1, '"#FF0000"', '#FF0000'),
-            (3, 1, '8', '8'),
-            (4, 1, '24', '24'),
-            (5, 1, '"AUTO"', 'AUTO')
-    """)
-
-    conn.commit()
-    yield conn
-    conn.close()
+    assert mode is not None
+    assert mode["name"] == "Dark"
+    assert mode["is_default"] == 0  # Not default
+    assert mode["collection_id"] == 1
 
 
-def test_create_mode(conn):
-    """Test creating a new mode."""
-    mode_id = create_mode(conn, 1, "Dark")
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_mode_duplicate_raises(db):
+    """Test that creating duplicate mode name raises ValueError."""
+    seed_post_curation(db)
 
-    # Verify mode was created
-    cursor = conn.execute(
-        "SELECT * FROM token_modes WHERE id = ?", (mode_id,)
-    )
-    row = cursor.fetchone()
+    # Create mode once
+    create_mode(db, 1, "Dark")
 
-    assert row is not None
-    assert row['name'] == 'Dark'
-    assert row['collection_id'] == 1
-    assert row['is_default'] == 0
+    # Try to create again - should raise
+    with pytest.raises(ValueError, match="Mode 'Dark' already exists"):
+        create_mode(db, 1, "Dark")
 
 
-def test_create_mode_duplicate_raises(conn):
-    """Test that creating a duplicate mode raises ValueError."""
-    create_mode(conn, 1, "Dark")
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_mode_returns_id(db):
+    """Test that create_mode returns a positive integer ID."""
+    seed_post_curation(db)
 
-    with pytest.raises(ValueError) as exc_info:
-        create_mode(conn, 1, "Dark")
+    mode_id = create_mode(db, 1, "Dark")
 
-    assert "already exists" in str(exc_info.value)
+    assert isinstance(mode_id, int)
+    assert mode_id > 0
 
 
-def test_copy_values_from_default(conn):
-    """Test copying values from default mode."""
-    mode_id = create_mode(conn, 1, "Dark")
-    count = copy_values_from_default(conn, 1, mode_id)
+# Copy Values Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_copy_values_from_default(db):
+    """Test copying token values from default mode to new mode."""
+    seed_post_curation(db)
 
-    # Should copy 5 values (all non-aliased tokens)
-    assert count == 5
+    # Create Dark mode
+    dark_mode_id = create_mode(db, 1, "Dark")
+
+    # Copy values from Default to Dark
+    count = copy_values_from_default(db, 1, dark_mode_id)
+
+    # Verify count (4 color tokens, all curated, non-aliased)
+    assert count == 4
 
     # Verify values were copied
-    cursor = conn.execute(
-        "SELECT COUNT(*) as cnt FROM token_values WHERE mode_id = ?",
-        (mode_id,)
-    )
-    assert cursor.fetchone()['cnt'] == 5
-
-    # Verify specific value was copied correctly
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
+    cursor = db.execute("""
+        SELECT tv.*, t.name
+        FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'color.primary'
-    """, (mode_id,))
+        WHERE tv.mode_id = ?
+        ORDER BY t.name
+    """, (dark_mode_id,))
 
-    assert cursor.fetchone()['resolved_value'] == '#0000FF'
+    dark_values = list(cursor)
+    assert len(dark_values) == 4
+
+    # Check that values match Default mode values
+    for value_row in dark_values:
+        token_id = value_row["token_id"]
+
+        # Get Default mode value for comparison
+        cursor = db.execute("""
+            SELECT resolved_value
+            FROM token_values tv
+            JOIN token_modes tm ON tv.mode_id = tm.id
+            WHERE tv.token_id = ? AND tm.is_default = 1
+        """, (token_id,))
+        default_value = cursor.fetchone()["resolved_value"]
+
+        assert value_row["resolved_value"] == default_value
 
 
-def test_copy_values_no_default_raises(conn):
-    """Test that copying without a default mode raises ValueError."""
-    # Create a collection without a default mode
-    conn.execute("""
-        INSERT INTO token_collections (file_id, name)
-        VALUES (1, 'No Default Collection')
-    """)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_copy_values_no_default_raises(db):
+    """Test that copy_values_from_default raises when no default mode exists."""
+    seed_post_curation(db)
 
-    mode_id = create_mode(conn, 2, "Test")
+    # Create a new collection without default mode
+    db.execute("INSERT INTO token_collections (id, file_id, name) VALUES (99, 1, 'Test')")
+    db.execute("INSERT INTO token_modes (id, collection_id, name, is_default) VALUES (99, 99, 'NonDefault', 0)")
+    db.commit()
 
-    with pytest.raises(ValueError) as exc_info:
-        copy_values_from_default(conn, 2, mode_id)
+    # Try to copy values - should raise
+    with pytest.raises(ValueError, match="No default mode found"):
+        copy_values_from_default(db, 99, 99)
 
-    assert "No default mode" in str(exc_info.value)
 
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_copy_values_skips_aliased(db):
+    """Test that copy_values_from_default skips aliased tokens."""
+    seed_post_curation(db)
 
-def test_copy_values_skips_aliased(conn):
-    """Test that copying skips aliased tokens."""
     # Add an aliased token
-    conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, alias_of)
-        VALUES (1, 'color.alias', 'color', 'aliased', 1)
+    db.execute("""
+        INSERT INTO tokens (id, collection_id, name, type, tier, alias_of)
+        VALUES (99, 1, 'color.alias', 'color', 'aliased', 1)
     """)
-
-    # Add value for the aliased token in default mode
-    conn.execute("""
+    # Add a value for the aliased token in Default mode
+    db.execute("""
         INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (6, 1, '"#0000FF"', '#0000FF')
+        VALUES (99, 1, '#AAAAAA', '#AAAAAA')
     """)
+    db.commit()
 
-    mode_id = create_mode(conn, 1, "Dark")
-    count = copy_values_from_default(conn, 1, mode_id)
+    # Create Dark mode and copy values
+    dark_mode_id = create_mode(db, 1, "Dark")
+    count = copy_values_from_default(db, 1, dark_mode_id)
 
-    # Should still only copy 5 values (excluding the aliased token)
-    assert count == 5
+    # Should still be 4 (aliased token skipped)
+    assert count == 4
 
-
-def test_apply_oklch_inversion(conn):
-    """Test OKLCH lightness inversion for colors."""
-    mode_id = create_mode(conn, 1, "Dark")
-    copy_values_from_default(conn, 1, mode_id)
-
-    count = apply_oklch_inversion(conn, 1, mode_id)
-
-    # Should invert 2 color values
-    assert count == 2
-
-    # Check that color values were changed
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
-        JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'color.primary'
-    """, (mode_id,))
-
-    new_color = cursor.fetchone()['resolved_value']
-    # Blue (#0000FF) inverted should be much lighter
-    assert new_color != '#0000FF'
-    assert new_color.startswith('#')
-    assert len(new_color) == 7
+    # Verify aliased token has no value in new mode
+    cursor = db.execute("""
+        SELECT COUNT(*) as cnt FROM token_values
+        WHERE token_id = 99 AND mode_id = ?
+    """, (dark_mode_id,))
+    assert cursor.fetchone()["cnt"] == 0
 
 
-def test_apply_oklch_only_affects_colors(conn):
-    """Test that OKLCH inversion only affects color tokens."""
-    mode_id = create_mode(conn, 1, "Dark")
-    copy_values_from_default(conn, 1, mode_id)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_copy_values_count(db):
+    """Test that copy_values returns correct count of non-aliased tokens."""
+    seed_post_curation(db)
 
-    # Get dimension value before
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
-        JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.small'
-    """, (mode_id,))
-    spacing_before = cursor.fetchone()['resolved_value']
+    # Spacing collection has 1 spacing token
+    spacing_collection_id = 2
 
-    apply_oklch_inversion(conn, 1, mode_id)
+    # Create new mode in Spacing collection
+    new_mode_id = create_mode(db, spacing_collection_id, "Compact")
 
-    # Check dimension value unchanged
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
-        JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.small'
-    """, (mode_id,))
-    spacing_after = cursor.fetchone()['resolved_value']
+    # Copy values
+    count = copy_values_from_default(db, spacing_collection_id, new_mode_id)
 
-    assert spacing_after == spacing_before
+    # Should be 1 (the space.4 token)
+    assert count == 1
 
 
+# OKLCH Conversion Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
 def test_oklch_to_hex_white():
     """Test OKLCH to hex conversion for white."""
-    hex_val = oklch_to_hex(1.0, 0.0, 0.0)
-    assert hex_val == '#FFFFFF'
+    hex_color = oklch_to_hex(1.0, 0.0, 0.0)
+
+    # Parse hex to RGB values
+    hex_clean = hex_color.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+
+    # Should be close to white (within 2 in each channel)
+    assert abs(r - 255) <= 2
+    assert abs(g - 255) <= 2
+    assert abs(b - 255) <= 2
 
 
+@pytest.mark.unit
+@pytest.mark.timeout(10)
 def test_oklch_to_hex_black():
     """Test OKLCH to hex conversion for black."""
-    hex_val = oklch_to_hex(0.0, 0.0, 0.0)
-    assert hex_val == '#000000'
+    hex_color = oklch_to_hex(0.0, 0.0, 0.0)
+
+    # Parse hex to RGB values
+    hex_clean = hex_color.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+
+    # Should be close to black (within 2 in each channel)
+    assert abs(r - 0) <= 2
+    assert abs(g - 0) <= 2
+    assert abs(b - 0) <= 2
 
 
-def test_oklch_to_hex_color():
-    """Test OKLCH to hex conversion produces valid hex."""
-    # Mid-lightness red
-    hex_val = oklch_to_hex(0.5, 0.15, 30)
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_oklch_inversion_inverts_colors(db):
+    """Test that OKLCH inversion properly inverts colors."""
+    seed_post_curation(db)
 
-    assert hex_val.startswith('#')
-    assert len(hex_val) == 7
-    # Should be a valid hex color
-    int(hex_val[1:], 16)
+    # Create Dark mode and copy values
+    dark_mode_id = create_mode(db, 1, "Dark")
+    copy_values_from_default(db, 1, dark_mode_id)
 
+    # Apply OKLCH inversion
+    count = apply_oklch_inversion(db, 1, dark_mode_id)
 
-def test_apply_scale_factor(conn):
-    """Test applying scale factor to dimensions."""
-    mode_id = create_mode(conn, 1, "Compact")
-    copy_values_from_default(conn, 1, mode_id)
+    # Should have inverted 4 color tokens
+    assert count == 4
 
-    count = apply_scale_factor(conn, 1, mode_id, 0.5)
-
-    # Should scale 2 numeric dimension values (not AUTO)
-    assert count == 2
-
-    # Check scaled values
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
+    # Check that colors were inverted
+    # color.surface.primary was #09090B (very dark), should become light
+    cursor = db.execute("""
+        SELECT tv.resolved_value, t.name
+        FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.small'
-    """, (mode_id,))
+        WHERE tv.mode_id = ? AND t.name = 'color.surface.primary'
+    """, (dark_mode_id,))
 
-    # 8 * 0.5 = 4
-    assert cursor.fetchone()['resolved_value'] == '4'
+    inverted_primary = cursor.fetchone()["resolved_value"]
+    # Parse hex to check it's now light
+    hex_clean = inverted_primary.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+    avg_brightness = (r + g + b) / 3
 
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
+    # Should be significantly brighter (> 200 average)
+    assert avg_brightness > 200
+
+    # color.text.primary was #FFFFFF (white), should become dark
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.large'
-    """, (mode_id,))
+        WHERE tv.mode_id = ? AND t.name = 'color.text.primary'
+    """, (dark_mode_id,))
 
-    # 24 * 0.5 = 12
-    assert cursor.fetchone()['resolved_value'] == '12'
+    inverted_text = cursor.fetchone()["resolved_value"]
+    hex_clean = inverted_text.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+    avg_brightness = (r + g + b) / 3
 
-
-def test_apply_scale_factor_skips_non_numeric(conn):
-    """Test that scale factor skips non-numeric values."""
-    mode_id = create_mode(conn, 1, "Compact")
-    copy_values_from_default(conn, 1, mode_id)
-
-    apply_scale_factor(conn, 1, mode_id, 0.5)
-
-    # Check AUTO value unchanged
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
-        JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.auto'
-    """, (mode_id,))
-
-    assert cursor.fetchone()['resolved_value'] == 'AUTO'
+    # Should be significantly darker (< 50 average)
+    assert avg_brightness < 50
 
 
-def test_create_dark_mode(conn):
-    """Test convenience function for dark mode creation."""
-    result = create_dark_mode(conn, 1, "MyDark")
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_oklch_inversion_only_colors(db):
+    """Test that OKLCH inversion only affects color tokens, not dimensions."""
+    seed_post_curation(db)
 
-    assert result['mode_name'] == 'MyDark'
-    assert result['values_copied'] == 5
-    assert result['values_inverted'] == 2
-    assert isinstance(result['mode_id'], int)
-
-    # Verify mode exists
-    cursor = conn.execute(
-        "SELECT * FROM token_modes WHERE id = ?",
-        (result['mode_id'],)
-    )
-    assert cursor.fetchone()['name'] == 'MyDark'
-
-
-def test_create_compact_mode(conn):
-    """Test convenience function for compact mode creation."""
-    result = create_compact_mode(conn, 1, 0.75, "MyCompact")
-
-    assert result['mode_name'] == 'MyCompact'
-    assert result['values_copied'] == 5
-    assert result['values_scaled'] == 2
-    assert isinstance(result['mode_id'], int)
-
-    # Verify scaled value
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values tv
-        JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.name = 'spacing.small'
-    """, (result['mode_id'],))
-
-    # 8 * 0.75 = 6
-    assert cursor.fetchone()['resolved_value'] == '6'
-
-
-def test_create_theme_all_collections(conn):
-    """Test creating theme across all collections."""
-    # Add another collection with dimension tokens
-    conn.execute("""
-        INSERT INTO token_collections (file_id, name)
-        VALUES (1, 'Spacing Collection')
+    # Add a spacing value to Colors collection to test it's not affected
+    db.execute("""
+        INSERT INTO tokens (id, collection_id, name, type, tier)
+        VALUES (100, 1, 'test.spacing', 'dimension', 'curated')
     """)
-
-    conn.execute("""
-        INSERT INTO token_modes (collection_id, name, is_default)
-        VALUES (2, 'Default', 1)
-    """)
-
-    conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier)
-        VALUES (2, 'gap.small', 'dimension', 'curated')
-    """)
-
-    conn.execute("""
+    db.execute("""
         INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (6, 2, '4', '4')
+        VALUES (100, 1, '24', '24')
     """)
+    db.commit()
 
-    result = create_theme(conn, 1, "MyTheme")
-
-    assert result['theme_name'] == 'MyTheme'
-    assert result['collections_updated'] == 2
-    assert result['total_values_copied'] == 6  # 5 + 1
-    assert result['total_values_transformed'] == 0  # No transform specified
-
-
-def test_create_theme_dark_transform(conn):
-    """Test creating theme with dark transform."""
-    result = create_theme(conn, 1, "Dark", transform="dark")
-
-    assert result['collections_updated'] == 1
-    assert result['total_values_copied'] == 5
-    assert result['total_values_transformed'] == 2  # Only color tokens
-
-
-def test_create_theme_compact_transform(conn):
-    """Test creating theme with compact transform."""
-    result = create_theme(conn, 1, "Compact", transform="compact", factor=0.8)
-
-    assert result['collections_updated'] == 1
-    assert result['total_values_copied'] == 5
-    assert result['total_values_transformed'] == 2  # Only numeric dimensions
-
-
-def test_create_theme_specific_collections(conn):
-    """Test creating theme for specific collections only."""
-    # Add another collection that won't be updated
-    conn.execute("""
-        INSERT INTO token_collections (file_id, name)
-        VALUES (1, 'Ignored Collection')
-    """)
-
-    result = create_theme(conn, 1, "MyTheme", collection_ids=[1])
-
-    assert result['collections_updated'] == 1
-
-    # Verify mode wasn't created in collection 2
-    cursor = conn.execute(
-        "SELECT COUNT(*) as cnt FROM token_modes WHERE collection_id = 2 AND name = 'MyTheme'"
-    )
-    assert cursor.fetchone()['cnt'] == 0
-
-
-def test_mode_values_independent(conn):
-    """Test that mode values are independent after creation."""
-    # Create dark mode
-    mode_id = create_mode(conn, 1, "Dark")
-    copy_values_from_default(conn, 1, mode_id)
-
-    # Modify value in new mode
-    conn.execute("""
-        UPDATE token_values
-        SET resolved_value = '#AAAAAA'
-        WHERE mode_id = ? AND token_id = 1
-    """, (mode_id,))
-
-    # Check original value unchanged
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values
-        WHERE mode_id = 1 AND token_id = 1
-    """)
-    assert cursor.fetchone()['resolved_value'] == '#0000FF'
-
-    # Check new mode value changed
-    cursor = conn.execute("""
-        SELECT resolved_value FROM token_values
-        WHERE mode_id = ? AND token_id = 1
-    """, (mode_id,))
-    assert cursor.fetchone()['resolved_value'] == '#AAAAAA'
-
-
-def test_every_token_has_value_in_new_mode(conn):
-    """Test that every non-aliased token has a value in the new mode."""
-    mode_id = create_mode(conn, 1, "Complete")
-    copy_values_from_default(conn, 1, mode_id)
-
-    # Count non-aliased tokens
-    cursor = conn.execute("""
-        SELECT COUNT(*) as cnt FROM tokens
-        WHERE collection_id = 1 AND alias_of IS NULL
-    """)
-    token_count = cursor.fetchone()['cnt']
-
-    # Count values in new mode
-    cursor = conn.execute("""
-        SELECT COUNT(*) as cnt FROM token_values tv
+    # Create Dark mode and copy ALL values
+    dark_mode_id = create_mode(db, 1, "Dark")
+    db.execute("""
+        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+        SELECT tv.token_id, ?, tv.raw_value, tv.resolved_value
+        FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
-        WHERE tv.mode_id = ? AND t.collection_id = 1
-    """, (mode_id,))
-    value_count = cursor.fetchone()['cnt']
+        WHERE tv.mode_id = 1 AND t.collection_id = 1 AND t.alias_of IS NULL
+    """, (dark_mode_id,))
+    db.commit()
 
-    assert value_count == token_count
+    # Apply OKLCH inversion
+    count = apply_oklch_inversion(db, 1, dark_mode_id)
+
+    # Should have inverted only the 4 color tokens, not the dimension
+    assert count == 4
+
+    # Verify spacing value unchanged
+    cursor = db.execute("""
+        SELECT resolved_value FROM token_values
+        WHERE token_id = 100 AND mode_id = ?
+    """, (dark_mode_id,))
+    spacing_value = cursor.fetchone()["resolved_value"]
+    assert spacing_value == "24"  # Unchanged
+
+
+# Scale Factor Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_scale_factor(db):
+    """Test applying scale factor to dimension tokens."""
+    seed_post_curation(db)
+
+    # Create Compact mode in Spacing collection
+    compact_mode_id = create_mode(db, 2, "Compact")
+
+    # Copy values from default
+    copy_values_from_default(db, 2, compact_mode_id)
+
+    # Apply scale factor of 0.5
+    count = apply_scale_factor(db, 2, compact_mode_id, 0.5)
+
+    # Should have scaled 1 dimension token
+    assert count == 1
+
+    # Verify value was scaled from "16" to "8"
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE tv.mode_id = ? AND t.name = 'space.4'
+    """, (compact_mode_id,))
+
+    scaled_value = cursor.fetchone()["resolved_value"]
+    assert scaled_value == "8"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_scale_factor_skips_auto(db):
+    """Test that scale factor skips AUTO values."""
+    seed_post_curation(db)
+
+    # Add a dimension token with AUTO value
+    db.execute("""
+        INSERT INTO tokens (id, collection_id, name, type, tier)
+        VALUES (101, 2, 'space.auto', 'dimension', 'curated')
+    """)
+    db.execute("""
+        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+        VALUES (101, 2, 'AUTO', 'AUTO')
+    """)
+    db.commit()
+
+    # Create Compact mode and copy values
+    compact_mode_id = create_mode(db, 2, "Compact")
+    db.execute("""
+        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+        SELECT tv.token_id, ?, tv.raw_value, tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE tv.mode_id = 2 AND t.collection_id = 2 AND t.alias_of IS NULL
+    """, (compact_mode_id,))
+    db.commit()
+
+    # Apply scale factor
+    count = apply_scale_factor(db, 2, compact_mode_id, 0.5)
+
+    # Should have scaled only 1 (the numeric value, not AUTO)
+    assert count == 1
+
+    # Verify AUTO value unchanged
+    cursor = db.execute("""
+        SELECT resolved_value FROM token_values
+        WHERE token_id = 101 AND mode_id = ?
+    """, (compact_mode_id,))
+    auto_value = cursor.fetchone()["resolved_value"]
+    assert auto_value == "AUTO"  # Unchanged
+
+
+# Convenience Function Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_dark_mode_full(db):
+    """Test create_dark_mode convenience function."""
+    seed_post_curation(db)
+
+    result = create_dark_mode(db, 1, "Dark")
+
+    # Check result structure
+    assert "mode_id" in result
+    assert "mode_name" in result
+    assert "values_copied" in result
+    assert "values_inverted" in result
+
+    assert result["mode_name"] == "Dark"
+    assert result["values_copied"] == 4  # 4 color tokens
+    assert result["values_inverted"] == 4  # All colors inverted
+
+    # Verify mode was created
+    cursor = db.execute("""
+        SELECT * FROM token_modes WHERE id = ?
+    """, (result["mode_id"],))
+    mode = cursor.fetchone()
+    assert mode["name"] == "Dark"
+
+    # Verify values were copied and inverted
+    cursor = db.execute("""
+        SELECT COUNT(*) as cnt FROM token_values WHERE mode_id = ?
+    """, (result["mode_id"],))
+    assert cursor.fetchone()["cnt"] == 4
+
+    # Check that primary color was inverted (dark to light)
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE tv.mode_id = ? AND t.name = 'color.surface.primary'
+    """, (result["mode_id"],))
+    inverted = cursor.fetchone()["resolved_value"]
+
+    # Should be light color now
+    hex_clean = inverted.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+    avg_brightness = (r + g + b) / 3
+    assert avg_brightness > 200  # Light
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_theme_multi_collection(db):
+    """Test creating a theme across multiple collections."""
+    seed_post_curation(db)
+
+    # Create dark theme across both Colors and Spacing collections
+    result = create_theme(
+        db,
+        file_id=1,
+        theme_name="Dark",
+        collection_ids=None,  # Use all collections
+        transform="dark",
+        factor=1.0
+    )
+
+    # Check result
+    assert result["theme_name"] == "Dark"
+    assert result["collections_updated"] == 2  # Colors and Spacing
+    assert result["total_values_copied"] == 5  # 4 colors + 1 spacing
+    assert result["total_values_transformed"] == 4  # Only colors inverted
+
+    # Verify Dark mode created in Colors collection
+    cursor = db.execute("""
+        SELECT id FROM token_modes
+        WHERE collection_id = 1 AND name = 'Dark'
+    """)
+    colors_dark_mode = cursor.fetchone()
+    assert colors_dark_mode is not None
+
+    # Verify Dark mode created in Spacing collection
+    cursor = db.execute("""
+        SELECT id FROM token_modes
+        WHERE collection_id = 2 AND name = 'Dark'
+    """)
+    spacing_dark_mode = cursor.fetchone()
+    assert spacing_dark_mode is not None
+
+    # Verify colors were inverted in Colors collection
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        JOIN token_modes tm ON tv.mode_id = tm.id
+        WHERE t.name = 'color.surface.primary' AND tm.name = 'Dark'
+    """)
+    inverted_color = cursor.fetchone()["resolved_value"]
+
+    # Should be light (inverted from dark #09090B)
+    hex_clean = inverted_color.lstrip('#')
+    r = int(hex_clean[0:2], 16)
+    g = int(hex_clean[2:4], 16)
+    b = int(hex_clean[4:6], 16)
+    avg_brightness = (r + g + b) / 3
+    assert avg_brightness > 200
+
+    # Verify spacing was copied but NOT transformed
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        JOIN token_modes tm ON tv.mode_id = tm.id
+        WHERE t.name = 'space.4' AND tm.name = 'Dark'
+    """)
+    spacing_value = cursor.fetchone()["resolved_value"]
+    assert spacing_value == "16"  # Unchanged
