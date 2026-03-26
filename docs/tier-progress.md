@@ -141,4 +141,19 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 
 ## Tier 4: Structural — not started
 ## Tier 5: Conjure — not started
-## Tier 6: Sync — T6.1 complete (308 variables pushed, Dark mode round-trip verified)
+## Tier 6: Sync
+
+### T6.1 — Push Variables to Figma
+- **Status**: DONE
+- **Scope**: 308 variables across 7 collections (Colors+Dark, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
+
+### T6.2 — Write Back Variable IDs
+- **Status**: DONE
+- **Scope**: 308/308 tokens mapped to Figma variable IDs via name matching
+
+### T6.3 — Rebind Nodes to Variables
+- **Status**: IN PROGRESS
+- **Proof of concept**: 27/27 bindings successful (1 icon + 26 on iPhone screen), 0 failures
+- **Property types verified**: fill.color, stroke.color, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight
+- **Full scope**: 182,877 bindings across 366 batches of ~500 — needs `dd push --rebind` automation
+- **Next**: Execute remaining batches, verify visually in Figma

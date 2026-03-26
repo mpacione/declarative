@@ -108,3 +108,51 @@ Accumulated insights from building and testing the curation pipeline. These info
 - Component state tokens (hover, pressed, disabled) live in "Component States" collection, separate from the base "Colors" collection.
 - This is the right pattern: primitives in one collection, component-level tokens in another.
 - Validates the T4.1 architecture: Primitives → Semantic → Component layers.
+
+---
+
+## Tier 3 Learnings
+
+### OKLCH Inversion Is Too Aggressive for Pastels
+- Pure lightness inversion (L → 1-L) sends near-white pastels to near-black.
+- `#FFF7B2` (light yellow) → `#000000` (black). Lost all color.
+- `#DADADA` (light gray) → `#050505` (near-black). Too extreme for a "muted" surface.
+- **Fix needed**: Dampened inversion with floor/ceiling. E.g. `new_L = 0.15 + (1-L) * 0.7` keeps dark mode values in a usable 0.15–0.85 range.
+- For production, dark mode values need human review. The auto-derivation is a starting point, not a final answer.
+
+### create_theme() Works Cleanly Across Collections
+- Single call creates mode + copies values + applies transform across multiple collections.
+- Correctly skips non-color tokens when applying dark transform.
+- **Pattern**: Use `create_theme()` for any multi-collection mode operation.
+
+### Two-Mode Figma Collections Work Perfectly
+- `figma_setup_design_tokens` accepts multiple modes in one call: `modes: ["Default", "Dark"]`.
+- Each token gets values for both modes in the same payload.
+- Figma shows the mode switcher in the variable panel immediately.
+
+### Component Token Pattern: Alias, Don't Duplicate
+- Component tokens should alias primitives, not duplicate values.
+- `comp.buttonLg.radius` → `radius.v10` (alias, single source of truth)
+- NOT `comp.buttonLg.radius` = `10` (duplicate value, will drift)
+- This means changing the primitive propagates to all component tokens automatically.
+
+### Variables Exist But Aren't Bound to Nodes
+- **Critical gap**: We've pushed 308 variables to Figma, but NONE are bound to actual design nodes.
+- The variables exist in the panel but the nodes still use hardcoded values.
+- **Rebinding** (T6.2 in the taxonomy) is the missing link between "tokens exist" and "tokens are used."
+- This is why you can't see changes in the file — the variables are just sitting there unconnected.
+- **Priority**: Build rebinding before Tier 5 (Conjure), not after.
+
+### Rebinding Works — But Scale is a Problem
+- Single-binding test: 1/1, 0 failures. Multi-binding test: 26/26, 0 failures.
+- Property types verified: fill.color, stroke.color, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight.
+- Full file: 182,877 bindings → 366 scripts of ~500 bindings each.
+- Each script is ~8KB, executes in <1 second via `figma_execute`.
+- **Problem**: 366 sequential MCP calls × ~1s each = ~6 minutes minimum. Need batching or parallelization.
+- **Approach**: `dd push --rebind` should generate all scripts, execute them in sequence via MCP, report progress.
+
+### Variable ID Writeback is Critical Infrastructure
+- Rebinding requires `figma_variable_id` on every token.
+- We had 0/308 IDs after pushing — had to fetch them all back via `figma_execute` and map by name.
+- **Fix needed**: `dd push` must write back IDs immediately after creating variables.
+- The name→ID mapping uses slash-to-dot conversion (`color/surface/white` → `color.surface.white`).
