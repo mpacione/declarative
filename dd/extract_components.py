@@ -353,6 +353,80 @@ def insert_variant_axes(conn: sqlite3.Connection, component_id: int, axes: List[
     return axis_ids
 
 
+def populate_variant_dimension_values(conn: sqlite3.Connection, component_id: int) -> int:
+    """
+    Populate variant_dimension_values table linking each variant to its axis values.
+
+    Args:
+        conn: Database connection
+        component_id: ID of the component to populate dimension values for
+
+    Returns:
+        Total number of dimension values inserted/updated
+    """
+    cursor = conn.cursor()
+
+    # Query all variants for this component
+    cursor.execute("""
+        SELECT id, properties
+        FROM component_variants
+        WHERE component_id = ?
+    """, (component_id,))
+    variants = cursor.fetchall()
+
+    # Return 0 if no variants
+    if not variants:
+        return 0
+
+    # Query all axes for this component
+    cursor.execute("""
+        SELECT id, axis_name
+        FROM variant_axes
+        WHERE component_id = ?
+    """, (component_id,))
+    axes = cursor.fetchall()
+
+    # Return 0 if no axes
+    if not axes:
+        return 0
+
+    # Create axis_name -> axis_id mapping
+    axis_map = {axis_name: axis_id for axis_id, axis_name in axes}
+
+    count = 0
+    for variant_id, properties_json in variants:
+        # Parse the properties JSON string
+        try:
+            properties = json.loads(properties_json)
+        except (json.JSONDecodeError, TypeError):
+            # Skip if properties is malformed
+            continue
+
+        # Insert dimension value for each axis
+        for axis_name, axis_id in axis_map.items():
+            # Get the variant's value for this axis
+            value = properties.get(axis_name)
+
+            # Skip if variant doesn't have a value for this axis
+            if value is None:
+                continue
+
+            # UPSERT the dimension value
+            cursor.execute("""
+                INSERT INTO variant_dimension_values (variant_id, axis_id, value)
+                VALUES (?, ?, ?)
+                ON CONFLICT(variant_id, axis_id) DO UPDATE SET
+                    value = excluded.value
+            """, (variant_id, axis_id, value))
+
+            count += 1
+
+    # Commit after all inserts
+    conn.commit()
+
+    return count
+
+
 def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: List[Dict[str, Any]]) -> List[int]:
     """
     Process a list of component/component_set nodes from Figma.
@@ -391,6 +465,9 @@ def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: 
         # Insert axes if any
         if parsed["axes"]:
             insert_variant_axes(conn, component_id, parsed["axes"])
+
+        # Populate variant dimension values
+        populate_variant_dimension_values(conn, component_id)
 
     # Commit all changes
     conn.commit()
