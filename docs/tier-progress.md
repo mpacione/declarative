@@ -113,7 +113,32 @@ All T2 actions done. 308 Figma variables across 7 collections, 8 semantic aliase
 
 ---
 
-## Tier 3: Generative — not started
+## Tier 3: Generative
+
+### T3.1 — Derive Dark Mode
+- **Status**: DONE
+- **Scope**: 64 dark mode color values derived via OKLCH lightness inversion
+- **Approach**: Used `create_theme(transform="dark")` from `dd/modes.py`. Inverts OKLCH lightness for all color tokens.
+- **Collections affected**: Colors (52 tokens), Component States (12 tokens) — both now have Default + Dark modes
+- **DB verify**: 64 dark mode values in `token_values`, all color tokens have 2 modes
+- **Figma verify**: 308 variables, Colors and Component States collections show Default + Dark modes. Spot check: `color/text/primary` Dark = #FFFFFF (was #000000) — correct.
+- **Learning**: OKLCH inversion too aggressive for pastel/near-white colors (yellow #FFE500 → #030200 near-black). Needs dampened inversion with floor clamps for production. Infrastructure works perfectly though.
+
+### T3.3 — Create Missing Scale Steps
+- **Status**: N/A
+- **Reason**: Spacing has complete 1-32px coverage on 4px grid. Radius has complete 0-28px coverage. No meaningful gaps to fill.
+
+### T3.4 — Generate Component Tokens
+- **Status**: DONE
+- **Scope**: 18 component token aliases for 4 top components
+- **Components**: button/large/translucent (5 tokens), button/small/translucent (4), button/toolbar (4), ios/safari-nav (5)
+- **Pattern**: `comp.{componentName}.{property}` → aliases primitive token (e.g. `comp.buttonLg.radius` → `radius.v10`)
+- **DB verify**: 26 total aliased tokens (8 semantic + 18 component)
+## Tier 3: Complete
+Dark mode derived, component tokens created. 308 Figma variables (2 collections with Dark mode), 334 total DB tokens (308 curated + 26 aliased).
+
+---
+
 ## Tier 4: Structural — not started
 ## Tier 5: Conjure — not started
-## Tier 6: Sync — T6.1 complete (296 variables pushed, all round-trip verified)
+## Tier 6: Sync — T6.1 complete (308 variables pushed, Dark mode round-trip verified)
