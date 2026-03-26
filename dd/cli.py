@@ -240,6 +240,53 @@ def run_export(fmt: str, db_path: str, out: Optional[str] = None) -> None:
     conn.close()
 
 
+def _run_curate_report(db_path: str, as_json: bool = False) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.curate_report import generate_curation_report
+
+    conn = get_connection(db_path)
+    file_id = _get_file_id(conn)
+    report = generate_curation_report(conn, file_id)
+
+    if as_json:
+        print(json.dumps(report, indent=2))
+    else:
+        s = report["summary"]
+        print(f"Curation Report: {s['total_actions']} actions needed\n")
+
+        if report["numeric_names"]:
+            print(f"  Numeric names ({s['numeric_names']}): tokens with numeric segments need semantic names")
+            for t in report["numeric_names"][:5]:
+                print(f"    {t['name']} ({t['type']})")
+            if s["numeric_names"] > 5:
+                print(f"    ... and {s['numeric_names'] - 5} more")
+
+        if report["near_duplicates"]:
+            print(f"\n  Near-duplicate colors ({s['near_duplicates']}): consider merging")
+            for p in report["near_duplicates"]:
+                print(f"    ΔE {p['delta_e']}: {p['token_a']} ({p['value_a']}) ↔ {p['token_b']} ({p['value_b']})")
+
+        if report["low_use"]:
+            print(f"\n  Low-use tokens ({s['low_use']}): ≤5 bindings, may be one-offs")
+            for t in report["low_use"][:5]:
+                print(f"    {t['name']} ({t['type']}) — {t['binding_count']} uses")
+            if s["low_use"] > 5:
+                print(f"    ... and {s['low_use'] - 5} more")
+
+        if report["fractional_sizes"]:
+            print(f"\n  Fractional font sizes ({s['fractional_sizes']}): likely Figma scaling artifacts")
+            for f in report["fractional_sizes"][:5]:
+                print(f"    {f['name']}: {f['value']}px → suggest {f['suggested']}px")
+
+        if s["missing_semantic_layer"]:
+            print("\n  No semantic layer: 0 aliases found. Consider creating semantic tokens (e.g. color.danger → color.surface.27)")
+
+    conn.close()
+
+
 def _parse_figma_input(raw: str) -> str:
     match = re.search(r'figma\.com/(?:design|file)/([a-zA-Z0-9]+)', raw)
     if match:
@@ -275,6 +322,10 @@ def main(argv: Optional[list] = None) -> None:
     export_parser.add_argument("--db", help="Database path")
     export_parser.add_argument("--out", help="Output file path")
 
+    curate_report_parser = subparsers.add_parser("curate-report", help="Show curation issues for agent review")
+    curate_report_parser.add_argument("--db", help="Database path")
+    curate_report_parser.add_argument("--json", action="store_true", help="Output as JSON (for agent consumption)")
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -305,6 +356,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "export":
         db_path = detect_db_path(args.db)
         run_export(args.format, db_path, args.out)
+    elif args.command == "curate-report":
+        db_path = detect_db_path(args.db)
+        _run_curate_report(db_path, as_json=args.json)
 
 
 if __name__ == "__main__":
