@@ -109,9 +109,10 @@ TASK PACKET FOLLOWS:
 
     # Feed the preamble + packet to Claude Code
     # --print sends the prompt and exits (non-interactive)
-    if claude --print "${PREAMBLE}$(cat "$PACKET")" \
-        --cwd "$PROJECT_DIR" \
-        2>&1 | tee "$LOG_FILE"; then
+    # Run from project dir so Claude operates on the right codebase
+    if (cd "$PROJECT_DIR" && claude -p "${PREAMBLE}$(cat "$PACKET")" \
+        --allowedTools "Bash Edit Write Read Glob Grep" \
+        2>&1) | tee "$LOG_FILE"; then
 
         TASK_END=$(date +%s)
         DURATION=$((TASK_END - TASK_START))
