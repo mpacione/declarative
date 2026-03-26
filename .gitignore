@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.coverage
+.pytest_cache/
+build/.venv/
+
+# SQLite databases (generated, not source)
+*.declarative.db
+
+# macOS
+.DS_Store
+
+# Temp scripts from debugging sessions
+extraction_runner.py
+extract_with_real_data.py
+run_extraction_with_mcp.py
+
+# Misc
+=2.28
