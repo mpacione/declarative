@@ -64,7 +64,7 @@ def temp_db():
             raw_value TEXT NOT NULL,
             resolved_value TEXT NOT NULL,
             binding_status TEXT NOT NULL DEFAULT 'unbound'
-                CHECK(binding_status IN ('unbound', 'proposed', 'bound', 'overridden')),
+                CHECK(binding_status IN ('unbound', 'proposed', 'bound', 'overridden', 'intentionally_unbound')),
             UNIQUE(node_id, property)
         );
     """)

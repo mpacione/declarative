@@ -583,3 +583,122 @@ def ensure_effects_collection(conn: sqlite3.Connection, file_id: int) -> tuple[i
 
     conn.commit()
     return (collection_id, mode_id)
+
+# ============================================================================
+# Opacity clustering
+# ============================================================================
+
+def ensure_opacity_collection(conn: sqlite3.Connection, file_id: int) -> tuple[int, int]:
+    """Create or retrieve Opacity collection and Default mode."""
+    conn.row_factory = sqlite3.Row
+
+    cursor = conn.execute(
+        "SELECT id FROM token_collections WHERE file_id = ? AND name = 'Opacity'",
+        (file_id,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        collection_id = row['id']
+    else:
+        cursor = conn.execute(
+            """INSERT INTO token_collections (file_id, name, created_at)
+               VALUES (?, 'Opacity', datetime('now'))""",
+            (file_id,)
+        )
+        collection_id = cursor.lastrowid
+
+    cursor = conn.execute(
+        "SELECT id FROM token_modes WHERE collection_id = ? AND name = 'Default'",
+        (collection_id,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        mode_id = row['id']
+    else:
+        cursor = conn.execute(
+            """INSERT INTO token_modes (collection_id, name, is_default)
+               VALUES (?, 'Default', 1)""",
+            (collection_id,)
+        )
+        mode_id = cursor.lastrowid
+
+    conn.commit()
+    return (collection_id, mode_id)
+
+
+def cluster_opacity(conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int) -> dict:
+    """Cluster opacity values into tokens.
+
+    Opacity has very few unique values (typically 3-5), so no perceptual
+    grouping is needed - each unique value becomes its own token.
+
+    Returns:
+        Dict with tokens_created and bindings_updated.
+    """
+    import json
+    conn.row_factory = sqlite3.Row
+
+    cursor = conn.execute(
+        """SELECT ntb.resolved_value, COUNT(*) AS usage_count
+           FROM node_token_bindings ntb
+           JOIN nodes n ON ntb.node_id = n.id
+           JOIN screens s ON n.screen_id = s.id
+           WHERE ntb.property = 'opacity'
+             AND ntb.binding_status = 'unbound'
+             AND s.file_id = ?
+           GROUP BY ntb.resolved_value
+           ORDER BY CAST(ntb.resolved_value AS REAL)""",
+        (file_id,)
+    )
+    census = [dict(row) for row in cursor.fetchall()]
+
+    if not census:
+        return {"tokens_created": 0, "bindings_updated": 0}
+
+    tokens_created = 0
+    bindings_updated = 0
+
+    for row in census:
+        raw_value = float(row['resolved_value'])
+        pct = round(raw_value * 100)
+        token_name = f"opacity.{pct}"
+
+        cursor = conn.execute(
+            """INSERT OR IGNORE INTO tokens (collection_id, name, type, tier)
+               VALUES (?, ?, 'number', 'extracted')""",
+            (collection_id, token_name)
+        )
+        if cursor.lastrowid:
+            token_id = cursor.lastrowid
+            tokens_created += 1
+
+            conn.execute(
+                """INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+                   VALUES (?, ?, ?, ?)""",
+                (token_id, mode_id, json.dumps(raw_value), str(raw_value))
+            )
+        else:
+            token_id = conn.execute(
+                "SELECT id FROM tokens WHERE collection_id = ? AND name = ?",
+                (collection_id, token_name)
+            ).fetchone()['id']
+
+        cursor = conn.execute(
+            """UPDATE node_token_bindings
+               SET token_id = ?, binding_status = 'proposed', confidence = 1.0
+               WHERE resolved_value = ?
+                 AND property = 'opacity'
+                 AND binding_status = 'unbound'
+                 AND node_id IN (
+                     SELECT n.id FROM nodes n
+                     JOIN screens s ON n.screen_id = s.id
+                     WHERE s.file_id = ?
+                 )""",
+            (token_id, row['resolved_value'], file_id)
+        )
+        bindings_updated += cursor.rowcount
+
+    conn.commit()
+    return {"tokens_created": tokens_created, "bindings_updated": bindings_updated}

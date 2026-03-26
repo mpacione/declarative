@@ -486,6 +486,179 @@ def test_spacing_clustering_full(db):
 
 
 # ============================================================================
+# Spacing clustering — fractional value handling
+# ============================================================================
+
+@pytest.mark.unit
+def test_spacing_fractional_values_rounded_to_integers(db):
+    """Spacing values like 10.0, 14.0 should cluster as 10, 14 — not be skipped."""
+    seed_post_extraction(db)
+
+    # Delete existing spacing bindings and tokens from seed to avoid UNIQUE conflicts
+    db.execute("DELETE FROM node_token_bindings WHERE property IN ('padding.top','padding.bottom','padding.left','padding.right','itemSpacing','counterAxisSpacing')")
+    db.execute("DELETE FROM token_values WHERE token_id IN (SELECT id FROM tokens WHERE name LIKE 'space.%')")
+    db.execute("DELETE FROM tokens WHERE name LIKE 'space.%'")
+    db.commit()
+
+    # Add bindings with float-style resolved_values (as real Figma data produces)
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (1, "padding.top", "10.0", "10.0"),
+            (2, "padding.top", "10.0", "10.0"),
+            (1, "padding.left", "14.0", "14.0"),
+            (2, "padding.left", "14.0", "14.0"),
+            (3, "itemSpacing", "10.0", "10.0"),
+            (5, "itemSpacing", "14.0", "14.0"),
+            # Fractional outlier — should round to nearest integer
+            (6, "itemSpacing", "9.935135841369629", "9.935135841369629"),
+        ]
+    )
+    db.commit()
+
+    collection_id, mode_id = ensure_spacing_collection(db, 1)
+    result = cluster_spacing(db, 1, collection_id, mode_id)
+
+    # The .0 values should be bound — not left unbound
+    unbound = db.execute(
+        """SELECT COUNT(*) FROM node_token_bindings
+           WHERE binding_status = 'unbound'
+             AND property IN ('padding.top','padding.left','itemSpacing')
+             AND resolved_value IN ('10.0', '14.0')"""
+    ).fetchone()[0]
+
+    assert unbound == 0, f"Expected 0 unbound .0 values, got {unbound}"
+
+
+@pytest.mark.unit
+def test_spacing_fractional_outlier_merges_with_nearest_integer(db):
+    """9.935 should be assigned the same token as 10, not get its own token."""
+    seed_post_extraction(db)
+
+    # Delete existing spacing bindings and tokens to avoid UNIQUE conflicts
+    db.execute("DELETE FROM node_token_bindings WHERE property IN ('padding.top','padding.bottom','padding.left','padding.right','itemSpacing','counterAxisSpacing')")
+    db.execute("DELETE FROM token_values WHERE token_id IN (SELECT id FROM tokens WHERE name LIKE 'space.%')")
+    db.execute("DELETE FROM tokens WHERE name LIKE 'space.%'")
+    db.commit()
+
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (1, "itemSpacing", "10.0", "10.0"),
+            (2, "itemSpacing", "10.0", "10.0"),
+            (3, "itemSpacing", "9.935135841369629", "9.935135841369629"),
+        ]
+    )
+    db.commit()
+
+    collection_id, mode_id = ensure_spacing_collection(db, 1)
+    cluster_spacing(db, 1, collection_id, mode_id)
+
+    # Both 10.0 and 9.935 should bind to the same token
+    tokens = db.execute(
+        """SELECT DISTINCT token_id FROM node_token_bindings
+           WHERE property = 'itemSpacing'
+             AND binding_status = 'proposed'
+             AND resolved_value IN ('10.0', '9.935135841369629')"""
+    ).fetchall()
+
+    token_ids = [r[0] for r in tokens]
+    assert len(set(token_ids)) == 1, f"Expected 1 shared token, got {len(set(token_ids))}"
+
+
+@pytest.mark.unit
+def test_spacing_scale_detection_ignores_fractional_noise():
+    """Scale detection rounds to integers — fractional noise becomes integer."""
+    # After rounding: [1, 4, 8, 10, 12, 14, 16, 24] — GCD is 1, no clean base
+    # This correctly falls back to t-shirt notation
+    values_with_noise = [0.706, 4.0, 8.0, 10.0, 12.0, 14.0, 16.0, 24.0]
+    _base, notation = detect_scale_pattern(values_with_noise)
+    assert notation == "tshirt"
+
+    # But clean scales still detect correctly
+    clean_values = [4.0, 8.0, 12.0, 16.0, 24.0]
+    base, notation = detect_scale_pattern(clean_values)
+    assert base == 4.0
+    assert notation == "multiplier"
+
+
+# ============================================================================
+# Typography default handling
+# ============================================================================
+
+@pytest.mark.unit
+def test_typography_defaults_marked_intentionally_unbound(db):
+    """letterSpacing=0 and lineHeight=AUTO are CSS defaults, not design tokens."""
+    seed_post_extraction(db)
+
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (4, "letterSpacing", '{"value": 0.0, "unit": "PIXELS"}', '{"value": 0.0, "unit": "PIXELS"}'),
+            (4, "lineHeight", '{"unit": "AUTO"}', '{"unit": "AUTO"}'),
+            (7, "letterSpacing", '{"value": 0.0, "unit": "PIXELS"}', '{"value": 0.0, "unit": "PIXELS"}'),
+        ]
+    )
+    db.commit()
+
+    from dd.cluster import mark_default_bindings
+    marked = mark_default_bindings(conn=db, file_id=1)
+
+    assert marked > 0
+
+    status = db.execute(
+        """SELECT binding_status FROM node_token_bindings
+           WHERE property = 'letterSpacing'
+             AND resolved_value LIKE '%0.0%'"""
+    ).fetchall()
+
+    for row in status:
+        assert row[0] == "intentionally_unbound"
+
+
+# ============================================================================
+# Opacity clustering
+# ============================================================================
+
+@pytest.mark.unit
+def test_opacity_clustering_creates_tokens(db):
+    """Unique opacity values should get their own tokens."""
+    seed_post_extraction(db)
+
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (1, "opacity", "0.2", "0.2"),
+            (2, "opacity", "0.2", "0.2"),
+            (3, "opacity", "0.5", "0.5"),
+            (5, "opacity", "0.8", "0.8"),
+        ]
+    )
+    db.commit()
+
+    from dd.cluster_misc import cluster_opacity, ensure_opacity_collection
+    collection_id, mode_id = ensure_opacity_collection(db, 1)
+    result = cluster_opacity(db, 1, collection_id, mode_id)
+
+    assert result["tokens_created"] == 3
+    assert result["bindings_updated"] == 4
+
+    # All opacity bindings should be proposed
+    unbound = db.execute(
+        "SELECT COUNT(*) FROM node_token_bindings WHERE property = 'opacity' AND binding_status = 'unbound'"
+    ).fetchone()[0]
+    assert unbound == 0
+
+
+# ============================================================================
 # Radius clustering tests (test_radius_*)
 # ============================================================================
 

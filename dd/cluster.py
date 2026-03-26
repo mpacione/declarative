@@ -17,7 +17,7 @@ from typing import Optional
 from dd.cluster_colors import cluster_colors, ensure_collection_and_mode
 from dd.cluster_typography import cluster_typography, ensure_typography_collection
 from dd.cluster_spacing import cluster_spacing, ensure_spacing_collection
-from dd.cluster_misc import cluster_radius, cluster_effects, ensure_radius_collection, ensure_effects_collection
+from dd.cluster_misc import cluster_radius, cluster_effects, cluster_opacity, ensure_radius_collection, ensure_effects_collection, ensure_opacity_collection
 
 
 def acquire_clustering_lock(conn: sqlite3.Connection, agent_id: str = "clustering", timeout_minutes: int = 10) -> None:
@@ -68,6 +68,34 @@ def release_clustering_lock(conn: sqlite3.Connection) -> None:
     """
     conn.execute("DELETE FROM extraction_locks WHERE resource = 'clustering'")
     conn.commit()
+
+
+def mark_default_bindings(conn: sqlite3.Connection, file_id: int) -> int:
+    """Mark CSS-default typography values as intentionally unbound.
+
+    letterSpacing: 0 and lineHeight: AUTO are browser defaults, not design
+    decisions. Marking them prevents false negatives in coverage reporting.
+
+    Returns:
+        Number of bindings marked.
+    """
+    cursor = conn.execute(
+        """UPDATE node_token_bindings
+           SET binding_status = 'intentionally_unbound'
+           WHERE binding_status = 'unbound'
+             AND (
+                 (property = 'letterSpacing' AND resolved_value LIKE '%0.0%')
+                 OR (property = 'lineHeight' AND resolved_value LIKE '%AUTO%')
+             )
+             AND node_id IN (
+                 SELECT n.id FROM nodes n
+                 JOIN screens s ON n.screen_id = s.id
+                 WHERE s.file_id = ?
+             )""",
+        (file_id,)
+    )
+    conn.commit()
+    return cursor.rowcount
 
 
 def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: float = 2.0, agent_id: str = "clustering") -> dict:
@@ -201,6 +229,25 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
         else:
             results_by_type['effects'] = {'tokens_created': 0, 'bindings_updated': 0}
 
+        # 6. Opacity
+        try:
+            opacity_coll_id, opacity_mode_id = ensure_opacity_collection(conn, file_id)
+            opacity_result = cluster_opacity(conn, file_id, opacity_coll_id, opacity_mode_id)
+            results_by_type['opacity'] = opacity_result
+            if opacity_result['tokens_created'] > 0:
+                print(f"[Clustering] Opacity: {opacity_result['tokens_created']} tokens, {opacity_result['bindings_updated']} bindings")
+        except Exception as e:
+            errors.append(f"Opacity clustering: {str(e)}")
+            results_by_type['opacity'] = {'tokens_created': 0, 'bindings_updated': 0}
+
+        # 7. Mark CSS defaults as intentionally unbound
+        try:
+            defaults_marked = mark_default_bindings(conn, file_id)
+            if defaults_marked > 0:
+                print(f"[Clustering] Marked {defaults_marked} default bindings (letterSpacing=0, lineHeight=AUTO)")
+        except Exception as e:
+            errors.append(f"Default marking: {str(e)}")
+
         # Generate summary
         summary = generate_summary(conn, file_id, results_by_type)
 
@@ -265,6 +312,7 @@ def generate_summary(conn: sqlite3.Connection, file_id: int, results: dict) -> d
     total_bindings = 0
     proposed_count = 0
     bound_count = 0
+    intentionally_unbound_count = 0
 
     for status in curation_progress:
         if status['binding_status'] == 'unbound':
@@ -273,11 +321,14 @@ def generate_summary(conn: sqlite3.Connection, file_id: int, results: dict) -> d
             proposed_count = status['binding_count']
         if status['binding_status'] == 'bound':
             bound_count = status['binding_count']
+        if status['binding_status'] == 'intentionally_unbound':
+            intentionally_unbound_count = status['binding_count']
         total_bindings += status['binding_count']
 
-    # Calculate coverage
+    # Calculate coverage (intentionally_unbound counts as handled)
+    handled = proposed_count + bound_count + intentionally_unbound_count
     if total_bindings > 0:
-        coverage_pct = ((proposed_count + bound_count) / total_bindings) * 100
+        coverage_pct = (handled / total_bindings) * 100
     else:
         coverage_pct = 0.0
 

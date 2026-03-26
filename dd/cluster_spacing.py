@@ -196,19 +196,32 @@ def cluster_spacing(conn: sqlite3.Connection, file_id: int, collection_id: int, 
             "notation": "none"
         }
 
-    # Extract unique values
-    unique_values = sorted(list(set(float(row['resolved_value']) for row in census)))
+    # Round all values to nearest integer and group by rounded value
+    # This handles both "10.0" (clean float) and "9.935" (fractional noise)
+    rounded_groups: dict[int, list[str]] = {}
+    for row in census:
+        raw_val = float(row['resolved_value'])
+        rounded = round(raw_val)
+        if rounded <= 0:
+            continue
+        if rounded not in rounded_groups:
+            rounded_groups[rounded] = []
+        original_str = row['resolved_value']
+        if original_str not in rounded_groups[rounded]:
+            rounded_groups[rounded].append(original_str)
 
-    # Detect scale pattern
-    base_unit, notation = detect_scale_pattern(unique_values)
+    unique_values = sorted(rounded_groups.keys())
+
+    # Detect scale pattern from rounded integer values
+    base_unit, notation = detect_scale_pattern([float(v) for v in unique_values])
 
     tokens_created = 0
     bindings_updated = 0
 
-    # Create tokens for each unique value
-    for idx, value in enumerate(unique_values):
-        # Propose name
-        token_name = propose_spacing_name(value, base_unit, notation, idx, len(unique_values))
+    # Create tokens for each unique rounded value
+    for idx, rounded_value in enumerate(unique_values):
+        # Propose name using the rounded integer
+        token_name = propose_spacing_name(float(rounded_value), base_unit, notation, idx, len(unique_values))
 
         # Create token
         cursor = conn.execute(
@@ -219,37 +232,32 @@ def cluster_spacing(conn: sqlite3.Connection, file_id: int, collection_id: int, 
         token_id = cursor.lastrowid
         tokens_created += 1
 
-        # Convert value to string format that matches resolved_value
-        # If value is a whole number, don't include decimal point
-        if value == int(value):
-            value_str = str(int(value))
-        else:
-            value_str = str(value)
-
-        # Create token value
-        raw_value = json.dumps({"value": value, "unit": "px"})
+        # Create token value using the clean integer
+        value_str = str(rounded_value)
+        raw_value = json.dumps({"value": rounded_value, "unit": "px"})
         conn.execute(
             """INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
                VALUES (?, ?, ?, ?)""",
             (token_id, mode_id, raw_value, value_str)
         )
 
-        # Update all bindings with this value
-        cursor = conn.execute(
-            """UPDATE node_token_bindings
-               SET token_id = ?, binding_status = 'proposed', confidence = 1.0
-               WHERE resolved_value = ?
-                 AND property IN ('padding.top','padding.right','padding.bottom','padding.left',
-                                 'itemSpacing','counterAxisSpacing')
-                 AND binding_status = 'unbound'
-                 AND node_id IN (
-                     SELECT n.id FROM nodes n
-                     JOIN screens s ON n.screen_id = s.id
-                     WHERE s.file_id = ?
-                 )""",
-            (token_id, value_str, file_id)
-        )
-        bindings_updated += cursor.rowcount
+        # Bind ALL original resolved_values that round to this integer
+        for original_str in rounded_groups[rounded_value]:
+            cursor = conn.execute(
+                """UPDATE node_token_bindings
+                   SET token_id = ?, binding_status = 'proposed', confidence = 1.0
+                   WHERE resolved_value = ?
+                     AND property IN ('padding.top','padding.right','padding.bottom','padding.left',
+                                     'itemSpacing','counterAxisSpacing')
+                     AND binding_status = 'unbound'
+                     AND node_id IN (
+                         SELECT n.id FROM nodes n
+                         JOIN screens s ON n.screen_id = s.id
+                         WHERE s.file_id = ?
+                     )""",
+                (token_id, original_str, file_id)
+            )
+            bindings_updated += cursor.rowcount
 
     conn.commit()
 

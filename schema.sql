@@ -301,7 +301,7 @@ CREATE TABLE node_token_bindings (
     resolved_value  TEXT NOT NULL,               -- normalized for matching: "#09090B", "16", "Inter"
     confidence      REAL,                        -- clustering confidence (0-1) when auto-assigned
     binding_status  TEXT NOT NULL DEFAULT 'unbound'
-                    CHECK(binding_status IN ('unbound', 'proposed', 'bound', 'overridden')),
+                    CHECK(binding_status IN ('unbound', 'proposed', 'bound', 'overridden', 'intentionally_unbound')),
     UNIQUE(node_id, property)
 );
 
