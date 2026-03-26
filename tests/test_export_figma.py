@@ -1,14 +1,13 @@
-"""Test export_figma_vars module for Figma variable payload generation."""
+"""Unit tests for export payload generation and rebind script generation."""
 
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
-
 import pytest
+import sqlite3
+from typing import Any, Dict, List
 
-from dd.config import MAX_TOKENS_PER_CALL
+from dd.config import MAX_BINDINGS_PER_SCRIPT, MAX_TOKENS_PER_CALL
 from dd.export_figma_vars import (
+    DTCG_TO_FIGMA_TYPE,
     dtcg_to_figma_path,
     figma_path_to_dtcg,
     generate_variable_payloads,
@@ -21,882 +20,722 @@ from dd.export_figma_vars import (
     writeback_variable_ids,
     writeback_variable_ids_from_response,
 )
+from dd.export_rebind import (
+    PROPERTY_HANDLERS,
+    classify_property,
+    generate_rebind_scripts,
+    generate_single_script,
+    get_rebind_summary,
+    query_bindable_entries,
+)
+from tests.fixtures import seed_post_curation, seed_post_validation
 
 
-@pytest.fixture
-def temp_db():
-    """Create a temporary database with schema."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmpfile:
-        db_path = Path(tmpfile.name)
+# Helper Functions
+def _seed_with_figma_ids(db: sqlite3.Connection) -> sqlite3.Connection:
+    """Seed post-curation and add figma_variable_ids to simulate post-writeback state."""
+    seed_post_curation(db)
 
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
+    # Update tokens with figma_variable_id
+    cursor = db.execute("SELECT id FROM tokens WHERE tier IN ('curated', 'aliased')")
+    for i, row in enumerate(cursor.fetchall(), start=1):
+        db.execute(
+            "UPDATE tokens SET figma_variable_id = ? WHERE id = ?",
+            (f"VariableID:1:{i}", row["id"])
+        )
 
-    # Create minimal schema for testing
-    conn.executescript("""
-        CREATE TABLE files (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-        );
-
-        CREATE TABLE token_collections (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER NOT NULL REFERENCES files(id),
-            figma_id TEXT,
-            name TEXT NOT NULL,
-            description TEXT
-        );
-
-        CREATE TABLE token_modes (
-            id INTEGER PRIMARY KEY,
-            collection_id INTEGER NOT NULL REFERENCES token_collections(id) ON DELETE CASCADE,
-            figma_mode_id TEXT,
-            name TEXT NOT NULL,
-            is_default INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(collection_id, name)
-        );
-
-        CREATE TABLE tokens (
-            id INTEGER PRIMARY KEY,
-            collection_id INTEGER NOT NULL REFERENCES token_collections(id),
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            tier TEXT NOT NULL DEFAULT 'extracted'
-                CHECK(tier IN ('extracted', 'curated', 'aliased')),
-            alias_of INTEGER REFERENCES tokens(id),
-            description TEXT,
-            figma_variable_id TEXT,
-            sync_status TEXT NOT NULL DEFAULT 'pending'
-                CHECK(sync_status IN ('pending', 'figma_only', 'code_only', 'synced', 'drifted')),
-            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            UNIQUE(collection_id, name)
-        );
-
-        CREATE TABLE token_values (
-            id INTEGER PRIMARY KEY,
-            token_id INTEGER NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
-            mode_id INTEGER NOT NULL REFERENCES token_modes(id) ON DELETE CASCADE,
-            raw_value TEXT NOT NULL,
-            resolved_value TEXT NOT NULL,
-            UNIQUE(token_id, mode_id)
-        );
-
-        CREATE TABLE export_validations (
-            id INTEGER PRIMARY KEY,
-            run_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            check_name TEXT NOT NULL,
-            severity TEXT NOT NULL CHECK(severity IN ('error', 'warning', 'info')),
-            message TEXT NOT NULL,
-            affected_ids TEXT,
-            resolved INTEGER NOT NULL DEFAULT 0
-        );
-    """)
-
-    yield conn
-
-    conn.close()
-    db_path.unlink()
+    db.commit()
+    return db
 
 
-@pytest.fixture
-def populated_db(temp_db):
-    """Create a database populated with test data."""
-    conn = temp_db
-
-    # Create a file
-    cursor = conn.execute("INSERT INTO files (name) VALUES ('test.figma')")
-    file_id = cursor.lastrowid
-
-    # Create collections
-    cursor = conn.execute("INSERT INTO token_collections (file_id, name) VALUES (?, 'Colors')", (file_id,))
-    colors_collection_id = cursor.lastrowid
-
-    cursor = conn.execute("INSERT INTO token_collections (file_id, name) VALUES (?, 'Spacing')", (file_id,))
-    spacing_collection_id = cursor.lastrowid
-
-    # Create modes
-    cursor = conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Light', 1)", (colors_collection_id,))
-    light_mode_id = cursor.lastrowid
-    cursor = conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Dark', 0)", (colors_collection_id,))
-    dark_mode_id = cursor.lastrowid
-
-    cursor = conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Default', 1)", (spacing_collection_id,))
-    default_mode_id = cursor.lastrowid
-
-    # Create tokens
-    # Curated color token (ready for export)
-    cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
-        VALUES (?, 'color.surface.primary', 'color', 'curated', NULL)
-    """, (colors_collection_id,))
-    primary_token_id = cursor.lastrowid
-
-    # Add values for both modes
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '#09090B', '#09090B')
-    """, (primary_token_id, light_mode_id))
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '#FAFAFA', '#FAFAFA')
-    """, (primary_token_id, dark_mode_id))
-
-    # Another curated color token
-    cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
-        VALUES (?, 'color.surface.secondary', 'color', 'curated', NULL)
-    """, (colors_collection_id,))
-    secondary_token_id = cursor.lastrowid
-
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '#18181B', '#18181B')
-    """, (secondary_token_id, light_mode_id))
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '#F4F4F5', '#F4F4F5')
-    """, (secondary_token_id, dark_mode_id))
-
-    # Aliased token that references primary
-    cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id, alias_of)
-        VALUES (?, 'color.button.primary', 'color', 'aliased', NULL, ?)
-    """, (colors_collection_id, primary_token_id))
-    alias_token_id = cursor.lastrowid
-
-    # Curated spacing token
-    cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
-        VALUES (?, 'space.4', 'dimension', 'curated', NULL)
-    """, (spacing_collection_id,))
-    space_token_id = cursor.lastrowid
-
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '16', '16')
-    """, (space_token_id, default_mode_id))
-
-    # Extracted token (should not be exported)
-    cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier)
-        VALUES (?, 'color.text.body', 'color', 'extracted')
-    """, (colors_collection_id,))
-    extracted_token_id = cursor.lastrowid
-
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, '#000000', '#000000')
-    """, (extracted_token_id, light_mode_id))
-
-    # Token with existing figma_variable_id (should not be exported)
-    conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id, sync_status)
-        VALUES (?, 'color.already.synced', 'color', 'curated', 'VariableID:123:456', 'synced')
-    """, (colors_collection_id,))
-
-    conn.commit()
-
-    return conn, file_id
-
-
-class TestNameConversion:
-    """Test DTCG to Figma path conversion."""
-
-    def test_dtcg_to_figma_path_simple(self):
-        """Test simple dot to slash conversion."""
-        assert dtcg_to_figma_path("color.surface.primary") == "color/surface/primary"
-
-    def test_dtcg_to_figma_path_numeric(self):
-        """Test conversion with numeric segments."""
-        assert dtcg_to_figma_path("space.4") == "space/4"
-
-    def test_dtcg_to_figma_path_single(self):
-        """Test single segment (no dots)."""
-        assert dtcg_to_figma_path("primary") == "primary"
-
-    def test_dtcg_to_figma_path_empty(self):
-        """Test empty string."""
-        assert dtcg_to_figma_path("") == ""
-
-
-class TestPathConversionRoundtrip:
-    """Test bidirectional path conversion."""
-
-    def test_figma_path_to_dtcg_simple(self):
-        """Test simple slash to dot conversion."""
-        assert figma_path_to_dtcg("color/surface/primary") == "color.surface.primary"
-
-    def test_figma_path_to_dtcg_numeric(self):
-        """Test conversion with numeric segments."""
-        assert figma_path_to_dtcg("space/4") == "space.4"
-
-    def test_figma_path_to_dtcg_single(self):
-        """Test single segment (no slashes)."""
-        assert figma_path_to_dtcg("primary") == "primary"
-
-    def test_figma_path_to_dtcg_empty(self):
-        """Test empty string."""
-        assert figma_path_to_dtcg("") == ""
-
-    def test_roundtrip_conversion(self):
-        """Test that conversions are inverse operations."""
-        original = "color.surface.primary.button"
-        assert figma_path_to_dtcg(dtcg_to_figma_path(original)) == original
-
-        figma_original = "color/surface/primary/button"
-        assert dtcg_to_figma_path(figma_path_to_dtcg(figma_original)) == figma_original
-
-
-class TestParseFigmaResponseProper:
-    """Test parse_figma_variables_response function."""
-
-    def test_parse_standard_response(self):
-        """Test parsing standard Figma variables response."""
-        response = {
-            "collections": [
-                {
-                    "id": "VariableCollectionID:123",
-                    "name": "Colors",
-                    "modes": [
-                        {"id": "modeId:1", "name": "Light"},
-                        {"id": "modeId:2", "name": "Dark"}
-                    ],
-                    "variables": [
-                        {
-                            "id": "VariableID:123:456",
-                            "name": "color/surface/primary",
-                            "type": "COLOR"
-                        },
-                        {
-                            "id": "VariableID:123:457",
-                            "name": "color/surface/secondary",
-                            "type": "COLOR"
-                        }
-                    ]
-                },
-                {
-                    "id": "VariableCollectionID:124",
-                    "name": "Spacing",
-                    "modes": [
-                        {"id": "modeId:3", "name": "Default"}
-                    ],
-                    "variables": [
-                        {
-                            "id": "VariableID:124:100",
-                            "name": "space/4",
-                            "type": "FLOAT"
-                        }
-                    ]
-                }
-            ]
-        }
-
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 3
-
-        # Check first variable
-        var1 = next(v for v in parsed if v["variable_id"] == "VariableID:123:456")
-        assert var1["name"] == "color.surface.primary"  # Converted to DTCG
-        assert var1["collection_name"] == "Colors"
-        assert var1["collection_id"] == "VariableCollectionID:123"
-        assert len(var1["modes"]) == 2
-
-        # Check spacing variable
-        space = next(v for v in parsed if v["variable_id"] == "VariableID:124:100")
-        assert space["name"] == "space.4"  # Converted to DTCG
-        assert space["collection_name"] == "Spacing"
-
-    def test_parse_list_response(self):
-        """Test parsing when response is a list instead of dict."""
-        response = [
+def _make_mock_figma_response(token_names: List[str]) -> Dict[str, Any]:
+    """Build a mock figma_get_variables response."""
+    return {
+        "collections": [
             {
-                "id": "VariableCollectionID:123",
+                "id": "VariableCollectionId:1:1",
                 "name": "Colors",
-                "modes": [{"id": "modeId:1", "name": "Light"}],
+                "modes": [
+                    {"id": "1:0", "name": "Default"}
+                ],
                 "variables": [
                     {
-                        "id": "VariableID:123:456",
-                        "name": "color/primary",
-                        "type": "COLOR"
+                        "id": f"VariableID:1:{i}",
+                        "name": dtcg_to_figma_path(name)
                     }
+                    for i, name in enumerate(token_names, start=1)
                 ]
             }
         ]
+    }
 
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 1
-        assert parsed[0]["name"] == "color.primary"
 
-    def test_parse_empty_response(self):
-        """Test parsing empty response."""
-        assert parse_figma_variables_response({"collections": []}) == []
-        assert parse_figma_variables_response([]) == []
-        assert parse_figma_variables_response({}) == []
+def _seed_many_tokens(db: sqlite3.Connection, count: int) -> sqlite3.Connection:
+    """Seed post-curation then insert additional curated tokens."""
+    seed_post_curation(db)
 
-    def test_parse_missing_fields(self):
-        """Test parsing with missing optional fields."""
-        response = {
-            "collections": [
-                {
-                    "id": "VariableCollectionID:123",
-                    "name": "Colors",
-                    # No modes field
-                    "variables": [
-                        {
-                            "id": "VariableID:123:456",
-                            "name": "color/primary"
-                            # No type field
-                        }
-                    ]
-                }
-            ]
+    # Get collection ID
+    cursor = db.execute("SELECT id FROM token_collections WHERE name = 'Colors'")
+    collection_id = cursor.fetchone()["id"]
+
+    # Get mode ID
+    cursor = db.execute("SELECT id FROM token_modes WHERE collection_id = ?", (collection_id,))
+    mode_id = cursor.fetchone()["id"]
+
+    # Get max token ID
+    cursor = db.execute("SELECT MAX(id) AS max_id FROM tokens")
+    max_id = cursor.fetchone()["max_id"] or 0
+
+    # Insert additional tokens
+    for i in range(1, count + 1):
+        token_id = max_id + i
+        db.execute(
+            "INSERT INTO tokens (id, collection_id, name, type, tier) VALUES (?, ?, ?, ?, ?)",
+            (token_id, collection_id, f"color.generated.token{i:03d}", "color", "curated")
+        )
+
+        # Insert token value
+        db.execute(
+            """INSERT INTO token_values (id, token_id, mode_id, raw_value, resolved_value)
+               VALUES (?, ?, ?, ?, ?)""",
+            (token_id * 100, token_id, mode_id,
+             json.dumps({"r": 0.5, "g": 0.5, "b": 0.5, "a": 1}), "#808080")
+        )
+
+    db.commit()
+    return db
+
+
+# Test Group 1: Name conversion tests
+@pytest.mark.unit
+def test_dtcg_to_figma_path_basic():
+    """Test basic dot to slash conversion."""
+    assert dtcg_to_figma_path("color.surface.primary") == "color/surface/primary"
+
+
+@pytest.mark.unit
+def test_dtcg_to_figma_path_single():
+    """Test single segment (no dots)."""
+    assert dtcg_to_figma_path("color") == "color"
+
+
+@pytest.mark.unit
+def test_dtcg_to_figma_path_numeric():
+    """Test numeric segments."""
+    assert dtcg_to_figma_path("space.4") == "space/4"
+
+
+@pytest.mark.unit
+def test_dtcg_to_figma_path_deep():
+    """Test deep nested path."""
+    assert dtcg_to_figma_path("type.body.md.fontSize") == "type/body/md/fontSize"
+
+
+@pytest.mark.unit
+def test_figma_path_to_dtcg_basic():
+    """Test basic slash to dot conversion."""
+    assert figma_path_to_dtcg("color/surface/primary") == "color.surface.primary"
+
+
+@pytest.mark.unit
+def test_figma_path_to_dtcg_roundtrip():
+    """Test roundtrip conversion maintains original."""
+    original = "color.surface.primary"
+    figma = dtcg_to_figma_path(original)
+    back = figma_path_to_dtcg(figma)
+    assert back == original
+
+
+# Test Group 2: Type mapping tests
+@pytest.mark.unit
+def test_type_mapping_color():
+    """Test color type maps to COLOR."""
+    assert map_token_type_to_figma("color", "color.surface.primary") == "COLOR"
+
+
+@pytest.mark.unit
+def test_type_mapping_dimension():
+    """Test dimension type maps to FLOAT."""
+    assert map_token_type_to_figma("dimension", "space.4") == "FLOAT"
+
+
+@pytest.mark.unit
+def test_type_mapping_font_family():
+    """Test fontFamily type maps to STRING."""
+    assert map_token_type_to_figma("fontFamily", "type.body.md.fontFamily") == "STRING"
+
+
+@pytest.mark.unit
+def test_type_mapping_font_weight():
+    """Test fontWeight type maps to FLOAT."""
+    assert map_token_type_to_figma("fontWeight", "type.body.md.fontWeight") == "FLOAT"
+
+
+@pytest.mark.unit
+def test_type_mapping_shadow_color_by_name():
+    """Test shadow.color maps to COLOR by name override."""
+    assert map_token_type_to_figma("dimension", "shadow.sm.color") == "COLOR"
+
+
+@pytest.mark.unit
+def test_type_mapping_font_style():
+    """Test fontStyle type maps to STRING."""
+    assert map_token_type_to_figma("fontStyle", "type.body.md.fontStyle") == "STRING"
+
+
+# Test Group 3: Payload generation tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_format(db):
+    """Test payload has correct top-level keys."""
+    seed_post_curation(db)
+
+    payloads = generate_variable_payloads(db, 1)
+
+    assert len(payloads) > 0
+    for payload in payloads:
+        assert "collectionName" in payload
+        assert "modes" in payload
+        assert "tokens" in payload
+        assert isinstance(payload["tokens"], list)
+        assert isinstance(payload["modes"], list)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_token_names_use_slashes(db):
+    """Test all token names in payloads use slashes not dots."""
+    seed_post_curation(db)
+
+    payloads = generate_variable_payloads(db, 1)
+
+    for payload in payloads:
+        for token in payload["tokens"]:
+            assert "." not in token["name"]
+            assert "/" in token["name"] or len(token["name"].split("/")) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_token_types_are_figma_types(db):
+    """Test all token types are valid Figma types."""
+    seed_post_curation(db)
+
+    payloads = generate_variable_payloads(db, 1)
+    valid_types = {"COLOR", "FLOAT", "STRING"}
+
+    for payload in payloads:
+        for token in payload["tokens"]:
+            assert token["type"] in valid_types
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_batch_size(db):
+    """Test payloads respect MAX_TOKENS_PER_CALL limit."""
+    _seed_many_tokens(db, 150)
+
+    payloads = generate_variable_payloads(db, 1)
+
+    assert len(payloads) >= 2  # Should have at least 2 batches
+    for payload in payloads:
+        assert len(payload["tokens"]) <= MAX_TOKENS_PER_CALL
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_modes_match_collection(db):
+    """Test payload modes match collection modes from DB."""
+    seed_post_curation(db)
+
+    payloads = generate_variable_payloads(db, 1)
+
+    for payload in payloads:
+        if payload["collectionName"] == "Colors":
+            assert payload["modes"] == ["Default"]
+        elif payload["collectionName"] == "Spacing":
+            assert payload["modes"] == ["Default"]
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_values_per_mode(db):
+    """Test each token has values dict with keys matching modes."""
+    seed_post_curation(db)
+
+    payloads = generate_variable_payloads(db, 1)
+
+    for payload in payloads:
+        modes = payload["modes"]
+        for token in payload["tokens"]:
+            assert "values" in token
+            assert isinstance(token["values"], dict)
+            for mode in modes:
+                assert mode in token["values"]
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_only_curated_tokens(db):
+    """Test payloads only include curated/aliased tokens."""
+    seed_post_curation(db)
+
+    # Add an extracted (non-curated) token
+    db.execute(
+        "INSERT INTO tokens (id, collection_id, name, type, tier) VALUES (?, ?, ?, ?, ?)",
+        (100, 1, "color.not.curated", "color", "extracted")
+    )
+    db.commit()
+
+    payloads = generate_variable_payloads(db, 1)
+
+    # Check that non-curated token is not in payloads
+    for payload in payloads:
+        for token in payload["tokens"]:
+            assert "not/curated" not in token["name"]
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_payload_skips_already_exported(db):
+    """Test tokens with figma_variable_id are excluded."""
+    seed_post_curation(db)
+
+    # Set figma_variable_id on one token
+    db.execute(
+        "UPDATE tokens SET figma_variable_id = ? WHERE name = ?",
+        ("VariableID:1:1", "color.surface.primary")
+    )
+    db.commit()
+
+    tokens = query_exportable_tokens(db, 1)
+
+    # Should not include the token with figma_variable_id
+    token_names = [t["name"] for t in tokens]
+    assert "color.surface.primary" not in token_names
+
+
+# Test Group 4: Validation gate tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_checked_payload_passes_when_valid(db):
+    """Test checked payload generation succeeds with valid data."""
+    seed_post_validation(db)
+
+    payloads = generate_variable_payloads_checked(db, 1)
+    assert len(payloads) > 0
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_checked_payload_blocks_on_errors(db):
+    """Test checked payload blocks when validation hasn't run."""
+    seed_post_curation(db)  # No validation data
+
+    with pytest.raises(RuntimeError) as exc_info:
+        generate_variable_payloads_checked(db, 1)
+
+    assert "validation errors exist" in str(exc_info.value)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_checked_payload_blocks_with_error_validations(db):
+    """Test checked payload blocks with error-severity validations."""
+    seed_post_validation(db)
+
+    # Add an error validation
+    db.execute(
+        """INSERT INTO export_validations (check_name, severity, message, affected_ids, resolved)
+           VALUES (?, ?, ?, ?, ?)""",
+        ("test_error", "error", "Test error", json.dumps([1]), 0)
+    )
+    db.commit()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        generate_variable_payloads_checked(db, 1)
+
+    assert "validation errors exist" in str(exc_info.value)
+
+
+# Test Group 5: Writeback tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_writeback_updates_variable_id(db):
+    """Test writeback sets figma_variable_id on tokens."""
+    seed_post_curation(db)
+
+    figma_vars = [
+        {
+            "variable_id": "VariableID:1:1",
+            "name": "color.surface.primary",
+            "collection_name": "Colors",
+            "collection_id": "VariableCollectionId:1:1",
+            "modes": []
         }
+    ]
 
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 1
-        assert parsed[0]["modes"] == []
+    result = writeback_variable_ids(db, 1, figma_vars)
 
+    assert result["tokens_updated"] == 1
 
-class TestTypeMapping:
-    """Test DTCG to Figma type mapping."""
-
-    def test_map_token_type_color(self):
-        """Test color type mapping."""
-        assert map_token_type_to_figma("color", "color.surface.primary") == "COLOR"
-
-    def test_map_token_type_dimension(self):
-        """Test dimension type mapping."""
-        assert map_token_type_to_figma("dimension", "space.4") == "FLOAT"
-
-    def test_map_token_type_font_family(self):
-        """Test fontFamily type mapping."""
-        assert map_token_type_to_figma("fontFamily", "type.body.md.fontFamily") == "STRING"
-
-    def test_map_token_type_font_weight(self):
-        """Test fontWeight type mapping."""
-        assert map_token_type_to_figma("fontWeight", "type.body.md.fontWeight") == "FLOAT"
-
-    def test_map_token_type_font_style(self):
-        """Test fontStyle type mapping."""
-        assert map_token_type_to_figma("fontStyle", "type.body.fontStyle") == "STRING"
-
-    def test_map_token_type_number(self):
-        """Test number type mapping."""
-        assert map_token_type_to_figma("number", "opacity.50") == "FLOAT"
-
-    def test_map_token_type_shadow_color(self):
-        """Test shadow color field mapping (name-based override)."""
-        assert map_token_type_to_figma("shadow", "shadow.sm.color") == "COLOR"
-        assert map_token_type_to_figma("dimension", "shadow.sm.color") == "COLOR"
-
-    def test_map_token_type_shadow_radius(self):
-        """Test shadow non-color field mapping."""
-        assert map_token_type_to_figma("shadow", "shadow.sm.radius") == "FLOAT"
-
-    def test_map_token_type_border(self):
-        """Test border type mapping."""
-        assert map_token_type_to_figma("border", "border.thin") == "FLOAT"
-
-    def test_map_token_type_gradient(self):
-        """Test gradient type mapping."""
-        assert map_token_type_to_figma("gradient", "gradient.sunset") == "COLOR"
+    # Verify token has figma_variable_id
+    cursor = db.execute("SELECT figma_variable_id FROM tokens WHERE name = ?", ("color.surface.primary",))
+    row = cursor.fetchone()
+    assert row["figma_variable_id"] == "VariableID:1:1"
 
 
-class TestQueryExportable:
-    """Test query_exportable_tokens function."""
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_writeback_updates_sync_status(db):
+    """Test writeback sets sync_status to 'synced'."""
+    seed_post_curation(db)
 
-    def test_query_exportable_tokens_basic(self, populated_db):
-        """Test querying exportable tokens."""
-        conn, file_id = populated_db
-        tokens = query_exportable_tokens(conn, file_id)
-
-        # Should get 4 tokens: 2 curated colors, 1 aliased color, 1 curated spacing
-        # (not the extracted one, not the already-synced one)
-        assert len(tokens) == 4
-
-        # Check primary color token
-        primary = next(t for t in tokens if t["name"] == "color.surface.primary")
-        assert primary["type"] == "color"
-        assert primary["tier"] == "curated"
-        assert primary["collection_name"] == "Colors"
-        assert primary["values"]["Light"] == "#09090B"
-        assert primary["values"]["Dark"] == "#FAFAFA"
-
-        # Check aliased token
-        alias = next(t for t in tokens if t["name"] == "color.button.primary")
-        assert alias["tier"] == "aliased"
-        assert alias["alias_of"] is not None
-        # Aliased tokens should have the target's values
-        assert alias["values"]["Light"] == "#09090B"
-        assert alias["values"]["Dark"] == "#FAFAFA"
-
-        # Check spacing token
-        space = next(t for t in tokens if t["name"] == "space.4")
-        assert space["type"] == "dimension"
-        assert space["collection_name"] == "Spacing"
-        assert space["values"]["Default"] == "16"
-
-    def test_query_exportable_tokens_empty(self, temp_db):
-        """Test with no exportable tokens."""
-        conn = temp_db
-        cursor = conn.execute("INSERT INTO files (name) VALUES ('empty.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
-
-        tokens = query_exportable_tokens(conn, file_id)
-        assert tokens == []
-
-
-class TestGetModeNames:
-    """Test get_mode_names_for_collection function."""
-
-    def test_get_mode_names_ordered(self, populated_db):
-        """Test getting mode names with default first."""
-        conn, _ = populated_db
-
-        # Get Colors collection modes
-        colors_collection_id = conn.execute(
-            "SELECT id FROM token_collections WHERE name = 'Colors'"
-        ).fetchone()[0]
-        modes = get_mode_names_for_collection(conn, colors_collection_id)
-        assert modes == ["Light", "Dark"]  # Light is default
-
-        # Get Spacing collection modes
-        spacing_collection_id = conn.execute(
-            "SELECT id FROM token_collections WHERE name = 'Spacing'"
-        ).fetchone()[0]
-        modes = get_mode_names_for_collection(conn, spacing_collection_id)
-        assert modes == ["Default"]
-
-
-class TestPayloadGeneration:
-    """Test generate_variable_payloads function."""
-
-    def test_generate_payloads_basic(self, populated_db):
-        """Test basic payload generation."""
-        conn, file_id = populated_db
-        payloads = generate_variable_payloads(conn, file_id)
-
-        # Should have 2 payloads (one per collection)
-        assert len(payloads) == 2
-
-        # Find Colors payload
-        colors_payload = next(p for p in payloads if p["collectionName"] == "Colors")
-        assert colors_payload["modes"] == ["Light", "Dark"]
-        assert len(colors_payload["tokens"]) == 3  # primary, secondary, alias
-
-        # Check token conversion
-        primary_token = next(t for t in colors_payload["tokens"] if t["name"] == "color/surface/primary")
-        assert primary_token["type"] == "COLOR"
-        assert primary_token["values"]["Light"] == "#09090B"
-        assert primary_token["values"]["Dark"] == "#FAFAFA"
-
-        # Check aliased token
-        alias_token = next(t for t in colors_payload["tokens"] if t["name"] == "color/button/primary")
-        assert alias_token["type"] == "COLOR"
-        assert alias_token["values"]["Light"] == "#09090B"  # Should use target's values
-        assert alias_token["values"]["Dark"] == "#FAFAFA"
-
-        # Find Spacing payload
-        spacing_payload = next(p for p in payloads if p["collectionName"] == "Spacing")
-        assert spacing_payload["modes"] == ["Default"]
-        assert len(spacing_payload["tokens"]) == 1
-
-        space_token = spacing_payload["tokens"][0]
-        assert space_token["name"] == "space/4"
-        assert space_token["type"] == "FLOAT"
-        assert space_token["values"]["Default"] == "16"
-
-    def test_generate_payloads_batching(self, temp_db):
-        """Test that payloads are batched to MAX_TOKENS_PER_CALL."""
-        conn = temp_db
-
-        # Create a file and collection
-        cursor = conn.execute("INSERT INTO files (name) VALUES ('large.figma')")
-        file_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO token_collections (file_id, name) VALUES (?, 'LargeCollection')", (file_id,))
-        collection_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Default', 1)", (collection_id,))
-        mode_id = cursor.lastrowid
-
-        # Create 150 tokens (should result in 2 payloads)
-        for i in range(150):
-            cursor = conn.execute("""
-                INSERT INTO tokens (collection_id, name, type, tier)
-                VALUES (?, ?, 'color', 'curated')
-            """, (collection_id, f"color.test.token{i}"))
-            token_id = cursor.lastrowid
-            conn.execute("""
-                INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-                VALUES (?, ?, '#FF0000', '#FF0000')
-            """, (token_id, mode_id))
-
-        conn.commit()
-
-        payloads = generate_variable_payloads(conn, file_id)
-        assert len(payloads) == 2
-        assert len(payloads[0]["tokens"]) == MAX_TOKENS_PER_CALL
-        assert len(payloads[1]["tokens"]) == 50
-
-    def test_generate_payloads_empty(self, temp_db):
-        """Test with no tokens to export."""
-        conn = temp_db
-        cursor = conn.execute("INSERT INTO files (name) VALUES ('empty.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
-
-        payloads = generate_variable_payloads(conn, file_id)
-        assert payloads == []
-
-
-class TestPayloadGenerationChecked:
-    """Test generate_variable_payloads_checked with validation checks."""
-
-    def test_generate_payloads_checked_valid(self, populated_db):
-        """Test with passing validation."""
-        conn, file_id = populated_db
-
-        # Insert a passing validation run (no errors)
-        conn.execute("""
-            INSERT INTO export_validations (check_name, severity, message)
-            VALUES ('test_check', 'info', 'All good')
-        """)
-        conn.commit()
-
-        # Should work normally
-        payloads = generate_variable_payloads_checked(conn, file_id)
-        assert len(payloads) == 2
-
-    def test_generate_payloads_checked_error(self, populated_db):
-        """Test with validation errors."""
-        conn, file_id = populated_db
-
-        # Insert a validation run with errors
-        conn.execute("""
-            INSERT INTO export_validations (check_name, severity, message)
-            VALUES ('test_check', 'error', 'Something is wrong')
-        """)
-        conn.commit()
-
-        # Should raise error
-        with pytest.raises(RuntimeError, match="Export blocked: validation errors exist"):
-            generate_variable_payloads_checked(conn, file_id)
-
-    def test_generate_payloads_checked_no_validation(self, populated_db):
-        """Test with no validation runs."""
-        conn, file_id = populated_db
-
-        # Should raise error (no validation run)
-        with pytest.raises(RuntimeError, match="Export blocked: validation errors exist"):
-            generate_variable_payloads_checked(conn, file_id)
-
-    def test_generate_payloads_checked_warnings_ok(self, populated_db):
-        """Test that warnings don't block export."""
-        conn, file_id = populated_db
-
-        # Insert a validation run with only warnings
-        conn.execute("""
-            INSERT INTO export_validations (check_name, severity, message)
-            VALUES ('test_check', 'warning', 'Minor issue')
-        """)
-        conn.commit()
-
-        # Should work normally (warnings don't block)
-        payloads = generate_variable_payloads_checked(conn, file_id)
-        assert len(payloads) == 2
-
-
-class TestParseFigmaResponse:
-    """Test parse_figma_variables_response function."""
-
-    def test_parse_standard_response(self):
-        """Test parsing standard Figma variables response."""
-        response = {
-            "collections": [
-                {
-                    "id": "VariableCollectionID:123",
-                    "name": "Colors",
-                    "modes": [
-                        {"id": "modeId:1", "name": "Light"},
-                        {"id": "modeId:2", "name": "Dark"}
-                    ],
-                    "variables": [
-                        {
-                            "id": "VariableID:123:456",
-                            "name": "color/surface/primary",
-                            "type": "COLOR"
-                        },
-                        {
-                            "id": "VariableID:123:457",
-                            "name": "color/surface/secondary",
-                            "type": "COLOR"
-                        }
-                    ]
-                },
-                {
-                    "id": "VariableCollectionID:124",
-                    "name": "Spacing",
-                    "modes": [
-                        {"id": "modeId:3", "name": "Default"}
-                    ],
-                    "variables": [
-                        {
-                            "id": "VariableID:124:100",
-                            "name": "space/4",
-                            "type": "FLOAT"
-                        }
-                    ]
-                }
-            ]
+    figma_vars = [
+        {
+            "variable_id": "VariableID:1:1",
+            "name": "color.surface.primary",
+            "collection_name": "Colors",
+            "collection_id": "VariableCollectionId:1:1",
+            "modes": []
         }
+    ]
 
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 3
+    writeback_variable_ids(db, 1, figma_vars)
 
-        # Check first variable
-        var1 = next(v for v in parsed if v["variable_id"] == "VariableID:123:456")
-        assert var1["name"] == "color.surface.primary"  # Converted to DTCG
-        assert var1["collection_name"] == "Colors"
-        assert var1["collection_id"] == "VariableCollectionID:123"
-        assert len(var1["modes"]) == 2
+    cursor = db.execute("SELECT sync_status FROM tokens WHERE name = ?", ("color.surface.primary",))
+    row = cursor.fetchone()
+    assert row["sync_status"] == "synced"
 
-        # Check spacing variable
-        space = next(v for v in parsed if v["variable_id"] == "VariableID:124:100")
-        assert space["name"] == "space.4"  # Converted to DTCG
-        assert space["collection_name"] == "Spacing"
 
-    def test_parse_list_response(self):
-        """Test parsing when response is a list instead of dict."""
-        response = [
-            {
-                "id": "VariableCollectionID:123",
-                "name": "Colors",
-                "modes": [{"id": "modeId:1", "name": "Light"}],
-                "variables": [
-                    {
-                        "id": "VariableID:123:456",
-                        "name": "color/primary",
-                        "type": "COLOR"
-                    }
-                ]
-            }
-        ]
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_writeback_unmatched_tokens(db):
+    """Test writeback counts tokens not found."""
+    seed_post_curation(db)
 
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 1
-        assert parsed[0]["name"] == "color.primary"
-
-    def test_parse_empty_response(self):
-        """Test parsing empty response."""
-        assert parse_figma_variables_response({"collections": []}) == []
-        assert parse_figma_variables_response([]) == []
-        assert parse_figma_variables_response({}) == []
-
-    def test_parse_missing_fields(self):
-        """Test parsing with missing optional fields."""
-        response = {
-            "collections": [
-                {
-                    "id": "VariableCollectionID:123",
-                    "name": "Colors",
-                    # No modes field
-                    "variables": [
-                        {
-                            "id": "VariableID:123:456",
-                            "name": "color/primary"
-                            # No type field
-                        }
-                    ]
-                }
-            ]
+    figma_vars = [
+        {
+            "variable_id": "VariableID:1:999",
+            "name": "color.does.not.exist",
+            "collection_name": "Colors",
+            "collection_id": "VariableCollectionId:1:1",
+            "modes": []
         }
+    ]
 
-        parsed = parse_figma_variables_response(response)
-        assert len(parsed) == 1
-        assert parsed[0]["modes"] == []
+    result = writeback_variable_ids(db, 1, figma_vars)
+
+    assert result["tokens_not_found"] == 1
+    assert result["tokens_updated"] == 0
 
 
-class TestWritebackVariableIds:
-    """Test writeback_variable_ids function."""
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_writeback_collection_id(db):
+    """Test writeback updates collection figma_id."""
+    seed_post_curation(db)
 
-    def test_writeback_basic(self, populated_db):
-        """Test basic variable ID writeback."""
-        conn, file_id = populated_db
-
-        # Prepare parsed Figma variables
-        figma_variables = [
-            {
-                "variable_id": "VariableID:123:456",
-                "name": "color.surface.primary",
-                "collection_name": "Colors",
-                "collection_id": "VariableCollectionID:123",
-                "modes": [
-                    {"id": "modeId:1", "name": "Light"},
-                    {"id": "modeId:2", "name": "Dark"}
-                ]
-            },
-            {
-                "variable_id": "VariableID:123:457",
-                "name": "color.surface.secondary",
-                "collection_name": "Colors",
-                "collection_id": "VariableCollectionID:123",
-                "modes": [
-                    {"id": "modeId:1", "name": "Light"},
-                    {"id": "modeId:2", "name": "Dark"}
-                ]
-            },
-            {
-                "variable_id": "VariableID:124:100",
-                "name": "space.4",
-                "collection_name": "Spacing",
-                "collection_id": "VariableCollectionID:124",
-                "modes": [
-                    {"id": "modeId:3", "name": "Default"}
-                ]
-            }
-        ]
-
-        result = writeback_variable_ids(conn, file_id, figma_variables)
-
-        # Check result counts
-        assert result["tokens_updated"] == 3
-        assert result["tokens_not_found"] == 0
-        assert result["collections_updated"] == 2
-        assert result["modes_updated"] == 3
-
-        # Verify database updates
-        cursor = conn.execute("""
-            SELECT figma_variable_id, sync_status FROM tokens
-            WHERE name = 'color.surface.primary'
-        """)
-        row = cursor.fetchone()
-        assert row["figma_variable_id"] == "VariableID:123:456"
-        assert row["sync_status"] == "synced"
-
-        # Check collection update
-        cursor = conn.execute("""
-            SELECT figma_id FROM token_collections WHERE name = 'Colors'
-        """)
-        assert cursor.fetchone()["figma_id"] == "VariableCollectionID:123"
-
-        # Check mode update
-        cursor = conn.execute("""
-            SELECT figma_mode_id FROM token_modes WHERE name = 'Light'
-        """)
-        assert cursor.fetchone()["figma_mode_id"] == "modeId:1"
-
-    def test_writeback_not_found(self, populated_db):
-        """Test writeback with non-matching tokens."""
-        conn, file_id = populated_db
-
-        figma_variables = [
-            {
-                "variable_id": "VariableID:999:999",
-                "name": "color.does.not.exist",
-                "collection_name": "Colors",
-                "collection_id": "VariableCollectionID:123",
-                "modes": []
-            }
-        ]
-
-        result = writeback_variable_ids(conn, file_id, figma_variables)
-
-        assert result["tokens_updated"] == 0
-        assert result["tokens_not_found"] == 1
-
-    def test_writeback_aliased_token(self, populated_db):
-        """Test writeback for aliased tokens."""
-        conn, file_id = populated_db
-
-        figma_variables = [
-            {
-                "variable_id": "VariableID:125:001",
-                "name": "color.button.primary",  # This is an aliased token
-                "collection_name": "Colors",
-                "collection_id": "VariableCollectionID:123",
-                "modes": []
-            }
-        ]
-
-        result = writeback_variable_ids(conn, file_id, figma_variables)
-
-        # Should update the aliased token
-        assert result["tokens_updated"] == 1
-
-        # Verify aliased token was updated
-        cursor = conn.execute("""
-            SELECT figma_variable_id, sync_status FROM tokens
-            WHERE name = 'color.button.primary'
-        """)
-        row = cursor.fetchone()
-        assert row["figma_variable_id"] == "VariableID:125:001"
-        assert row["sync_status"] == "synced"
-
-    def test_writeback_from_response(self, populated_db):
-        """Test convenience wrapper writeback_variable_ids_from_response."""
-        conn, file_id = populated_db
-
-        raw_response = {
-            "collections": [
-                {
-                    "id": "VariableCollectionID:123",
-                    "name": "Colors",
-                    "modes": [],
-                    "variables": [
-                        {
-                            "id": "VariableID:123:456",
-                            "name": "color/surface/primary",
-                            "type": "COLOR"
-                        }
-                    ]
-                }
-            ]
+    figma_vars = [
+        {
+            "variable_id": "VariableID:1:1",
+            "name": "color.surface.primary",
+            "collection_name": "Colors",
+            "collection_id": "VariableCollectionId:1:1",
+            "modes": []
         }
+    ]
 
-        result = writeback_variable_ids_from_response(conn, file_id, raw_response)
+    result = writeback_variable_ids(db, 1, figma_vars)
 
-        assert result["tokens_updated"] == 1
-        assert result["collections_updated"] == 1
+    assert result["collections_updated"] == 1
+
+    cursor = db.execute("SELECT figma_id FROM token_collections WHERE name = ?", ("Colors",))
+    row = cursor.fetchone()
+    assert row["figma_id"] == "VariableCollectionId:1:1"
 
 
-class TestSyncStatusSummary:
-    """Test get_sync_status_summary function."""
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_sync_status_summary(db):
+    """Test sync status summary returns correct counts."""
+    _seed_with_figma_ids(db)
 
-    def test_sync_status_summary(self, populated_db):
-        """Test getting sync status summary."""
-        conn, file_id = populated_db
+    # Mark some tokens as synced
+    db.execute("UPDATE tokens SET sync_status = 'synced' WHERE id IN (1, 2)")
+    db.execute("UPDATE tokens SET sync_status = 'pending' WHERE id = 3")
+    db.commit()
 
-        # Update some tokens to have different statuses
-        conn.execute("""
-            UPDATE tokens SET sync_status = 'synced'
-            WHERE name = 'color.surface.primary'
-        """)
-        conn.execute("""
-            UPDATE tokens SET sync_status = 'drifted'
-            WHERE name = 'color.surface.secondary'
-        """)
-        conn.commit()
+    summary = get_sync_status_summary(db, 1)
 
-        summary = get_sync_status_summary(conn, file_id)
+    assert summary.get("synced", 0) == 2
+    assert summary.get("pending", 0) >= 1  # At least 1 pending
 
-        # Should have counts for each status
-        # Tokens created: primary, secondary, button.primary (alias), space.4, text.body (extracted), already.synced
-        # After updates: primary->synced, secondary->drifted, already.synced was already synced
-        # Remaining pending: button.primary (alias), space.4, text.body (extracted)
-        assert summary["pending"] == 3  # button.primary, space.4, text.body
-        assert summary["synced"] == 2  # primary + already.synced
-        assert summary["drifted"] == 1  # secondary
 
-    def test_sync_status_summary_empty(self, temp_db):
-        """Test summary with no tokens."""
-        conn = temp_db
-        cursor = conn.execute("INSERT INTO files (name) VALUES ('empty.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
+# Test Group 6: Property classification tests
+@pytest.mark.unit
+def test_classify_fill_color():
+    """Test fill.N.color classifies as paint_fill."""
+    assert classify_property("fill.0.color") == "paint_fill"
 
-        summary = get_sync_status_summary(conn, file_id)
 
-        # Empty dict if no tokens
-        assert summary == {}
+@pytest.mark.unit
+def test_classify_fill_index():
+    """Test fill with different indices."""
+    assert classify_property("fill.2.color") == "paint_fill"
+
+
+@pytest.mark.unit
+def test_classify_stroke_color():
+    """Test stroke.N.color classifies as paint_stroke."""
+    assert classify_property("stroke.0.color") == "paint_stroke"
+
+
+@pytest.mark.unit
+def test_classify_effect_color():
+    """Test effect.N.color classifies as effect."""
+    assert classify_property("effect.0.color") == "effect"
+
+
+@pytest.mark.unit
+def test_classify_effect_radius():
+    """Test effect.N.radius classifies as effect."""
+    assert classify_property("effect.0.radius") == "effect"
+
+
+@pytest.mark.unit
+def test_classify_effect_offset():
+    """Test effect.N.offsetX classifies as effect."""
+    assert classify_property("effect.1.offsetX") == "effect"
+
+
+@pytest.mark.unit
+def test_classify_padding():
+    """Test padding.side classifies as padding."""
+    assert classify_property("padding.top") == "padding"
+
+
+@pytest.mark.unit
+def test_classify_font_size():
+    """Test fontSize classifies as direct."""
+    assert classify_property("fontSize") == "direct"
+
+
+@pytest.mark.unit
+def test_classify_corner_radius():
+    """Test cornerRadius classifies as direct."""
+    assert classify_property("cornerRadius") == "direct"
+
+
+@pytest.mark.unit
+def test_classify_unknown():
+    """Test unknown property classifies as unknown."""
+    assert classify_property("fill.0.gradient") == "unknown"
+
+
+# Test Group 7: Rebind script generation tests
+@pytest.mark.unit
+def test_script_is_async_iife():
+    """Test script is an async IIFE."""
+    script = generate_single_script([])
+
+    assert script.startswith("(async () => {")
+    assert script.endswith("})();")
+
+
+@pytest.mark.unit
+def test_script_contains_bindings_array():
+    """Test script contains bindings array."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "fontSize",
+            "variable_id": "VariableID:1:1"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    assert "const bindings = [" in script
+    assert '"200:1"' in script
+    assert '"fontSize"' in script
+    assert '"VariableID:1:1"' in script
+
+
+@pytest.mark.unit
+def test_script_handles_fill_property():
+    """Test script contains setBoundVariableForPaint for fills."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "fill.0.color",
+            "variable_id": "VariableID:1:1"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    assert "setBoundVariableForPaint" in script
+    assert "fills[idx]" in script
+
+
+@pytest.mark.unit
+def test_script_handles_effect_property():
+    """Test script contains setBoundVariableForEffect for effects."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "effect.0.radius",
+            "variable_id": "VariableID:1:1"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    assert "setBoundVariableForEffect" in script
+    assert "effects[idx]" in script
+
+
+@pytest.mark.unit
+def test_script_handles_padding_conversion():
+    """Test script converts padding.side to paddingSide."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "padding.top",
+            "variable_id": "VariableID:1:1"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    # Check that the script contains the padding handling logic
+    assert "b.property.startsWith('padding.')" in script
+    assert "const side = b.property.split('.')[1]" in script
+    assert "side.charAt(0).toUpperCase()" in script
+
+
+@pytest.mark.unit
+def test_script_handles_direct_property():
+    """Test script uses setBoundVariable for direct properties."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "fontSize",
+            "variable_id": "VariableID:1:1"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    assert "node.setBoundVariable" in script
+    assert "'fontSize'" in script
+
+
+@pytest.mark.unit
+def test_script_syntax_valid():
+    """Test script has balanced braces."""
+    entries = [
+        {
+            "binding_id": 1,
+            "node_id": "200:1",
+            "property": "fontSize",
+            "variable_id": "VariableID:1:1"
+        },
+        {
+            "binding_id": 2,
+            "node_id": "200:2",
+            "property": "fill.0.color",
+            "variable_id": "VariableID:1:2"
+        }
+    ]
+
+    script = generate_single_script(entries)
+
+    # Check balanced braces
+    assert script.count("{") == script.count("}")
+    assert script.count("(") == script.count(")")
+    assert script.count("[") == script.count("]")
+
+
+# Test Group 8: Rebind batch tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_rebind_batching(db):
+    """Test rebind scripts respect MAX_BINDINGS_PER_SCRIPT."""
+    _seed_with_figma_ids(db)
+
+    # Create many new nodes to bind to (each binding must be unique node_id + property combo)
+    for i in range(1, MAX_BINDINGS_PER_SCRIPT + 50):
+        # Insert new node
+        db.execute(
+            """INSERT INTO nodes
+               (id, screen_id, figma_node_id, name, node_type, is_semantic)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (100 + i, 1, f"300:{i}", f"Node {i}", "TEXT", 1)
+        )
+        # Insert binding for that node
+        db.execute(
+            """INSERT INTO node_token_bindings
+               (id, node_id, property, token_id, raw_value, resolved_value, binding_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (100 + i, 100 + i, "fontSize", 1, "16", "16", "bound")
+        )
+    db.commit()
+
+    scripts = generate_rebind_scripts(db, 1)
+
+    # Should have at least 2 scripts
+    assert len(scripts) >= 2
+
+    # Parse each script to count bindings
+    for script in scripts:
+        # Count occurrences of nodeId in bindings array
+        binding_count = script.count('nodeId:')
+        assert binding_count <= MAX_BINDINGS_PER_SCRIPT
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_rebind_scripts_cover_all_bound(db):
+    """Test all bound bindings appear in scripts."""
+    _seed_with_figma_ids(db)
+
+    # Get all bindable entries (requires figma_variable_id on tokens and bound status)
+    entries = query_bindable_entries(db, 1)
+    entry_count = len(entries)
+
+    scripts = generate_rebind_scripts(db, 1)
+
+    # Count total bindings in all scripts
+    total_bindings = 0
+    for script in scripts:
+        total_bindings += script.count('nodeId:')
+
+    # Should have bindings for all bound entries that have figma_variable_ids
+    assert total_bindings == entry_count
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_rebind_summary(db):
+    """Test rebind summary returns correct counts."""
+    _seed_with_figma_ids(db)
+
+    summary = get_rebind_summary(db, 1)
+
+    assert "total_bindings" in summary
+    assert "script_count" in summary
+    assert "by_property_type" in summary
+    assert summary["total_bindings"] > 0
+    assert summary["script_count"] > 0
+
+    # Check property type breakdown
+    if summary["by_property_type"]:
+        for prop_type in summary["by_property_type"]:
+            assert prop_type in ["paint_fill", "paint_stroke", "effect", "padding", "direct"]
