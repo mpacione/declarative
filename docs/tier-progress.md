@@ -4,7 +4,7 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 
 **DB**: `Dank-EXP-02.declarative.db`
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
-**Figma variables**: 289 live (started at 298, minus 9 deleted/merged)
+**Figma variables**: 296 live (6 collections, includes T2.2 splits)
 
 ## Verification Pattern
 
@@ -66,15 +66,37 @@ Every action follows this round-trip:
 - **DB verify**: 0 remaining numeric-segment tokens
 - **Figma verify**: 289 variables across 6 collections, all names match DB
 
+### T2.2 — Split Overloaded Tokens
+- **Status**: DONE
+- **Scope**: 5 color tokens split by role (fill vs stroke vs effect)
+- **Splits**:
+  - `color.border.black` (#000000) → `color.text.primary` (4,394 TEXT fills), `color.icon.primary` (2,269 VECTOR fills), `color.shadow.primary` (1,079 effects), `color.surface.black` (4,220 frame fills), `color.border.black` (24,535 strokes)
+  - `color.border.primary` (#FFFFFF) → `color.surface.white` (4,929 fills), `color.border.primary` (3,374 strokes)
+  - `color.border.tertiary` (#047AFF) → `color.brand.link` (964 fills), `color.border.accent` (1,989 strokes)
+  - `color.border.secondary` (#FF0000) → `color.feedback.danger` (769 fills), `color.border.error` (51 strokes)
+- **DB verify**: All new tokens have correct binding counts, old tokens retain stroke-only bindings
+- **Figma verify**: 296 variables across 6 collections, all match DB
+- **Bug found**: `split_token()` doesn't inherit parent's tier — new tokens come in as `extracted`, must manually set to `curated`
+
+### T2.3 — Create Semantic Aliases
+- **Status**: DONE
+- **Scope**: 8 semantic aliases created in new "Semantic" collection
+- **Aliases**: `color.danger` → `color.feedback.danger`, `color.warning` → `color.feedback.warning`, `color.error` → `color.feedback.error`, `color.link` → `color.brand.link`, `color.accent` → `color.brand.accent`, `color.canvas` → `color.surface.ink`, `color.card` → `color.surface.primary`, `color.muted` → `color.surface.muted`
+- **DB verify**: `alias_of` column correctly set, `v_resolved_tokens` follows chain
+- **Figma verify**: Not pushed — aliases are a semantic layer for code consumers, not Figma variables
+
 ### T2.4 — Group Spacing Into T-Shirt Sizes
 - **Status**: PENDING
 
 ### T2.5 — Categorize Colors By Role
 - **Status**: DONE (completed as part of T2.1 — colors now have role prefixes: surface, border, brand, text, icon, palette, feedback, effect)
 
+### T2.6 — Identify Interactive States
+- **Status**: PENDING
+
 ---
 
 ## Tier 3: Generative — not started
 ## Tier 4: Structural — not started
 ## Tier 5: Conjure — not started
-## Tier 6: Sync — T6.1 complete (289 variables pushed, all round-trip verified)
+## Tier 6: Sync — T6.1 complete (296 variables pushed, all round-trip verified)
