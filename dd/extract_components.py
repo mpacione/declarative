@@ -28,6 +28,11 @@ CATEGORY_KEYWORDS: Dict[str, List[str]] = {
     "chrome": ["status bar", "home indicator", "chrome"],
 }
 
+# Names/patterns that indicate non-slot children (structural noise)
+NON_SLOT_HEURISTICS: FrozenSet[str] = frozenset({
+    "background", "bg", "divider", "separator", "spacer", "line", "border", "overlay", "shadow"
+})
+
 
 def infer_category(name: str) -> Optional[str]:
     """
@@ -113,6 +118,195 @@ def detect_interaction_axis(axis_name: str, axis_values: List[str]) -> bool:
     return lower_values.issubset(INTERACTION_STATE_VALUES)
 
 
+def infer_slot_type(child: Dict[str, Any]) -> str:
+    """
+    Infer the slot type based on a child node's properties.
+
+    Args:
+        child: Dict with 'node_type' and optionally 'name' keys
+
+    Returns:
+        The inferred slot type: "text", "icon", "component", "image", or "any"
+    """
+    node_type = child.get("node_type", "")
+    name = child.get("name", "").lower()
+
+    # TEXT nodes are text slots
+    if node_type == "TEXT":
+        return "text"
+
+    # INSTANCE nodes could be icons or components
+    if node_type == "INSTANCE":
+        if "icon" in name:
+            return "icon"
+        return "component"
+
+    # VECTOR and ELLIPSE are typically icons
+    if node_type in ("VECTOR", "ELLIPSE"):
+        return "icon"
+
+    # RECTANGLE might be an image placeholder
+    if node_type == "RECTANGLE":
+        if any(keyword in name for keyword in ("image", "photo", "avatar")):
+            return "image"
+
+    # Everything else is "any"
+    return "any"
+
+
+def infer_slots(children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Infer component slots from direct children of a component.
+
+    Filters out non-slot children (background, dividers, etc.) and converts
+    remaining children into slot definitions.
+
+    Args:
+        children: List of dicts with keys: name, node_type, sort_order,
+                 optionally text_content, width, height
+
+    Returns:
+        List of slot dicts with keys: name, slot_type, is_required,
+        default_content, sort_order, description
+    """
+    slots = []
+
+    for child in children:
+        child_name = child.get("name", "")
+        child_name_lower = child_name.lower()
+
+        # Check if this is a non-slot child
+        is_non_slot = False
+        for pattern in NON_SLOT_HEURISTICS:
+            if pattern in child_name_lower or child_name_lower.startswith(pattern):
+                is_non_slot = True
+                break
+
+        if is_non_slot:
+            continue
+
+        # Convert name to snake_case for slot name
+        slot_name = child_name.replace(" ", "_").lower()
+
+        # Infer slot type
+        slot_type = infer_slot_type(child)
+
+        # TEXT nodes are typically required (labels), others are optional
+        is_required = 1 if child.get("node_type") == "TEXT" else 0
+
+        # For TEXT nodes, store default content if available
+        default_content = None
+        if child.get("node_type") == "TEXT" and "text_content" in child:
+            default_content = json.dumps({
+                "type": "text",
+                "value": child["text_content"]
+            })
+
+        slots.append({
+            "name": slot_name,
+            "slot_type": slot_type,
+            "is_required": is_required,
+            "default_content": default_content,
+            "sort_order": child.get("sort_order", 0),
+            "description": None
+        })
+
+    return slots
+
+
+def insert_slots(conn: sqlite3.Connection, component_id: int, slots: List[Dict[str, Any]]) -> List[int]:
+    """
+    Insert or update component slots in the database.
+
+    Args:
+        conn: Database connection
+        component_id: ID of the parent component
+        slots: List of slot dicts
+
+    Returns:
+        List of slot IDs
+    """
+    cursor = conn.cursor()
+    slot_ids = []
+
+    for slot in slots:
+        cursor.execute("""
+            INSERT INTO component_slots (
+                component_id, name, slot_type, is_required,
+                default_content, sort_order, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(component_id, name) DO UPDATE SET
+                slot_type = excluded.slot_type,
+                is_required = excluded.is_required,
+                default_content = excluded.default_content,
+                sort_order = excluded.sort_order,
+                description = COALESCE(excluded.description, component_slots.description)
+        """, (
+            component_id,
+            slot["name"],
+            slot["slot_type"],
+            slot["is_required"],
+            slot["default_content"],
+            slot["sort_order"],
+            slot["description"]
+        ))
+
+        # Get the slot ID
+        cursor.execute(
+            "SELECT id FROM component_slots WHERE component_id = ? AND name = ?",
+            (component_id, slot["name"])
+        )
+        slot_id = cursor.fetchone()[0]
+        slot_ids.append(slot_id)
+
+    return slot_ids
+
+
+def extract_slots_from_nodes(conn: sqlite3.Connection, component_id: int,
+                           component_figma_node_id: str,
+                           children: Optional[List[Dict[str, Any]]] = None) -> List[int]:
+    """
+    Extract and insert slots for a component from its children.
+
+    Args:
+        conn: Database connection
+        component_id: ID of the component
+        component_figma_node_id: Figma node ID of the component
+        children: Optional list of child dicts. If not provided, queries the DB.
+
+    Returns:
+        List of slot IDs
+    """
+    if children is None:
+        # Query the database for children
+        # This is a simplified approach - in practice, we'd need to find
+        # the actual child nodes from a component_sheet screen
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT name, node_type, sort_order
+            FROM nodes
+            WHERE component_id = ?
+            ORDER BY sort_order
+        """, (component_id,))
+
+        children = []
+        for row in cursor.fetchall():
+            children.append({
+                "name": row[0],
+                "node_type": row[1],
+                "sort_order": row[2]
+            })
+
+    # Infer slots from children
+    slots = infer_slots(children)
+
+    # Insert slots into database
+    if slots:
+        return insert_slots(conn, component_id, slots)
+
+    return []
+
+
 def parse_component_set(component_set_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Parse a COMPONENT_SET node from Figma.
@@ -181,6 +375,16 @@ def parse_component_set(component_set_data: Dict[str, Any]) -> Dict[str, Any]:
     # Get variant properties (list of axis names)
     variant_properties = sorted(list(all_axes.keys())) if all_axes else None
 
+    # Extract children from first variant if available
+    variant_children = None
+    if variants and children:
+        # Find the first variant's children in the original data
+        first_variant_id = variants[0]["figma_node_id"]
+        for child in children:
+            if child.get("id") == first_variant_id and "children" in child:
+                variant_children = child["children"]
+                break
+
     return {
         "figma_node_id": figma_node_id,
         "name": name,
@@ -188,7 +392,8 @@ def parse_component_set(component_set_data: Dict[str, Any]) -> Dict[str, Any]:
         "category": category,
         "variant_properties": json.dumps(variant_properties) if variant_properties else None,
         "variants": variants,
-        "axes": axes
+        "axes": axes,
+        "children": variant_children
     }
 
 
@@ -209,6 +414,9 @@ def parse_standalone_component(component_data: Dict[str, Any]) -> Dict[str, Any]
     # Infer category
     category = infer_category(name)
 
+    # Get children if available
+    children = component_data.get("children")
+
     return {
         "figma_node_id": figma_node_id,
         "name": name,
@@ -216,7 +424,8 @@ def parse_standalone_component(component_data: Dict[str, Any]) -> Dict[str, Any]
         "category": category,
         "variant_properties": None,
         "variants": [],
-        "axes": []
+        "axes": [],
+        "children": children
     }
 
 
@@ -468,6 +677,23 @@ def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: 
 
         # Populate variant dimension values
         populate_variant_dimension_values(conn, component_id)
+
+        # Extract and insert slots if children data is available
+        if parsed.get("children"):
+            # Transform Figma children data to our format
+            children_for_slots = []
+            for idx, child in enumerate(parsed["children"]):
+                children_for_slots.append({
+                    "name": child.get("name", ""),
+                    "node_type": child.get("type", ""),
+                    "sort_order": idx,
+                    "text_content": child.get("characters") if child.get("type") == "TEXT" else None
+                })
+
+            if children_for_slots:
+                slots = infer_slots(children_for_slots)
+                if slots:
+                    insert_slots(conn, component_id, slots)
 
     # Commit all changes
     conn.commit()
