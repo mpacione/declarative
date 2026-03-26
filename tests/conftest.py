@@ -39,6 +39,18 @@ def db_with_file(db: sqlite3.Connection) -> sqlite3.Connection:
     return db
 
 
+@pytest.fixture
+def temp_db() -> Generator[sqlite3.Connection, None, None]:
+    """
+    Provide an in-memory SQLite connection with full schema initialized.
+    Alias for 'db' fixture for backward compatibility.
+    Auto-closes after each test.
+    """
+    conn = dd_db.init_db(":memory:")
+    yield conn
+    conn.close()
+
+
 @pytest.fixture(autouse=True)
 def set_timeout():
     """Apply a 30-second timeout to all tests."""
