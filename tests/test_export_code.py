@@ -1,4 +1,4 @@
-"""Tests for code export functionality, specifically CSS custom properties."""
+"""Tests for code export functionality, specifically CSS custom properties and Tailwind config."""
 
 import pytest
 import sqlite3
@@ -10,6 +10,15 @@ from dd.export_css import (
     generate_css,
     write_code_mappings,
     export_css,
+)
+from dd.export_tailwind import (
+    map_token_to_tailwind_section,
+    token_name_to_tailwind_key,
+    format_tailwind_value,
+    generate_tailwind_config,
+    generate_tailwind_config_dict,
+    write_tailwind_mappings,
+    export_tailwind,
 )
 from tests.fixtures import seed_post_curation
 
@@ -412,3 +421,367 @@ class TestExportCss:
         assert "--color-surface-primary:" in css
         assert "--color-surface-secondary:" in css
         assert "--space-4:" in css
+
+
+class TestMapTokenToTailwindSection:
+    """Tests for map_token_to_tailwind_section function."""
+
+    def test_map_color_tokens(self):
+        """Map color tokens to colors section."""
+        assert map_token_to_tailwind_section("color.surface.primary", "color") == "colors"
+        assert map_token_to_tailwind_section("color.text.secondary", "color") == "colors"
+        assert map_token_to_tailwind_section("color.border.default", "color") == "colors"
+        assert map_token_to_tailwind_section("color.accent.blue", "color") == "colors"
+        assert map_token_to_tailwind_section("color.primary", "color") == "colors"
+
+    def test_map_space_tokens(self):
+        """Map space tokens to spacing section."""
+        assert map_token_to_tailwind_section("space.4", "dimension") == "spacing"
+        assert map_token_to_tailwind_section("space.lg", "dimension") == "spacing"
+
+    def test_map_radius_tokens(self):
+        """Map radius tokens to borderRadius section."""
+        assert map_token_to_tailwind_section("radius.md", "dimension") == "borderRadius"
+        assert map_token_to_tailwind_section("radius.full", "dimension") == "borderRadius"
+
+    def test_map_shadow_tokens(self):
+        """Map shadow tokens to boxShadow section."""
+        assert map_token_to_tailwind_section("shadow.sm", "shadow") == "boxShadow"
+        assert map_token_to_tailwind_section("shadow.lg", "shadow") == "boxShadow"
+
+    def test_map_typography_tokens(self):
+        """Map typography tokens to appropriate sections."""
+        assert map_token_to_tailwind_section("type.body.md.fontSize", "dimension") == "fontSize"
+        assert map_token_to_tailwind_section("type.heading.fontFamily", "fontFamily") == "fontFamily"
+        assert map_token_to_tailwind_section("type.bold.fontWeight", "fontWeight") == "fontWeight"
+        assert map_token_to_tailwind_section("type.relaxed.lineHeight", "number") == "lineHeight"
+        assert map_token_to_tailwind_section("type.wide.letterSpacing", "dimension") == "letterSpacing"
+
+    def test_map_opacity_tokens(self):
+        """Map opacity tokens to opacity section."""
+        assert map_token_to_tailwind_section("opacity.50", "number") == "opacity"
+        assert map_token_to_tailwind_section("opacity.disabled", "number") == "opacity"
+
+    def test_fallback_to_extend(self):
+        """Unknown token types fallback to extend."""
+        assert map_token_to_tailwind_section("unknown.token", "custom") == "extend"
+        assert map_token_to_tailwind_section("custom.value", "unknown") == "extend"
+
+
+class TestTokenNameToTailwindKey:
+    """Tests for token_name_to_tailwind_key function."""
+
+    def test_strip_color_prefix(self):
+        """Strip color prefix from color tokens."""
+        assert token_name_to_tailwind_key("color.surface.primary", "colors") == "surface-primary"
+        assert token_name_to_tailwind_key("color.text.secondary", "colors") == "text-secondary"
+        assert token_name_to_tailwind_key("color.primary", "colors") == "primary"
+
+    def test_strip_space_prefix(self):
+        """Strip space prefix from spacing tokens."""
+        assert token_name_to_tailwind_key("space.4", "spacing") == "4"
+        assert token_name_to_tailwind_key("space.lg", "spacing") == "lg"
+
+    def test_strip_radius_prefix(self):
+        """Strip radius prefix from borderRadius tokens."""
+        assert token_name_to_tailwind_key("radius.md", "borderRadius") == "md"
+        assert token_name_to_tailwind_key("radius.full", "borderRadius") == "full"
+
+    def test_strip_shadow_prefix(self):
+        """Strip shadow prefix from boxShadow tokens."""
+        assert token_name_to_tailwind_key("shadow.sm", "boxShadow") == "sm"
+        assert token_name_to_tailwind_key("shadow.lg", "boxShadow") == "lg"
+
+    def test_strip_typography_suffixes(self):
+        """Strip type prefix and property suffix from typography tokens."""
+        assert token_name_to_tailwind_key("type.body.md.fontSize", "fontSize") == "body-md"
+        assert token_name_to_tailwind_key("type.heading.lg.fontSize", "fontSize") == "heading-lg"
+        assert token_name_to_tailwind_key("type.display.fontFamily", "fontFamily") == "display"
+
+    def test_replace_dots_with_hyphens(self):
+        """Replace dots with hyphens in remaining path."""
+        assert token_name_to_tailwind_key("color.surface.primary.hover", "colors") == "surface-primary-hover"
+        assert token_name_to_tailwind_key("space.inset.lg", "spacing") == "inset-lg"
+
+    def test_no_prefix_stripping(self):
+        """Tokens without matching prefix keep full name."""
+        assert token_name_to_tailwind_key("custom.token.name", "extend") == "custom-token-name"
+
+
+class TestFormatTailwindValue:
+    """Tests for format_tailwind_value function."""
+
+    def test_color_passthrough(self):
+        """Color hex values pass through unchanged."""
+        assert format_tailwind_value("#09090B", "color") == "#09090B"
+        assert format_tailwind_value("#FF0000", "color") == "#FF0000"
+
+    def test_dimension_adds_px(self):
+        """Dimension values get px appended if plain number."""
+        assert format_tailwind_value("16", "dimension") == "16px"
+        assert format_tailwind_value("0.5", "dimension") == "0.5px"
+        assert format_tailwind_value("24", "dimension") == "24px"
+
+    def test_dimension_with_unit_preserved(self):
+        """Dimension values with units are preserved."""
+        assert format_tailwind_value("2rem", "dimension") == "2rem"
+        assert format_tailwind_value("100%", "dimension") == "100%"
+
+    def test_font_family_wraps_in_array(self):
+        """Font family values are wrapped in array string."""
+        assert format_tailwind_value("Inter", "fontFamily") == "['Inter', sans-serif]"
+        assert format_tailwind_value("Roboto Mono", "fontFamily") == "['Roboto Mono', sans-serif]"
+
+    def test_font_weight_passthrough(self):
+        """Font weight passes through as-is."""
+        assert format_tailwind_value("600", "fontWeight") == "600"
+        assert format_tailwind_value("bold", "fontWeight") == "bold"
+
+    def test_number_passthrough(self):
+        """Number values pass through as-is."""
+        assert format_tailwind_value("1.5", "number") == "1.5"
+        assert format_tailwind_value("0.75", "number") == "0.75"
+
+    def test_default_passthrough(self):
+        """Unknown types pass through unchanged."""
+        assert format_tailwind_value("custom-value", "unknown") == "custom-value"
+
+
+class TestGenerateTailwindConfig:
+    """Tests for generate_tailwind_config function."""
+
+    def test_generates_module_exports(self, temp_db):
+        """Generate module.exports structure."""
+        seed_post_curation(temp_db)
+
+        config = generate_tailwind_config(temp_db, 1)
+
+        assert "module.exports = {" in config
+        assert "theme: {" in config
+        assert "extend: {" in config
+        assert config.endswith("};")
+
+    def test_includes_header_comment(self, temp_db):
+        """Config includes header comment."""
+        seed_post_curation(temp_db)
+
+        config = generate_tailwind_config(temp_db, 1)
+
+        assert config.startswith("/** Generated by Declarative Design */")
+
+    def test_groups_tokens_by_section(self, temp_db):
+        """Tokens are grouped into correct Tailwind sections."""
+        seed_post_curation(temp_db)
+
+        config = generate_tailwind_config(temp_db, 1)
+
+        assert "colors: {" in config
+        assert "spacing: {" in config
+        assert "'surface-primary': '#09090B'" in config
+        assert "'4': '16px'" in config
+
+    def test_uses_single_quotes(self, temp_db):
+        """JavaScript uses single quotes for strings."""
+        seed_post_curation(temp_db)
+
+        config = generate_tailwind_config(temp_db, 1)
+
+        assert "'surface-primary'" in config
+        assert '"surface-primary"' not in config
+
+    def test_resolves_aliased_tokens(self, temp_db):
+        """Aliased tokens use resolved values, not CSS var references."""
+        seed_post_curation(temp_db)
+
+        # Add an aliased token
+        temp_db.execute(
+            "INSERT INTO tokens (id, collection_id, name, type, tier, alias_of) VALUES (?, ?, ?, ?, ?, ?)",
+            (10, 1, "color.button.primary", "color", "aliased", 1)
+        )
+        temp_db.execute(
+            "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, ?, ?)",
+            (10, 1, '{"r": 0.035, "g": 0.035, "b": 0.043, "a": 1}', "#09090B")
+        )
+        temp_db.commit()
+
+        config = generate_tailwind_config(temp_db, 1)
+
+        assert "'button-primary': '#09090B'" in config
+        assert "var(--color-surface-primary)" not in config
+
+
+class TestGenerateTailwindConfigDict:
+    """Tests for generate_tailwind_config_dict function."""
+
+    def test_returns_dict_structure(self, temp_db):
+        """Returns a Python dict with theme.extend structure."""
+        seed_post_curation(temp_db)
+
+        result = generate_tailwind_config_dict(temp_db, 1)
+
+        assert isinstance(result, dict)
+        assert "colors" in result
+        assert "spacing" in result
+
+    def test_dict_contains_mapped_tokens(self, temp_db):
+        """Dict contains properly mapped token values."""
+        seed_post_curation(temp_db)
+
+        result = generate_tailwind_config_dict(temp_db, 1)
+
+        assert result["colors"]["surface-primary"] == "#09090B"
+        assert result["colors"]["surface-secondary"] == "#18181B"
+        assert result["spacing"]["4"] == "16px"
+
+    def test_dict_handles_typography_tokens(self, temp_db):
+        """Dict properly handles typography tokens."""
+        seed_post_curation(temp_db)
+
+        # Add typography tokens
+        temp_db.execute(
+            "INSERT INTO tokens (id, collection_id, name, type, tier) VALUES (?, ?, ?, ?, ?)",
+            (11, 1, "type.body.md.fontSize", "dimension", "curated")
+        )
+        temp_db.execute(
+            "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, ?, ?)",
+            (11, 1, "16", "16")
+        )
+        temp_db.commit()
+
+        result = generate_tailwind_config_dict(temp_db, 1)
+
+        assert "fontSize" in result
+        assert result["fontSize"]["body-md"] == "16px"
+
+
+class TestWriteTailwindMappings:
+    """Tests for write_tailwind_mappings function."""
+
+    def test_writes_color_utility_classes(self, temp_db):
+        """Creates multiple utility class mappings for color tokens."""
+        seed_post_curation(temp_db)
+
+        count = write_tailwind_mappings(temp_db, 1)
+
+        # Check that color tokens have multiple mappings
+        cursor = temp_db.execute(
+            """SELECT identifier FROM code_mappings
+               WHERE target = 'tailwind' AND token_id =
+               (SELECT id FROM tokens WHERE name = 'color.surface.primary')
+               ORDER BY identifier"""
+        )
+        identifiers = [row["identifier"] for row in cursor.fetchall()]
+
+        assert "bg-surface-primary" in identifiers
+        assert "text-surface-primary" in identifiers
+        assert "border-surface-primary" in identifiers
+
+    def test_writes_spacing_utility_classes(self, temp_db):
+        """Creates multiple utility class mappings for spacing tokens."""
+        seed_post_curation(temp_db)
+
+        count = write_tailwind_mappings(temp_db, 1)
+
+        # Check that spacing tokens have multiple mappings
+        cursor = temp_db.execute(
+            """SELECT identifier FROM code_mappings
+               WHERE target = 'tailwind' AND token_id =
+               (SELECT id FROM tokens WHERE name = 'space.4')
+               ORDER BY identifier"""
+        )
+        identifiers = [row["identifier"] for row in cursor.fetchall()]
+
+        assert "p-4" in identifiers
+        assert "m-4" in identifiers
+        assert "gap-4" in identifiers
+
+    def test_writes_radius_utility_classes(self, temp_db):
+        """Creates rounded utility class mappings for radius tokens."""
+        seed_post_curation(temp_db)
+
+        # Add a radius token
+        temp_db.execute(
+            "INSERT INTO tokens (id, collection_id, name, type, tier) VALUES (?, ?, ?, ?, ?)",
+            (12, 1, "radius.md", "dimension", "curated")
+        )
+        temp_db.execute(
+            "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, ?, ?)",
+            (12, 1, "8", "8")
+        )
+        temp_db.commit()
+
+        count = write_tailwind_mappings(temp_db, 1)
+
+        cursor = temp_db.execute(
+            """SELECT identifier FROM code_mappings
+               WHERE target = 'tailwind' AND token_id = 12"""
+        )
+        row = cursor.fetchone()
+        assert row["identifier"] == "rounded-md"
+
+    def test_upsert_behavior(self, temp_db):
+        """Mappings are upserted (updated if they exist)."""
+        seed_post_curation(temp_db)
+
+        # Write mappings first time
+        count1 = write_tailwind_mappings(temp_db, 1)
+
+        # Write again - should update, not duplicate
+        count2 = write_tailwind_mappings(temp_db, 1)
+
+        # Count should remain the same
+        cursor = temp_db.execute(
+            "SELECT COUNT(DISTINCT identifier) as cnt FROM code_mappings WHERE target = 'tailwind'"
+        )
+        total = cursor.fetchone()["cnt"]
+        assert total > 0
+
+    def test_returns_mapping_count(self, temp_db):
+        """Returns count of mappings written."""
+        seed_post_curation(temp_db)
+
+        count = write_tailwind_mappings(temp_db, 1)
+
+        assert count > 0
+        assert isinstance(count, int)
+
+
+class TestExportTailwind:
+    """Tests for export_tailwind convenience function."""
+
+    def test_returns_complete_result(self, temp_db):
+        """Export returns config, config_dict, mappings count, and token count."""
+        seed_post_curation(temp_db)
+
+        result = export_tailwind(temp_db, 1)
+
+        assert "config" in result
+        assert "config_dict" in result
+        assert "mappings_written" in result
+        assert "token_count" in result
+
+        assert isinstance(result["config"], str)
+        assert isinstance(result["config_dict"], dict)
+        assert isinstance(result["mappings_written"], int)
+        assert isinstance(result["token_count"], int)
+
+    def test_config_contains_expected_content(self, temp_db):
+        """Exported config contains expected tokens."""
+        seed_post_curation(temp_db)
+
+        result = export_tailwind(temp_db, 1)
+
+        config = result["config"]
+        assert "module.exports" in config
+        assert "'surface-primary'" in config
+        assert "'surface-secondary'" in config
+        assert "'4': '16px'" in config
+
+    def test_dict_matches_config(self, temp_db):
+        """Config dict matches the string config content."""
+        seed_post_curation(temp_db)
+
+        result = export_tailwind(temp_db, 1)
+
+        assert result["config_dict"]["colors"]["surface-primary"] == "#09090B"
+        assert "'surface-primary': '#09090B'" in result["config"]
