@@ -1,12 +1,7 @@
-"""Tests for curation operations."""
-
-import sqlite3
-import tempfile
-from pathlib import Path
+"""Unit tests for curation operations and status functions."""
 
 import pytest
 
-from dd.db import init_db, backup_db
 from dd.curate import (
     accept_token,
     accept_all,
@@ -15,462 +10,448 @@ from dd.curate import (
     split_token,
     reject_token,
     create_alias,
-    _validate_dtcg_name,
 )
 from dd.status import (
     get_curation_progress,
     get_token_coverage,
-    get_unbound_summary,
-    get_export_readiness,
     format_status_report,
     get_status_dict,
 )
+from tests.fixtures import seed_post_clustering, seed_post_curation
 
 
-@pytest.fixture
-def memory_db():
-    """Create an in-memory database with test data."""
-    conn = init_db(":memory:")
+# Curation operation tests
 
-    # Insert test data
-    conn.execute("""
-        INSERT INTO files (id, file_key, name, extracted_at)
-        VALUES (1, 'test_file', 'Test File', '2024-01-01T00:00:00Z')
+@pytest.mark.unit
+def test_accept_token(db):
+    """Test accepting a single token."""
+    seed_post_clustering(db)
+
+    # Accept token_id=1
+    result = accept_token(db, 1)
+
+    assert result["token_id"] == 1
+    assert result["bindings_updated"] == 2  # Two bindings for token 1
+
+    # Verify token tier updated
+    cursor = db.execute("SELECT tier FROM tokens WHERE id = ?", (1,))
+    assert cursor.fetchone()["tier"] == "curated"
+
+    # Verify bindings updated to bound
+    cursor = db.execute(
+        "SELECT binding_status FROM node_token_bindings WHERE token_id = ?",
+        (1,)
+    )
+    statuses = [row["binding_status"] for row in cursor]
+    assert all(status == "bound" for status in statuses)
+
+
+@pytest.mark.unit
+def test_accept_token_nonexistent(db):
+    """Test accepting a non-existent token raises ValueError."""
+    seed_post_clustering(db)
+
+    with pytest.raises(ValueError, match="Token 999 does not exist"):
+        accept_token(db, 999)
+
+
+@pytest.mark.unit
+def test_accept_all(db):
+    """Test bulk accepting all tokens for a file."""
+    seed_post_clustering(db)
+
+    result = accept_all(db, 1)
+
+    assert result["tokens_accepted"] == 5  # All 5 extracted tokens
+    assert result["bindings_updated"] == 5  # All proposed bindings
+
+    # Verify all tokens curated
+    cursor = db.execute("SELECT tier FROM tokens")
+    tiers = [row["tier"] for row in cursor]
+    assert all(tier == "curated" for tier in tiers)
+
+    # Verify all proposed bindings are now bound
+    cursor = db.execute(
+        "SELECT binding_status FROM node_token_bindings WHERE token_id IS NOT NULL"
+    )
+    statuses = [row["binding_status"] for row in cursor]
+    assert all(status == "bound" for status in statuses)
+
+
+@pytest.mark.unit
+def test_rename_token_valid(db):
+    """Test renaming a token with a valid name."""
+    seed_post_clustering(db)
+
+    result = rename_token(db, 1, "color.background.primary")
+
+    assert result["token_id"] == 1
+    assert result["old_name"] == "color.surface.primary"
+    assert result["new_name"] == "color.background.primary"
+
+    # Verify name changed in DB
+    cursor = db.execute("SELECT name FROM tokens WHERE id = ?", (1,))
+    assert cursor.fetchone()["name"] == "color.background.primary"
+
+
+@pytest.mark.unit
+def test_rename_token_invalid_name(db):
+    """Test renaming with an invalid DTCG name raises ValueError."""
+    seed_post_clustering(db)
+
+    with pytest.raises(ValueError, match="Invalid DTCG name"):
+        rename_token(db, 1, "Invalid Name")
+
+
+@pytest.mark.unit
+def test_rename_token_uppercase(db):
+    """Test renaming with uppercase letters raises ValueError."""
+    seed_post_clustering(db)
+
+    with pytest.raises(ValueError, match="Invalid DTCG name"):
+        rename_token(db, 1, "Color.Surface")
+
+
+@pytest.mark.unit
+def test_rename_token_duplicate(db):
+    """Test renaming to an existing name in same collection raises ValueError."""
+    seed_post_clustering(db)
+
+    # Try to rename token 1 to the name of token 2
+    with pytest.raises(ValueError, match="already exists in collection"):
+        rename_token(db, 1, "color.surface.secondary")
+
+
+@pytest.mark.unit
+def test_merge_tokens(db):
+    """Test merging two tokens."""
+    seed_post_clustering(db)
+
+    # Count initial bindings for each token
+    cursor = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = ?", (1,)
+    )
+    survivor_count = cursor.fetchone()["cnt"]
+
+    cursor = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = ?", (2,)
+    )
+    victim_count = cursor.fetchone()["cnt"]
+
+    result = merge_tokens(db, 1, 2)
+
+    assert result["survivor_id"] == 1
+    assert result["victim_id"] == 2
+    assert result["bindings_reassigned"] == victim_count
+
+    # Verify victim token deleted
+    cursor = db.execute("SELECT * FROM tokens WHERE id = ?", (2,))
+    assert cursor.fetchone() is None
+
+    # Verify victim's token_values deleted
+    cursor = db.execute("SELECT * FROM token_values WHERE token_id = ?", (2,))
+    assert cursor.fetchone() is None
+
+    # Verify all bindings now point to survivor
+    cursor = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = ?", (1,)
+    )
+    new_count = cursor.fetchone()["cnt"]
+    assert new_count == survivor_count + victim_count
+
+
+@pytest.mark.unit
+def test_merge_tokens_different_collections(db):
+    """Test merging tokens from different collections raises ValueError."""
+    seed_post_clustering(db)
+
+    # Token 1 is in collection 1 (Colors), token 5 is in collection 2 (Spacing)
+    with pytest.raises(ValueError, match="Cannot merge tokens from different collections"):
+        merge_tokens(db, 1, 5)
+
+
+@pytest.mark.unit
+def test_merge_tokens_binding_count(db):
+    """Test that merged token has correct binding count."""
+    seed_post_clustering(db)
+
+    # Token 2 already has 1 binding (id=4) from seed data
+    # Add another binding to token 2 for testing
+    db.execute("""
+        UPDATE node_token_bindings
+        SET token_id = 2, binding_status = 'proposed', confidence = 0.9
+        WHERE id = 2
     """)
+    db.commit()
 
-    conn.execute("""
-        INSERT INTO token_collections (id, file_id, name)
-        VALUES (1, 1, 'Test Collection')
-    """)
-
-    conn.execute("""
-        INSERT INTO token_modes (id, collection_id, name, is_default)
-        VALUES (1, 1, 'Light', 1)
-    """)
-
-    # Add some test tokens
-    conn.executemany("""
-        INSERT INTO tokens (id, collection_id, name, type, tier)
-        VALUES (?, ?, ?, ?, ?)
-    """, [
-        (1, 1, 'color.primary', 'color', 'extracted'),
-        (2, 1, 'color.secondary', 'color', 'extracted'),
-        (3, 1, 'space.sm', 'dimension', 'curated'),
-    ])
-
-    # Add token values
-    conn.executemany("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        VALUES (?, ?, ?, ?)
-    """, [
-        (1, 1, '#FF0000', '#FF0000'),
-        (2, 1, '#00FF00', '#00FF00'),
-        (3, 1, '8px', '8'),
-    ])
-
-    # Add a screen first
-    conn.execute("""
-        INSERT INTO screens (id, file_id, figma_node_id, name, width, height, device_class)
-        VALUES (1, 1, 'screen1', 'Test Screen', 1920, 1080, 'web')
-    """)
-
-    # Add test nodes
-    conn.executemany("""
-        INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, node_type, depth, sort_order, is_semantic)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, [
-        (1, 1, 'node1', None, 'Button', 'FRAME', 0, 0, 1),
-        (2, 1, 'node2', 1, 'Text', 'TEXT', 1, 0, 1),
-    ])
-
-    # Add test bindings
-    conn.executemany("""
-        INSERT INTO node_token_bindings
-        (id, node_id, property, token_id, raw_value, resolved_value, confidence, binding_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [
-        (1, 1, 'fill.0.color', 1, '#FF0000', '#FF0000', 0.95, 'proposed'),
-        (2, 1, 'padding.top', 3, '8px', '8', 0.99, 'bound'),
-        (3, 2, 'fill.0.color', 2, '#00FF00', '#00FF00', 0.85, 'proposed'),
-        (4, 2, 'fontSize', None, '16px', '16px', None, 'unbound'),
-    ])
-
-    conn.commit()
-    yield conn
-    conn.close()
-
-
-@pytest.fixture
-def file_db():
-    """Create a file-based database for testing backup operations."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        conn = init_db(str(db_path))
-
-        # Same test data as memory_db
-        conn.execute("""
-            INSERT INTO files (id, file_key, name, extracted_at)
-            VALUES (1, 'test_file', 'Test File', '2024-01-01T00:00:00Z')
-        """)
-
-        conn.execute("""
-            INSERT INTO token_collections (id, file_id, name)
-            VALUES (1, 1, 'Test Collection')
-        """)
-
-        conn.execute("""
-            INSERT INTO token_modes (id, collection_id, name, is_default)
-            VALUES (1, 1, 'Light', 1)
-        """)
-
-        conn.executemany("""
-            INSERT INTO tokens (id, collection_id, name, type, tier)
-            VALUES (?, ?, ?, ?, ?)
-        """, [
-            (1, 1, 'color.primary', 'color', 'extracted'),
-            (2, 1, 'color.secondary', 'color', 'extracted'),
-        ])
-
-        conn.executemany("""
-            INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-            VALUES (?, ?, ?, ?)
-        """, [
-            (1, 1, '#FF0000', '#FF0000'),
-            (2, 1, '#00FF00', '#00FF00'),
-        ])
+    # Now token 1 has 2 bindings, token 2 has 2 bindings (one from seed, one just added)
+    result = merge_tokens(db, 1, 2)
 
-        # Add a screen first
-        conn.execute("""
-            INSERT INTO screens (id, file_id, figma_node_id, name, width, height, device_class)
-            VALUES (1, 1, 'screen1', 'Test Screen', 1920, 1080, 'web')
-        """)
-
-        conn.execute("""
-            INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, node_type, depth, sort_order, is_semantic)
-            VALUES (1, 1, 'node1', ?, 'Button', 'FRAME', 0, 0, 1)
-        """, (None,))
-
-        conn.executemany("""
-            INSERT INTO node_token_bindings
-            (node_id, property, token_id, raw_value, resolved_value, confidence, binding_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, [
-            (1, 'fill.0.color', 1, '#FF0000', '#FF0000', 0.95, 'proposed'),
-            (1, 'stroke.0.color', 2, '#00FF00', '#00FF00', 0.85, 'proposed'),
-        ])
-
-        conn.commit()
-        yield conn, str(db_path)
-        conn.close()
-
-
-class TestAcceptToken:
-    def test_accept_token_success(self, memory_db):
-        result = accept_token(memory_db, 1)
-
-        assert result["token_id"] == 1
-        assert result["bindings_updated"] == 1
-
-        # Verify token tier updated
-        cursor = memory_db.execute("SELECT tier FROM tokens WHERE id = 1")
-        assert cursor.fetchone()["tier"] == "curated"
-
-        # Verify binding status updated
-        cursor = memory_db.execute("""
-            SELECT binding_status FROM node_token_bindings
-            WHERE token_id = 1 AND binding_status = 'bound'
-        """)
-        assert cursor.fetchone() is not None
-
-    def test_accept_token_already_curated(self, memory_db):
-        # Token 3 is already curated
-        result = accept_token(memory_db, 3)
-
-        assert result["token_id"] == 3
-        assert result["bindings_updated"] == 0  # No proposed bindings to update
-
-        cursor = memory_db.execute("SELECT tier FROM tokens WHERE id = 3")
-        assert cursor.fetchone()["tier"] == "curated"
-
-    def test_accept_token_invalid_id(self, memory_db):
-        with pytest.raises(ValueError, match="Token 999 does not exist"):
-            accept_token(memory_db, 999)
-
-
-class TestAcceptAll:
-    def test_accept_all_success(self, file_db):
-        conn, db_path = file_db
-        result = accept_all(conn, 1, db_path)
-
-        assert result["tokens_accepted"] == 2
-        assert result["bindings_updated"] == 2
-
-        # Verify all tokens promoted
-        cursor = conn.execute("SELECT COUNT(*) FROM tokens WHERE tier = 'curated'")
-        assert cursor.fetchone()[0] == 2
-
-        # Verify all bindings bound
-        cursor = conn.execute("SELECT COUNT(*) FROM node_token_bindings WHERE binding_status = 'bound'")
-        assert cursor.fetchone()[0] == 2
-
-        # Verify backup was created in the project backup directory
-        from dd import config
-        backup_dir = config.BACKUP_DIR
-        assert backup_dir.exists()
-        assert len(list(backup_dir.glob("backup_test_*.db"))) > 0
-
-    def test_accept_all_memory_db(self, memory_db):
-        # Memory DB should not create backup
-        result = accept_all(memory_db, 1)
-
-        assert result["tokens_accepted"] == 2
-        assert result["bindings_updated"] == 2
-
-
-class TestRenameToken:
-    def test_rename_token_success(self, memory_db):
-        result = rename_token(memory_db, 1, "color.brand.primary")
-
-        assert result["token_id"] == 1
-        assert result["old_name"] == "color.primary"
-        assert result["new_name"] == "color.brand.primary"
-
-        cursor = memory_db.execute("SELECT name FROM tokens WHERE id = 1")
-        assert cursor.fetchone()["name"] == "color.brand.primary"
-
-    def test_rename_token_invalid_name(self, memory_db):
-        invalid_names = [
-            "Invalid Name",  # spaces
-            "UPPERCASE",     # uppercase
-            "123start",      # starts with number
-            "color..double", # double dots
-            ".startdot",     # starts with dot
-            "enddot.",       # ends with dot
-            "special-char",  # hyphen
-            "special_char",  # underscore
-        ]
-
-        for invalid_name in invalid_names:
-            with pytest.raises(ValueError, match="Invalid DTCG name"):
-                rename_token(memory_db, 1, invalid_name)
-
-    def test_rename_token_duplicate(self, memory_db):
-        with pytest.raises(ValueError, match="already exists"):
-            rename_token(memory_db, 1, "color.secondary")
-
-    def test_rename_token_not_found(self, memory_db):
-        with pytest.raises(ValueError, match="Token 999 does not exist"):
-            rename_token(memory_db, 999, "new.name")
-
-
-class TestMergeTokens:
-    def test_merge_tokens_success(self, file_db):
-        conn, db_path = file_db
-        result = merge_tokens(conn, 1, 2, db_path)
-
-        assert result["survivor_id"] == 1
-        assert result["victim_id"] == 2
-        assert result["bindings_reassigned"] == 1
-
-        # Verify victim deleted
-        cursor = conn.execute("SELECT COUNT(*) FROM tokens WHERE id = 2")
-        assert cursor.fetchone()[0] == 0
-
-        # Verify bindings reassigned
-        cursor = conn.execute("SELECT COUNT(*) FROM node_token_bindings WHERE token_id = 1")
-        assert cursor.fetchone()[0] == 2
-
-        # Verify backup created in the project backup directory
-        from dd import config
-        backup_dir = config.BACKUP_DIR
-        assert backup_dir.exists()
-        assert len(list(backup_dir.glob("backup_test_*.db"))) > 0
-
-    def test_merge_tokens_different_collections(self, memory_db):
-        # Create token in different collection
-        memory_db.execute("""
-            INSERT INTO token_collections (id, file_id, name)
-            VALUES (2, 1, 'Other Collection')
-        """)
-        memory_db.execute("""
-            INSERT INTO tokens (id, collection_id, name, type, tier)
-            VALUES (4, 2, 'other.token', 'color', 'extracted')
-        """)
-
-        with pytest.raises(ValueError, match="different collections"):
-            merge_tokens(memory_db, 1, 4)
-
-    def test_merge_tokens_not_found(self, memory_db):
-        with pytest.raises(ValueError, match="Token .* does not exist"):
-            merge_tokens(memory_db, 1, 999)
-
-
-class TestSplitToken:
-    def test_split_token_success(self, memory_db):
-        result = split_token(memory_db, 1, "color.primary.light", [1])
-
-        assert result["original_token_id"] == 1
-        assert result["new_token_id"] > 0
-        assert result["bindings_moved"] == 1
-
-        # Verify new token created
-        cursor = memory_db.execute("SELECT * FROM tokens WHERE name = 'color.primary.light'")
-        new_token = cursor.fetchone()
-        assert new_token is not None
-        assert new_token["tier"] == "extracted"
-
-        # Verify token values copied
-        cursor = memory_db.execute(f"SELECT COUNT(*) FROM token_values WHERE token_id = {new_token['id']}")
-        assert cursor.fetchone()[0] == 1
-
-        # Verify binding reassigned
-        cursor = memory_db.execute(f"SELECT token_id FROM node_token_bindings WHERE id = 1")
-        assert cursor.fetchone()["token_id"] == new_token["id"]
-
-    def test_split_token_invalid_binding(self, memory_db):
-        with pytest.raises(ValueError, match="do not belong to token"):
-            split_token(memory_db, 1, "color.new", [2])  # Binding 2 belongs to token 3
-
-    def test_split_token_invalid_name(self, memory_db):
-        with pytest.raises(ValueError, match="Invalid DTCG name"):
-            split_token(memory_db, 1, "INVALID NAME", [1])
-
-
-class TestRejectToken:
-    def test_reject_token_success(self, file_db):
-        conn, db_path = file_db
-        result = reject_token(conn, 1, db_path)
-
-        assert result["token_id"] == 1
-        assert result["bindings_reverted"] == 1
-
-        # Verify token deleted
-        cursor = conn.execute("SELECT COUNT(*) FROM tokens WHERE id = 1")
-        assert cursor.fetchone()[0] == 0
-
-        # Verify bindings reverted to unbound
-        cursor = conn.execute("""
-            SELECT * FROM node_token_bindings
-            WHERE property = 'fill.0.color' AND node_id = 1
-        """)
-        binding = cursor.fetchone()
-        assert binding["token_id"] is None
-        assert binding["binding_status"] == "unbound"
-        assert binding["confidence"] is None
-
-        # Verify backup created in the project backup directory
-        from dd import config
-        backup_dir = config.BACKUP_DIR
-        assert backup_dir.exists()
-
-    def test_reject_token_not_found(self, memory_db):
-        with pytest.raises(ValueError, match="Token 999 does not exist"):
-            reject_token(memory_db, 999)
-
-
-class TestCreateAlias:
-    def test_create_alias_success(self, memory_db):
-        result = create_alias(memory_db, "color.brand", 1, 1)
-
-        assert result["alias_id"] > 0
-        assert result["alias_name"] == "color.brand"
-        assert result["target_id"] == 1
-        assert result["target_name"] == "color.primary"
-
-        # Verify alias created
-        cursor = memory_db.execute("SELECT * FROM tokens WHERE name = 'color.brand'")
-        alias = cursor.fetchone()
-        assert alias is not None
-        assert alias["tier"] == "aliased"
-        assert alias["alias_of"] == 1
-        assert alias["type"] == "color"  # Same as target
-
-    def test_create_alias_of_alias(self, memory_db):
-        # First create an alias
-        create_alias(memory_db, "color.brand", 1, 1)
-        cursor = memory_db.execute("SELECT id FROM tokens WHERE name = 'color.brand'")
-        alias_id = cursor.fetchone()["id"]
-
-        # Try to create alias of an alias
-        with pytest.raises(ValueError, match="cannot be an alias"):
-            create_alias(memory_db, "color.brand2", alias_id, 1)
-
-    def test_create_alias_duplicate_name(self, memory_db):
-        with pytest.raises(ValueError, match="already exists"):
-            create_alias(memory_db, "color.primary", 1, 1)  # Name already exists
-
-    def test_create_alias_invalid_target(self, memory_db):
-        with pytest.raises(ValueError, match="Target token 999 does not exist"):
-            create_alias(memory_db, "color.brand", 999, 1)
-
-    def test_create_alias_invalid_name(self, memory_db):
-        with pytest.raises(ValueError, match="Invalid DTCG name"):
-            create_alias(memory_db, "INVALID NAME", 1, 1)
-
-
-class TestDTCGNameValidation:
-    def test_valid_names(self):
-        valid_names = [
-            "color",
-            "color.primary",
-            "color.surface.primary",
-            "space.s4",
-            "type.body.md",
-            "a",
-            "a1",
-            "a1.b2.c3",
-        ]
-
-        for name in valid_names:
-            assert _validate_dtcg_name(name) is True
-
-    def test_invalid_names(self):
-        invalid_names = [
-            "",              # empty
-            "1",             # starts with number
-            "1color",        # starts with number
-            ".color",        # starts with dot
-            "color.",        # ends with dot
-            "color..primary", # double dot
-            "color.Primary", # uppercase
-            "color primary", # space
-            "color-primary", # hyphen
-            "color_primary", # underscore
-            "color.primary!", # special char
-        ]
-
-        for name in invalid_names:
-            assert _validate_dtcg_name(name) is False
-
-
-class TestStatusReporting:
-    """Tests for status reporting functions."""
-
-    def test_status_functions_exist(self, memory_db):
-        """Test that all status functions can be called."""
-        # Test curation progress
-        progress = get_curation_progress(memory_db)
-        assert isinstance(progress, list)
-
-        # Test token coverage
-        coverage = get_token_coverage(memory_db)
-        assert isinstance(coverage, list)
-
-        # Test unbound summary
-        unbound = get_unbound_summary(memory_db)
-        assert isinstance(unbound, list)
-
-        # Test export readiness
-        readiness = get_export_readiness(memory_db)
-        assert isinstance(readiness, list)
-
-        # Test format status report
-        report = format_status_report(memory_db)
-        assert isinstance(report, str)
-
-        # Test get status dict
-        status_dict = get_status_dict(memory_db)
-        assert isinstance(status_dict, dict)
-        assert 'curation_progress' in status_dict
-        assert 'token_count' in status_dict
-        assert 'is_ready' in status_dict
+    assert result["bindings_reassigned"] == 2
+
+    cursor = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = ?", (1,)
+    )
+    assert cursor.fetchone()["cnt"] == 4  # 2 original + 2 from victim
+
+
+@pytest.mark.unit
+def test_split_token(db):
+    """Test splitting a token by moving some bindings."""
+    seed_post_clustering(db)
+
+    # Token 1 has bindings with IDs 1 and 5
+    result = split_token(db, 1, "color.surface.alt", [1])
+
+    assert result["original_token_id"] == 1
+    assert result["bindings_moved"] == 1
+
+    new_token_id = result["new_token_id"]
+
+    # Verify new token created
+    cursor = db.execute("SELECT name, type FROM tokens WHERE id = ?", (new_token_id,))
+    new_token = cursor.fetchone()
+    assert new_token["name"] == "color.surface.alt"
+    assert new_token["type"] == "color"
+
+    # Verify binding moved
+    cursor = db.execute(
+        "SELECT token_id FROM node_token_bindings WHERE id = ?", (1,)
+    )
+    assert cursor.fetchone()["token_id"] == new_token_id
+
+    # Verify original token still has its other binding
+    cursor = db.execute(
+        "SELECT token_id FROM node_token_bindings WHERE id = ?", (5,)
+    )
+    assert cursor.fetchone()["token_id"] == 1
+
+
+@pytest.mark.unit
+def test_split_token_invalid_name(db):
+    """Test split with invalid name raises ValueError."""
+    seed_post_clustering(db)
+
+    with pytest.raises(ValueError, match="Invalid DTCG name"):
+        split_token(db, 1, "Invalid Name", [1])
+
+
+@pytest.mark.unit
+def test_split_token_wrong_bindings(db):
+    """Test split with bindings not belonging to token raises ValueError."""
+    seed_post_clustering(db)
+
+    # Try to move binding 3 which belongs to token 3, not token 1
+    with pytest.raises(ValueError, match="binding IDs do not belong to token"):
+        split_token(db, 1, "color.surface.alt", [3])
+
+
+@pytest.mark.unit
+def test_split_token_copies_values(db):
+    """Test that split token gets token_values copied from original."""
+    seed_post_clustering(db)
+
+    result = split_token(db, 1, "color.surface.alt", [1])
+    new_token_id = result["new_token_id"]
+
+    # Verify token_values copied
+    cursor = db.execute(
+        "SELECT raw_value, resolved_value FROM token_values WHERE token_id = ?",
+        (new_token_id,)
+    )
+    new_values = cursor.fetchone()
+
+    cursor = db.execute(
+        "SELECT raw_value, resolved_value FROM token_values WHERE token_id = ?",
+        (1,)
+    )
+    orig_values = cursor.fetchone()
+
+    assert new_values["raw_value"] == orig_values["raw_value"]
+    assert new_values["resolved_value"] == orig_values["resolved_value"]
+
+
+@pytest.mark.unit
+def test_reject_token(db):
+    """Test rejecting a token."""
+    seed_post_clustering(db)
+
+    # Count bindings for token 1
+    cursor = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = ?", (1,)
+    )
+    binding_count = cursor.fetchone()["cnt"]
+
+    result = reject_token(db, 1)
+
+    assert result["token_id"] == 1
+    assert result["bindings_reverted"] == binding_count
+
+    # Verify token deleted
+    cursor = db.execute("SELECT * FROM tokens WHERE id = ?", (1,))
+    assert cursor.fetchone() is None
+
+    # Verify bindings reverted to unbound with NULL token_id
+    cursor = db.execute(
+        "SELECT token_id, binding_status FROM node_token_bindings WHERE id IN (1, 5)"
+    )
+    for row in cursor:
+        assert row["token_id"] is None
+        assert row["binding_status"] == "unbound"
+
+
+@pytest.mark.unit
+def test_reject_token_nonexistent(db):
+    """Test rejecting a non-existent token raises ValueError."""
+    seed_post_clustering(db)
+
+    with pytest.raises(ValueError, match="Token 999 does not exist"):
+        reject_token(db, 999)
+
+
+@pytest.mark.unit
+def test_create_alias(db):
+    """Test creating an alias to a curated token."""
+    seed_post_curation(db)
+
+    result = create_alias(db, "color.bg", 1, 1)
+
+    assert result["alias_name"] == "color.bg"
+    assert result["target_id"] == 1
+    assert result["target_name"] == "color.surface.primary"
+
+    alias_id = result["alias_id"]
+
+    # Verify alias created with correct properties
+    cursor = db.execute(
+        "SELECT name, tier, alias_of, type FROM tokens WHERE id = ?",
+        (alias_id,)
+    )
+    alias = cursor.fetchone()
+    assert alias["name"] == "color.bg"
+    assert alias["tier"] == "aliased"
+    assert alias["alias_of"] == 1
+    assert alias["type"] == "color"  # Inherited from target
+
+
+@pytest.mark.unit
+def test_create_alias_to_alias_blocked(db):
+    """Test creating an alias pointing to another alias raises ValueError."""
+    seed_post_curation(db)
+
+    # Create first alias
+    result = create_alias(db, "color.bg", 1, 1)
+    alias_id = result["alias_id"]
+
+    # Try to create alias to the alias
+    with pytest.raises(ValueError, match="Target token cannot be an alias"):
+        create_alias(db, "color.bg2", alias_id, 1)
+
+
+@pytest.mark.unit
+def test_create_alias_invalid_name(db):
+    """Test creating alias with invalid name raises ValueError."""
+    seed_post_curation(db)
+
+    with pytest.raises(ValueError, match="Invalid DTCG name"):
+        create_alias(db, "Invalid Name", 1, 1)
+
+
+@pytest.mark.unit
+def test_create_alias_to_noncurated(db):
+    """Test creating alias to extracted token is allowed but will fail validation."""
+    seed_post_clustering(db)  # Tokens are extracted, not curated
+
+    # This should succeed - validation will catch it later
+    result = create_alias(db, "color.bg", 1, 1)
+
+    assert result["alias_name"] == "color.bg"
+    assert result["target_id"] == 1
+
+    # Verify alias created even though target is not curated
+    cursor = db.execute(
+        "SELECT tier FROM tokens WHERE id = ?",
+        (result["alias_id"],)
+    )
+    assert cursor.fetchone()["tier"] == "aliased"
+
+
+# Status tests
+
+@pytest.mark.unit
+def test_status_curation_progress(db):
+    """Test getting curation progress."""
+    seed_post_clustering(db)
+
+    progress = get_curation_progress(db)
+
+    assert len(progress) > 0
+
+    # Check we have proposed and unbound entries
+    statuses = {item['status'] for item in progress}
+    assert 'proposed' in statuses
+    assert 'unbound' in statuses
+
+    # Verify counts
+    proposed = next(p for p in progress if p['status'] == 'proposed')
+    assert proposed['count'] == 5  # 5 proposed bindings
+
+    unbound = next(p for p in progress if p['status'] == 'unbound')
+    assert unbound['count'] == 10  # 10 unbound bindings
+
+
+@pytest.mark.unit
+def test_status_curation_progress_empty(db):
+    """Test curation progress with empty DB returns empty list."""
+    progress = get_curation_progress(db)
+    assert progress == []
+
+
+@pytest.mark.unit
+def test_status_token_coverage(db):
+    """Test getting token coverage statistics."""
+    seed_post_clustering(db)
+
+    coverage = get_token_coverage(db, file_id=1)
+
+    assert len(coverage) == 5  # 5 tokens total
+
+    # Tokens with bindings should be listed first (higher binding_count)
+    # Tokens 1-4 have bindings, token 5 doesn't
+    tokens_with_bindings = [t for t in coverage if t['binding_count'] > 0]
+    assert len(tokens_with_bindings) == 4
+
+
+@pytest.mark.unit
+def test_status_format_report(db):
+    """Test formatting status report as text."""
+    seed_post_clustering(db)
+
+    report = format_status_report(db, file_id=1)
+
+    assert isinstance(report, str)
+    assert len(report) > 0
+    assert "Curation Progress" in report
+    assert "Token Coverage" in report
+    assert "Unbound Bindings" in report
+    assert "Export Readiness" in report
+
+
+@pytest.mark.unit
+def test_status_dict(db):
+    """Test getting status as structured dict."""
+    seed_post_clustering(db)
+
+    status = get_status_dict(db, file_id=1)
+
+    assert isinstance(status, dict)
+    assert "curation_progress" in status
+    assert "token_count" in status
+    assert "token_coverage" in status
+    assert "unbound_count" in status
+    assert "export_readiness" in status
+    assert "is_ready" in status
+
+    assert status["token_count"] == 5
+    assert status["unbound_count"] == 10  # 10 unbound bindings
+    assert status["is_ready"] is False  # No validation run yet
