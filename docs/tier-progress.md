@@ -86,13 +86,23 @@ Every action follows this round-trip:
 - **Figma verify**: Not pushed — aliases are a semantic layer for code consumers, not Figma variables
 
 ### T2.4 — Group Spacing Into T-Shirt Sizes
-- **Status**: PENDING
+- **Status**: DONE
+- **Scope**: 19 numeric spacing tokens renamed to `space.s{value}` pattern (e.g. `space.v10` → `space.s10`)
+- **Convention**: xs–4xl (1–8px) kept as t-shirt sizes, 9px+ use `s{N}` prefix since t-shirt sizes break down past 4xl
+- **DB verify**: All 27 spacing tokens consistently named
+- **Figma verify**: Spacing collection recreated with 27 variables, all match
 
 ### T2.5 — Categorize Colors By Role
 - **Status**: DONE (completed as part of T2.1 — colors now have role prefixes: surface, border, brand, text, icon, palette, feedback, effect)
 
 ### T2.6 — Identify Interactive States
-- **Status**: PENDING
+- **Status**: N/A
+- **Reason**: Dank (Experimental) doesn't use Figma's COMPONENT_SET/variant system. Buttons are flat FRAMEs and INSTANCEs without hover/pressed/disabled variants. This action requires a file with proper component variant architecture.
+
+---
+
+## Tier 2: Complete
+All applicable T2 actions done. 296 Figma variables across 6 collections, 8 semantic aliases, 304 total DB tokens.
 
 ---
 
