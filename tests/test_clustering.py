@@ -19,6 +19,13 @@ from dd.cluster_typography import (
     cluster_typography,
     ensure_typography_collection,
 )
+from dd.cluster_spacing import (
+    query_spacing_census,
+    detect_scale_pattern,
+    propose_spacing_name,
+    cluster_spacing,
+    ensure_spacing_collection,
+)
 from dd.db import init_db
 
 
@@ -709,6 +716,449 @@ def test_cluster_typography_unique_names(mock_db_typography):
 
     # Check for unique names
     cursor = mock_db_typography.execute(
+        "SELECT name, COUNT(*) as count FROM tokens WHERE collection_id = ? GROUP BY name",
+        (collection_id,)
+    )
+
+    for row in cursor.fetchall():
+        assert row['count'] == 1, f"Duplicate token name: {row['name']}"
+
+
+# Spacing clustering tests
+
+@pytest.fixture
+def mock_db_spacing():
+    """Create an in-memory database with spacing test data."""
+    conn = init_db(":memory:")
+
+    # Insert test data
+    conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'test_key', 'test.fig')")
+    conn.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) VALUES (1, 1, 'screen1', 'Screen 1', 375, 812)"
+    )
+
+    # Insert nodes with spacing properties
+    for i in range(1, 11):
+        conn.execute(
+            """INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order)
+               VALUES (?, 1, ?, ?, 'FRAME', 0, ?)""",
+            (i, f"frame{i}", f"Frame {i}", i)
+        )
+
+    # Insert more nodes to support all the bindings we need
+    for i in range(11, 61):
+        conn.execute(
+            """INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order)
+               VALUES (?, 1, ?, ?, 'FRAME', 0, ?)""",
+            (i, f"frame{i}", f"Frame {i}", i)
+        )
+
+    # Insert spacing bindings following 4px scale pattern
+    spacing_values = [
+        ('4', 8),    # 4px used 8 times
+        ('8', 15),   # 8px used 15 times (most common)
+        ('12', 5),   # 12px used 5 times
+        ('16', 12),  # 16px used 12 times
+        ('20', 3),   # 20px used 3 times
+        ('24', 6),   # 24px used 6 times
+        ('32', 4),   # 32px used 4 times
+        ('40', 2),   # 40px used 2 times
+        ('48', 1),   # 48px used 1 time
+        ('64', 1),   # 64px used 1 time
+    ]
+
+    binding_id = 1
+    current_node_id = 1
+
+    for value, count in spacing_values:
+        for i in range(count):
+            # Rotate through different spacing properties
+            properties = [
+                'padding.top', 'padding.right', 'padding.bottom', 'padding.left',
+                'itemSpacing', 'counterAxisSpacing'
+            ]
+            prop = properties[i % len(properties)]
+
+            conn.execute(
+                """INSERT INTO node_token_bindings
+                   (id, node_id, property, raw_value, resolved_value, binding_status)
+                   VALUES (?, ?, ?, ?, ?, 'unbound')""",
+                (binding_id, current_node_id, prop, value, value)
+            )
+            binding_id += 1
+            current_node_id += 1
+            if current_node_id > 60:
+                current_node_id = 1
+
+    conn.commit()
+    return conn
+
+
+@pytest.fixture
+def mock_db_spacing_irregular():
+    """Create an in-memory database with irregular spacing values."""
+    conn = init_db(":memory:")
+
+    # Insert test data
+    conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'test_key', 'test.fig')")
+    conn.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) VALUES (1, 1, 'screen1', 'Screen 1', 375, 812)"
+    )
+
+    # Insert nodes - need more to avoid constraint violations
+    for i in range(1, 11):
+        conn.execute(
+            """INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order)
+               VALUES (?, 1, ?, ?, 'FRAME', 0, ?)""",
+            (i, f"frame{i}", f"Frame {i}", i)
+        )
+
+    # Insert irregular spacing values (no clear pattern)
+    irregular_values = [
+        ('5', 3),
+        ('13', 2),
+        ('27', 2),
+        ('41', 1),
+        ('67', 1),
+    ]
+
+    binding_id = 1
+    current_node_id = 1
+
+    for value, count in irregular_values:
+        for i in range(count):
+            prop = 'padding.top' if i % 2 == 0 else 'itemSpacing'
+            conn.execute(
+                """INSERT INTO node_token_bindings
+                   (id, node_id, property, raw_value, resolved_value, binding_status)
+                   VALUES (?, ?, ?, ?, ?, 'unbound')""",
+                (binding_id, current_node_id, prop, value, value)
+            )
+            binding_id += 1
+            current_node_id += 1
+            if current_node_id > 10:
+                current_node_id = 1
+
+    conn.commit()
+    return conn
+
+
+def test_query_spacing_census(mock_db_spacing):
+    """Test querying spacing census from database."""
+    result = query_spacing_census(mock_db_spacing, file_id=1)
+
+    assert len(result) > 0
+    assert all('resolved_value' in row for row in result)
+    assert all('property' in row for row in result)
+    assert all('usage_count' in row for row in result)
+
+    # Check that 8px appears with highest usage count (15)
+    eight_px_rows = [r for r in result if r['resolved_value'] == '8']
+    assert len(eight_px_rows) > 0
+    total_usage = sum(r['usage_count'] for r in eight_px_rows)
+    assert total_usage == 15
+
+    # Check that values are sorted by resolved_value (numerically)
+    values = [float(r['resolved_value']) for r in result]
+    assert values == sorted(values)
+
+
+def test_query_spacing_census_filters_unbound_only(mock_db_spacing):
+    """Test that census only includes unbound spacing values."""
+    # Update some bindings to 'proposed' - use rowid to limit
+    mock_db_spacing.execute(
+        """UPDATE node_token_bindings
+           SET binding_status = 'proposed'
+           WHERE rowid IN (
+               SELECT rowid FROM node_token_bindings
+               WHERE resolved_value = '8'
+               LIMIT 3
+           )"""
+    )
+    mock_db_spacing.commit()
+
+    result = query_spacing_census(mock_db_spacing, file_id=1)
+
+    # 8px usage count should be reduced
+    eight_px_total = sum(r['usage_count'] for r in result if r['resolved_value'] == '8')
+    assert eight_px_total < 15  # Was 15 before
+
+
+def test_query_spacing_census_filters_zero_values(mock_db_spacing):
+    """Test that zero values are filtered out."""
+    # Add a zero value binding - use a node that doesn't have padding.top yet
+    mock_db_spacing.execute(
+        """INSERT INTO node_token_bindings
+           (id, node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (999, 59, 'padding.bottom', '0', '0', 'unbound')"""
+    )
+    mock_db_spacing.commit()
+
+    result = query_spacing_census(mock_db_spacing, file_id=1)
+
+    # Should not have any zero values
+    zero_rows = [r for r in result if r['resolved_value'] == '0']
+    assert len(zero_rows) == 0
+
+
+def test_detect_scale_pattern_with_4px_base():
+    """Test detecting 4px base scale pattern."""
+    values = [4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 32.0, 40.0, 48.0, 64.0]
+
+    base, notation = detect_scale_pattern(values)
+
+    assert base == 4.0 or base == 4
+    assert notation == "multiplier"
+
+
+def test_detect_scale_pattern_with_8px_base():
+    """Test detecting 8px base scale pattern."""
+    values = [8.0, 16.0, 24.0, 32.0, 40.0, 48.0, 64.0]
+
+    base, notation = detect_scale_pattern(values)
+
+    assert base == 8.0 or base == 8
+    assert notation == "multiplier"
+
+
+def test_detect_scale_pattern_with_irregular_values():
+    """Test that irregular values result in t-shirt notation."""
+    values = [5.0, 13.0, 27.0, 41.0, 67.0]
+
+    base, notation = detect_scale_pattern(values)
+
+    assert base == 0
+    assert notation == "tshirt"
+
+
+def test_detect_scale_pattern_with_single_value():
+    """Test handling single value."""
+    values = [16.0]
+
+    base, notation = detect_scale_pattern(values)
+
+    # Single value can't determine a pattern, use t-shirt
+    assert base == 0
+    assert notation == "tshirt"
+
+
+def test_propose_spacing_name_multiplier():
+    """Test proposing spacing names with multiplier notation."""
+    # 16px with 4px base = space.4
+    name = propose_spacing_name(16.0, 4.0, "multiplier", 0, 5)
+    assert name == "space.4"
+
+    # 8px with 4px base = space.2
+    name = propose_spacing_name(8.0, 4.0, "multiplier", 0, 5)
+    assert name == "space.2"
+
+    # 4px with 4px base = space.1
+    name = propose_spacing_name(4.0, 4.0, "multiplier", 0, 5)
+    assert name == "space.1"
+
+    # 32px with 8px base = space.4
+    name = propose_spacing_name(32.0, 8.0, "multiplier", 0, 5)
+    assert name == "space.4"
+
+
+def test_propose_spacing_name_tshirt():
+    """Test proposing spacing names with t-shirt notation."""
+    # First value = xs
+    name = propose_spacing_name(5.0, 0, "tshirt", 0, 5)
+    assert name == "space.xs"
+
+    # Second value = sm
+    name = propose_spacing_name(8.0, 0, "tshirt", 1, 5)
+    assert name == "space.sm"
+
+    # Third value = md
+    name = propose_spacing_name(12.0, 0, "tshirt", 2, 5)
+    assert name == "space.md"
+
+    # Fourth value = lg
+    name = propose_spacing_name(16.0, 0, "tshirt", 3, 5)
+    assert name == "space.lg"
+
+    # Fifth value = xl
+    name = propose_spacing_name(24.0, 0, "tshirt", 4, 5)
+    assert name == "space.xl"
+
+    # Sixth value = 2xl
+    name = propose_spacing_name(32.0, 0, "tshirt", 5, 8)
+    assert name == "space.2xl"
+
+    # Seventh value = 3xl
+    name = propose_spacing_name(40.0, 0, "tshirt", 6, 8)
+    assert name == "space.3xl"
+
+    # Eighth value = 4xl
+    name = propose_spacing_name(48.0, 0, "tshirt", 7, 8)
+    assert name == "space.4xl"
+
+    # Ninth value and beyond = numeric
+    name = propose_spacing_name(64.0, 0, "tshirt", 8, 10)
+    assert name == "space.9"
+
+    name = propose_spacing_name(80.0, 0, "tshirt", 9, 10)
+    assert name == "space.10"
+
+
+def test_ensure_spacing_collection(mock_db_spacing):
+    """Test creating or retrieving spacing collection and mode."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing, file_id=1)
+
+    assert collection_id is not None
+    assert mode_id is not None
+
+    # Should be idempotent
+    collection_id2, mode_id2 = ensure_spacing_collection(mock_db_spacing, file_id=1)
+    assert collection_id2 == collection_id
+    assert mode_id2 == mode_id
+
+    # Verify in database
+    cursor = mock_db_spacing.execute(
+        "SELECT * FROM token_collections WHERE id = ?", (collection_id,)
+    )
+    collection = cursor.fetchone()
+    assert collection['name'] == 'Spacing'
+    assert collection['file_id'] == 1
+
+    cursor = mock_db_spacing.execute(
+        "SELECT * FROM token_modes WHERE id = ?", (mode_id,)
+    )
+    mode = cursor.fetchone()
+    assert mode['name'] == 'Default'
+    assert mode['is_default'] == 1
+
+
+def test_cluster_spacing_with_4px_scale(mock_db_spacing):
+    """Test clustering spacing values with 4px scale."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing, file_id=1)
+
+    result = cluster_spacing(mock_db_spacing, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    assert 'tokens_created' in result
+    assert 'bindings_updated' in result
+    assert 'base_unit' in result
+    assert 'notation' in result
+
+    assert result['tokens_created'] == 10  # 10 unique values in fixture
+    assert result['bindings_updated'] > 0
+    assert result['base_unit'] == 4.0 or result['base_unit'] == 4
+    assert result['notation'] == 'multiplier'
+
+    # Check that tokens were created
+    cursor = mock_db_spacing.execute(
+        "SELECT * FROM tokens WHERE collection_id = ?", (collection_id,)
+    )
+    tokens = cursor.fetchall()
+    assert len(tokens) == result['tokens_created']
+
+    # All tokens should have tier='extracted' and type='dimension'
+    for token in tokens:
+        assert token['tier'] == 'extracted'
+        assert token['type'] == 'dimension'
+
+    # Check token names follow multiplier pattern
+    token_names = {token['name'] for token in tokens}
+    expected_names = {
+        'space.1', 'space.2', 'space.3', 'space.4', 'space.5',
+        'space.6', 'space.8', 'space.10', 'space.12', 'space.16'
+    }
+    assert token_names == expected_names
+
+    # Check bindings were updated
+    cursor = mock_db_spacing.execute(
+        "SELECT * FROM node_token_bindings WHERE binding_status = 'proposed'"
+    )
+    bindings = cursor.fetchall()
+    assert len(bindings) == result['bindings_updated']
+
+    # All bindings should have token_id and confidence=1.0
+    for binding in bindings:
+        assert binding['token_id'] is not None
+        assert binding['confidence'] == 1.0
+
+
+def test_cluster_spacing_with_irregular_scale(mock_db_spacing_irregular):
+    """Test clustering irregular spacing values with t-shirt notation."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing_irregular, file_id=1)
+
+    result = cluster_spacing(mock_db_spacing_irregular, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    assert result['tokens_created'] == 5  # 5 unique values in fixture
+    assert result['base_unit'] == 0
+    assert result['notation'] == 'tshirt'
+
+    # Check token names follow t-shirt pattern
+    cursor = mock_db_spacing_irregular.execute(
+        "SELECT name FROM tokens WHERE collection_id = ? ORDER BY name", (collection_id,)
+    )
+    token_names = [row['name'] for row in cursor.fetchall()]
+
+    # Should have xs, sm, md, lg, xl for 5 values
+    assert 'space.xs' in token_names
+    assert 'space.sm' in token_names
+    assert 'space.md' in token_names
+    assert 'space.lg' in token_names
+    assert 'space.xl' in token_names
+
+
+def test_cluster_spacing_shared_tokens(mock_db_spacing):
+    """Test that same value across different properties uses same token."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing, file_id=1)
+
+    cluster_spacing(mock_db_spacing, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Get all bindings for value '16'
+    cursor = mock_db_spacing.execute(
+        """SELECT DISTINCT token_id FROM node_token_bindings
+           WHERE resolved_value = '16' AND binding_status = 'proposed'"""
+    )
+    token_ids = [row['token_id'] for row in cursor.fetchall()]
+
+    # All should have the same token_id
+    assert len(set(token_ids)) == 1
+
+    # Verify it's used across different properties
+    cursor = mock_db_spacing.execute(
+        """SELECT DISTINCT property FROM node_token_bindings
+           WHERE resolved_value = '16' AND binding_status = 'proposed'"""
+    )
+    properties = [row['property'] for row in cursor.fetchall()]
+
+    # Should be used in multiple property types
+    assert len(properties) > 1
+
+
+def test_cluster_spacing_no_orphan_tokens(mock_db_spacing):
+    """Test that no orphan tokens are created."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing, file_id=1)
+
+    cluster_spacing(mock_db_spacing, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Every token should have at least one binding
+    cursor = mock_db_spacing.execute(
+        """SELECT t.id, t.name, COUNT(ntb.id) as binding_count
+           FROM tokens t
+           LEFT JOIN node_token_bindings ntb ON ntb.token_id = t.id
+           WHERE t.collection_id = ?
+           GROUP BY t.id""",
+        (collection_id,)
+    )
+
+    for row in cursor.fetchall():
+        assert row['binding_count'] > 0, f"Token {row['name']} has no bindings"
+
+
+def test_cluster_spacing_unique_names(mock_db_spacing):
+    """Test that all token names are unique within collection."""
+    collection_id, mode_id = ensure_spacing_collection(mock_db_spacing, file_id=1)
+
+    cluster_spacing(mock_db_spacing, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Check for unique names
+    cursor = mock_db_spacing.execute(
         "SELECT name, COUNT(*) as count FROM tokens WHERE collection_id = ? GROUP BY name",
         (collection_id,)
     )
