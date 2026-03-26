@@ -25,10 +25,11 @@ def query_color_census(conn: sqlite3.Connection, file_id: int) -> list[dict]:
            FROM node_token_bindings ntb
            JOIN nodes n ON ntb.node_id = n.id
            JOIN screens s ON n.screen_id = s.id
-           WHERE (ntb.property LIKE 'fill%' OR ntb.property LIKE 'stroke%')
+           WHERE (ntb.property LIKE 'fill.%.color' OR ntb.property LIKE 'stroke.%.color'
+                  OR ntb.property LIKE 'effect.%.color')
              AND ntb.binding_status = 'unbound'
              AND ntb.resolved_value IS NOT NULL
-             AND ntb.resolved_value != ''
+             AND ntb.resolved_value LIKE '#%'
              AND s.file_id = ?
            GROUP BY ntb.resolved_value
            ORDER BY usage_count DESC""",

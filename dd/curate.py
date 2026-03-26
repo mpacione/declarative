@@ -19,7 +19,7 @@ def _validate_dtcg_name(name: str) -> bool:
     """
     if not name:
         return False
-    pattern = r'^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$'
+    pattern = r'^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)*$'
     return re.match(pattern, name) is not None
 
 

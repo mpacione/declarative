@@ -562,7 +562,7 @@ def run_extraction_pipeline(
         file_key: Figma file key
         file_name: Name of the file
         frames: List of frame dicts from Figma
-        extract_fn: Callback that takes screen_figma_node_id and returns raw response
+        extract_fn: Callback that takes figma_node_id (str) and returns list of node dicts
         node_count: Total node count in file (optional)
         agent_id: Agent identifier (optional)
         component_extract_fn: Optional callback for component extraction (optional)
@@ -589,9 +589,8 @@ def run_extraction_pipeline(
         device_class = screen["device_class"]
 
         try:
-            # Call extract_fn to get raw response (MCP call abstraction)
-            extraction_script = get_extraction_script(figma_node_id)
-            raw_response = extract_fn(extraction_script)
+            # Call extract_fn to get raw response
+            raw_response = extract_fn(figma_node_id)
 
             # Process the screen
             result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
@@ -640,11 +639,8 @@ def run_extraction_pipeline(
                 print(f"Extracting components from {sheet_name}...")
 
                 try:
-                    # Generate the component extraction script
-                    comp_script = generate_component_extraction_script(sheet_node_id)
-
                     # Call the component extraction callback
-                    raw_component_data = component_extract_fn(comp_script)
+                    raw_component_data = component_extract_fn(sheet_node_id)
 
                     # Parse and validate the response
                     component_data = parse_component_extraction_response(raw_component_data)

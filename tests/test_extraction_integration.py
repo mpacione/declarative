@@ -424,18 +424,16 @@ def test_resume_after_failure(db):
     # Create an extract_fn that fails on screen 2
     call_count = {"count": 0}
 
-    def failing_extract_fn(script: str) -> List[Dict[str, Any]]:
+    def failing_extract_fn(node_id: str) -> List[Dict[str, Any]]:
         call_count["count"] += 1
-        # Check which screen is being extracted (screenId is in the script)
-        if "100:2" in script:  # Settings screen
+        if node_id == "100:2":  # Settings screen
             if call_count["count"] == 2:  # Fail on second call (settings)
                 raise Exception("Simulated extraction failure for screen 2")
-        # Return normal data based on screen ID
-        if "100:1" in script:
+        if node_id == "100:1":
             return _build_home_screen_nodes()
-        elif "100:2" in script:
+        elif node_id == "100:2":
             return _build_settings_screen_nodes()
-        elif "100:3" in script:
+        elif node_id == "100:3":
             return _build_component_sheet_nodes()
         return []
 
@@ -509,8 +507,7 @@ def test_resume_after_failure(db):
     # Process only the pending screen (screen 2)
     for screen in inventory["pending_screens"]:
         if screen["figma_node_id"] == "100:2":
-            script = f"// Extract {screen['figma_node_id']}"
-            raw_response = working_extract_fn(script)
+            raw_response = working_extract_fn(screen["figma_node_id"])
             process_screen(db, run_id, screen["screen_id"], screen["figma_node_id"], raw_response)
 
     # Complete the run
@@ -872,12 +869,8 @@ def _build_mock_frames() -> List[Dict[str, Any]]:
 
 def _build_mock_extract_fn(responses: Dict[str, List[Dict[str, Any]]]):
     """Build a mock extract function that returns predefined responses."""
-    def extract_fn(script: str) -> List[Dict[str, Any]]:
-        # Parse the script to find which screen is being extracted
-        for node_id in responses.keys():
-            if node_id in script:
-                return responses[node_id]
-        return []
+    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+        return responses.get(node_id, [])
     return extract_fn
 
 

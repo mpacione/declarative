@@ -442,20 +442,9 @@ def _build_rich_mock_data() -> Tuple[List[Dict[str, Any]], callable]:
     mock_responses["1:3"] = component_nodes
 
     # Create extract_fn that returns appropriate response based on script
-    def extract_fn(script: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
         """Mock extract function that returns nodes for the requested screen."""
-        # The extraction pipeline passes the script directly, not the node ID
-        # We need to map based on which screen is being requested
-        # For simplicity, return responses in order
-        if "1:1" in script or "'1:1'" in script:
-            return mock_responses["1:1"]
-        elif "1:2" in script or "'1:2'" in script:
-            return mock_responses["1:2"]
-        elif "1:3" in script or "'1:3'" in script:
-            return mock_responses["1:3"]
-
-        # Default empty response
-        return []
+        return mock_responses.get(node_id, [])
 
     return frames, extract_fn
 

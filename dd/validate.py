@@ -51,8 +51,9 @@ def check_mode_completeness(conn: sqlite3.Connection, file_id: int) -> List[Dict
 def check_name_dtcg_compliant(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
     """Check that token names comply with DTCG naming pattern.
 
-    Pattern: ^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$
-    Allows numeric segments for spacing multipliers (e.g., "space.4")
+    Pattern: ^[a-z][a-zA-Z0-9]*(\\.[a-zA-Z0-9]+)*$
+    Allows camelCase for atomic property suffixes (e.g., "type.body.md.fontSize")
+    and numeric segments for spacing multipliers (e.g., "space.4")
 
     Args:
         conn: Database connection
@@ -62,7 +63,7 @@ def check_name_dtcg_compliant(conn: sqlite3.Connection, file_id: int) -> List[Di
         List of validation issues with severity 'error'
     """
     issues = []
-    pattern = re.compile(r'^[a-z][a-z0-9]*(\.[a-z0-9]+)*$')
+    pattern = re.compile(r'^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)*$')
 
     cursor = conn.execute("""
         SELECT t.id, t.name

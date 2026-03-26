@@ -48,10 +48,9 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
     """
     frames = MOCK_FRAMES
 
-    def extract_fn(script: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
         """Mock extract function that returns rich node data."""
-        # Determine which screen based on the script content
-        if '"1:1"' in script:
+        if node_id == "1:1":
             # Home screen: dark background with text and card elements
             return [
                 # Root frame with fill and spacing
@@ -169,7 +168,7 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
                 },
             ]
 
-        elif '"1:2"' in script:
+        elif node_id == "1:2":
             # Profile screen: different layout with consistent styles
             return [
                 # Root frame
@@ -270,7 +269,7 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
                 },
             ]
 
-        elif '"1:3"' in script:
+        elif node_id == "1:3":
             # Components screen: minimal component sheet
             return [
                 # Root frame (transparent)

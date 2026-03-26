@@ -111,16 +111,9 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
 
     responses = {"1:1": home_nodes, "1:2": profile_nodes, "1:3": comp_nodes}
 
-    def extract_fn(script: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
         """Mock extract function returning diverse property types."""
-        if '"1:1"' in script:
-            return responses["1:1"]
-        elif '"1:2"' in script:
-            return responses["1:2"]
-        elif '"1:3"' in script:
-            return responses["1:3"]
-        else:
-            return []
+        return responses.get(node_id, [])
 
     return frames, extract_fn
 

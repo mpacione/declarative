@@ -96,7 +96,7 @@ def _make_mock_frames() -> List[Dict[str, Any]]:
 
 def _make_screen_extract_fn():
     """Create a mock extraction function for screens."""
-    def extract_fn(script: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
         # Return simple node data for screen extraction
         return [
             {
@@ -439,11 +439,11 @@ def test_orchestrator_chains_extraction_and_components(db):
     frames = _make_mock_frames()
 
     # Create mock extraction functions
-    def screen_extract_fn(script: str) -> List[Dict[str, Any]]:
+    def screen_extract_fn(node_id: str) -> List[Dict[str, Any]]:
         # Return simple node data
-        return _make_screen_extract_fn()(script)
+        return _make_screen_extract_fn()(node_id)
 
-    def component_extract_fn(script: str) -> List[Dict[str, Any]]:
+    def component_extract_fn(node_id: str) -> List[Dict[str, Any]]:
         # Return component data
         return _make_component_data()
 
