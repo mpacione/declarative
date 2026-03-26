@@ -659,6 +659,76 @@ def test_opacity_clustering_creates_tokens(db):
 
 
 # ============================================================================
+# LetterSpacing clustering
+# ============================================================================
+
+@pytest.mark.unit
+def test_letterspacing_nonzero_values_get_tokens(db):
+    """Non-zero letterSpacing values like -0.41px should become tokens."""
+    seed_post_extraction(db)
+
+    # Clean slate for letterSpacing and typography tokens
+    db.execute("DELETE FROM node_token_bindings WHERE property = 'letterSpacing'")
+    db.execute("DELETE FROM token_values WHERE token_id IN (SELECT id FROM tokens WHERE name LIKE 'type.%letterSpacing%')")
+    db.execute("DELETE FROM tokens WHERE name LIKE 'type.%letterSpacing%'")
+    db.commit()
+
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (4, "letterSpacing", '{"value": -0.408, "unit": "PIXELS"}', '{"value": -0.408, "unit": "PIXELS"}'),
+            (7, "letterSpacing", '{"value": -0.408, "unit": "PIXELS"}', '{"value": -0.408, "unit": "PIXELS"}'),
+        ]
+    )
+    db.commit()
+
+    from dd.cluster_typography import cluster_letter_spacing, ensure_typography_collection
+    coll_id, mode_id = ensure_typography_collection(db, 1)
+    result = cluster_letter_spacing(db, 1, coll_id, mode_id)
+
+    assert result["tokens_created"] >= 1
+    assert result["bindings_updated"] == 2
+
+    unbound = db.execute(
+        "SELECT COUNT(*) FROM node_token_bindings WHERE property = 'letterSpacing' AND binding_status = 'unbound'"
+    ).fetchone()[0]
+    assert unbound == 0
+
+
+# ============================================================================
+# Gradient marking
+# ============================================================================
+
+@pytest.mark.unit
+def test_gradient_fills_marked_intentionally_unbound(db):
+    """Gradient fills can't be color tokens — mark them as handled."""
+    seed_post_extraction(db)
+
+    db.executemany(
+        """INSERT INTO node_token_bindings
+           (node_id, property, raw_value, resolved_value, binding_status)
+           VALUES (?, ?, ?, ?, 'unbound')""",
+        [
+            (1, "fill.0.gradient", "gradient", "gradient"),
+            (2, "fill.1.gradient", "gradient", "gradient"),
+        ]
+    )
+    db.commit()
+
+    from dd.cluster import mark_gradient_bindings
+    marked = mark_gradient_bindings(db, 1)
+
+    assert marked == 2
+
+    unbound = db.execute(
+        "SELECT COUNT(*) FROM node_token_bindings WHERE property LIKE 'fill.%.gradient' AND binding_status = 'unbound'"
+    ).fetchone()[0]
+    assert unbound == 0
+
+
+# ============================================================================
 # Radius clustering tests (test_radius_*)
 # ============================================================================
 

@@ -394,3 +394,98 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
         'bindings_updated': bindings_updated,
         'type_scales': len(type_scales)
     }
+
+def cluster_letter_spacing(conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int) -> dict:
+    """Cluster non-zero letterSpacing values into tokens.
+
+    These are specific tracking adjustments (e.g., -0.41px, 0.36px) that
+    represent intentional design decisions. Zero values are handled
+    separately by mark_default_bindings.
+
+    Returns:
+        Dict with tokens_created and bindings_updated.
+    """
+    import json
+
+    conn.row_factory = sqlite3.Row
+
+    cursor = conn.execute(
+        """SELECT ntb.resolved_value, COUNT(*) AS usage_count
+           FROM node_token_bindings ntb
+           JOIN nodes n ON ntb.node_id = n.id
+           JOIN screens s ON n.screen_id = s.id
+           WHERE ntb.property = 'letterSpacing'
+             AND ntb.binding_status = 'unbound'
+             AND s.file_id = ?
+           GROUP BY ntb.resolved_value
+           ORDER BY usage_count DESC""",
+        (file_id,)
+    )
+    census = [dict(row) for row in cursor.fetchall()]
+
+    if not census:
+        return {"tokens_created": 0, "bindings_updated": 0}
+
+    tokens_created = 0
+    bindings_updated = 0
+
+    for idx, row in enumerate(census):
+        raw_json = row['resolved_value']
+        parsed = json.loads(raw_json)
+        value = parsed.get('value', 0)
+
+        # Round to 2 decimal places for clean token name
+        rounded = round(value, 2)
+        if rounded == 0:
+            continue
+
+        # Name: type.tracking.tight, type.tracking.wide, etc. or by value
+        if rounded < -0.3:
+            label = f"tight{abs(idx) + 1}" if idx > 0 else "tight"
+        elif rounded < 0:
+            label = f"snug{idx + 1}" if idx > 0 else "snug"
+        else:
+            label = f"wide{idx + 1}" if idx > 0 else "wide"
+
+        token_name = f"type.tracking.{label}"
+
+        # Avoid duplicate names
+        existing = conn.execute(
+            "SELECT id FROM tokens WHERE collection_id = ? AND name = ?",
+            (collection_id, token_name)
+        ).fetchone()
+
+        if existing:
+            token_id = existing['id']
+        else:
+            cursor = conn.execute(
+                """INSERT INTO tokens (collection_id, name, type, tier)
+                   VALUES (?, ?, 'dimension', 'extracted')""",
+                (collection_id, token_name)
+            )
+            token_id = cursor.lastrowid
+            tokens_created += 1
+
+            conn.execute(
+                """INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+                   VALUES (?, ?, ?, ?)""",
+                (token_id, mode_id, raw_json, str(rounded))
+            )
+
+        cursor = conn.execute(
+            """UPDATE node_token_bindings
+               SET token_id = ?, binding_status = 'proposed', confidence = 0.8
+               WHERE resolved_value = ?
+                 AND property = 'letterSpacing'
+                 AND binding_status = 'unbound'
+                 AND node_id IN (
+                     SELECT n.id FROM nodes n
+                     JOIN screens s ON n.screen_id = s.id
+                     WHERE s.file_id = ?
+                 )""",
+            (token_id, row['resolved_value'], file_id)
+        )
+        bindings_updated += cursor.rowcount
+
+    conn.commit()
+    return {"tokens_created": tokens_created, "bindings_updated": bindings_updated}

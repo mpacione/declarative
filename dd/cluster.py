@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from dd.cluster_colors import cluster_colors, ensure_collection_and_mode
-from dd.cluster_typography import cluster_typography, ensure_typography_collection
+from dd.cluster_typography import cluster_typography, cluster_letter_spacing, ensure_typography_collection
 from dd.cluster_spacing import cluster_spacing, ensure_spacing_collection
 from dd.cluster_misc import cluster_radius, cluster_effects, cluster_opacity, ensure_radius_collection, ensure_effects_collection, ensure_opacity_collection
 
@@ -87,6 +87,31 @@ def mark_default_bindings(conn: sqlite3.Connection, file_id: int) -> int:
                  (property = 'letterSpacing' AND resolved_value LIKE '%0.0%')
                  OR (property = 'lineHeight' AND resolved_value LIKE '%AUTO%')
              )
+             AND node_id IN (
+                 SELECT n.id FROM nodes n
+                 JOIN screens s ON n.screen_id = s.id
+                 WHERE s.file_id = ?
+             )""",
+        (file_id,)
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def mark_gradient_bindings(conn: sqlite3.Connection, file_id: int) -> int:
+    """Mark gradient fill bindings as intentionally unbound.
+
+    Gradient fills (linear, radial, etc.) cannot be represented as simple
+    color tokens. They need a separate gradient token system (future work).
+
+    Returns:
+        Number of bindings marked.
+    """
+    cursor = conn.execute(
+        """UPDATE node_token_bindings
+           SET binding_status = 'intentionally_unbound'
+           WHERE binding_status = 'unbound'
+             AND property LIKE 'fill.%.gradient'
              AND node_id IN (
                  SELECT n.id FROM nodes n
                  JOIN screens s ON n.screen_id = s.id
@@ -193,6 +218,18 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
         else:
             results_by_type['typography'] = {'tokens_created': 0, 'bindings_updated': 0}
 
+        # 2b. LetterSpacing (runs after main typography, uses same collection)
+        if type_coll_id is not None:
+            try:
+                ls_result = cluster_letter_spacing(conn, file_id, type_coll_id, type_mode_id)
+                if ls_result['tokens_created'] > 0:
+                    print(f"[Clustering] LetterSpacing: {ls_result['tokens_created']} tokens, {ls_result['bindings_updated']} bindings")
+                    # Merge into typography results
+                    results_by_type['typography']['tokens_created'] = results_by_type['typography'].get('tokens_created', 0) + ls_result['tokens_created']
+                    results_by_type['typography']['bindings_updated'] = results_by_type['typography'].get('bindings_updated', 0) + ls_result['bindings_updated']
+            except Exception as e:
+                errors.append(f"LetterSpacing clustering: {str(e)}")
+
         # 3. Spacing
         if spacing_coll_id is not None:
             try:
@@ -247,6 +284,14 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 print(f"[Clustering] Marked {defaults_marked} default bindings (letterSpacing=0, lineHeight=AUTO)")
         except Exception as e:
             errors.append(f"Default marking: {str(e)}")
+
+        # 8. Mark gradient fills as intentionally unbound
+        try:
+            gradients_marked = mark_gradient_bindings(conn, file_id)
+            if gradients_marked > 0:
+                print(f"[Clustering] Marked {gradients_marked} gradient bindings as intentionally unbound")
+        except Exception as e:
+            errors.append(f"Gradient marking: {str(e)}")
 
         # Generate summary
         summary = generate_summary(conn, file_id, results_by_type)
