@@ -1,0 +1,5 @@
+coloraide>=0.15
+pytest>=7.0
+pytest-xdist
+pytest-timeout
+pytest-cov
