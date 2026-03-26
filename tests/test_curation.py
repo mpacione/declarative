@@ -17,6 +17,14 @@ from dd.curate import (
     create_alias,
     _validate_dtcg_name,
 )
+from dd.status import (
+    get_curation_progress,
+    get_token_coverage,
+    get_unbound_summary,
+    get_export_readiness,
+    format_status_report,
+    get_status_dict,
+)
 
 
 @pytest.fixture
@@ -433,3 +441,36 @@ class TestDTCGNameValidation:
 
         for name in invalid_names:
             assert _validate_dtcg_name(name) is False
+
+
+class TestStatusReporting:
+    """Tests for status reporting functions."""
+
+    def test_status_functions_exist(self, memory_db):
+        """Test that all status functions can be called."""
+        # Test curation progress
+        progress = get_curation_progress(memory_db)
+        assert isinstance(progress, list)
+
+        # Test token coverage
+        coverage = get_token_coverage(memory_db)
+        assert isinstance(coverage, list)
+
+        # Test unbound summary
+        unbound = get_unbound_summary(memory_db)
+        assert isinstance(unbound, list)
+
+        # Test export readiness
+        readiness = get_export_readiness(memory_db)
+        assert isinstance(readiness, list)
+
+        # Test format status report
+        report = format_status_report(memory_db)
+        assert isinstance(report, str)
+
+        # Test get status dict
+        status_dict = get_status_dict(memory_db)
+        assert isinstance(status_dict, dict)
+        assert 'curation_progress' in status_dict
+        assert 'token_count' in status_dict
+        assert 'is_ready' in status_dict
