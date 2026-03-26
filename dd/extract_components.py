@@ -33,6 +33,21 @@ NON_SLOT_HEURISTICS: FrozenSet[str] = frozenset({
     "background", "bg", "divider", "separator", "spacer", "line", "border", "overlay", "shadow"
 })
 
+# Map component categories to ARIA roles
+ROLE_MAP: Dict[str, str] = {
+    "button": "button",
+    "input": "textbox",
+    "nav": "navigation",
+    "card": "article",
+    "modal": "dialog",
+    "icon": "img",
+    "layout": "group",
+    "chrome": "presentation",
+}
+
+# Categories that represent interactive components requiring touch targets
+INTERACTIVE_CATEGORIES: FrozenSet[str] = frozenset({"button", "input", "nav", "modal"})
+
 
 def infer_category(name: str) -> Optional[str]:
     """
@@ -57,6 +72,106 @@ def infer_category(name: str) -> Optional[str]:
             if keyword in name_lower:
                 return category
     return None
+
+
+def infer_a11y(category: Optional[str], name: str) -> Dict[str, Any]:
+    """
+    Infer accessibility properties for a component based on its category and name.
+
+    Args:
+        category: Component category (from infer_category)
+        name: Full component name
+
+    Returns:
+        Dictionary with accessibility properties: role, required_label, focus_order,
+        min_touch_target, keyboard_shortcut, aria_properties, notes
+    """
+    # Determine role
+    role = None
+    if category and category in ROLE_MAP:
+        role = ROLE_MAP[category]
+    elif not category:
+        # Try to infer from name
+        name_lower = name.lower()
+        for cat, aria_role in ROLE_MAP.items():
+            if cat in name_lower:
+                role = aria_role
+                break
+
+    # Determine required_label (1 for interactive components that need labels)
+    required_label = 1 if category in {"button", "input"} else 0
+
+    # Determine min_touch_target (44.0 for interactive, None for non-interactive)
+    min_touch_target = 44.0 if category in INTERACTIVE_CATEGORIES else None
+
+    # Determine aria_properties (common ARIA properties for specific roles)
+    aria_properties = None
+    if role == "button":
+        # Optional aria-pressed for toggle buttons
+        aria_properties = json.dumps({"aria-pressed": "boolean"})
+    elif role == "textbox":
+        # Common input ARIA properties
+        aria_properties = json.dumps({"aria-required": "boolean", "aria-invalid": "boolean"})
+    elif role == "dialog":
+        # Modal dialogs should indicate modal state
+        aria_properties = json.dumps({"aria-modal": "true"})
+
+    return {
+        "role": role,
+        "required_label": required_label,
+        "focus_order": None,  # Set during manual curation
+        "min_touch_target": min_touch_target,
+        "keyboard_shortcut": None,  # Set during manual curation
+        "aria_properties": aria_properties,
+        "notes": None  # Set during manual curation
+    }
+
+
+def insert_a11y(conn: sqlite3.Connection, component_id: int, a11y_data: Dict[str, Any]) -> int:
+    """
+    Insert or update accessibility properties for a component.
+
+    Args:
+        conn: Database connection
+        component_id: ID of the component
+        a11y_data: Dictionary with accessibility properties
+
+    Returns:
+        The ID of the inserted/updated row
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO component_a11y (
+            component_id, role, required_label, focus_order,
+            min_touch_target, keyboard_shortcut, aria_properties, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(component_id) DO UPDATE SET
+            role = excluded.role,
+            required_label = excluded.required_label,
+            focus_order = excluded.focus_order,
+            min_touch_target = excluded.min_touch_target,
+            keyboard_shortcut = excluded.keyboard_shortcut,
+            aria_properties = excluded.aria_properties,
+            notes = excluded.notes
+    """, (
+        component_id,
+        a11y_data["role"],
+        a11y_data["required_label"],
+        a11y_data["focus_order"],
+        a11y_data["min_touch_target"],
+        a11y_data["keyboard_shortcut"],
+        a11y_data["aria_properties"],
+        a11y_data["notes"]
+    ))
+
+    # Get the row ID
+    cursor.execute(
+        "SELECT id FROM component_a11y WHERE component_id = ?",
+        (component_id,)
+    )
+    row = cursor.fetchone()
+    return row[0] if row else cursor.lastrowid
 
 
 def parse_variant_properties(variant_name: str) -> Dict[str, str]:
@@ -666,6 +781,12 @@ def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: 
         # Insert component
         component_id = insert_component(conn, file_id, parsed)
         component_ids.append(component_id)
+
+        # Infer and insert accessibility properties
+        category = parsed.get("category")
+        name = parsed.get("name", "")
+        a11y_data = infer_a11y(category, name)
+        insert_a11y(conn, component_id, a11y_data)
 
         # Insert variants if any
         if parsed["variants"]:
