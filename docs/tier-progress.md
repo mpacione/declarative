@@ -53,14 +53,28 @@ Every action follows this round-trip:
 
 ---
 
-## Tier 2: Semantic — ready to start
+## Tier 2: Semantic
 
-Next actions:
-- T2.1: Context-based renaming of 175 numeric tokens
-- T2.4: Group spacing into t-shirt sizes
-- T2.5: Categorize colors by role
+### T2.1 — Context-Based Renaming
+- **Status**: DONE
+- **Scope**: 175 numeric tokens renamed to semantic names (0 remaining)
+- **Colors (39)**: Usage-context analysis → role-based names (e.g. `color.surface.42` → `color.surface.ink`, `color.surface.29` → `color.brand.accent`)
+- **Opacity (4)**: Value-based → descriptive (`opacity.20` → `opacity.faint`)
+- **Radius (14)**: Numeric → value-prefixed (`radius.10` → `radius.v9`)
+- **Spacing (19)**: Numeric → value-prefixed (`space.10` → `space.v10`)
+- **Typography (94)**: Numeric → font+size+weight descriptors (`type.body.11` → `type.body.s18`, collisions disambiguated with weight: `type.body.inter17w400`)
+- **DB verify**: 0 remaining numeric-segment tokens
+- **Figma verify**: 289 variables across 6 collections, all names match DB
+
+### T2.4 — Group Spacing Into T-Shirt Sizes
+- **Status**: PENDING
+
+### T2.5 — Categorize Colors By Role
+- **Status**: DONE (completed as part of T2.1 — colors now have role prefixes: surface, border, brand, text, icon, palette, feedback, effect)
+
+---
 
 ## Tier 3: Generative — not started
 ## Tier 4: Structural — not started
 ## Tier 5: Conjure — not started
-## Tier 6: Sync — T6.1 complete (298 variables pushed, read-back verified)
+## Tier 6: Sync — T6.1 complete (289 variables pushed, all round-trip verified)
