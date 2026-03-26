@@ -143,6 +143,143 @@ class TestRunExtract:
         conn.close()
 
 
+@pytest.mark.integration
+class TestRunCluster:
+    def test_cluster_creates_tokens_from_seeded_db(self, tmp_path):
+        from dd.db import init_db
+        from dd.extract_bindings import create_bindings_for_screen
+        from tests.fixtures import seed_post_extraction
+        from dd.cli import run_cluster
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_post_extraction(conn)
+        conn.close()
+
+        run_cluster(db_path=db_path)
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        tokens = conn.execute("SELECT COUNT(*) as c FROM tokens").fetchone()["c"]
+        assert tokens > 0
+        conn.close()
+
+
+@pytest.mark.integration
+class TestRunAcceptAll:
+    def test_accept_all_changes_status_to_bound(self, tmp_path):
+        from dd.db import init_db
+        from tests.fixtures import seed_post_extraction
+        from dd.cli import run_cluster, run_accept_all
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_post_extraction(conn)
+        conn.close()
+
+        run_cluster(db_path=db_path)
+        run_accept_all(db_path=db_path)
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        proposed = conn.execute(
+            "SELECT COUNT(*) as c FROM node_token_bindings WHERE binding_status = 'proposed'"
+        ).fetchone()["c"]
+        assert proposed == 0
+
+        bound = conn.execute(
+            "SELECT COUNT(*) as c FROM node_token_bindings WHERE binding_status = 'bound'"
+        ).fetchone()["c"]
+        assert bound > 0
+        conn.close()
+
+
+@pytest.mark.integration
+class TestRunValidate:
+    def test_validate_reports_results(self, tmp_path, capsys):
+        from dd.db import init_db
+        from tests.fixtures import seed_post_extraction
+        from dd.cli import run_validate
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_post_extraction(conn)
+        conn.close()
+
+        run_validate(db_path=db_path)
+
+        captured = capsys.readouterr()
+        assert "Validation" in captured.out or "errors" in captured.out.lower() or "pass" in captured.out.lower()
+
+
+@pytest.mark.integration
+class TestRunExportWithFileId:
+    def test_export_css_writes_file(self, tmp_path):
+        from dd.db import init_db
+        from tests.fixtures import seed_post_extraction
+        from dd.cli import run_cluster, run_accept_all, run_export
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_post_extraction(conn)
+        conn.close()
+
+        run_cluster(db_path=db_path)
+        run_accept_all(db_path=db_path)
+
+        out_path = str(tmp_path / "tokens.css")
+        run_export("css", db_path, out=out_path)
+
+        assert os.path.exists(out_path)
+        content = open(out_path).read()
+        assert "--" in content
+
+    def test_export_dtcg_writes_valid_json(self, tmp_path):
+        from dd.db import init_db
+        from tests.fixtures import seed_post_extraction
+        from dd.cli import run_cluster, run_accept_all, run_export
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_post_extraction(conn)
+        conn.close()
+
+        run_cluster(db_path=db_path)
+        run_accept_all(db_path=db_path)
+
+        out_path = str(tmp_path / "tokens.json")
+        run_export("dtcg", db_path, out=out_path)
+
+        assert os.path.exists(out_path)
+        data = json.loads(open(out_path).read())
+        assert isinstance(data, dict)
+
+
+@pytest.mark.unit
+class TestDbAutoDetect:
+    def test_finds_single_db_in_cwd(self, tmp_path, monkeypatch):
+        from dd.cli import detect_db_path
+
+        db_file = tmp_path / "myfile.declarative.db"
+        db_file.touch()
+        monkeypatch.chdir(tmp_path)
+
+        assert detect_db_path(None) == "myfile.declarative.db"
+
+    def test_errors_when_no_db_found(self, tmp_path, monkeypatch):
+        from dd.cli import detect_db_path
+
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit):
+            detect_db_path(None)
+
+    def test_explicit_path_takes_precedence(self, tmp_path):
+        from dd.cli import detect_db_path
+
+        explicit = str(tmp_path / "explicit.db")
+        assert detect_db_path(explicit) == explicit
+
+
 @pytest.mark.unit
 class TestMainArgParsing:
     def test_extract_missing_file_key_exits(self):
