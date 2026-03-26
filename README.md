@@ -1,19 +1,228 @@
 # Declarative Design
 
-A Python pipeline that extracts design system knowledge from Figma into a local SQLite database, then exports it to code (CSS, Tailwind, DTCG) and back to Figma as variables. The portable DB becomes a queryable source of truth that AI agents can use without a live Figma connection.
+Extract your Figma design system into a portable SQLite database, then export tokens to CSS, Tailwind, DTCG, and back to Figma as variables.
+
+## How It Works
+
+**There is no CLI.** Claude Code is the interface. You talk to Claude, Claude runs the pipeline.
+
+The system is a Python library (`dd/`) with a companion Claude Code skill (`declarative-design/SKILL.md`). When you open this project in Claude Code and ask it to work with a Figma file, the skill teaches Claude how to orchestrate the full pipeline — extraction, clustering, curation, validation, and export.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     How You Use It                        │
+│                                                           │
+│   You ──▶ Claude Code ──▶ dd/ Python library              │
+│              │                    │                        │
+│              │  Figma MCP tools   │  SQLite DB             │
+│              ▼                    ▼                        │
+│          Figma file      .declarative.db                  │
+│                                │                          │
+│                    ┌───────────┼───────────┐              │
+│                    ▼           ▼           ▼              │
+│               CSS vars    Tailwind    tokens.json         │
+└──────────────────────────────────────────────────────────┘
+```
+
+### What you say to Claude vs what happens
+
+| You say | Claude does |
+|---------|-------------|
+| "Extract my Figma file" | Calls `use_figma` MCP to walk the node tree, stores everything in SQLite |
+| "Cluster the tokens" | Runs color/type/spacing/radius/effect clustering, proposes token names |
+| "Accept all tokens" | Promotes extracted tokens to curated tier, marks bindings as bound |
+| "Rename `color.fill.0` to `color.surface.primary`" | Updates token name with DTCG validation |
+| "Export CSS" | Generates `:root { --color-surface-primary: #fff; }` |
+| "Export to Figma" | Creates Figma variable payloads, writes them via MCP |
+| "Check for drift" | Compares DB tokens against live Figma variables |
+| "What's the status?" | Queries `v_curation_progress` — shows bound%, coverage, readiness |
+| "Show me the color tokens" | Queries `v_resolved_tokens WHERE type = 'color'` |
+| "Add a dark mode" | Creates new mode, seeds values, inverts colors via OKLCH |
+
+## Quick Start
+
+### 1. Setup
+
+```bash
+git clone https://github.com/mpacione/declarative.git
+cd declarative
+
+# Creates venv, installs deps (coloraide, pytest, etc.)
+bash build/init.sh
+
+# Activate the venv
+source build/.venv/bin/activate
+
+# Verify
+pytest tests/ -v --tb=short
+```
+
+### 2. Open in Claude Code
+
+```bash
+cd declarative
+claude
+```
+
+Claude Code will discover the `declarative-design/SKILL.md` skill and the `dd/` library. Now you can talk to it.
+
+### 3. The Workflow
+
+There are 6 steps. You do them in order. Claude handles the Python and MCP calls.
+
+```
+Step 1          Step 2          Step 3          Step 4          Step 5          Step 6
+EXTRACT         CLUSTER         CURATE          VALIDATE        EXPORT          DRIFT
+───────         ───────         ──────          ────────        ──────          ─────
+"Extract my     "Cluster the    "Accept all"    "Validate"      "Export CSS"    "Check for
+ Figma file"     tokens"        "Rename X"      (auto-runs      "Export to       drift"
+                                "Merge A+B"      before          Figma"
+Requires         DB-only         DB-only         export)         Figma needs     Figma needs
+Figma MCP                                                        MCP             MCP
+```
+
+**Steps 2-4 work offline** — no Figma connection needed. Only extraction (step 1) and Figma export/drift (steps 5-6) require Figma MCP tools.
+
+### Step-by-step example
+
+```
+You:     "I have a Figma file at https://figma.com/design/abc123/MyApp.
+          Extract the design system."
+
+Claude:  [Creates DB] → [Calls use_figma to list screens] → [Walks each
+         screen's node tree] → [Normalizes 40+ properties per node] →
+         [Creates bindings for fills, strokes, typography, spacing, etc.]
+         → "Extracted 230 screens, 25,547 nodes, 48,291 bindings."
+
+You:     "Cluster the tokens."
+
+Claude:  [Groups similar colors by OKLCH delta-E] → [Detects type scale] →
+         [Finds spacing patterns (4px base)] → [Clusters radius + effects]
+         → "Proposed 156 tokens: 42 colors, 18 type, 12 spacing, ..."
+
+You:     "Accept all tokens, then rename color.fill.0 to color.surface.primary."
+
+Claude:  [Promotes all to curated] → [Renames with DTCG validation]
+         → "156 tokens accepted, 1 renamed."
+
+You:     "Export CSS and Tailwind."
+
+Claude:  [Validates] → [Generates CSS custom properties] →
+         [Generates Tailwind theme config]
+         → "Exported 156 tokens to CSS (tokens.css) and Tailwind (tailwind.theme.js)."
+
+You:     "Push the tokens to Figma as variables."
+
+Claude:  [Generates payloads, max 100 tokens each] →
+         [Calls figma_setup_design_tokens] → [Writes back variable IDs]
+         → "Created 156 Figma variables across 5 collections."
+
+You:     "Check for drift."
+
+Claude:  [Calls figma_get_variables] → [Compares against DB]
+         → "All 156 tokens synced. No drift detected."
+```
+
+## Three Ways to Interact
+
+### 1. Through Claude Code (primary)
+
+Open the project in Claude Code. The skill file teaches Claude the full workflow. Just describe what you want in natural language.
+
+### 2. Python REPL (for scripting)
+
+```bash
+source build/.venv/bin/activate
+python3
+```
+
+```python
+from dd.db import init_db, get_connection
+from dd.config import db_path
+
+# Create a database
+path = db_path("my-app")  # → my-app.declarative.db
+conn = get_connection(str(path))
+init_db(conn, str(path))
+
+# After extraction + clustering (done by Claude or scripts):
+from dd.curate import accept_all, rename_token
+from dd.validate import run_validation, is_export_ready
+from dd.export_css import export_css
+from dd.export_tailwind import export_tailwind
+from dd.export_dtcg import export_dtcg
+from dd.status import format_status_report
+
+accept_all(conn, file_id=1)
+rename_token(conn, token_id=42, new_name="color.surface.primary")
+
+run_validation(conn)
+if is_export_ready(conn):
+    print(export_css(conn))
+    print(export_tailwind(conn))
+    print(export_dtcg(conn))
+
+print(format_status_report(conn))
+```
+
+### 3. Direct SQL queries (for analysis)
+
+```bash
+sqlite3 my-app.declarative.db
+```
+
+```sql
+-- What's the curation status?
+SELECT * FROM v_curation_progress;
+
+-- All curated color tokens with their values
+SELECT * FROM v_resolved_tokens WHERE type = 'color' ORDER BY name;
+
+-- Component catalog
+SELECT * FROM v_component_catalog;
+
+-- Screen composition tree
+SELECT path, name, node_type, is_semantic
+FROM nodes WHERE screen_id = 1 ORDER BY path;
+
+-- Export readiness
+SELECT * FROM v_export_readiness;
+
+-- Drift report
+SELECT * FROM v_drift_report;
+```
+
+The database has **50+ views** pre-built for common queries. See `schema.sql` for the full list.
+
+## What Requires Figma vs What's Offline
+
+| Operation | Needs Figma? | What it uses |
+|-----------|:---:|---|
+| Extract screens + nodes | Yes | `use_figma` MCP |
+| Extract components | Yes | `use_figma` MCP |
+| Cluster tokens | No | DB only |
+| Curate (accept/rename/merge/split) | No | DB only |
+| Validate | No | DB only |
+| Check status | No | DB only |
+| Export CSS / Tailwind / DTCG | No | DB only |
+| Export to Figma variables | Yes | `figma_setup_design_tokens` MCP |
+| Rebind nodes to variables | Yes | `figma_execute` MCP |
+| Detect drift | Yes | `figma_get_variables` MCP |
+| Add dark mode | No | DB only (OKLCH inversion) |
+| Query tokens, components, screens | No | DB only |
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        Declarative Design                          │
+│                        Declarative Design                           │
 │                                                                     │
 │   Figma File                                                        │
 │       │                                                             │
 │       ▼                                                             │
 │   ┌────────┐    ┌──────────┐    ┌─────────┐    ┌───────────────┐   │
 │   │Extract │───▶│ Cluster  │───▶│ Curate  │───▶│   Validate    │   │
-│   │UC-1    │    │ UC-2a    │    │ UC-2b   │    │   Gate        │   │
+│   │        │    │          │    │         │    │   Gate        │   │
 │   └────────┘    └──────────┘    └─────────┘    └───────┬───────┘   │
 │       │              │               │                  │           │
 │       ▼              ▼               ▼                  ▼           │
@@ -26,7 +235,6 @@ A Python pipeline that extracts design system knowledge from Figma into a local 
 │                  ▼                    ▼                  ▼           │
 │          ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
 │          │ Figma Export  │   │ Code Export   │   │ Drift Detect │   │
-│          │ UC-3          │   │ UC-4          │   │ UC-6         │   │
 │          │ Variables +   │   │ CSS, Tailwind │   │ DB vs Figma  │   │
 │          │ Rebinding     │   │ DTCG tokens   │   │ sync check   │   │
 │          └──────────────┘   └──────────────┘   └──────────────┘   │
@@ -102,7 +310,7 @@ device class   per node        hex, px         axes, slots      spacing
                                                     (overridden)
 ```
 
-## Database Schema (simplified)
+## Database Schema
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────────────┐
@@ -133,256 +341,85 @@ device class   per node        hex, px         axes, slots      spacing
 └──────────────┘
 ```
 
-## Prerequisites
-
-- **Python 3.11+**
-- **Git**
-- **Claude CLI** (for wave-based build execution)
-- **coloraide** (installed automatically, used for OKLCH color operations)
-
-## Setup
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/mpacione/declarative.git
-cd declarative
-
-# 2. Run the init script (creates venv, installs dependencies, verifies specs)
-bash build/init.sh
-
-# 3. Activate the virtual environment
-source build/.venv/bin/activate
-
-# 4. Verify everything works
-pytest tests/ -v --tb=short
-```
-
-The init script handles:
-- Creating a Python virtual environment at `build/.venv`
-- Installing all dependencies (`coloraide`, `pytest`, `pytest-xdist`, `pytest-timeout`, `pytest-cov`)
-- Creating `dd/` and `tests/` directories with `__init__.py` files
-- Verifying all spec files are present
-
-## Usage
-
-### Initialize a Database
-
-```python
-from dd.db import init_db, get_connection
-from dd.config import db_path
-
-# Create a new database for your Figma file
-path = db_path("my-design-system")  # -> my-design-system.declarative.db
-conn = get_connection(str(path))
-init_db(conn, str(path))
-```
-
-### Run Extraction (requires Figma MCP)
-
-```python
-from dd.extract import run_extraction_pipeline
-
-# With a Figma MCP callback that calls use_figma
-summary = run_extraction_pipeline(
-    conn=conn,
-    file_key="your_figma_file_key",
-    file_name="My Design System",
-    screens_data=[...],          # From figma_get_file_data
-    extract_fn=my_mcp_callback,  # Calls use_figma with generated scripts
-)
-```
-
-### Run Clustering
-
-```python
-from dd.cluster import run_clustering
-
-summary = run_clustering(conn, file_id=1)
-# Creates tokens for colors, typography, spacing, radius, effects
-```
-
-### Curate Tokens
-
-```python
-from dd.curate import accept_token, rename_token, merge_tokens, reject_token
-
-# Accept a proposed token
-accept_token(conn, token_id=42)
-
-# Rename to follow DTCG conventions
-rename_token(conn, token_id=42, new_name="color.surface.primary")
-
-# Merge duplicate tokens
-merge_tokens(conn, survivor_id=42, victim_id=43)
-
-# Bulk accept everything
-from dd.curate import accept_all
-accept_all(conn, file_id=1)
-```
-
-### Validate Before Export
-
-```python
-from dd.validate import run_validation, is_export_ready
-
-passed = run_validation(conn)
-if is_export_ready(conn):
-    print("Ready to export!")
-```
-
-### Export to Code
-
-```python
-from dd.export_css import export_css
-from dd.export_tailwind import export_tailwind
-from dd.export_dtcg import export_dtcg
-
-# CSS custom properties
-css_output = export_css(conn)      # :root { --color-surface-primary: #fff; }
-
-# Tailwind theme config
-tw_output = export_tailwind(conn)  # module.exports = { theme: { extend: { ... } } }
-
-# W3C DTCG tokens.json
-dtcg_output = export_dtcg(conn)    # { "color": { "surface": { "$type": "color", ... } } }
-```
-
-### Export to Figma (requires MCP)
-
-```python
-from dd.export_figma_vars import generate_variable_payloads_checked
-
-# Generate payloads for figma_setup_design_tokens
-payloads = generate_variable_payloads_checked(conn, file_id=1)
-# Each payload has: collectionName, modes, tokens (max 100 per batch)
-```
-
-### Detect Drift
-
-```python
-from dd.drift import detect_drift, detect_drift_readonly
-
-# Read-only check (doesn't modify DB)
-comparison = detect_drift_readonly(conn, file_id=1, figma_response=response)
-
-# Full check with DB updates
-result = detect_drift(conn, file_id=1, figma_response=response)
-print(result["report"])
-```
-
-### Check Status
-
-```python
-from dd.status import format_status_report
-
-report = format_status_report(conn)
-print(report)
-# Curation Progress: 85% bound, 10% proposed, 5% unbound
-# Export Readiness: PASS (7/7 checks)
-```
-
 ## Running Tests
 
 ```bash
-# All tests
+source build/.venv/bin/activate
+
+# All 505 tests
 pytest tests/ -v
 
-# By test level
-pytest tests/ -m unit           # Fast unit tests (~400)
-pytest tests/ -m integration    # Cross-module boundary tests (~60)
-pytest tests/ -m e2e            # Full pipeline end-to-end tests (~30)
+# By level
+pytest tests/ -m unit           # ~414 fast unit tests
+pytest tests/ -m integration    # ~63 cross-module tests
+pytest tests/ -m e2e            # ~28 full pipeline tests
 
 # With coverage
 pytest tests/ -v --cov=dd --cov-report=term
-
-# Specific module
-pytest tests/test_clustering.py -v
-pytest tests/test_export_code.py -v
 ```
 
 ## Project Structure
 
 ```
 declarative/
-├── dd/                              # Production code
-│   ├── __init__.py                  # Package (v0.1.0)
-│   ├── config.py                    # Constants and paths
-│   ├── db.py                        # SQLite connection + init
-│   ├── types.py                     # Enums and constants
-│   ├── color.py                     # RGBA/hex/OKLCH utilities
+├── dd/                              # Python library (the pipeline)
+│   ├── config.py                    # Constants, paths, limits
+│   ├── db.py                        # SQLite connection + schema init
+│   ├── types.py                     # Enums (DeviceClass, Tier, SyncStatus, ...)
+│   ├── color.py                     # RGBA/hex/OKLCH color math
 │   ├── normalize.py                 # Figma props → binding rows
 │   ├── paths.py                     # Materialized path computation
 │   │
-│   ├── extract.py                   # Extraction orchestrator
+│   ├── extract.py                   # Extraction orchestrator (resume support)
 │   ├── extract_inventory.py         # File + screen population
-│   ├── extract_screens.py           # Node tree extraction
+│   ├── extract_screens.py           # Node tree walk + JS script generation
 │   ├── extract_bindings.py          # Property → binding creation
-│   ├── extract_components.py        # Component/variant extraction
+│   ├── extract_components.py        # Component/variant/slot/a11y extraction
 │   │
 │   ├── cluster.py                   # Clustering orchestrator
-│   ├── cluster_colors.py            # Perceptual color grouping
+│   ├── cluster_colors.py            # OKLCH perceptual color grouping
 │   ├── cluster_typography.py        # Type scale detection
-│   ├── cluster_spacing.py           # Spacing pattern detection
-│   ├── cluster_misc.py              # Radius + effect clustering
+│   ├── cluster_spacing.py           # Spacing pattern detection (4px/8px base)
+│   ├── cluster_misc.py              # Radius + shadow/blur clustering
 │   │
-│   ├── curate.py                    # Token curation operations
-│   ├── validate.py                  # Pre-export validation gate
-│   ├── status.py                    # Progress reporting
-│   ├── modes.py                     # Multi-mode management
-│   ├── drift.py                     # Figma ↔ DB sync detection
+│   ├── curate.py                    # accept, rename, merge, split, reject, alias
+│   ├── validate.py                  # Pre-export gate (7 checks)
+│   ├── status.py                    # Progress + readiness reporting
+│   ├── modes.py                     # Dark mode, compact mode, themes
+│   ├── drift.py                     # DB ↔ Figma sync detection
 │   │
-│   ├── export_figma_vars.py         # Figma variable payloads
-│   ├── export_rebind.py             # Node rebinding scripts
+│   ├── export_figma_vars.py         # Figma variable payloads (batched)
+│   ├── export_rebind.py             # JS scripts to bind nodes → variables
 │   ├── export_css.py                # CSS custom properties
 │   ├── export_tailwind.py           # Tailwind theme config
 │   └── export_dtcg.py              # W3C DTCG tokens.json
 │
-├── tests/                           # 505 tests (unit + integration + e2e)
-├── schema.sql                       # SQLite schema (50+ views)
-├── declarative-design/SKILL.md      # Companion AI skill
-├── build/                           # Wave-based build system
-│   ├── init.sh                      # One-time setup
-│   ├── run-wave.sh                  # Task execution runner
-│   ├── generate-packets.py          # Task packet generator
-│   └── packets/                     # Pre-generated task packets (wave-0 to wave-7)
+├── tests/                           # 505 tests
+├── schema.sql                       # SQLite schema + 50 views
+├── declarative-design/SKILL.md      # Companion Claude Code skill
 │
-├── Architecture.md                  # System design
-├── Technical Design Spec.md         # Detailed specifications
-├── User Requirements Spec.md        # Use cases (UC-1 through UC-6)
-├── Probe Results.md                 # Figma data shape validation
-├── Tooling Comparison.md            # Why SQLite + Console MCP
-├── pyproject.toml                   # Project metadata
-└── requirements.txt                 # Python dependencies
+├── Architecture.md                  # Why these choices
+├── Technical Design Spec.md         # How it all works (41KB)
+├── User Requirements Spec.md        # Use cases UC-1 through UC-6
+├── pyproject.toml                   # Python 3.11+, deps
+└── build/                           # Wave-based build system (how this was built)
 ```
 
 ## Key Design Decisions
 
-**SQLite as the portable source of truth** — A single `.declarative.db` file with zero infrastructure. Agents can query tokens, components, and screens without Figma running. The 50+ views provide pre-built analytics for census, coverage, readiness, and drift.
+**No CLI — the agent is the interface.** A CLI would add indirection with no benefit for a system designed for AI agents. You talk to Claude, Claude calls Python functions.
 
-**Wide denormalized node rows** — The `nodes` table has 40+ columns to avoid N+1 JOINs when querying full screen trees. Materialized paths (`0.3.5.1`) encode tree position for efficient descendant queries.
+**SQLite as portable source of truth.** A single `.declarative.db` file. Zero infrastructure. Works offline. 50+ pre-built views for common queries. Agents can query tokens, components, and screens without Figma.
 
-**DTCG-compliant token naming** — All tokens follow W3C Design Token Community Group conventions (`color.surface.primary`, `space.4`). Dot-path names convert to CSS vars (`--color-surface-primary`), Figma paths (`color/surface/primary`), and Tailwind keys automatically.
+**Wide denormalized node rows.** The `nodes` table has 40+ columns to avoid N+1 JOINs. Materialized paths (`0.3.5.1`) encode tree position for efficient descendant queries via `LIKE '0.3.5.%'`.
 
-**Atomic token storage, composite assembly at export** — Typography and shadow tokens are stored as individual atoms (fontSize, fontFamily, etc.). Composite DTCG types are assembled at export time, giving maximum flexibility for code generation.
+**DTCG-compliant naming.** Tokens follow W3C conventions (`color.surface.primary`). Names auto-convert to CSS vars (`--color-surface-primary`), Figma paths (`color/surface/primary`), and Tailwind keys.
 
-**Offline-first** — Everything except extraction and Figma export works without a Figma connection. Curation, validation, code export, and all queries run against the local DB.
+**Atomic storage, composite assembly at export.** Typography and shadow tokens are stored as atoms (fontSize, fontFamily, etc.). Composites are assembled at export time for maximum flexibility.
 
 ## Build System
 
-The project was built using an autonomous wave-based pipeline. Each wave feeds task packets to Claude CLI, auto-committing after each successful task.
-
-```bash
-# Validate all task packets
-source build/.venv/bin/activate
-python3 build/generate-packets.py --validate
-
-# Run a specific wave
-./build/run-wave.sh 0              # Run all tasks in wave 0
-./build/run-wave.sh 3 TASK-033     # Resume wave 3 from a specific task
-
-# Dry run (shows what would execute)
-DRY_RUN=1 ./build/run-wave.sh 0
-```
+This project was built autonomously using a wave-based pipeline. Each wave feeds task packets to Claude CLI, auto-committing after each successful task.
 
 | Wave | Tasks | What it builds |
 |------|-------|----------------|
@@ -395,4 +432,4 @@ DRY_RUN=1 ./build/run-wave.sh 0
 | 6 | 6 | Code export (CSS, Tailwind, DTCG) |
 | 7 | 5 | Companion skill + drift detection |
 
-**Total: 52 tasks, 505 tests, 89% code coverage**
+**52 tasks, 505 tests, 89% code coverage.**
