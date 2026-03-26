@@ -21,6 +21,7 @@ from dd.export_tailwind import (
     export_tailwind,
 )
 from tests.fixtures import seed_post_curation
+import json
 
 
 class TestTokenNameToCssVar:
@@ -785,3 +786,330 @@ class TestExportTailwind:
 
         assert result["config_dict"]["colors"]["surface-primary"] == "#09090B"
         assert "'surface-primary': '#09090B'" in result["config"]
+
+
+class TestDtcgBuildAliasReference:
+    """Tests for build_alias_reference function."""
+
+    def test_wraps_name_in_braces(self):
+        """Wrap token name in curly braces for DTCG reference."""
+        from dd.export_dtcg import build_alias_reference
+
+        result = build_alias_reference("color.surface.primary")
+        assert result == "{color.surface.primary}"
+
+        result = build_alias_reference("typography.body.md")
+        assert result == "{typography.body.md}"
+
+
+class TestDtcgFormatValue:
+    """Tests for format_dtcg_value function."""
+
+    def test_color_passthrough(self):
+        """Color hex values pass through unchanged."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("#09090B", "color")
+        assert result == "#09090B"
+
+    def test_dimension_returns_object(self):
+        """Dimension values return object with value and unit."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("16", "dimension")
+        assert result == {"value": 16, "unit": "px"}
+
+        result = format_dtcg_value("24", "dimension")
+        assert result == {"value": 24, "unit": "px"}
+
+    def test_dimension_auto_returns_string(self):
+        """AUTO dimension returns lowercase string."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("AUTO", "dimension")
+        assert result == "auto"
+
+    def test_font_family_passthrough(self):
+        """Font family returns string value."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("Inter", "fontFamily")
+        assert result == "Inter"
+
+    def test_font_weight_returns_integer(self):
+        """Font weight returns integer when possible."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("600", "fontWeight")
+        assert result == 600
+
+        result = format_dtcg_value("bold", "fontWeight")
+        assert result == "bold"
+
+    def test_number_returns_numeric(self):
+        """Number returns float or int."""
+        from dd.export_dtcg import format_dtcg_value
+
+        result = format_dtcg_value("1.5", "number")
+        assert result == 1.5
+
+        result = format_dtcg_value("24", "number")
+        assert result == 24
+
+
+class TestDtcgAssembleComposites:
+    """Tests for composite assembly functions."""
+
+    def test_assemble_typography_basic(self):
+        """Assemble basic typography composite."""
+        from dd.export_dtcg import assemble_composite_typography
+
+        atomic = {
+            "fontFamily": {"resolved_value": "Inter"},
+            "fontSize": {"resolved_value": "16"},
+            "fontWeight": {"resolved_value": "600"},
+            "lineHeight": {"resolved_value": "24"},
+            "letterSpacing": {"resolved_value": "0"},
+        }
+
+        result = assemble_composite_typography(atomic)
+        assert result["$type"] == "typography"
+        assert result["$value"]["fontFamily"] == "Inter"
+        assert result["$value"]["fontSize"] == {"value": 16, "unit": "px"}
+        assert result["$value"]["fontWeight"] == 600
+        assert result["$value"]["lineHeight"] == {"value": 24, "unit": "px"}
+        assert result["$value"]["letterSpacing"] == {"value": 0, "unit": "px"}
+
+    def test_assemble_typography_minimum(self):
+        """Typography requires fontFamily and fontSize minimum."""
+        from dd.export_dtcg import assemble_composite_typography
+
+        # Missing fontSize
+        atomic = {"fontFamily": {"resolved_value": "Inter"}}
+        result = assemble_composite_typography(atomic)
+        assert result is None
+
+        # Missing fontFamily
+        atomic = {"fontSize": {"resolved_value": "16"}}
+        result = assemble_composite_typography(atomic)
+        assert result is None
+
+        # Both present
+        atomic = {
+            "fontFamily": {"resolved_value": "Inter"},
+            "fontSize": {"resolved_value": "16"}
+        }
+        result = assemble_composite_typography(atomic)
+        assert result["$type"] == "typography"
+
+    def test_assemble_shadow_basic(self):
+        """Assemble basic shadow composite."""
+        from dd.export_dtcg import assemble_composite_shadow
+
+        atomic = {
+            "color": {"resolved_value": "#0000001A"},
+            "radius": {"resolved_value": "6"},  # Note: radius maps to blur
+            "offsetX": {"resolved_value": "0"},
+            "offsetY": {"resolved_value": "4"},
+            "spread": {"resolved_value": "-1"},
+        }
+
+        result = assemble_composite_shadow(atomic)
+        assert result["$type"] == "shadow"
+        assert result["$value"]["color"] == "#0000001A"
+        assert result["$value"]["blur"] == {"value": 6, "unit": "px"}  # radius -> blur
+        assert result["$value"]["offsetX"] == {"value": 0, "unit": "px"}
+        assert result["$value"]["offsetY"] == {"value": 4, "unit": "px"}
+        assert result["$value"]["spread"] == {"value": -1, "unit": "px"}
+
+
+class TestDtcgBuildTokenTree:
+    """Tests for build_token_tree function."""
+
+    def test_nests_tokens_by_dot_path(self):
+        """Create nested structure from dot paths."""
+        from dd.export_dtcg import build_token_tree
+
+        tokens = [
+            {
+                "name": "color.surface.primary",
+                "type": "color",
+                "tier": "curated",
+                "resolved_value": "#09090B",
+                "mode_name": "Default",
+                "alias_target_name": None
+            },
+            {
+                "name": "color.surface.secondary",
+                "type": "color",
+                "tier": "curated",
+                "resolved_value": "#18181B",
+                "mode_name": "Default",
+                "alias_target_name": None
+            }
+        ]
+
+        result = build_token_tree(tokens, "Default")
+
+        assert result["color"]["surface"]["primary"]["$type"] == "color"
+        assert result["color"]["surface"]["primary"]["$value"] == "#09090B"
+        assert result["color"]["surface"]["secondary"]["$value"] == "#18181B"
+
+    def test_handles_aliased_tokens(self):
+        """Aliased tokens use reference syntax."""
+        from dd.export_dtcg import build_token_tree
+
+        tokens = [
+            {
+                "name": "color.primary",
+                "type": "color",
+                "tier": "curated",
+                "resolved_value": "#FF0000",
+                "mode_name": "Default",
+                "alias_target_name": None
+            },
+            {
+                "name": "color.button.bg",
+                "type": "color",
+                "tier": "aliased",
+                "resolved_value": "#FF0000",
+                "mode_name": "Default",
+                "alias_target_name": "color.primary"
+            }
+        ]
+
+        result = build_token_tree(tokens, "Default")
+
+        assert result["color"]["primary"]["$value"] == "#FF0000"
+        assert result["color"]["button"]["bg"]["$value"] == "{color.primary}"
+
+
+class TestDtcgWithModes:
+    """Tests for multi-mode DTCG generation."""
+
+    def test_single_mode_no_extensions(self):
+        """Single mode doesn't create extensions block."""
+        from dd.export_dtcg import build_dtcg_with_modes
+
+        conn = self.create_test_db()
+        result = build_dtcg_with_modes(conn, 1)
+
+        # Should have schema
+        assert result["$schema"] == "https://design-tokens.org/schema.json"
+
+        # Check a token doesn't have $extensions
+        if "color" in result and "surface" in result["color"]:
+            token = result["color"]["surface"]["primary"]
+            assert "$extensions" not in token
+
+    def test_multi_mode_adds_extensions(self, temp_db):
+        """Multiple modes add extensions block."""
+        seed_post_curation(temp_db)
+
+        # Add Dark mode
+        temp_db.execute(
+            "INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, ?, ?)",
+            (1, "Dark", 0)
+        )
+        temp_db.execute(
+            "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, ?, ?)",
+            (1, 3, '{"r": 0.98, "g": 0.98, "b": 0.98, "a": 1}', "#FAFAFA")
+        )
+        temp_db.commit()
+
+        from dd.export_dtcg import build_dtcg_with_modes
+
+        result = build_dtcg_with_modes(temp_db, 1)
+
+        # Check that token has extensions
+        token = result["color"]["surface"]["primary"]
+        assert "$extensions" in token
+        assert "org.design-tokens.modes" in token["$extensions"]
+        assert token["$extensions"]["org.design-tokens.modes"]["Dark"] == "#FAFAFA"
+
+    def create_test_db(self):
+        """Create minimal test database."""
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+
+        # Create minimal schema
+        conn.execute("CREATE TABLE files (id, file_key, name)")
+        conn.execute("CREATE TABLE token_collections (id, file_id, name)")
+        conn.execute("CREATE TABLE token_modes (id, collection_id, name, is_default)")
+        conn.execute("CREATE TABLE tokens (id, collection_id, name, type, tier, alias_of)")
+        conn.execute("CREATE TABLE token_values (id, token_id, mode_id, raw_value, resolved_value)")
+
+        # Insert test data
+        conn.execute("INSERT INTO files VALUES (1, 'test', 'Test')")
+        conn.execute("INSERT INTO token_collections VALUES (1, 1, 'Colors')")
+        conn.execute("INSERT INTO token_modes VALUES (1, 1, 'Default', 1)")
+        conn.execute("INSERT INTO tokens VALUES (1, 1, 'color.surface.primary', 'color', 'curated', NULL)")
+        conn.execute("INSERT INTO token_values VALUES (1, 1, 1, '{}', '#09090B')")
+        conn.commit()
+
+        # Create view
+        conn.execute("""
+            CREATE VIEW v_resolved_tokens AS
+            SELECT
+                t.id, t.name, t.type, t.tier, t.collection_id,
+                CASE WHEN t.alias_of IS NOT NULL THEN 'alias' ELSE NULL END AS alias_target_name,
+                tv.mode_id, tm.name AS mode_name,
+                tv.resolved_value, tv.raw_value
+            FROM tokens t
+            LEFT JOIN token_values tv ON tv.token_id = t.id
+            LEFT JOIN token_modes tm ON tm.id = tv.mode_id
+        """)
+
+        return conn
+
+
+class TestDtcgExport:
+    """Tests for DTCG export functions."""
+
+    def test_generate_dtcg_json(self, temp_db):
+        """Generate valid DTCG JSON."""
+        seed_post_curation(temp_db)
+
+        from dd.export_dtcg import generate_dtcg_json
+
+        result = generate_dtcg_json(temp_db, 1)
+
+        # Should be valid JSON
+        parsed = json.loads(result)
+        assert parsed["$schema"] == "https://design-tokens.org/schema.json"
+
+        # Check tokens exist
+        assert "color" in parsed
+        assert "space" in parsed
+
+    def test_generate_dtcg_dict(self, temp_db):
+        """Generate DTCG as Python dict."""
+        seed_post_curation(temp_db)
+
+        from dd.export_dtcg import generate_dtcg_dict
+
+        result = generate_dtcg_dict(temp_db, 1)
+
+        assert isinstance(result, dict)
+        assert result["$schema"] == "https://design-tokens.org/schema.json"
+
+    def test_export_dtcg_writes_mappings(self, temp_db):
+        """Export writes code mappings."""
+        seed_post_curation(temp_db)
+
+        from dd.export_dtcg import export_dtcg
+
+        result = export_dtcg(temp_db, 1)
+
+        assert "json" in result
+        assert "dict" in result
+        assert "mappings_written" in result
+        assert "token_count" in result
+
+        # Check mappings were written
+        cursor = temp_db.execute(
+            "SELECT COUNT(*) as cnt FROM code_mappings WHERE target = 'dtcg'"
+        )
+        count = cursor.fetchone()["cnt"]
+        assert count > 0
