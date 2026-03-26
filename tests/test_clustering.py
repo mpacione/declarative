@@ -1,4 +1,4 @@
-"""Tests for color clustering module."""
+"""Tests for clustering modules."""
 
 import sqlite3
 from unittest.mock import patch
@@ -11,6 +11,13 @@ from dd.cluster_colors import (
     propose_color_name,
     ensure_collection_and_mode,
     cluster_colors,
+)
+from dd.cluster_typography import (
+    query_type_census,
+    group_type_scale,
+    propose_type_name,
+    cluster_typography,
+    ensure_typography_collection,
 )
 from dd.db import init_db
 
@@ -322,6 +329,386 @@ def test_cluster_colors_unique_names(mock_db):
 
     # Check for unique names
     cursor = mock_db.execute(
+        "SELECT name, COUNT(*) as count FROM tokens WHERE collection_id = ? GROUP BY name",
+        (collection_id,)
+    )
+
+    for row in cursor.fetchall():
+        assert row['count'] == 1, f"Duplicate token name: {row['name']}"
+
+
+# Typography clustering tests
+
+@pytest.fixture
+def mock_db_typography():
+    """Create an in-memory database with typography test data."""
+    conn = init_db(":memory:")
+
+    # Insert test data
+    conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'test_key', 'test.fig')")
+    conn.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) VALUES (1, 1, 'screen1', 'Screen 1', 375, 812)"
+    )
+
+    # Insert TEXT nodes with various typography styles
+    text_nodes = [
+        # Display sizes (>=32)
+        (1, 'Roboto', 700, 48, '{"value": 56, "unit": "PIXELS"}'),
+        (2, 'Roboto', 700, 36, '{"value": 42, "unit": "PIXELS"}'),
+        (3, 'Roboto', 700, 32, '{"value": 38, "unit": "PIXELS"}'),
+        # Heading sizes (>=24, <32)
+        (4, 'Roboto', 600, 28, '{"value": 34, "unit": "PIXELS"}'),
+        (5, 'Roboto', 600, 24, '{"value": 30, "unit": "PIXELS"}'),
+        # Body sizes (>=16, <24)
+        (6, 'Roboto', 400, 18, '{"value": 24, "unit": "PIXELS"}'),
+        (7, 'Roboto', 400, 16, '{"value": 24, "unit": "PIXELS"}'),
+        (8, 'Roboto', 400, 16, '{"value": 24, "unit": "PIXELS"}'),  # Duplicate for usage count
+        # Label sizes (>=12, <16)
+        (9, 'Roboto', 500, 14, '{"value": 18, "unit": "PIXELS"}'),
+        (10, 'Roboto', 500, 12, '{"value": 16, "unit": "PIXELS"}'),
+        # Caption sizes (<12)
+        (11, 'Roboto', 400, 10, '{"value": 14, "unit": "PIXELS"}'),
+        # Different font family with same size
+        (12, 'Inter', 400, 16, '{"value": 24, "unit": "PIXELS"}'),
+        # NULL line height (AUTO)
+        (13, 'Roboto', 400, 20, '"AUTO"'),
+    ]
+
+    for node_id, font_family, font_weight, font_size, line_height in text_nodes:
+        conn.execute(
+            """INSERT INTO nodes
+               (id, screen_id, figma_node_id, name, node_type, depth, sort_order,
+                font_family, font_weight, font_size, line_height)
+               VALUES (?, 1, ?, ?, 'TEXT', 0, ?, ?, ?, ?, ?)""",
+            (node_id, f"text{node_id}", f"Text {node_id}", node_id,
+             font_family, font_weight, font_size, line_height)
+        )
+
+    # Insert node_token_bindings for typography properties (all unbound)
+    binding_id = 1
+    for node_id in range(1, 14):
+        # Get node info
+        cursor = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,))
+        node = cursor.fetchone()
+        if node['font_size']:
+            # fontSize binding
+            conn.execute(
+                """INSERT INTO node_token_bindings
+                   (id, node_id, property, raw_value, resolved_value, binding_status)
+                   VALUES (?, ?, 'fontSize', ?, ?, 'unbound')""",
+                (binding_id, node_id, str(node['font_size']), str(node['font_size']))
+            )
+            binding_id += 1
+
+            # fontFamily binding
+            conn.execute(
+                """INSERT INTO node_token_bindings
+                   (id, node_id, property, raw_value, resolved_value, binding_status)
+                   VALUES (?, ?, 'fontFamily', ?, ?, 'unbound')""",
+                (binding_id, node_id, node['font_family'], node['font_family'])
+            )
+            binding_id += 1
+
+            # fontWeight binding
+            conn.execute(
+                """INSERT INTO node_token_bindings
+                   (id, node_id, property, raw_value, resolved_value, binding_status)
+                   VALUES (?, ?, 'fontWeight', ?, ?, 'unbound')""",
+                (binding_id, node_id, str(node['font_weight']), str(node['font_weight']))
+            )
+            binding_id += 1
+
+    conn.commit()
+    return conn
+
+
+def test_query_type_census(mock_db_typography):
+    """Test querying typography census from database."""
+    result = query_type_census(mock_db_typography, file_id=1)
+
+    assert len(result) > 0
+    assert all('font_family' in row for row in result)
+    assert all('font_weight' in row for row in result)
+    assert all('font_size' in row for row in result)
+    assert all('line_height_value' in row for row in result)
+    assert all('usage_count' in row for row in result)
+
+    # Check that 16px Roboto appears with usage_count=2
+    roboto_16 = [r for r in result if r['font_size'] == 16.0 and r['font_family'] == 'Roboto']
+    assert len(roboto_16) == 1
+    assert roboto_16[0]['usage_count'] == 2
+
+    # Check that NULL font_size entries are filtered
+    assert all(row['font_size'] is not None for row in result)
+
+
+def test_group_type_scale():
+    """Test grouping typography into semantic scale tiers."""
+    census = [
+        {'font_family': 'Roboto', 'font_weight': 700, 'font_size': 48.0, 'line_height_value': 56.0, 'usage_count': 5},
+        {'font_family': 'Roboto', 'font_weight': 700, 'font_size': 36.0, 'line_height_value': 42.0, 'usage_count': 3},
+        {'font_family': 'Roboto', 'font_weight': 700, 'font_size': 32.0, 'line_height_value': 38.0, 'usage_count': 2},
+        {'font_family': 'Roboto', 'font_weight': 600, 'font_size': 28.0, 'line_height_value': 34.0, 'usage_count': 4},
+        {'font_family': 'Roboto', 'font_weight': 600, 'font_size': 24.0, 'line_height_value': 30.0, 'usage_count': 3},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 18.0, 'line_height_value': 24.0, 'usage_count': 8},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 16.0, 'line_height_value': 24.0, 'usage_count': 10},
+        {'font_family': 'Roboto', 'font_weight': 500, 'font_size': 14.0, 'line_height_value': 18.0, 'usage_count': 6},
+        {'font_family': 'Roboto', 'font_weight': 500, 'font_size': 12.0, 'line_height_value': 16.0, 'usage_count': 4},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 10.0, 'line_height_value': 14.0, 'usage_count': 2},
+    ]
+
+    result = group_type_scale(census)
+
+    # Check categories
+    display_items = [r for r in result if r['category'] == 'display']
+    assert len(display_items) == 3  # 48, 36, 32
+
+    heading_items = [r for r in result if r['category'] == 'heading']
+    assert len(heading_items) == 2  # 28, 24
+
+    body_items = [r for r in result if r['category'] == 'body']
+    assert len(body_items) == 2  # 18, 16
+
+    label_items = [r for r in result if r['category'] == 'label']
+    assert len(label_items) == 2  # 14, 12
+
+    caption_items = [r for r in result if r['category'] == 'caption']
+    assert len(caption_items) == 1  # 10
+
+    # Check size suffixes for display (3 items -> lg, md, sm)
+    assert display_items[0]['size_suffix'] == 'lg'
+    assert display_items[0]['font_size'] == 48.0
+    assert display_items[1]['size_suffix'] == 'md'
+    assert display_items[1]['font_size'] == 36.0
+    assert display_items[2]['size_suffix'] == 'sm'
+    assert display_items[2]['font_size'] == 32.0
+
+    # Check size suffixes for heading (2 items -> lg, sm)
+    assert heading_items[0]['size_suffix'] == 'lg'
+    assert heading_items[0]['font_size'] == 28.0
+    assert heading_items[1]['size_suffix'] == 'sm'
+    assert heading_items[1]['font_size'] == 24.0
+
+    # Check single item gets 'md'
+    assert caption_items[0]['size_suffix'] == 'md'
+
+
+def test_group_type_scale_with_more_than_three():
+    """Test that categories with >3 items get xl, lg, md, sm, xs suffixes."""
+    census = [
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 20.0, 'line_height_value': 28.0, 'usage_count': 5},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 18.0, 'line_height_value': 24.0, 'usage_count': 8},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 17.0, 'line_height_value': 22.0, 'usage_count': 3},
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 16.0, 'line_height_value': 24.0, 'usage_count': 10},
+    ]
+
+    result = group_type_scale(census)
+
+    body_items = [r for r in result if r['category'] == 'body']
+    assert len(body_items) == 4
+
+    # With 4 items, should use xl, lg, md, sm
+    assert body_items[0]['size_suffix'] == 'xl'
+    assert body_items[0]['font_size'] == 20.0
+    assert body_items[1]['size_suffix'] == 'lg'
+    assert body_items[1]['font_size'] == 18.0
+    assert body_items[2]['size_suffix'] == 'md'
+    assert body_items[2]['font_size'] == 17.0
+    assert body_items[3]['size_suffix'] == 'sm'
+    assert body_items[3]['font_size'] == 16.0
+
+
+def test_group_type_scale_different_families():
+    """Test that different font families at same size are separate tiers."""
+    census = [
+        {'font_family': 'Roboto', 'font_weight': 400, 'font_size': 16.0, 'line_height_value': 24.0, 'usage_count': 10},
+        {'font_family': 'Inter', 'font_weight': 400, 'font_size': 16.0, 'line_height_value': 24.0, 'usage_count': 5},
+    ]
+
+    result = group_type_scale(census)
+
+    # Both should be body category but separate entries
+    body_items = [r for r in result if r['category'] == 'body']
+    assert len(body_items) == 2
+
+    # Both get 'lg' and 'sm' since there are 2
+    assert body_items[0]['size_suffix'] == 'lg'
+    assert body_items[0]['font_family'] == 'Roboto'  # Higher usage first
+    assert body_items[1]['size_suffix'] == 'sm'
+    assert body_items[1]['font_family'] == 'Inter'
+
+
+def test_propose_type_name():
+    """Test proposing DTCG-compliant typography names."""
+    existing = set()
+
+    # First body.md
+    name1 = propose_type_name('body', 'md', existing)
+    assert name1 == 'type.body.md'
+    existing.add(name1)
+
+    # Second body.md should get numeric suffix
+    name2 = propose_type_name('body', 'md', existing)
+    assert name2 == 'type.body.md.2'
+    existing.add(name2)
+
+    # Different category/suffix
+    name3 = propose_type_name('display', 'lg', existing)
+    assert name3 == 'type.display.lg'
+    existing.add(name3)
+
+    # Third body.md
+    name4 = propose_type_name('body', 'md', existing)
+    assert name4 == 'type.body.md.3'
+
+
+def test_ensure_typography_collection(mock_db_typography):
+    """Test creating or retrieving typography collection and mode."""
+    collection_id, mode_id = ensure_typography_collection(mock_db_typography, file_id=1)
+
+    assert collection_id is not None
+    assert mode_id is not None
+
+    # Should be idempotent
+    collection_id2, mode_id2 = ensure_typography_collection(mock_db_typography, file_id=1)
+    assert collection_id2 == collection_id
+    assert mode_id2 == mode_id
+
+    # Verify in database
+    cursor = mock_db_typography.execute(
+        "SELECT * FROM token_collections WHERE id = ?", (collection_id,)
+    )
+    collection = cursor.fetchone()
+    assert collection['name'] == 'Typography'
+    assert collection['file_id'] == 1
+
+    cursor = mock_db_typography.execute(
+        "SELECT * FROM token_modes WHERE id = ?", (mode_id,)
+    )
+    mode = cursor.fetchone()
+    assert mode['name'] == 'Default'
+    assert mode['is_default'] == 1
+
+
+def test_cluster_typography(mock_db_typography):
+    """Test the main typography clustering function."""
+    collection_id, mode_id = ensure_typography_collection(mock_db_typography, file_id=1)
+
+    result = cluster_typography(mock_db_typography, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    assert 'tokens_created' in result
+    assert 'bindings_updated' in result
+    assert 'type_scales' in result
+
+    assert result['tokens_created'] > 0
+    assert result['bindings_updated'] > 0
+    assert result['type_scales'] > 0
+
+    # Check that tokens were created
+    cursor = mock_db_typography.execute(
+        "SELECT * FROM tokens WHERE collection_id = ?", (collection_id,)
+    )
+    tokens = cursor.fetchall()
+    assert len(tokens) == result['tokens_created']
+
+    # All tokens should have tier='extracted'
+    for token in tokens:
+        assert token['tier'] == 'extracted'
+
+    # Check token types - should be atomic types not composite
+    token_types = {token['type'] for token in tokens}
+    assert 'dimension' in token_types  # fontSize and lineHeight
+    assert 'fontFamily' in token_types
+    assert 'fontWeight' in token_types
+    # Should NOT have composite 'typography' type
+    assert 'typography' not in token_types
+
+    # Check token values
+    cursor = mock_db_typography.execute(
+        """SELECT tv.*, t.name, t.type FROM token_values tv
+           JOIN tokens t ON tv.token_id = t.id
+           WHERE t.collection_id = ?""",
+        (collection_id,)
+    )
+    values = cursor.fetchall()
+    assert len(values) == result['tokens_created']
+
+    # Check bindings were updated
+    cursor = mock_db_typography.execute(
+        "SELECT * FROM node_token_bindings WHERE binding_status = 'proposed'"
+    )
+    bindings = cursor.fetchall()
+    assert len(bindings) == result['bindings_updated']
+
+    # All bindings should have token_id and confidence=1.0 (exact match)
+    for binding in bindings:
+        assert binding['token_id'] is not None
+        assert binding['confidence'] == 1.0
+
+
+def test_cluster_typography_atomic_tokens(mock_db_typography):
+    """Test that typography creates individual atomic tokens, not composites."""
+    collection_id, mode_id = ensure_typography_collection(mock_db_typography, file_id=1)
+
+    cluster_typography(mock_db_typography, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Check that we have fontSize, fontFamily, fontWeight tokens
+    cursor = mock_db_typography.execute(
+        """SELECT name, type FROM tokens
+           WHERE collection_id = ? AND name LIKE 'type.%.fontSize'""",
+        (collection_id,)
+    )
+    font_size_tokens = cursor.fetchall()
+    assert len(font_size_tokens) > 0
+    assert all(t['type'] == 'dimension' for t in font_size_tokens)
+
+    cursor = mock_db_typography.execute(
+        """SELECT name, type FROM tokens
+           WHERE collection_id = ? AND name LIKE 'type.%.fontFamily'""",
+        (collection_id,)
+    )
+    font_family_tokens = cursor.fetchall()
+    assert len(font_family_tokens) > 0
+    assert all(t['type'] == 'fontFamily' for t in font_family_tokens)
+
+    cursor = mock_db_typography.execute(
+        """SELECT name, type FROM tokens
+           WHERE collection_id = ? AND name LIKE 'type.%.fontWeight'""",
+        (collection_id,)
+    )
+    font_weight_tokens = cursor.fetchall()
+    assert len(font_weight_tokens) > 0
+    assert all(t['type'] == 'fontWeight' for t in font_weight_tokens)
+
+
+def test_cluster_typography_no_orphan_tokens(mock_db_typography):
+    """Test that no orphan tokens are created."""
+    collection_id, mode_id = ensure_typography_collection(mock_db_typography, file_id=1)
+
+    cluster_typography(mock_db_typography, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Every token should have at least one binding
+    cursor = mock_db_typography.execute(
+        """SELECT t.id, t.name, COUNT(ntb.id) as binding_count
+           FROM tokens t
+           LEFT JOIN node_token_bindings ntb ON ntb.token_id = t.id
+           WHERE t.collection_id = ?
+           GROUP BY t.id""",
+        (collection_id,)
+    )
+
+    for row in cursor.fetchall():
+        assert row['binding_count'] > 0, f"Token {row['name']} has no bindings"
+
+
+def test_cluster_typography_unique_names(mock_db_typography):
+    """Test that all token names are unique within collection."""
+    collection_id, mode_id = ensure_typography_collection(mock_db_typography, file_id=1)
+
+    cluster_typography(mock_db_typography, file_id=1, collection_id=collection_id, mode_id=mode_id)
+
+    # Check for unique names
+    cursor = mock_db_typography.execute(
         "SELECT name, COUNT(*) as count FROM tokens WHERE collection_id = ? GROUP BY name",
         (collection_id,)
     )
