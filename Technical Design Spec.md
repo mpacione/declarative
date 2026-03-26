@@ -72,8 +72,8 @@ Frames matching any heuristic are tagged `device_class = component_sheet` and ex
 
 ### Phase 2: Screen Extraction
 
-**Tool:** Official MCP `use_figma` (synchronous Plugin API).
-**Strategy:** One call per screen. Each call traverses the full node tree and returns all properties.
+**Tool:** Figma REST API (`GET /v1/files/:key/nodes`) via `dd/figma_api.py`, invoked by CLI (`python -m dd extract`).
+**Strategy:** Batch-fetch screens (10 per API call) via the `ids` parameter. Each response is converted to extraction format and processed through the existing pipeline. Retry with exponential backoff on 429 rate limits.
 
 **Extraction run coordination:**
 1. Before extracting, check `screen_extraction_status` for this run.

@@ -73,7 +73,7 @@ Official MCP (selective, metered):
 
 ### Read/Write Strategy
 
-Import (Figma to DB): Pay once per sync. Extract everything, store locally. Use official use_figma for sync traversal, Console MCP for dedicated tools.
+Import (Figma to DB): Pay once per sync. Extract everything, store locally. Uses Figma REST API directly via CLI (`python -m dd extract`) — no MCP tools needed, no agent in the loop.
 
 Work (DB only): Free. All analysis, clustering, token creation, pattern extraction, drift detection, composition planning against local SQLite.
 

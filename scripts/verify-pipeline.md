@@ -13,103 +13,38 @@ Run the Declarative Design pipeline end-to-end against a real Figma file. Follow
 ### Configuration
 
 ```
-FILE_KEY = "REPLACE_WITH_YOUR_FIGMA_FILE_KEY"
-FILE_NAME = "REPLACE_WITH_YOUR_FILE_NAME"
-DB_NAME = "REPLACE_WITH_SHORT_NAME"
+FILE_KEY = drxXOUOdYEBBQ09mrXJeYu
+FILE_NAME = Dank--Experimental
+DB_NAME = Dank-EXP-01
 ```
 
-Extract the file key from your Figma URL: `https://figma.com/design/<FILE_KEY>/...`
+Extract the file key from your Figma URL: https://www.figma.com/design/drxXOUOdYEBBQ09mrXJeYu/Dank--Experimental-?node-id=1312-136189&t=rmvFmcjVV5yxrZR0-1
 
 ### Prerequisites
 
 Before starting, verify:
-1. The Figma MCP tools are available (figma_get_file_data, use_figma, figma_get_variables, figma_setup_design_tokens)
-2. The venv is activated: `source build/.venv/bin/activate`
-3. The dd package imports: `python3 -c "from dd.db import init_db"`
+1. The venv is activated: `source build/.venv/bin/activate`
+2. The dd package imports: `python3 -c "from dd.db import init_db"`
+3. Figma access token is available: `export FIGMA_ACCESS_TOKEN="figd_your_token"`
+4. (For steps 9-11 only) Figma MCP tools are available (figma_get_variables, figma_setup_design_tokens)
 
 ---
 
-### Step 1: Initialize the database
+### Steps 1-3: Extract (single CLI command)
 
-```python
-import sys
-sys.path.insert(0, '.')
+```bash
+source build/.venv/bin/activate
+export FIGMA_ACCESS_TOKEN="your_token_here"
 
-from dd.db import init_db
-from dd.config import db_path
-
-DB_PATH = str(db_path(DB_NAME))
-conn = init_db(DB_PATH)
-
-# Verify schema loaded
-cursor = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-table_count = cursor.fetchone()[0]
-print(f"Database initialized at {DB_PATH} with {table_count} tables")
+python -m dd extract \
+  --file-key drxXOUOdYEBBQ09mrXJeYu \
+  --page 1312:136189 \
+  --db-path Dank-EXP-01.declarative.db
 ```
 
-Report: DB path and table count.
+This fetches the file structure, batch-extracts all screens via the Figma REST API, normalizes properties, and creates bindings. Progress is reported per screen.
 
----
-
-### Step 2: Get file structure from Figma
-
-Use the Figma MCP to get the file's top-level frames:
-
-```python
-# Call figma_get_file_data or get_metadata MCP tool for the file
-# Extract the list of top-level frames (pages → frames)
-```
-
-You need to build a `frames` list in this format:
-
-```python
-frames = [
-    {"id": "123:456", "name": "Home", "type": "FRAME"},
-    {"id": "123:789", "name": "Settings", "type": "FRAME"},
-    # ... one entry per top-level frame in the file
-]
-```
-
-Use `figma_get_file_data` with `depth=1` and `verbosity="summary"` to get node IDs and names.
-Filter to FRAME and COMPONENT type nodes at the top level of each page.
-
-Report: Number of frames found, their names.
-
----
-
-### Step 3: Run extraction
-
-```python
-from dd.extract import run_extraction_pipeline
-
-def extract_fn(js_script):
-    """Callback that executes a JS script in Figma via MCP and returns the result."""
-    # Call use_figma MCP tool with:
-    #   fileKey = FILE_KEY
-    #   code = js_script
-    #   description = "Extract node tree"
-    # Return the result (should be a list of node dicts)
-    result = <call use_figma here>
-    return result
-
-def component_extract_fn(js_script):
-    """Same as extract_fn but for component extraction."""
-    result = <call use_figma here>
-    return result
-
-summary = run_extraction_pipeline(
-    conn=conn,
-    file_key=FILE_KEY,
-    file_name=FILE_NAME,
-    frames=frames,
-    extract_fn=extract_fn,
-    component_extract_fn=component_extract_fn,
-)
-
-print(f"Extraction complete: {summary}")
-```
-
-Report: Total screens, nodes extracted, bindings created, components found.
+Report: Total screens, nodes extracted, bindings created.
 
 ---
 

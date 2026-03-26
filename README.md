@@ -4,13 +4,15 @@ Extract your Figma design system into a portable SQLite database, then export to
 
 ## How It Works
 
-**There is no CLI.** Claude Code is the interface. You talk to Claude, Claude runs the pipeline.
+**Extraction is a CLI command. Everything else is conversational via Claude Code.**
 
-The system is a Python library (`dd/`) with a companion Claude Code skill (`declarative-design/SKILL.md`). When you open this project in Claude Code and ask it to work with a Figma file, the skill teaches Claude how to orchestrate the full pipeline — extraction, clustering, curation, validation, and export.
+Extraction calls the Figma REST API directly — no MCP tools, no agent in the loop, fully deterministic. Clustering, curation, validation, and export are orchestrated by Claude Code using the `dd/` Python library.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                     How You Use It                        │
+│                                                           │
+│   python -m dd extract ──▶ Figma REST API ──▶ SQLite DB  │
 │                                                           │
 │   You ──▶ Claude Code ──▶ dd/ Python library              │
 │              │                    │                        │
@@ -28,7 +30,7 @@ The system is a Python library (`dd/`) with a companion Claude Code skill (`decl
 
 | You say | Claude does |
 |---------|-------------|
-| "Extract my Figma file" | Calls `use_figma` MCP to walk the node tree, stores everything in SQLite |
+| "Extract my Figma file" | Runs `python -m dd extract` (Figma REST API, stores everything in SQLite) |
 | "Cluster the tokens" | Runs color/type/spacing/radius/effect clustering, proposes token names |
 | "Accept all tokens" | Promotes extracted tokens to curated tier, marks bindings as bound |
 | "Rename `color.fill.0` to `color.surface.primary`" | Updates token name with DTCG validation |
@@ -68,29 +70,29 @@ Claude Code will discover the `declarative-design/SKILL.md` skill and the `dd/` 
 
 ### 3. The Workflow
 
-There are 6 steps. You do them in order. Claude handles the Python and MCP calls.
+There are 6 steps. You do them in order. Step 1 is a CLI command. Steps 2-6 are conversational via Claude.
 
 ```
 Step 1          Step 2          Step 3          Step 4          Step 5          Step 6
 EXTRACT         CLUSTER         CURATE          VALIDATE        EXPORT          DRIFT
 ───────         ───────         ──────          ────────        ──────          ─────
-"Extract my     "Cluster the    "Accept all"    "Validate"      "Export CSS"    "Check for
- Figma file"     tokens"        "Rename X"      (auto-runs      "Export to       drift"
+python -m dd    "Cluster the    "Accept all"    "Validate"      "Export CSS"    "Check for
+  extract        tokens"        "Rename X"      (auto-runs      "Export to       drift"
                                 "Merge A+B"      before          Figma"
-Requires         DB-only         DB-only         export)         Figma needs     Figma needs
-Figma MCP                                                        MCP             MCP
+CLI + REST       DB-only         DB-only         export)         Figma needs     Figma needs
+API (no MCP)                                                     MCP             MCP
 ```
 
-**Steps 2-4 work offline** — no Figma connection needed. Only extraction (step 1) and Figma export/drift (steps 5-6) require Figma MCP tools.
+**Steps 2-4 work offline** — no Figma connection needed. Step 1 uses the Figma REST API directly (no MCP, no Figma Desktop required). Steps 5-6 require Figma MCP tools.
 
 ### Step-by-step example
 
 ```
-You:     "I have a Figma file at https://figma.com/design/abc123/MyApp.
-          Extract the design system."
+You:     python -m dd extract --file-key abc123 --page 0:1
+         # Runs in ~5 min, no agent needed
 
-Claude:  [Creates DB] → [Calls use_figma to list screens] → [Walks each
-         screen's node tree] → [Normalizes 40+ properties per node] →
+Output:  [Fetches file structure via REST API] → [Batch-fetches screen
+         node trees] → [Normalizes 40+ properties per node] →
          [Creates bindings for fills, strokes, typography, spacing, etc.]
          → "Extracted 230 screens, 25,547 nodes, 48,291 bindings."
 
@@ -198,8 +200,8 @@ The database has **50+ views** pre-built for common queries. See `schema.sql` fo
 
 | Operation | Needs Figma? | What it uses |
 |-----------|:---:|---|
-| Extract screens + nodes | Yes | `use_figma` MCP |
-| Extract components | Yes | `use_figma` MCP |
+| Extract screens + nodes | REST API only | `python -m dd extract` (Figma REST API, no MCP needed) |
+| Extract components | REST API only | Included in extraction |
 | Cluster tokens | No | DB only |
 | Curate (accept/rename/merge/split) | No | DB only |
 | Validate | No | DB only |
@@ -370,9 +372,12 @@ declarative/
 │   ├── normalize.py                 # Figma props → binding rows
 │   ├── paths.py                     # Materialized path computation
 │   │
+│   ├── figma_api.py                 # Figma REST API client + node conversion
+│   ├── cli.py                       # CLI entrypoint (python -m dd)
+│   ├── __main__.py                  # Enables python -m dd invocation
 │   ├── extract.py                   # Extraction orchestrator (resume support)
 │   ├── extract_inventory.py         # File + screen population
-│   ├── extract_screens.py           # Node tree walk + JS script generation
+│   ├── extract_screens.py           # Node tree parsing + DB insertion
 │   ├── extract_bindings.py          # Property → binding creation
 │   ├── extract_components.py        # Component/variant/slot/a11y extraction
 │   │
@@ -394,7 +399,7 @@ declarative/
 │   ├── export_tailwind.py           # Tailwind theme config
 │   └── export_dtcg.py              # W3C DTCG tokens.json
 │
-├── tests/                           # 505 tests
+├── tests/                           # 538 tests
 ├── schema.sql                       # SQLite schema + 50 views
 ├── declarative-design/SKILL.md      # Companion Claude Code skill
 │
@@ -406,7 +411,7 @@ declarative/
 
 ## Key Design Decisions
 
-**No CLI — the agent is the interface.** A CLI would add indirection with no benefit for a system designed for AI agents. You talk to Claude, Claude calls Python functions.
+**CLI for extraction, agent for everything else.** Extraction is deterministic (walk tree, store properties) so it runs as a CLI command via the Figma REST API. Curation, export, and conjure require judgment, so they stay conversational via Claude Code.
 
 **SQLite as portable source of truth.** A single `.declarative.db` file. Zero infrastructure. Works offline. 50+ pre-built views for common queries. Agents can query tokens, components, and screens without Figma.
 
