@@ -6,7 +6,7 @@ MCP calls directly.
 """
 
 import sqlite3
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dd.config import MAX_TOKENS_PER_CALL
 from dd.validate import is_export_ready
@@ -35,6 +35,18 @@ def dtcg_to_figma_path(dtcg_name: str) -> str:
         Figma-style slash-separated path (e.g., "color/surface/primary")
     """
     return dtcg_name.replace(".", "/")
+
+
+def figma_path_to_dtcg(figma_name: str) -> str:
+    """Convert Figma slash-path to DTCG dot-path.
+
+    Args:
+        figma_name: Figma-style slash-separated path (e.g., "color/surface/primary")
+
+    Returns:
+        DTCG-style dot-separated name (e.g., "color.surface.primary")
+    """
+    return figma_name.replace("/", ".")
 
 
 def map_token_type_to_figma(token_type: str, token_name: str) -> str:
@@ -235,3 +247,197 @@ def generate_variable_payloads_checked(conn: sqlite3.Connection, file_id: int) -
         raise RuntimeError("Export blocked: validation errors exist. Run validation first.")
 
     return generate_variable_payloads(conn, file_id)
+
+
+def parse_figma_variables_response(response: Any) -> List[Dict[str, Any]]:
+    """Parse Figma variables response into a flat list.
+
+    Handles multiple response formats from figma_get_variables:
+    - Dict with "collections" key containing list
+    - Direct list of collections
+    - Empty responses
+
+    Args:
+        response: Raw response from figma_get_variables MCP call
+
+    Returns:
+        List of dicts with keys: variable_id, name (in DTCG format),
+        collection_name, collection_id, modes
+    """
+    parsed_variables = []
+
+    # Handle different response shapes
+    collections = []
+    if isinstance(response, dict):
+        collections = response.get("collections", [])
+    elif isinstance(response, list):
+        collections = response
+
+    for collection in collections:
+        collection_id = collection.get("id", "")
+        collection_name = collection.get("name", "")
+        modes = collection.get("modes", [])
+        variables = collection.get("variables", [])
+
+        for variable in variables:
+            variable_id = variable.get("id", "")
+            figma_name = variable.get("name", "")
+
+            # Convert Figma slash-path to DTCG dot-path
+            dtcg_name = figma_path_to_dtcg(figma_name)
+
+            parsed_variables.append({
+                "variable_id": variable_id,
+                "name": dtcg_name,
+                "collection_name": collection_name,
+                "collection_id": collection_id,
+                "modes": modes
+            })
+
+    return parsed_variables
+
+
+def writeback_variable_ids(conn: sqlite3.Connection, file_id: int,
+                          figma_variables: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Write back Figma variable IDs to the database.
+
+    Updates tokens with their Figma variable IDs and marks them as synced.
+    Also updates collection and mode Figma IDs for future reference.
+
+    Args:
+        conn: Database connection
+        file_id: File ID being processed
+        figma_variables: List of parsed Figma variables from parse_figma_variables_response
+
+    Returns:
+        Dict with counts: tokens_updated, tokens_not_found, collections_updated, modes_updated
+    """
+    tokens_updated = 0
+    tokens_not_found = 0
+    collections_updated = 0
+    modes_updated = 0
+
+    # Track which collections and modes we've already updated
+    updated_collections = set()
+    updated_modes = set()
+
+    for variable in figma_variables:
+        variable_id = variable["variable_id"]
+        token_name = variable["name"]  # Already in DTCG format
+        collection_name = variable["collection_name"]
+        collection_id = variable["collection_id"]
+        modes = variable["modes"]
+
+        # Find matching token in DB
+        cursor = conn.execute("""
+            SELECT t.id
+            FROM tokens t
+            JOIN token_collections tc ON t.collection_id = tc.id
+            WHERE tc.file_id = ? AND t.name = ?
+        """, (file_id, token_name))
+
+        row = cursor.fetchone()
+        if row:
+            token_id = row["id"]
+
+            # Update token with Figma variable ID and sync status
+            conn.execute("""
+                UPDATE tokens
+                SET figma_variable_id = ?,
+                    sync_status = 'synced',
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                WHERE id = ?
+            """, (variable_id, token_id))
+
+            tokens_updated += 1
+        else:
+            tokens_not_found += 1
+
+        # Update collection Figma ID if not already done
+        if collection_id and collection_name and collection_name not in updated_collections:
+            conn.execute("""
+                UPDATE token_collections
+                SET figma_id = ?
+                WHERE file_id = ? AND name = ?
+            """, (collection_id, file_id, collection_name))
+
+            updated_collections.add(collection_name)
+            collections_updated += 1
+
+        # Update mode Figma IDs if not already done
+        if modes and collection_name:
+            # Get collection ID from DB
+            cursor = conn.execute("""
+                SELECT id FROM token_collections
+                WHERE file_id = ? AND name = ?
+            """, (file_id, collection_name))
+
+            collection_row = cursor.fetchone()
+            if collection_row:
+                db_collection_id = collection_row["id"]
+
+                for mode in modes:
+                    mode_id = mode.get("id")
+                    mode_name = mode.get("name")
+
+                    if mode_id and mode_name and (mode_name, db_collection_id) not in updated_modes:
+                        conn.execute("""
+                            UPDATE token_modes
+                            SET figma_mode_id = ?
+                            WHERE collection_id = ? AND name = ?
+                        """, (mode_id, db_collection_id, mode_name))
+
+                        updated_modes.add((mode_name, db_collection_id))
+                        modes_updated += 1
+
+    conn.commit()
+
+    return {
+        "tokens_updated": tokens_updated,
+        "tokens_not_found": tokens_not_found,
+        "collections_updated": collections_updated,
+        "modes_updated": modes_updated
+    }
+
+
+def writeback_variable_ids_from_response(conn: sqlite3.Connection, file_id: int,
+                                        raw_response: Any) -> Dict[str, int]:
+    """Convenience wrapper for writeback_variable_ids.
+
+    Parses the raw response and writes back the variable IDs.
+
+    Args:
+        conn: Database connection
+        file_id: File ID being processed
+        raw_response: Raw response from figma_get_variables MCP call
+
+    Returns:
+        Dict with counts: tokens_updated, tokens_not_found, collections_updated, modes_updated
+    """
+    parsed = parse_figma_variables_response(raw_response)
+    return writeback_variable_ids(conn, file_id, parsed)
+
+
+def get_sync_status_summary(conn: sqlite3.Connection, file_id: int) -> Dict[str, int]:
+    """Get summary of sync status for tokens in a file.
+
+    Args:
+        conn: Database connection
+        file_id: File ID to summarize
+
+    Returns:
+        Dict mapping sync_status to count
+    """
+    cursor = conn.execute("""
+        SELECT t.sync_status, COUNT(*) AS count
+        FROM tokens t
+        JOIN token_collections tc ON t.collection_id = tc.id
+        WHERE tc.file_id = ?
+        GROUP BY t.sync_status
+    """, (file_id,))
+
+    summary = {}
+    for row in cursor:
+        summary[row["sync_status"]] = row["count"]
+
+    return summary

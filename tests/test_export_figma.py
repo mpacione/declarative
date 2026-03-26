@@ -10,11 +10,16 @@ import pytest
 from dd.config import MAX_TOKENS_PER_CALL
 from dd.export_figma_vars import (
     dtcg_to_figma_path,
+    figma_path_to_dtcg,
     generate_variable_payloads,
     generate_variable_payloads_checked,
     get_mode_names_for_collection,
+    get_sync_status_summary,
     map_token_type_to_figma,
+    parse_figma_variables_response,
     query_exportable_tokens,
+    writeback_variable_ids,
+    writeback_variable_ids_from_response,
 )
 
 
@@ -64,6 +69,8 @@ def temp_db():
             figma_variable_id TEXT,
             sync_status TEXT NOT NULL DEFAULT 'pending'
                 CHECK(sync_status IN ('pending', 'figma_only', 'code_only', 'synced', 'drifted')),
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
             UNIQUE(collection_id, name)
         );
 
@@ -185,8 +192,8 @@ def populated_db(temp_db):
 
     # Token with existing figma_variable_id (should not be exported)
     conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
-        VALUES (?, 'color.already.synced', 'color', 'curated', 'VariableID:123:456')
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id, sync_status)
+        VALUES (?, 'color.already.synced', 'color', 'curated', 'VariableID:123:456', 'synced')
     """, (colors_collection_id,))
 
     conn.commit()
@@ -212,6 +219,144 @@ class TestNameConversion:
     def test_dtcg_to_figma_path_empty(self):
         """Test empty string."""
         assert dtcg_to_figma_path("") == ""
+
+
+class TestPathConversionRoundtrip:
+    """Test bidirectional path conversion."""
+
+    def test_figma_path_to_dtcg_simple(self):
+        """Test simple slash to dot conversion."""
+        assert figma_path_to_dtcg("color/surface/primary") == "color.surface.primary"
+
+    def test_figma_path_to_dtcg_numeric(self):
+        """Test conversion with numeric segments."""
+        assert figma_path_to_dtcg("space/4") == "space.4"
+
+    def test_figma_path_to_dtcg_single(self):
+        """Test single segment (no slashes)."""
+        assert figma_path_to_dtcg("primary") == "primary"
+
+    def test_figma_path_to_dtcg_empty(self):
+        """Test empty string."""
+        assert figma_path_to_dtcg("") == ""
+
+    def test_roundtrip_conversion(self):
+        """Test that conversions are inverse operations."""
+        original = "color.surface.primary.button"
+        assert figma_path_to_dtcg(dtcg_to_figma_path(original)) == original
+
+        figma_original = "color/surface/primary/button"
+        assert dtcg_to_figma_path(figma_path_to_dtcg(figma_original)) == figma_original
+
+
+class TestParseFigmaResponseProper:
+    """Test parse_figma_variables_response function."""
+
+    def test_parse_standard_response(self):
+        """Test parsing standard Figma variables response."""
+        response = {
+            "collections": [
+                {
+                    "id": "VariableCollectionID:123",
+                    "name": "Colors",
+                    "modes": [
+                        {"id": "modeId:1", "name": "Light"},
+                        {"id": "modeId:2", "name": "Dark"}
+                    ],
+                    "variables": [
+                        {
+                            "id": "VariableID:123:456",
+                            "name": "color/surface/primary",
+                            "type": "COLOR"
+                        },
+                        {
+                            "id": "VariableID:123:457",
+                            "name": "color/surface/secondary",
+                            "type": "COLOR"
+                        }
+                    ]
+                },
+                {
+                    "id": "VariableCollectionID:124",
+                    "name": "Spacing",
+                    "modes": [
+                        {"id": "modeId:3", "name": "Default"}
+                    ],
+                    "variables": [
+                        {
+                            "id": "VariableID:124:100",
+                            "name": "space/4",
+                            "type": "FLOAT"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 3
+
+        # Check first variable
+        var1 = next(v for v in parsed if v["variable_id"] == "VariableID:123:456")
+        assert var1["name"] == "color.surface.primary"  # Converted to DTCG
+        assert var1["collection_name"] == "Colors"
+        assert var1["collection_id"] == "VariableCollectionID:123"
+        assert len(var1["modes"]) == 2
+
+        # Check spacing variable
+        space = next(v for v in parsed if v["variable_id"] == "VariableID:124:100")
+        assert space["name"] == "space.4"  # Converted to DTCG
+        assert space["collection_name"] == "Spacing"
+
+    def test_parse_list_response(self):
+        """Test parsing when response is a list instead of dict."""
+        response = [
+            {
+                "id": "VariableCollectionID:123",
+                "name": "Colors",
+                "modes": [{"id": "modeId:1", "name": "Light"}],
+                "variables": [
+                    {
+                        "id": "VariableID:123:456",
+                        "name": "color/primary",
+                        "type": "COLOR"
+                    }
+                ]
+            }
+        ]
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "color.primary"
+
+    def test_parse_empty_response(self):
+        """Test parsing empty response."""
+        assert parse_figma_variables_response({"collections": []}) == []
+        assert parse_figma_variables_response([]) == []
+        assert parse_figma_variables_response({}) == []
+
+    def test_parse_missing_fields(self):
+        """Test parsing with missing optional fields."""
+        response = {
+            "collections": [
+                {
+                    "id": "VariableCollectionID:123",
+                    "name": "Colors",
+                    # No modes field
+                    "variables": [
+                        {
+                            "id": "VariableID:123:456",
+                            "name": "color/primary"
+                            # No type field
+                        }
+                    ]
+                }
+            ]
+        }
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 1
+        assert parsed[0]["modes"] == []
 
 
 class TestTypeMapping:
@@ -461,3 +606,297 @@ class TestPayloadGenerationChecked:
         # Should work normally (warnings don't block)
         payloads = generate_variable_payloads_checked(conn, file_id)
         assert len(payloads) == 2
+
+
+class TestParseFigmaResponse:
+    """Test parse_figma_variables_response function."""
+
+    def test_parse_standard_response(self):
+        """Test parsing standard Figma variables response."""
+        response = {
+            "collections": [
+                {
+                    "id": "VariableCollectionID:123",
+                    "name": "Colors",
+                    "modes": [
+                        {"id": "modeId:1", "name": "Light"},
+                        {"id": "modeId:2", "name": "Dark"}
+                    ],
+                    "variables": [
+                        {
+                            "id": "VariableID:123:456",
+                            "name": "color/surface/primary",
+                            "type": "COLOR"
+                        },
+                        {
+                            "id": "VariableID:123:457",
+                            "name": "color/surface/secondary",
+                            "type": "COLOR"
+                        }
+                    ]
+                },
+                {
+                    "id": "VariableCollectionID:124",
+                    "name": "Spacing",
+                    "modes": [
+                        {"id": "modeId:3", "name": "Default"}
+                    ],
+                    "variables": [
+                        {
+                            "id": "VariableID:124:100",
+                            "name": "space/4",
+                            "type": "FLOAT"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 3
+
+        # Check first variable
+        var1 = next(v for v in parsed if v["variable_id"] == "VariableID:123:456")
+        assert var1["name"] == "color.surface.primary"  # Converted to DTCG
+        assert var1["collection_name"] == "Colors"
+        assert var1["collection_id"] == "VariableCollectionID:123"
+        assert len(var1["modes"]) == 2
+
+        # Check spacing variable
+        space = next(v for v in parsed if v["variable_id"] == "VariableID:124:100")
+        assert space["name"] == "space.4"  # Converted to DTCG
+        assert space["collection_name"] == "Spacing"
+
+    def test_parse_list_response(self):
+        """Test parsing when response is a list instead of dict."""
+        response = [
+            {
+                "id": "VariableCollectionID:123",
+                "name": "Colors",
+                "modes": [{"id": "modeId:1", "name": "Light"}],
+                "variables": [
+                    {
+                        "id": "VariableID:123:456",
+                        "name": "color/primary",
+                        "type": "COLOR"
+                    }
+                ]
+            }
+        ]
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "color.primary"
+
+    def test_parse_empty_response(self):
+        """Test parsing empty response."""
+        assert parse_figma_variables_response({"collections": []}) == []
+        assert parse_figma_variables_response([]) == []
+        assert parse_figma_variables_response({}) == []
+
+    def test_parse_missing_fields(self):
+        """Test parsing with missing optional fields."""
+        response = {
+            "collections": [
+                {
+                    "id": "VariableCollectionID:123",
+                    "name": "Colors",
+                    # No modes field
+                    "variables": [
+                        {
+                            "id": "VariableID:123:456",
+                            "name": "color/primary"
+                            # No type field
+                        }
+                    ]
+                }
+            ]
+        }
+
+        parsed = parse_figma_variables_response(response)
+        assert len(parsed) == 1
+        assert parsed[0]["modes"] == []
+
+
+class TestWritebackVariableIds:
+    """Test writeback_variable_ids function."""
+
+    def test_writeback_basic(self, populated_db):
+        """Test basic variable ID writeback."""
+        conn, file_id = populated_db
+
+        # Prepare parsed Figma variables
+        figma_variables = [
+            {
+                "variable_id": "VariableID:123:456",
+                "name": "color.surface.primary",
+                "collection_name": "Colors",
+                "collection_id": "VariableCollectionID:123",
+                "modes": [
+                    {"id": "modeId:1", "name": "Light"},
+                    {"id": "modeId:2", "name": "Dark"}
+                ]
+            },
+            {
+                "variable_id": "VariableID:123:457",
+                "name": "color.surface.secondary",
+                "collection_name": "Colors",
+                "collection_id": "VariableCollectionID:123",
+                "modes": [
+                    {"id": "modeId:1", "name": "Light"},
+                    {"id": "modeId:2", "name": "Dark"}
+                ]
+            },
+            {
+                "variable_id": "VariableID:124:100",
+                "name": "space.4",
+                "collection_name": "Spacing",
+                "collection_id": "VariableCollectionID:124",
+                "modes": [
+                    {"id": "modeId:3", "name": "Default"}
+                ]
+            }
+        ]
+
+        result = writeback_variable_ids(conn, file_id, figma_variables)
+
+        # Check result counts
+        assert result["tokens_updated"] == 3
+        assert result["tokens_not_found"] == 0
+        assert result["collections_updated"] == 2
+        assert result["modes_updated"] == 3
+
+        # Verify database updates
+        cursor = conn.execute("""
+            SELECT figma_variable_id, sync_status FROM tokens
+            WHERE name = 'color.surface.primary'
+        """)
+        row = cursor.fetchone()
+        assert row["figma_variable_id"] == "VariableID:123:456"
+        assert row["sync_status"] == "synced"
+
+        # Check collection update
+        cursor = conn.execute("""
+            SELECT figma_id FROM token_collections WHERE name = 'Colors'
+        """)
+        assert cursor.fetchone()["figma_id"] == "VariableCollectionID:123"
+
+        # Check mode update
+        cursor = conn.execute("""
+            SELECT figma_mode_id FROM token_modes WHERE name = 'Light'
+        """)
+        assert cursor.fetchone()["figma_mode_id"] == "modeId:1"
+
+    def test_writeback_not_found(self, populated_db):
+        """Test writeback with non-matching tokens."""
+        conn, file_id = populated_db
+
+        figma_variables = [
+            {
+                "variable_id": "VariableID:999:999",
+                "name": "color.does.not.exist",
+                "collection_name": "Colors",
+                "collection_id": "VariableCollectionID:123",
+                "modes": []
+            }
+        ]
+
+        result = writeback_variable_ids(conn, file_id, figma_variables)
+
+        assert result["tokens_updated"] == 0
+        assert result["tokens_not_found"] == 1
+
+    def test_writeback_aliased_token(self, populated_db):
+        """Test writeback for aliased tokens."""
+        conn, file_id = populated_db
+
+        figma_variables = [
+            {
+                "variable_id": "VariableID:125:001",
+                "name": "color.button.primary",  # This is an aliased token
+                "collection_name": "Colors",
+                "collection_id": "VariableCollectionID:123",
+                "modes": []
+            }
+        ]
+
+        result = writeback_variable_ids(conn, file_id, figma_variables)
+
+        # Should update the aliased token
+        assert result["tokens_updated"] == 1
+
+        # Verify aliased token was updated
+        cursor = conn.execute("""
+            SELECT figma_variable_id, sync_status FROM tokens
+            WHERE name = 'color.button.primary'
+        """)
+        row = cursor.fetchone()
+        assert row["figma_variable_id"] == "VariableID:125:001"
+        assert row["sync_status"] == "synced"
+
+    def test_writeback_from_response(self, populated_db):
+        """Test convenience wrapper writeback_variable_ids_from_response."""
+        conn, file_id = populated_db
+
+        raw_response = {
+            "collections": [
+                {
+                    "id": "VariableCollectionID:123",
+                    "name": "Colors",
+                    "modes": [],
+                    "variables": [
+                        {
+                            "id": "VariableID:123:456",
+                            "name": "color/surface/primary",
+                            "type": "COLOR"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        result = writeback_variable_ids_from_response(conn, file_id, raw_response)
+
+        assert result["tokens_updated"] == 1
+        assert result["collections_updated"] == 1
+
+
+class TestSyncStatusSummary:
+    """Test get_sync_status_summary function."""
+
+    def test_sync_status_summary(self, populated_db):
+        """Test getting sync status summary."""
+        conn, file_id = populated_db
+
+        # Update some tokens to have different statuses
+        conn.execute("""
+            UPDATE tokens SET sync_status = 'synced'
+            WHERE name = 'color.surface.primary'
+        """)
+        conn.execute("""
+            UPDATE tokens SET sync_status = 'drifted'
+            WHERE name = 'color.surface.secondary'
+        """)
+        conn.commit()
+
+        summary = get_sync_status_summary(conn, file_id)
+
+        # Should have counts for each status
+        # Tokens created: primary, secondary, button.primary (alias), space.4, text.body (extracted), already.synced
+        # After updates: primary->synced, secondary->drifted, already.synced was already synced
+        # Remaining pending: button.primary (alias), space.4, text.body (extracted)
+        assert summary["pending"] == 3  # button.primary, space.4, text.body
+        assert summary["synced"] == 2  # primary + already.synced
+        assert summary["drifted"] == 1  # secondary
+
+    def test_sync_status_summary_empty(self, temp_db):
+        """Test summary with no tokens."""
+        conn = temp_db
+        cursor = conn.execute("INSERT INTO files (name) VALUES ('empty.figma')")
+        file_id = cursor.lastrowid
+        conn.commit()
+
+        summary = get_sync_status_summary(conn, file_id)
+
+        # Empty dict if no tokens
+        assert summary == {}
