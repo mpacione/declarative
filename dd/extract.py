@@ -5,6 +5,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from dd.extract_bindings import create_bindings_for_screen
+from dd.extract_components import extract_components
 from dd.extract_inventory import (
     create_extraction_run,
     get_pending_screens,
@@ -265,6 +266,284 @@ def complete_run(conn: sqlite3.Connection, run_id: int) -> Dict[str, Any]:
     }
 
 
+def get_component_sheets(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+    """
+    Get all component_sheet screens for a file.
+
+    Args:
+        conn: Database connection
+        file_id: ID of the file
+
+    Returns:
+        List of dicts with screen_id, figma_node_id, and name
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, figma_node_id, name
+        FROM screens
+        WHERE file_id = ? AND device_class = 'component_sheet'
+        """,
+        (file_id,)
+    )
+
+    sheets = []
+    for row in cursor.fetchall():
+        sheets.append({
+            "screen_id": row[0],
+            "figma_node_id": row[1],
+            "name": row[2],
+        })
+
+    return sheets
+
+
+def generate_component_extraction_script(screen_node_id: str) -> str:
+    """
+    Generate JavaScript to extract components from a component_sheet frame.
+
+    Args:
+        screen_node_id: Figma node ID of the component_sheet frame
+
+    Returns:
+        JavaScript string for use_figma
+    """
+    script = f"""
+    // Get the screen node
+    const screenNode = figma.getNodeById('{screen_node_id}');
+    if (!screenNode || !('children' in screenNode)) {{
+        return [];
+    }}
+
+    const components = [];
+
+    // Recursively find all COMPONENT and COMPONENT_SET nodes
+    function findComponents(node) {{
+        if (!node) return;
+
+        if (node.type === 'COMPONENT_SET') {{
+            // Extract the component set
+            const componentSet = {{
+                id: node.id,
+                type: node.type,
+                name: node.name,
+                description: node.description || null,
+                children: []
+            }};
+
+            // Process its variant children
+            if ('children' in node) {{
+                for (const child of node.children) {{
+                    if (child.type === 'COMPONENT') {{
+                        const variant = {{
+                            id: child.id,
+                            type: child.type,
+                            name: child.name,
+                            children: []
+                        }};
+
+                        // Get direct children for slot inference
+                        if ('children' in child) {{
+                            for (const grandchild of child.children) {{
+                                variant.children.push({{
+                                    name: grandchild.name,
+                                    type: grandchild.type,
+                                    characters: grandchild.type === 'TEXT' ? grandchild.characters : undefined
+                                }});
+                            }}
+                        }}
+
+                        componentSet.children.push(variant);
+                    }}
+                }}
+            }}
+
+            components.push(componentSet);
+        }} else if (node.type === 'COMPONENT') {{
+            // Standalone component
+            const component = {{
+                id: node.id,
+                type: node.type,
+                name: node.name,
+                description: node.description || null,
+                children: []
+            }};
+
+            // Get direct children for slot inference
+            if ('children' in node) {{
+                for (const child of node.children) {{
+                    component.children.push({{
+                        name: child.name,
+                        type: child.type,
+                        characters: child.type === 'TEXT' ? child.characters : undefined
+                    }});
+                }}
+            }}
+
+            components.push(component);
+        }}
+
+        // Recursively search children
+        if ('children' in node) {{
+            for (const child of node.children) {{
+                findComponents(child);
+            }}
+        }}
+    }}
+
+    // Start the search from the screen node
+    findComponents(screenNode);
+
+    return components;
+    """
+
+    # Verify the script is under 50K chars
+    if len(script) > 50000:
+        raise ValueError(f"Component extraction script too long: {len(script)} chars")
+
+    return script
+
+
+def parse_component_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Parse and validate component extraction response from use_figma.
+
+    Args:
+        response: Raw response from use_figma component extraction
+
+    Returns:
+        List of normalized component dicts ready for extract_components
+    """
+    if not isinstance(response, list):
+        raise ValueError(f"Expected list response, got {type(response)}")
+
+    components = []
+    for item in response:
+        # Validate required fields
+        if not isinstance(item, dict):
+            continue
+        if "id" not in item or "type" not in item:
+            continue
+        if item["type"] not in ("COMPONENT", "COMPONENT_SET"):
+            continue
+
+        # Normalize the component data
+        components.append(item)
+
+    return components
+
+
+def run_component_extraction(
+    conn: sqlite3.Connection,
+    file_id: int,
+    component_data: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Process component data and insert into database.
+
+    Args:
+        conn: Database connection
+        file_id: ID of the file
+        component_data: Pre-fetched component data from MCP
+
+    Returns:
+        Summary dict with component_count, variant_count, instances_linked
+    """
+    # Extract components using the function from extract_components module
+    component_ids = extract_components(conn, file_id, component_data)
+
+    # Count variants
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM component_variants cv
+        JOIN components c ON cv.component_id = c.id
+        WHERE c.file_id = ?
+        """,
+        (file_id,)
+    )
+    variant_count = cursor.fetchone()[0]
+
+    # Link INSTANCE nodes to their components
+    # This is a best-effort operation based on matching figma_node_id
+    instances_linked = link_instances_to_components(conn, file_id)
+
+    return {
+        "component_count": len(component_ids),
+        "variant_count": variant_count,
+        "instances_linked": instances_linked,
+    }
+
+
+def link_instances_to_components(conn: sqlite3.Connection, file_id: int) -> int:
+    """
+    Link INSTANCE nodes to their corresponding components.
+
+    This is a best-effort operation that attempts to match INSTANCE nodes
+    to components based on stored component references.
+
+    Args:
+        conn: Database connection
+        file_id: ID of the file
+
+    Returns:
+        Number of instances successfully linked
+    """
+    cursor = conn.cursor()
+
+    # Find all INSTANCE nodes that don't have a component_id yet
+    # We'll attempt to match them to components based on their names
+    cursor.execute(
+        """
+        SELECT n.id, n.name
+        FROM nodes n
+        JOIN screens s ON n.screen_id = s.id
+        WHERE s.file_id = ? AND n.node_type = 'INSTANCE' AND n.component_id IS NULL
+        """,
+        (file_id,)
+    )
+
+    instances = cursor.fetchall()
+    linked_count = 0
+
+    for node_id, node_name in instances:
+        # Try to find a matching component
+        # This is a simplified approach - in reality, we'd need to parse
+        # the properties to find the component reference
+        # For now, we'll try name matching as a fallback
+
+        # Try exact name match first
+        cursor.execute(
+            """
+            SELECT id FROM components
+            WHERE file_id = ? AND name = ?
+            LIMIT 1
+            """,
+            (file_id, node_name)
+        )
+
+        component_match = cursor.fetchone()
+
+        if component_match:
+            component_id = component_match[0]
+
+            # Update the node with the component_id
+            cursor.execute(
+                """
+                UPDATE nodes
+                SET component_id = ?
+                WHERE id = ?
+                """,
+                (component_id, node_id)
+            )
+
+            linked_count += 1
+
+    conn.commit()
+    return linked_count
+
+
 def run_extraction_pipeline(
     conn: sqlite3.Connection,
     file_key: str,
@@ -273,6 +552,7 @@ def run_extraction_pipeline(
     extract_fn: Callable[[str], List[Dict[str, Any]]],
     node_count: Optional[int] = None,
     agent_id: Optional[str] = None,
+    component_extract_fn: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """
     Run the full extraction pipeline.
@@ -285,6 +565,7 @@ def run_extraction_pipeline(
         extract_fn: Callback that takes screen_figma_node_id and returns raw response
         node_count: Total node count in file (optional)
         agent_id: Agent identifier (optional)
+        component_extract_fn: Optional callback for component extraction (optional)
 
     Returns:
         Summary dict from complete_run
@@ -294,6 +575,7 @@ def run_extraction_pipeline(
     # Set up inventory
     inventory = run_inventory(conn, file_key, file_name, frames, node_count, agent_id)
     run_id = inventory["run_id"]
+    file_id = inventory["file_id"]
     total_screens = inventory["screen_count"]
 
     print(f"Starting extraction for {total_screens} screens...")
@@ -338,6 +620,62 @@ def run_extraction_pipeline(
 
     # Complete the run
     summary = complete_run(conn, run_id)
+
+    # Component extraction phase (if callback provided)
+    if component_extract_fn:
+        print("\n--- Component Extraction Phase ---")
+        component_sheets = get_component_sheets(conn, file_id)
+
+        if component_sheets:
+            print(f"Found {len(component_sheets)} component sheet(s)")
+
+            total_components = 0
+            total_variants = 0
+            total_instances_linked = 0
+
+            for sheet in component_sheets:
+                sheet_name = sheet["name"]
+                sheet_node_id = sheet["figma_node_id"]
+
+                print(f"Extracting components from {sheet_name}...")
+
+                try:
+                    # Generate the component extraction script
+                    comp_script = generate_component_extraction_script(sheet_node_id)
+
+                    # Call the component extraction callback
+                    raw_component_data = component_extract_fn(comp_script)
+
+                    # Parse and validate the response
+                    component_data = parse_component_extraction_response(raw_component_data)
+
+                    if component_data:
+                        # Run component extraction
+                        comp_result = run_component_extraction(conn, file_id, component_data)
+
+                        total_components += comp_result["component_count"]
+                        total_variants += comp_result["variant_count"]
+                        total_instances_linked += comp_result["instances_linked"]
+
+                        print(f"  Extracted {comp_result['component_count']} component(s), "
+                              f"{comp_result['variant_count']} variant(s)")
+                    else:
+                        print(f"  No components found in {sheet_name}")
+
+                except Exception as e:
+                    print(f"  Failed to extract components from {sheet_name}: {e}")
+
+            print(f"\nComponent extraction complete:")
+            print(f"  Total components: {total_components}")
+            print(f"  Total variants: {total_variants}")
+            print(f"  Instances linked: {total_instances_linked}")
+
+            # Update the summary with component extraction info
+            summary["components_extracted"] = total_components
+            summary["variants_extracted"] = total_variants
+            summary["instances_linked"] = total_instances_linked
+        else:
+            print("No component sheets found")
 
     total_elapsed = time.time() - start_time
     print(f"\nExtraction complete in {total_elapsed:.1f}s")
