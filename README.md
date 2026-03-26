@@ -401,8 +401,7 @@ declarative/
 ├── Architecture.md                  # Why these choices
 ├── Technical Design Spec.md         # How it all works (41KB)
 ├── User Requirements Spec.md        # Use cases UC-1 through UC-6
-├── pyproject.toml                   # Python 3.11+, deps
-└── build/                           # Wave-based build system (how this was built)
+└── pyproject.toml                   # Python 3.11+, deps
 ```
 
 ## Key Design Decisions
@@ -417,19 +416,3 @@ declarative/
 
 **Atomic storage, composite assembly at export.** Typography and shadow tokens are stored as atoms (fontSize, fontFamily, etc.). Composites are assembled at export time for maximum flexibility.
 
-## Build System
-
-This project was built autonomously using a wave-based pipeline. Each wave feeds task packets to Claude CLI, auto-committing after each successful task.
-
-| Wave | Tasks | What it builds |
-|------|-------|----------------|
-| 0 | 7 | Project scaffold, DB init, test infrastructure |
-| 1 | 7 | Extraction pipeline (inventory + screens) |
-| 2 | 7 | Component extraction + normalization |
-| 3 | 8 | Census views + clustering |
-| 4 | 6 | Curation workflow + validation |
-| 5 | 6 | Figma export (variables + rebinding) |
-| 6 | 6 | Code export (CSS, Tailwind, DTCG) |
-| 7 | 5 | Companion skill + drift detection |
-
-**52 tasks, 505 tests, 89% code coverage.**
