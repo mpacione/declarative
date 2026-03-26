@@ -96,13 +96,20 @@ Every action follows this round-trip:
 - **Status**: DONE (completed as part of T2.1 — colors now have role prefixes: surface, border, brand, text, icon, palette, feedback, effect)
 
 ### T2.6 — Identify Interactive States
-- **Status**: N/A
-- **Reason**: Dank (Experimental) doesn't use Figma's COMPONENT_SET/variant system. Buttons are flat FRAMEs and INSTANCEs without hover/pressed/disabled variants. This action requires a file with proper component variant architecture.
+- **Status**: DONE (generated, not extracted)
+- **Scope**: 12 button state tokens created from approximated values (lighten/darken via HLS)
+- **Approach**: File lacks variant architecture, so we generated states from the primary button color (#634AFF brand.accent):
+  - Primary: default, hover (+12% lightness), pressed (-15% lightness), disabled (same + opacity)
+  - Secondary: default (#FFF), hover (-5%), pressed (-10%), disabled (same + opacity)
+  - Border states for both variants
+- **DB verify**: 12 new tokens in Semantic collection, all tier='curated'
+- **Figma verify**: "Component States" collection with 12 variables, all values match DB exactly
+- **Learning**: HLS lighten/darken produces visually inconsistent shifts on saturated colors. Should use OKLCH for perceptually uniform state derivation.
 
 ---
 
 ## Tier 2: Complete
-All applicable T2 actions done. 296 Figma variables across 6 collections, 8 semantic aliases, 304 total DB tokens.
+All T2 actions done. 308 Figma variables across 7 collections, 8 semantic aliases, 316 total DB tokens.
 
 ---
 

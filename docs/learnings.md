@@ -97,3 +97,14 @@ Accumulated insights from building and testing the curation pipeline. These info
 - Currently 3 manual steps: modify DB → push to Figma → read back and verify.
 - **Target**: `dd push --verify` that does all three.
 - Still discovering what "verify" means for each token type (color spot-check vs typography full comparison).
+
+### Color State Derivation Should Use OKLCH, Not HLS
+- HLS lighten/darken produces inconsistent visual shifts on saturated colors.
+- `#634AFF` darkened 15% via HLS → `#2200FC` (jumps to pure blue, loses purple character).
+- OKLCH manipulates perceptual lightness, preserving hue and chroma.
+- **Action**: When building T3.1 (dark mode) or any color derivation, use OKLCH (already in the codebase for ΔE clustering).
+
+### Generated Tokens Need a Separate Collection
+- Component state tokens (hover, pressed, disabled) live in "Component States" collection, separate from the base "Colors" collection.
+- This is the right pattern: primitives in one collection, component-level tokens in another.
+- Validates the T4.1 architecture: Primitives → Semantic → Component layers.
