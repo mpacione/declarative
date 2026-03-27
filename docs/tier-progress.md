@@ -6,7 +6,7 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
 **Figma variables**: 353 live (8 collections: Color Primitives, Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
 **DB tokens**: 379 total (45 color primitives + 52 color semantics + 282 other curated + 26 aliased)
-**Tests**: 641 passing
+**Tests**: 656 passing
 
 ## Verification Pattern
 
@@ -160,6 +160,8 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Compact mode**: Applied to Effects, Radius, Spacing, Typography with 0.875 scale factor. Dimension values scaled, non-dimensions copied.
 - **High Contrast mode**: New `apply_high_contrast()` function. Pushes light colors lighter (L > 0.5 → L×1.2+0.1), dark colors darker (L < 0.5 → L×0.6). Applied to Color Primitives (45) and Semantic/Component States (12).
 - **Mode coverage**: 8 collections × 2-3 modes each. Color Semantics has no values (aliases). Opacity has no Compact (not applicable).
+- **Alpha-baked colors (Steps 1-6)**: DONE. Paint opacity is now encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). Eliminates the opacity restoration post-step entirely. OKLCH transforms and clustering updated to handle alpha suffix. 656 tests passing.
+- **Alpha-baked colors (Steps 7-9)**: PENDING. Re-extract bindings with alpha-inclusive resolved values, re-cluster to create ~29 new alpha-baked primitives, push to Figma and rebind.
 
 ### T4.3–T4.5 — not started
 
@@ -193,5 +195,5 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Writeback**: `--writeback --figma-state` applies variable ID writeback after agent executes CREATE actions
 - **Dry run**: `--dry-run` shows summary counts without generating action payloads
 - **Compact rebind encoding**: Property shortcodes (e.g. `fontSize`→`fs`, `fill.0.color`→`f0`) reduce script size ~60%, fitting ~950 bindings per 50K char script
-- **Opacity restoration**: `generate_opacity_restore_scripts()` runs as mandatory post-step after every push. Restores fill/stroke paint opacity and effect color alpha from DB source of truth.
+- **Opacity restoration**: No longer needed. Alpha-baked color primitives encode opacity directly in the variable value as 8-digit hex. The `restore_opacities` phase has been removed from the push manifest.
 - **Real DB**: 379 tokens → 8+ MCP calls (batched at 100), 182,877 bindings → 193 rebind scripts

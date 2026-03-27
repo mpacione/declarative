@@ -224,18 +224,14 @@ Accumulated insights from building and testing the curation pipeline. These info
 - `setBoundVariableForPaint(paint, 'color', variable)` returns a new paint with `opacity: 1.0`, losing the original paint's opacity.
 - `setBoundVariableForEffect(effect, 'color', variable)` resets `effect.color.a` to `1.0`, losing the original alpha.
 - **Scope**: 5,128 fill opacities, 297 stroke opacities, 9,807 effect color alphas — all reset to 1.0 during rebind.
-- **Restoration**: Separate scripts read original values from `nodes.fills`/`nodes.strokes`/`nodes.effects` JSON columns and re-apply.
-- **Prevention needed**: The compact rebind handler must preserve paint opacity and effect color alpha. Two approaches:
-  1. Include opacity/alpha in the binding data (e.g., `nodeId|f0:0.12|varId`) so the handler restores it after binding.
-  2. Have the handler read the current opacity before binding and restore it after.
-- Option 2 is safer for re-runs but won't work for first-time binds. Option 1 requires extraction pipeline changes.
-- **Note**: Fill-level opacity is a separate concept from node-level opacity. Both exist in the extraction data (`nodes.fills` JSON has `paint.opacity`, `nodes.opacity` has node-level). Only node-level opacity was extracted as a binding.
+- **SOLVED**: Alpha-baked color primitives. Instead of storing opacity as a separate paint property, the alpha is encoded directly into the color variable value as 8-digit hex (`#RRGGBBAA`). When Figma evaluates the variable, it reads the alpha from the color itself. No separate opacity restoration needed.
+- **Note**: Fill-level opacity is a separate concept from node-level opacity. Both exist in the extraction data (`nodes.fills` JSON has `paint.opacity`, `nodes.opacity` has node-level). Only node-level opacity was extracted as a binding. Alpha-baked colors handle the fill/stroke/effect paint-level opacity; node-level opacity remains a separate binding.
 
 ### Extraction Gaps: Properties Stored But Not Normalized to Bindings
-- **Fill/stroke paint opacity**: Stored in `nodes.fills`/`nodes.strokes` JSON but `normalize_fill()`/`normalize_stroke()` only extract color.
-- **Effect color alpha**: Stored in `nodes.effects` JSON `color.a` field but `normalize_effect()` only extracts color as hex (discards alpha).
+- **Fill/stroke paint opacity**: Now baked into the color hex as 8-digit `#RRGGBBAA`. `normalize_fill()` and `normalize_stroke()` use paint-level opacity (not `color.a`) as the alpha channel in `rgba_to_hex()`.
+- **Effect color alpha**: Now baked into the effect color hex as 8-digit `#RRGGBBAA` via `normalize_effect()`.
 - **Non-tokenizable properties** (auto-layout sizing mode, text alignment, blend mode, visibility) are stored in node columns but correctly NOT extracted as bindings — they're structural, not design tokens.
-- **Action**: Add `fill.N.opacity`, `stroke.N.opacity` as binding properties when < 1.0. For effect alpha, include in the color extraction or as separate `effect.N.alpha` binding.
+- **No longer needed**: Separate `fill.N.opacity`, `stroke.N.opacity`, `effect.N.alpha` bindings are unnecessary since alpha is part of the color value itself.
 
 ### Binding itemSpacing on SPACE_BETWEEN Nodes Overrides Auto Gap
 - Figma's "Auto" gap is `primaryAxisAlignItems: "SPACE_BETWEEN"`. The `itemSpacing` property reports the computed value but the gap is auto-distributed.
@@ -250,11 +246,45 @@ Accumulated insights from building and testing the curation pipeline. These info
 - This re-evaluation resets paint opacities on those nodes to 1.0 — the same bug as `setBoundVariableForPaint`.
 - **Scope**: T4.1 alias update (52 variables × `setValueForMode`) reset 4,831 fill opacities and 9,807 effect alphas that we had previously restored.
 - **Implication**: The compact handler opacity fix only protects during rebinding. ANY Figma variable modification (value change, alias update, mode creation) can trigger this.
-- **Required post-step**: After any `dd push` or variable modification operation, run the opacity/alpha restoration scripts as a standard cleanup step.
-- **Long-term fix**: Extract `fill.N.opacity` and `effect.N.alpha` as first-class bindings so they persist through variable changes. The opacity would be set independently of the color binding.
-- **Implemented fix**: `generate_opacity_restore_scripts()` in `export_rebind.py` reads original opacities from `nodes.fills`/`strokes`/`effects` JSON and generates restoration scripts. Integrated into `generate_push_manifest()` as mandatory `restore_opacities` phase — runs automatically after every push.
+- **SOLVED**: Alpha-baked color primitives (see below). Paint opacity is encoded directly in the color variable as 8-digit hex (`#RRGGBBAA`), so Figma cannot lose it during re-evaluation. The `restore_opacities` phase has been removed from the push manifest.
 
 ### Test Schemas Must Use Real Schema
 - Three test files defined custom minimal schemas (missing columns, triggers, constraints). These diverged from `schema.sql` over time, causing false passes.
 - **Fix**: All test files now use `init_db(":memory:")` from `dd/db.py` which loads the full `schema.sql`.
 - **Rule**: Never define custom `CREATE TABLE` statements in test files. Always use the conftest `temp_db`/`db` fixtures. If a test needs specific data, insert it into the real schema's tables.
+
+---
+
+## Alpha-Baked Color Architecture
+
+### The Problem: Figma Loses Paint Opacity on Variable Re-evaluation
+
+Figma's `setBoundVariableForPaint` and `setBoundVariableForEffect` reset paint opacity and effect `color.a` to 1.0. Worse, any variable value change (alias update, mode creation) re-evaluates all bound nodes, triggering the same opacity loss. This meant 5,128 fill opacities, 297 stroke opacities, and 9,807 effect alphas were wiped every time variables were modified.
+
+The previous workaround was a mandatory `restore_opacities` post-step after every push, reading original opacities from DB JSON columns and generating restoration scripts. This was fragile and slow.
+
+### The Solution: Bake Alpha Into the Color Value
+
+Instead of treating paint opacity as a separate property, encode it directly into the color variable as 8-digit hex (`#RRGGBBAA`). Figma reads the alpha channel from the color value itself, so there is nothing to lose during re-evaluation.
+
+### Implementation (Steps 1-6 complete, 656 tests passing)
+
+1. **`color.py`**: Added `hex_to_rgba()` helper. Updated `hex_to_oklch()` to strip alpha suffix before OKLCH conversion (OKLCH operates on RGB only).
+2. **`normalize.py`**: `normalize_fill()` and `normalize_stroke()` now use paint-level opacity (not `color.a`) as the alpha channel in `rgba_to_hex()`, producing `#RRGGBBAA` when opacity < 1.
+3. **`modes.py`**: `apply_oklch_inversion()` and `apply_high_contrast()` preserve alpha suffix through transforms. The alpha is stripped before OKLCH manipulation and re-appended after.
+4. **`drift.py`**: Removed FF-alpha stripping. 8-digit hex (e.g., `#09090B0D`) is now a distinct value from 6-digit hex (`#09090B`). This is correct because they represent different visual appearances.
+5. **`cluster_colors.py`**: Colors at different alphas no longer cluster together. `#09090B` at 100% opacity and `#09090B` at 5% opacity are perceptually different and must be separate primitives.
+6. **`export_rebind.py`**: Removed manual opacity preservation from the compact handler. The alpha is in the variable value, so the handler does not need to save/restore it.
+7. **`push.py`**: Removed the `restore_opacities` phase from the push manifest. No longer needed.
+
+### Pending Steps (7-9)
+
+- Re-run `extract_bindings` on all screens to regenerate `node_token_bindings` with alpha-inclusive `resolved_value` (uses existing `nodes.fills`/`strokes`/`effects` JSON, no Figma API call needed).
+- Re-cluster to create ~29 new alpha-baked primitives (e.g., `prim.gray.950.a5`, `prim.gray.950.a25`).
+- Push new alpha-baked primitives to Figma as variables, rebind affected nodes, test mode switching.
+
+### Design Decisions
+
+- **Paint opacity vs color.a**: Figma paints have both `paint.opacity` and `paint.color.a`. The extraction uses `paint.opacity` as the authoritative alpha source, not `color.a`. This matches Figma's visual rendering behavior.
+- **Alpha naming convention**: Alpha-baked primitives use `.aN` suffix where N is the opacity percentage (e.g., `prim.gray.950.a5` for 5% opacity).
+- **Clustering**: Colors at different alphas are treated as distinct values. `#09090B` and `#09090B0D` will never cluster together, even though the RGB components are identical.

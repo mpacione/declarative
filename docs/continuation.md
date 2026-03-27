@@ -11,15 +11,19 @@ Declarative Design is a CLI + agent system that extracts design tokens from Figm
 - **Figma variables**: 353 across 8 collections (Color Primitives, Color Semantics+Dark, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
 - **Variable IDs**: All written back to DB (`tokens.figma_variable_id`)
 - **Rebinding**: DONE — 182,877 bindings, 0 errors
-- **Opacity restoration**: Automatic post-step in `dd push` pipeline
-- **Tests**: 641 passing
-- **Tiers 1-3**: Complete. T4.1 (Primitives/Semantics split) complete. T4.2-T4.5 pending. T5 (Conjure) pending.
+- **Alpha-baked colors**: Steps 1-6 complete. Paint opacity is now encoded in color values as 8-digit hex (`#RRGGBBAA`). The `restore_opacities` phase has been removed from the push manifest. Steps 7-9 (re-extract, re-cluster, push) pending.
+- **Tests**: 656 passing
+- **Tiers 1-3**: Complete. T4.1 (Primitives/Semantics split) complete. T4.2 modes done in DB (alpha-baked colors steps 1-6 done, steps 7-9 pending). T4.3-T4.5 pending. T5 (Conjure) pending.
 
 ## What To Do Next (in order)
 
-### 1. Tier 4.2 — Add Modes
+### 1. Alpha-Baked Colors — Steps 7-9 (immediate)
 
-Add compact and/or high-contrast modes. See `docs/action-taxonomy.md` T4.2.
+Complete the alpha-baked color pipeline. All code changes are done (Steps 1-6, 656 tests). The remaining steps use existing CLI commands on existing DB data:
+
+1. **Re-extract bindings**: Run `extract_bindings` on all screens to regenerate `node_token_bindings` with alpha-inclusive `resolved_value`. This uses the existing `nodes.fills`/`strokes`/`effects` JSON columns — no Figma API call needed.
+2. **Re-cluster**: Run `dd cluster` to create ~29 new alpha-baked primitives (e.g., `prim.gray.950.a5`, `prim.gray.950.a25`). Colors at different alphas will now be distinct clusters.
+3. **Push and rebind**: Push new alpha-baked primitives to Figma as variables. Rebind affected nodes to the new tokens. Test mode switching — opacity should now persist through mode changes since it is encoded in the variable value.
 
 ### 2. Tier 4.3-T4.5 — Structural
 
@@ -48,11 +52,11 @@ See `docs/action-taxonomy.md` Tier 5 section.
 | `docs/action-taxonomy.md` | Full taxonomy of all curation/conjure actions |
 | `docs/tier-progress.md` | Progress tracker for each tier |
 | `docs/learnings.md` | Accumulated infrastructure insights |
-| `declarative-design/SKILL.md` | Agent protocol v0.3.0 (CLI + curation + push) |
+| `declarative-design/SKILL.md` | Agent protocol v0.4.0 (CLI + curation + push + alpha-baked colors) |
 
-## Critical: Opacity Restoration
+## Alpha-Baked Colors
 
-Figma resets paint opacities and effect color alphas whenever variable bindings are re-evaluated. The `dd push` manifest automatically includes a `restore_opacities` phase. This MUST run after any Figma variable operation. See `docs/learnings.md` for details.
+Paint opacity is now encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). This eliminates the previous `restore_opacities` post-step entirely. Figma reads the alpha from the color value itself, so opacity persists through variable re-evaluation, mode switching, and alias updates. See `docs/learnings.md` "Alpha-Baked Color Architecture" section for full details.
 
 ## Environment
 

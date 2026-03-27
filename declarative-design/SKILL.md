@@ -1,6 +1,6 @@
 # Declarative Design Companion Skill
 
-**Version**: 0.3.0
+**Version**: 0.4.0
 **Skill Name**: declarative-design
 **Description**: Agent protocol for extracting, curating, and exporting design tokens from Figma files.
 **Activation**: When encountering `*.declarative.db` files, Figma URLs, or requests to work with design systems/tokens.
@@ -235,25 +235,23 @@ python -m dd push --figma-state figma_state.json --dry-run  # Preview diff
 python -m dd push --figma-state figma_state.json            # Execute
 ```
 
-The manifest always includes a `restore_opacities` phase as the final step. This is mandatory — Figma resets paint opacities whenever variable bindings are re-evaluated.
+No opacity restoration post-step is needed. Alpha-baked color primitives encode paint opacity directly in the variable value as 8-digit hex (`#RRGGBBAA`).
 
 ### Figma Rebinding (Agent + MCP)
 ```python
-from dd.export_rebind import generate_rebind_scripts, generate_opacity_restore_scripts
+from dd.export_rebind import generate_rebind_scripts
 
 scripts = generate_rebind_scripts(conn, file_id=1)
 # Execute each script via figma_execute MCP tool (batched at 950 bindings/script)
-
-restore_scripts = generate_opacity_restore_scripts(conn, file_id=1)
-# MUST run after rebinding — restores fill/stroke opacity and effect color alpha
+# No opacity restoration needed — alpha is baked into color variable values
 ```
 
 ### Known Figma API Behaviors
-- `setBoundVariableForPaint` resets paint opacity to 1.0
-- `setBoundVariableForEffect` resets effect color.a to 1.0
-- Variable value changes (including alias updates) re-evaluate all bound nodes, resetting opacities
-- Binding `itemSpacing` on `SPACE_BETWEEN` nodes overrides auto gap
-- The compact handler and query layer guard against all of these
+- `setBoundVariableForPaint` resets paint opacity to 1.0 — **solved** by alpha-baked colors (opacity encoded in 8-digit hex `#RRGGBBAA` variable value)
+- `setBoundVariableForEffect` resets effect color.a to 1.0 — **solved** by alpha-baked colors
+- Variable value changes (including alias updates) re-evaluate all bound nodes — **solved** by alpha-baked colors (alpha is part of the value, not a separate paint property)
+- Binding `itemSpacing` on `SPACE_BETWEEN` nodes overrides auto gap — compact handler skips these
+- No opacity restoration post-step is needed. The `restore_opacities` phase has been removed from the push manifest.
 
 ## Disconnected Mode
 
@@ -273,6 +271,10 @@ Color tokens are split into two layers:
 Node bindings reference semantic token IDs. Changing a primitive value propagates to all semantics that alias it. In Figma, semantic variables use `createVariableAlias` to reference primitive variables.
 
 Spacing, Radius, Opacity already have 1:1 value:token mappings — they are effectively primitives.
+
+### Alpha-Baked Colors
+
+Paint opacity is encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). Colors with opacity < 1 produce distinct primitives (e.g., `prim.gray.950.a5` for 5% opacity). This eliminates the need for separate opacity restoration after variable operations. OKLCH transforms and color clustering handle the alpha suffix transparently.
 
 ## Conjure (Tier 5 — Future)
 
