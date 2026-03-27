@@ -702,3 +702,105 @@ def cluster_opacity(conn: sqlite3.Connection, file_id: int, collection_id: int, 
 
     conn.commit()
     return {"tokens_created": tokens_created, "bindings_updated": bindings_updated}
+
+
+def _cluster_simple_dimension(
+    conn: sqlite3.Connection,
+    file_id: int,
+    collection_id: int,
+    mode_id: int,
+    property_name: str,
+    token_prefix: str,
+) -> dict:
+    """Generic clustering for a single dimension property.
+
+    Queries unbound bindings for the given property, creates a token per
+    unique value, and updates bindings to 'proposed'.
+    """
+    conn.row_factory = sqlite3.Row
+
+    census = conn.execute(
+        """SELECT ntb.resolved_value, COUNT(*) AS usage_count
+           FROM node_token_bindings ntb
+           JOIN nodes n ON ntb.node_id = n.id
+           JOIN screens s ON n.screen_id = s.id
+           WHERE s.file_id = ?
+             AND ntb.property = ?
+             AND ntb.binding_status = 'unbound'
+           GROUP BY ntb.resolved_value
+           ORDER BY CAST(ntb.resolved_value AS REAL)""",
+        (file_id, property_name),
+    ).fetchall()
+
+    if not census:
+        return {"tokens_created": 0, "bindings_updated": 0}
+
+    tokens_created = 0
+    bindings_updated = 0
+    existing_names = {
+        row["name"]
+        for row in conn.execute(
+            "SELECT name FROM tokens WHERE collection_id = ?", (collection_id,)
+        ).fetchall()
+    }
+
+    for row in census:
+        val_str = row["resolved_value"]
+        try:
+            val = float(val_str)
+        except (ValueError, TypeError):
+            continue
+        if val == 0:
+            continue
+
+        name = f"{token_prefix}.v{int(val)}" if val == int(val) else f"{token_prefix}.v{val}"
+        if name in existing_names:
+            continue
+        existing_names.add(name)
+
+        cursor = conn.execute(
+            "INSERT INTO tokens (collection_id, name, type, tier) VALUES (?, ?, 'dimension', 'extracted')",
+            (collection_id, name),
+        )
+        token_id = cursor.lastrowid
+        conn.execute(
+            "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, ?, ?)",
+            (token_id, mode_id, val_str, val_str),
+        )
+        tokens_created += 1
+
+        cursor = conn.execute(
+            """UPDATE node_token_bindings
+               SET token_id = ?, binding_status = 'proposed', confidence = 1.0
+               WHERE resolved_value = ?
+                 AND property = ?
+                 AND binding_status = 'unbound'
+                 AND node_id IN (
+                     SELECT n.id FROM nodes n
+                     JOIN screens s ON n.screen_id = s.id
+                     WHERE s.file_id = ?
+                 )""",
+            (token_id, val_str, property_name, file_id),
+        )
+        bindings_updated += cursor.rowcount
+
+    conn.commit()
+    return {"tokens_created": tokens_created, "bindings_updated": bindings_updated}
+
+
+def cluster_stroke_weight(
+    conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int
+) -> dict:
+    """Cluster stroke weight values into tokens."""
+    return _cluster_simple_dimension(
+        conn, file_id, collection_id, mode_id, "strokeWeight", "strokeWeight"
+    )
+
+
+def cluster_paragraph_spacing(
+    conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int
+) -> dict:
+    """Cluster paragraph spacing values into tokens."""
+    return _cluster_simple_dimension(
+        conn, file_id, collection_id, mode_id, "paragraphSpacing", "paragraphSpacing"
+    )
