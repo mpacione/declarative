@@ -244,3 +244,11 @@ Accumulated insights from building and testing the curation pipeline. These info
 - **Fix**: The rebind handler must skip `itemSpacing` binding when `primaryAxisAlignItems === "SPACE_BETWEEN"`.
 - **Restoration**: Unbind `itemSpacing` (`setBoundVariable('itemSpacing', null)`) and reset `primaryAxisAlignItems = 'SPACE_BETWEEN'`.
 - **Broader rule**: Before binding any layout property, check if the node uses an auto/distributed mode that the binding would override.
+
+### Variable Value Changes Also Reset Paint Opacities
+- Changing a variable's value (e.g., from raw hex to variable alias via `setValueForMode`) causes Figma to re-evaluate all bound nodes.
+- This re-evaluation resets paint opacities on those nodes to 1.0 — the same bug as `setBoundVariableForPaint`.
+- **Scope**: T4.1 alias update (52 variables × `setValueForMode`) reset 4,831 fill opacities and 9,807 effect alphas that we had previously restored.
+- **Implication**: The compact handler opacity fix only protects during rebinding. ANY Figma variable modification (value change, alias update, mode creation) can trigger this.
+- **Required post-step**: After any `dd push` or variable modification operation, run the opacity/alpha restoration scripts as a standard cleanup step.
+- **Long-term fix**: Extract `fill.N.opacity` and `effect.N.alpha` as first-class bindings so they persist through variable changes. The opacity would be set independently of the color binding.
