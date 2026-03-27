@@ -51,6 +51,7 @@ def temp_db():
             screen_id INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
             figma_node_id TEXT NOT NULL,
             name TEXT NOT NULL,
+            primary_align TEXT,
             UNIQUE(screen_id, figma_node_id)
         );
 
@@ -315,6 +316,46 @@ class TestQueryBindableEntries:
 
         entries = query_bindable_entries(conn, file_id)
         assert len(entries) == 0  # Unknown property should be filtered
+
+    def test_query_excludes_item_spacing_on_space_between(self, temp_db):
+        """itemSpacing bindings should be excluded when node has SPACE_BETWEEN alignment."""
+        conn = temp_db
+        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        file_id = cursor.lastrowid
+        cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
+        screen_id = cursor.lastrowid
+
+        # Node with SPACE_BETWEEN
+        cursor = conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, primary_align) VALUES (?, '1:101', 'AutoNode', 'SPACE_BETWEEN')",
+            (screen_id,))
+        auto_node_id = cursor.lastrowid
+
+        # Node without SPACE_BETWEEN
+        cursor = conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, primary_align) VALUES (?, '1:102', 'FixedNode', 'MIN')",
+            (screen_id,))
+        fixed_node_id = cursor.lastrowid
+
+        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'space.s10', 'dimension', 'VariableID:123')")
+        token_id = cursor.lastrowid
+
+        # Both nodes get itemSpacing bindings
+        conn.execute("""
+            INSERT INTO node_token_bindings (node_id, property, token_id, raw_value, resolved_value, binding_status)
+            VALUES (?, 'itemSpacing', ?, '10', '10', 'bound')
+        """, (auto_node_id, token_id))
+        conn.execute("""
+            INSERT INTO node_token_bindings (node_id, property, token_id, raw_value, resolved_value, binding_status)
+            VALUES (?, 'itemSpacing', ?, '10', '10', 'bound')
+        """, (fixed_node_id, token_id))
+        conn.commit()
+
+        entries = query_bindable_entries(conn, file_id)
+
+        node_ids = [e["node_id"] for e in entries]
+        assert "1:102" in node_ids, "Fixed-spacing node should be included"
+        assert "1:101" not in node_ids, "SPACE_BETWEEN node should be excluded"
 
     def test_query_empty(self, temp_db):
         """Test with no bindable entries."""

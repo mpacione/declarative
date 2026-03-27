@@ -153,7 +153,8 @@ def query_bindable_entries(conn: sqlite3.Connection, file_id: int) -> list[dict[
         SELECT ntb.id AS binding_id,
                n.figma_node_id AS node_id,
                ntb.property,
-               t.figma_variable_id AS variable_id
+               t.figma_variable_id AS variable_id,
+               n.primary_align
         FROM node_token_bindings ntb
         JOIN nodes n ON ntb.node_id = n.id
         JOIN screens s ON n.screen_id = s.id
@@ -169,13 +170,19 @@ def query_bindable_entries(conn: sqlite3.Connection, file_id: int) -> list[dict[
 
     for row in cursor:
         # Filter out unknown property types
-        if classify_property(row["property"]) != "unknown":
-            entries.append({
-                "binding_id": row["binding_id"],
-                "node_id": row["node_id"],
-                "property": row["property"],
-                "variable_id": row["variable_id"],
-            })
+        if classify_property(row["property"]) == "unknown":
+            continue
+
+        # Skip itemSpacing on SPACE_BETWEEN nodes — auto gap is not a fixed value
+        if row["property"] == "itemSpacing" and row["primary_align"] == "SPACE_BETWEEN":
+            continue
+
+        entries.append({
+            "binding_id": row["binding_id"],
+            "node_id": row["node_id"],
+            "property": row["property"],
+            "variable_id": row["variable_id"],
+        })
 
     return entries
 
