@@ -50,7 +50,7 @@ class TestNormalizeFill:
         assert result[1]["resolved_value"] == "#00FF00"
 
     def test_gradient_fill(self):
-        """Test gradient fill produces gradient binding."""
+        """Test gradient fill produces gradient binding plus stop color bindings."""
         fills = [
             {
                 "type": "GRADIENT_LINEAR",
@@ -61,12 +61,13 @@ class TestNormalizeFill:
             }
         ]
         result = normalize_fill(fills)
-        assert len(result) == 1
+        assert len(result) == 3
         assert result[0]["property"] == "fill.0.gradient"
         assert result[0]["resolved_value"] == "gradient"
-        # Verify raw_value contains full gradient data
-        raw_data = json.loads(result[0]["raw_value"])
-        assert raw_data["type"] == "GRADIENT_LINEAR"
+        assert result[1]["property"] == "fill.0.gradient.stop.0.color"
+        assert result[1]["resolved_value"] == "#000000"
+        assert result[2]["property"] == "fill.0.gradient.stop.1.color"
+        assert result[2]["resolved_value"] == "#FFFFFF"
 
     def test_invisible_fill_skipped(self):
         """Test invisible fill is skipped."""
@@ -80,16 +81,18 @@ class TestNormalizeFill:
         assert result[0]["property"] == "fill.1.color"
         assert result[0]["resolved_value"] == "#00FF00"
 
-    def test_image_fill_skipped(self):
-        """Test IMAGE fill type is skipped."""
+    def test_image_fill_stored(self):
+        """Test IMAGE fill type produces an image reference binding."""
         fills = [
             {"type": "IMAGE", "imageRef": "some-image"},
             {"type": "SOLID", "color": {"r": 0, "g": 0, "b": 1}},
         ]
         result = normalize_fill(fills)
-        assert len(result) == 1
-        assert result[0]["property"] == "fill.1.color"
-        assert result[0]["resolved_value"] == "#0000FF"
+        assert len(result) == 2
+        assert result[0]["property"] == "fill.0.image"
+        assert result[0]["resolved_value"] == "image"
+        assert result[1]["property"] == "fill.1.color"
+        assert result[1]["resolved_value"] == "#0000FF"
 
     def test_empty_fills(self):
         """Test empty fills list returns empty bindings."""

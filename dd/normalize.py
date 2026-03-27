@@ -44,7 +44,31 @@ def normalize_fill(fills: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                 "raw_value": json.dumps(fill),
                 "resolved_value": "gradient"
             })
-        # Skip IMAGE fills entirely
+        elif fill_type == "IMAGE":
+            bindings.append({
+                "property": f"fill.{i}.image",
+                "raw_value": json.dumps({
+                    "imageRef": fill.get("imageRef"),
+                    "scaleMode": fill.get("scaleMode"),
+                }),
+                "resolved_value": "image"
+            })
+
+        # After storing the gradient as a whole, decompose stop colors
+        if fill_type in ["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]:
+            for j, stop in enumerate(fill.get("gradientStops", [])):
+                stop_color = stop.get("color", {})
+                hex_color = rgba_to_hex(
+                    stop_color.get("r", 0),
+                    stop_color.get("g", 0),
+                    stop_color.get("b", 0),
+                    stop_color.get("a", 1),
+                )
+                bindings.append({
+                    "property": f"fill.{i}.gradient.stop.{j}.color",
+                    "raw_value": json.dumps(stop_color),
+                    "resolved_value": hex_color
+                })
 
     return bindings
 
@@ -150,7 +174,7 @@ def normalize_effect(effects: List[Dict[str, Any]]) -> List[Dict[str, str]]:
                 "resolved_value": str(spread)
             })
 
-        elif effect_type == "LAYER_BLUR":
+        elif effect_type in ("LAYER_BLUR", "BACKGROUND_BLUR"):
             radius = effect.get("radius", 0)
             bindings.append({
                 "property": f"effect.{i}.radius",
@@ -335,3 +359,89 @@ def normalize_radius(corner_radius: Optional[Union[float, int, str, Dict[str, An
                 })
 
     return bindings
+
+
+def normalize_stroke_weight(node: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Normalize stroke weight to binding rows.
+
+    Checks per-side weights first; falls back to uniform stroke_weight.
+
+    Args:
+        node: Dict with stroke_weight and optionally stroke_*_weight fields
+
+    Returns:
+        List of binding dicts
+    """
+    bindings = []
+
+    per_side = {
+        "stroke_top_weight": "strokeTopWeight",
+        "stroke_right_weight": "strokeRightWeight",
+        "stroke_bottom_weight": "strokeBottomWeight",
+        "stroke_left_weight": "strokeLeftWeight",
+    }
+
+    has_per_side = any(
+        node.get(k) is not None and node.get(k) != 0
+        for k in per_side
+    )
+
+    if has_per_side:
+        for key, prop_name in per_side.items():
+            value = node.get(key)
+            if value is not None and value != 0:
+                bindings.append({
+                    "property": prop_name,
+                    "raw_value": json.dumps(value),
+                    "resolved_value": str(value),
+                })
+    else:
+        value = node.get("stroke_weight")
+        if value is not None and value != 0:
+            bindings.append({
+                "property": "strokeWeight",
+                "raw_value": json.dumps(value),
+                "resolved_value": str(value),
+            })
+
+    return bindings
+
+
+def normalize_paragraph_spacing(node: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Normalize paragraph spacing to a binding row.
+
+    Args:
+        node: Dict with paragraph_spacing field
+
+    Returns:
+        List with 0 or 1 binding dicts
+    """
+    value = node.get("paragraph_spacing")
+    if value is None or value == 0:
+        return []
+    return [{
+        "property": "paragraphSpacing",
+        "raw_value": json.dumps(value),
+        "resolved_value": str(value),
+    }]
+
+
+def normalize_font_style(node: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Normalize font style to a binding row.
+
+    Skips "Regular" since it's the implicit default.
+
+    Args:
+        node: Dict with font_style field
+
+    Returns:
+        List with 0 or 1 binding dicts
+    """
+    value = node.get("font_style")
+    if value is None or value == "Regular":
+        return []
+    return [{
+        "property": "fontStyle",
+        "raw_value": json.dumps(value),
+        "resolved_value": value,
+    }]

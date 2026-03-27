@@ -305,17 +305,63 @@ CREATE TABLE nodes (
     blend_mode      TEXT DEFAULT 'NORMAL',
     visible         INTEGER NOT NULL DEFAULT 1,
 
+    -- Stroke properties
+    stroke_weight   REAL,                        -- Uniform stroke weight (null if per-side or no stroke)
+    stroke_top_weight REAL,                      -- Per-side stroke weights (null if uniform)
+    stroke_right_weight REAL,
+    stroke_bottom_weight REAL,
+    stroke_left_weight REAL,
+    stroke_align    TEXT,                        -- INSIDE, CENTER, OUTSIDE
+    stroke_cap      TEXT,                        -- NONE, ROUND, SQUARE, ARROW_LINES, ARROW_EQUILATERAL
+    stroke_join     TEXT,                        -- MITER, BEVEL, ROUND
+    dash_pattern    TEXT,                        -- JSON array: [10, 5] for 10px dash, 5px gap
+
+    -- Transform
+    rotation        REAL,                        -- Degrees
+    clips_content   INTEGER,                     -- 1 = clips children to frame bounds
+
+    -- Constraints (for non-auto-layout children)
+    constraint_h    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE
+    constraint_v    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE
+
+    -- Auto-layout extensions
+    layout_wrap     TEXT,                        -- NO_WRAP, WRAP
+    min_width       REAL,                        -- Min size constraint
+    max_width       REAL,                        -- Max size constraint
+    min_height      REAL,
+    max_height      REAL,
+
     -- Typography (TEXT nodes only)
     font_family     TEXT,
     font_weight     INTEGER,
     font_size       REAL,
+    font_style      TEXT,                        -- e.g. "Italic", "Bold Italic" (from fontName.style)
     line_height     TEXT,                        -- JSON: {"value":24,"unit":"PIXELS"} or {"unit":"AUTO"}
     letter_spacing  TEXT,                        -- JSON: {"value":0,"unit":"PIXELS"} or {"value":-2,"unit":"PERCENT"}
+    paragraph_spacing REAL,                      -- Gap between paragraphs in px
     text_align      TEXT,                        -- LEFT, CENTER, RIGHT, JUSTIFIED
+    text_align_v    TEXT,                        -- TOP, CENTER, BOTTOM
+    text_decoration TEXT,                        -- NONE, UNDERLINE, STRIKETHROUGH
+    text_case       TEXT,                        -- ORIGINAL, UPPER, LOWER, TITLE, SMALL_CAPS, SMALL_CAPS_FORCED
     text_content    TEXT,                        -- actual text string
+
+    -- Component reference (extended)
+    component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync
 
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, figma_node_id)
+);
+
+-- Component instance property overrides. Tracks what properties
+-- an INSTANCE node has overridden from its main component.
+-- Needed for T5 Conjure to recreate instances with correct overrides.
+CREATE TABLE instance_overrides (
+    id              INTEGER PRIMARY KEY,
+    node_id         INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    property_type   TEXT NOT NULL,               -- TEXT, BOOLEAN, INSTANCE_SWAP, VARIANT
+    property_name   TEXT NOT NULL,               -- e.g. "Button Label", "Show Icon"
+    override_value  TEXT,                        -- the override value (null = reset to default)
+    UNIQUE(node_id, property_name)
 );
 
 -- Token bindings: which token is bound to which property of which node.
