@@ -36,8 +36,43 @@ def rgba_to_hex(r: float, g: float, b: float, a: float = 1.0) -> str:
         return f"#{r_byte:02X}{g_byte:02X}{b_byte:02X}{a_byte:02X}"
 
 
+def hex_to_rgba(hex_color: str) -> tuple[float, float, float, float]:
+    """Parse hex string to RGBA 0-1 floats.
+
+    Args:
+        hex_color: Hex color string (#RGB, #RRGGBB, or #RRGGBBAA)
+
+    Returns:
+        Tuple of (r, g, b, a) as 0-1 floats. Alpha defaults to 1.0 for 6-digit hex.
+    """
+    hex_str = hex_color.lstrip('#')
+
+    if len(hex_str) == 3:
+        r = int(hex_str[0] * 2, 16) / 255.0
+        g = int(hex_str[1] * 2, 16) / 255.0
+        b = int(hex_str[2] * 2, 16) / 255.0
+        a = 1.0
+    elif len(hex_str) == 6:
+        r = int(hex_str[0:2], 16) / 255.0
+        g = int(hex_str[2:4], 16) / 255.0
+        b = int(hex_str[4:6], 16) / 255.0
+        a = 1.0
+    elif len(hex_str) == 8:
+        r = int(hex_str[0:2], 16) / 255.0
+        g = int(hex_str[2:4], 16) / 255.0
+        b = int(hex_str[4:6], 16) / 255.0
+        a = int(hex_str[6:8], 16) / 255.0
+    else:
+        raise ValueError(f"Invalid hex color format: {hex_color}")
+
+    return (r, g, b, a)
+
+
 def hex_to_oklch(hex_color: str) -> tuple[float, float, float]:
     """Convert hex color to OKLCH color space.
+
+    Alpha channel is stripped before conversion — OKLCH encodes only
+    perceptual color properties (lightness, chroma, hue), not transparency.
 
     Args:
         hex_color: Hex color string (#RGB, #RRGGBB, or #RRGGBBAA)
@@ -46,9 +81,15 @@ def hex_to_oklch(hex_color: str) -> tuple[float, float, float]:
         Tuple of (L, C, h) where L is lightness (0-1),
         C is chroma (0-0.4 typical), h is hue in degrees (0-360).
     """
+    # Strip alpha from 8-digit hex before OKLCH conversion
+    hex_stripped = hex_color
+    hex_clean = hex_color.lstrip('#')
+    if len(hex_clean) == 8:
+        hex_stripped = '#' + hex_clean[:6]
+
     try:
         from coloraide import Color
-        c = Color(hex_color)
+        c = Color(hex_stripped)
         oklch = c.convert("oklch")
         # Handle NaN hue for achromatic colors
         hue = oklch['hue']
@@ -57,7 +98,7 @@ def hex_to_oklch(hex_color: str) -> tuple[float, float, float]:
         return (oklch['lightness'], oklch['chroma'], hue)
     except ImportError:
         # Fall back to manual conversion
-        return _srgb_to_oklch(hex_color)
+        return _srgb_to_oklch(hex_stripped)
 
 
 def oklch_delta_e(color1: tuple[float, float, float], color2: tuple[float, float, float]) -> float:

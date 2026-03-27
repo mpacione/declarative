@@ -1,7 +1,7 @@
 """Unit tests for color utilities."""
 
 import pytest
-from dd.color import rgba_to_hex, hex_to_oklch, oklch_delta_e, oklch_invert_lightness
+from dd.color import rgba_to_hex, hex_to_oklch, hex_to_rgba, oklch_delta_e, oklch_invert_lightness
 
 
 pytestmark = pytest.mark.unit
@@ -48,6 +48,60 @@ class TestRgbaToHex:
         result = rgba_to_hex(0.5, 0.5, 0.5, 0.999)
         assert len(result) == 9  # #RRGGBBAA format
         assert result == "#808080FF"  # 0.999 rounds to 255
+
+
+class TestHexToRgba:
+    """Test hex_to_rgba function for parsing hex strings with alpha."""
+
+    def test_6_digit_hex_returns_alpha_1(self):
+        """6-digit hex should return alpha=1.0."""
+        r, g, b, a = hex_to_rgba("#FF0000")
+        assert a == 1.0
+        assert abs(r - 1.0) < 0.01
+
+    def test_8_digit_hex_returns_alpha(self):
+        """8-digit hex should parse the alpha channel."""
+        r, g, b, a = hex_to_rgba("#FF000080")
+        assert abs(r - 1.0) < 0.01
+        assert abs(a - 0.502) < 0.01  # 0x80/255 ≈ 0.502
+
+    def test_8_digit_hex_low_alpha(self):
+        """8-digit hex with low alpha."""
+        r, g, b, a = hex_to_rgba("#0000001A")
+        assert abs(a - 0.102) < 0.01  # 0x1A/255 ≈ 0.102
+
+    def test_8_digit_hex_full_alpha(self):
+        """8-digit hex with FF alpha should return 1.0."""
+        r, g, b, a = hex_to_rgba("#FF0000FF")
+        assert a == 1.0
+
+    def test_3_digit_hex_returns_alpha_1(self):
+        """3-digit shorthand hex should return alpha=1.0."""
+        r, g, b, a = hex_to_rgba("#F00")
+        assert a == 1.0
+
+    def test_roundtrip_with_rgba_to_hex(self):
+        """hex_to_rgba → rgba_to_hex should roundtrip."""
+        original = "#76768020"
+        r, g, b, a = hex_to_rgba(original)
+        result = rgba_to_hex(r, g, b, a)
+        assert result.upper() == original.upper()
+
+
+class TestHexToOklchWithAlpha:
+    """Test hex_to_oklch handles 8-digit hex by stripping alpha."""
+
+    def test_8_digit_hex_same_oklch_as_6_digit(self):
+        """Alpha shouldn't affect OKLCH values — only the color matters."""
+        L1, C1, h1 = hex_to_oklch("#767680")
+        L2, C2, h2 = hex_to_oklch("#76768020")
+        assert abs(L1 - L2) < 0.001
+        assert abs(C1 - C2) < 0.001
+
+    def test_8_digit_hex_does_not_error(self):
+        """8-digit hex should not raise."""
+        L, C, h = hex_to_oklch("#00000080")
+        assert L < 0.01  # Still black
 
 
 class TestHexToOklch:
