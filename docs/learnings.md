@@ -252,3 +252,9 @@ Accumulated insights from building and testing the curation pipeline. These info
 - **Implication**: The compact handler opacity fix only protects during rebinding. ANY Figma variable modification (value change, alias update, mode creation) can trigger this.
 - **Required post-step**: After any `dd push` or variable modification operation, run the opacity/alpha restoration scripts as a standard cleanup step.
 - **Long-term fix**: Extract `fill.N.opacity` and `effect.N.alpha` as first-class bindings so they persist through variable changes. The opacity would be set independently of the color binding.
+- **Implemented fix**: `generate_opacity_restore_scripts()` in `export_rebind.py` reads original opacities from `nodes.fills`/`strokes`/`effects` JSON and generates restoration scripts. Integrated into `generate_push_manifest()` as mandatory `restore_opacities` phase — runs automatically after every push.
+
+### Test Schemas Must Use Real Schema
+- Three test files defined custom minimal schemas (missing columns, triggers, constraints). These diverged from `schema.sql` over time, causing false passes.
+- **Fix**: All test files now use `init_db(":memory:")` from `dd/db.py` which loads the full `schema.sql`.
+- **Rule**: Never define custom `CREATE TABLE` statements in test files. Always use the conftest `temp_db`/`db` fixtures. If a test needs specific data, insert it into the real schema's tables.

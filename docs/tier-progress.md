@@ -4,7 +4,9 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 
 **DB**: `Dank-EXP-02.declarative.db`
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
-**Figma variables**: 296 live (6 collections, includes T2.2 splits)
+**Figma variables**: 353 live (8 collections: Color Primitives, Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
+**DB tokens**: 379 total (45 color primitives + 52 color semantics + 282 other curated + 26 aliased)
+**Tests**: 641 passing
 
 ## Verification Pattern
 
@@ -151,6 +153,11 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Bindings**: 58,073 bindings unchanged (reference semantic token IDs, not affected by alias conversion)
 - **DB collections**: Colors renamed to "Color Semantics", new "Color Primitives" collection added (now 8 collections total)
 - **New functions**: `create_collection()`, `convert_to_alias()` in `dd/curate.py`
+
+### T4.2–T4.5 — not started
+
+---
+
 ## Tier 5: Conjure — not started
 ## Tier 6: Sync
 
@@ -179,5 +186,5 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Writeback**: `--writeback --figma-state` applies variable ID writeback after agent executes CREATE actions
 - **Dry run**: `--dry-run` shows summary counts without generating action payloads
 - **Compact rebind encoding**: Property shortcodes (e.g. `fontSize`→`fs`, `fill.0.color`→`f0`) reduce script size ~60%, fitting ~950 bindings per 50K char script
-- **Tests**: 31 new tests (609 total passing)
-- **Real DB**: 334 tokens → 8 MCP calls (batched at 100), 182,877 bindings → 193 rebind scripts
+- **Opacity restoration**: `generate_opacity_restore_scripts()` runs as mandatory post-step after every push. Restores fill/stroke paint opacity and effect color alpha from DB source of truth.
+- **Real DB**: 379 tokens → 8+ MCP calls (batched at 100), 182,877 bindings → 193 rebind scripts
