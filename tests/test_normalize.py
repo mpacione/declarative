@@ -111,6 +111,44 @@ class TestNormalizeFill:
         assert result[1]["resolved_value"] == "#0000FF"
 
 
+    def test_fill_with_sub_1_opacity_includes_alpha(self):
+        """Fill paint opacity < 1 should produce 8-digit hex with alpha baked in."""
+        fills = [
+            {
+                "type": "SOLID",
+                "visible": True,
+                "color": {"r": 0.46, "g": 0.46, "b": 0.50, "a": 1.0},
+                "opacity": 0.12,
+            }
+        ]
+        result = normalize_fill(fills)
+        assert len(result) == 1
+        # resolved_value should be 8-digit hex with alpha
+        assert len(result[0]["resolved_value"]) == 9  # #RRGGBBAA
+        assert result[0]["resolved_value"].endswith("1F") or result[0]["resolved_value"].endswith("1E")  # 0.12 * 255 ≈ 31 = 0x1F
+
+    def test_fill_with_full_opacity_stays_6_digit(self):
+        """Fill paint opacity = 1.0 should produce standard 6-digit hex."""
+        fills = [
+            {
+                "type": "SOLID",
+                "visible": True,
+                "color": {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1.0},
+                "opacity": 1.0,
+            }
+        ]
+        result = normalize_fill(fills)
+        assert len(result[0]["resolved_value"]) == 7  # #RRGGBB
+
+    def test_fill_without_opacity_field_defaults_to_full(self):
+        """Fill without explicit opacity field should default to 1.0 (6-digit hex)."""
+        fills = [
+            {"type": "SOLID", "color": {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1.0}}
+        ]
+        result = normalize_fill(fills)
+        assert len(result[0]["resolved_value"]) == 7  # #RRGGBB
+
+
 class TestNormalizeStroke:
     """Test normalize_stroke function."""
 
@@ -120,16 +158,28 @@ class TestNormalizeStroke:
             {
                 "type": "SOLID",
                 "visible": True,
-                "color": {"r": 0.2, "g": 0.3, "b": 0.4, "a": 0.5},
+                "color": {"r": 0.2, "g": 0.3, "b": 0.4, "a": 1.0},
             }
         ]
         result = normalize_stroke(strokes)
         assert len(result) == 1
         assert result[0]["property"] == "stroke.0.color"
-        assert result[0]["resolved_value"] == "#334C6680"  # 0.3 * 255 rounds to 76 (0x4C)
-        # Verify raw_value
+        assert result[0]["resolved_value"] == "#334C66"  # 6-digit hex, no paint opacity
         raw_data = json.loads(result[0]["raw_value"])
-        assert raw_data == {"r": 0.2, "g": 0.3, "b": 0.4, "a": 0.5}
+        assert raw_data == {"r": 0.2, "g": 0.3, "b": 0.4, "a": 1.0}
+
+    def test_stroke_with_sub_1_opacity_includes_alpha(self):
+        """Stroke paint opacity < 1 should produce 8-digit hex with alpha baked in."""
+        strokes = [
+            {
+                "type": "SOLID",
+                "visible": True,
+                "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                "opacity": 0.3,
+            }
+        ]
+        result = normalize_stroke(strokes)
+        assert len(result[0]["resolved_value"]) == 9  # #RRGGBBAA
 
     def test_invisible_stroke_skipped(self):
         """Test invisible stroke is skipped."""

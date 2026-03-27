@@ -26,11 +26,12 @@ def normalize_fill(fills: List[Dict[str, Any]]) -> List[Dict[str, str]]:
 
         if fill_type == "SOLID":
             color = fill.get("color", {})
+            paint_opacity = fill.get("opacity", 1.0)
             hex_color = rgba_to_hex(
                 color.get("r", 0),
                 color.get("g", 0),
                 color.get("b", 0),
-                color.get("a", 1)
+                paint_opacity
             )
             bindings.append({
                 "property": f"fill.{i}.color",
@@ -68,11 +69,12 @@ def normalize_stroke(strokes: List[Dict[str, Any]]) -> List[Dict[str, str]]:
 
         if stroke_type == "SOLID":
             color = stroke.get("color", {})
+            paint_opacity = stroke.get("opacity", 1.0)
             hex_color = rgba_to_hex(
                 color.get("r", 0),
                 color.get("g", 0),
                 color.get("b", 0),
-                color.get("a", 1)
+                paint_opacity
             )
             bindings.append({
                 "property": f"stroke.{i}.color",
