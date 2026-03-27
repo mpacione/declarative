@@ -1,5 +1,6 @@
 """Generate rebind scripts for Figma Plugin API to bind nodes to variables."""
 
+import json
 import math
 import sqlite3
 from typing import Any
@@ -349,6 +350,90 @@ def generate_rebind_scripts(conn: sqlite3.Connection, file_id: int) -> list[str]
     for i in range(0, len(entries), MAX_BINDINGS_PER_SCRIPT):
         batch = entries[i:i + MAX_BINDINGS_PER_SCRIPT]
         scripts.append(generate_compact_script(batch))
+
+    return scripts
+
+
+OPACITY_RESTORE_HANDLER = r"""const R=D.split('\n').filter(l=>l);let ok=0,fail=0;
+for(const l of R){const[n,t,i,o]=l.split('|');try{
+const nd=await figma.getNodeByIdAsync(n);if(!nd){fail++;continue;}
+const idx=+i;
+if(t==='f'){const fl=[...nd.fills];fl[idx]={...fl[idx],opacity:+o};nd.fills=fl;}
+else if(t==='s'){const st=[...nd.strokes];st[idx]={...st[idx],opacity:+o};nd.strokes=st;}
+else if(t==='e'){const ef=[...nd.effects];const e=ef[idx];if(e&&e.color){ef[idx]={...e,color:{...e.color,a:+o}};nd.effects=ef;}else{fail++;continue;}}
+ok++;}catch(e){fail++;}}
+figma.notify(`Restored ${ok}/${R.length} paint opacities (${fail} failures)`);"""
+
+OPACITY_RESTORE_BATCH_SIZE = 500
+
+
+def query_opacity_restorations(conn: sqlite3.Connection, file_id: int) -> list[str]:
+    """
+    Query all paint opacities and effect color alphas that need restoration.
+
+    Reads from nodes.fills, nodes.strokes, nodes.effects JSON columns.
+    Returns pipe-delimited entries: nodeId|type|index|opacity where
+    type is 'f' (fill), 's' (stroke), or 'e' (effect).
+    """
+    restorations: list[str] = []
+
+    # Fills and strokes
+    rows = conn.execute('''
+        SELECT n.figma_node_id, n.fills, n.strokes, n.effects
+        FROM nodes n
+        JOIN screens s ON n.screen_id = s.id
+        WHERE s.file_id = ?
+    ''', (file_id,)).fetchall()
+
+    for row in rows:
+        node_id = row["figma_node_id"]
+
+        if row["fills"]:
+            for i, fill in enumerate(json.loads(row["fills"])):
+                if fill.get("visible", True) is False:
+                    continue
+                op = fill.get("opacity", 1.0)
+                if op < 0.99:
+                    restorations.append(f"{node_id}|f|{i}|{op}")
+
+        if row["strokes"]:
+            for i, stroke in enumerate(json.loads(row["strokes"])):
+                if stroke.get("visible", True) is False:
+                    continue
+                op = stroke.get("opacity", 1.0)
+                if op < 0.99:
+                    restorations.append(f"{node_id}|s|{i}|{op}")
+
+        if row["effects"]:
+            for i, effect in enumerate(json.loads(row["effects"])):
+                if "color" not in effect:
+                    continue
+                alpha = effect["color"].get("a", 1.0)
+                if alpha < 0.99:
+                    restorations.append(f"{node_id}|e|{i}|{alpha}")
+
+    return restorations
+
+
+def generate_opacity_restore_scripts(conn: sqlite3.Connection, file_id: int) -> list[str]:
+    """
+    Generate scripts to restore paint opacities and effect color alphas.
+
+    Must run after any Figma variable operation (rebind, push, alias update)
+    because Figma resets paint opacities when re-evaluating variable bindings.
+
+    Returns list of executable JavaScript strings, each under 50K chars.
+    """
+    restorations = query_opacity_restorations(conn, file_id)
+
+    if not restorations:
+        return []
+
+    scripts = []
+    for i in range(0, len(restorations), OPACITY_RESTORE_BATCH_SIZE):
+        batch = restorations[i:i + OPACITY_RESTORE_BATCH_SIZE]
+        data_str = "\\n".join(batch)
+        scripts.append(f"(async()=>{{const D='{data_str}';{OPACITY_RESTORE_HANDLER}}})();")
 
     return scripts
 

@@ -15,6 +15,7 @@ from dd.export_rebind import (
     classify_property,
     encode_property,
     generate_compact_script,
+    generate_opacity_restore_scripts,
     generate_rebind_scripts,
     generate_single_script,
     get_rebind_summary,
@@ -52,6 +53,9 @@ def temp_db():
             figma_node_id TEXT NOT NULL,
             name TEXT NOT NULL,
             primary_align TEXT,
+            fills TEXT,
+            strokes TEXT,
+            effects TEXT,
             UNIQUE(screen_id, figma_node_id)
         );
 
@@ -777,6 +781,131 @@ class TestGenerateErrorClearScript:
 
         assert "setPluginData" in script
         assert "rebind_errors" in script
+
+
+class TestGenerateOpacityRestoreScripts:
+    """Test generate_opacity_restore_scripts for restoring paint opacities and effect alphas."""
+
+    def test_generates_scripts_for_sub_opacity_fills(self, temp_db):
+        """Should generate restore scripts when fills have opacity < 1."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'SearchBar', ?)",
+            ('[{"type":"SOLID","color":{"r":0.46,"g":0.46,"b":0.5,"a":1},"opacity":0.12,"visible":true}]',)
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        assert len(scripts) >= 1
+        assert "1:101" in scripts[0]
+        assert "0.12" in scripts[0]
+
+    def test_generates_scripts_for_sub_alpha_effects(self, temp_db):
+        """Should generate restore scripts when effects have color alpha < 1."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, effects) VALUES (1, '1:102', 'Card', ?)",
+            ('[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":0.05},"radius":10,"offset":{"x":0,"y":1},"spread":0,"visible":true}]',)
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        assert len(scripts) >= 1
+        assert "1:102" in scripts[0]
+        assert "0.05" in scripts[0]
+
+    def test_skips_full_opacity_fills(self, temp_db):
+        """Should not generate scripts for fills at full opacity."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'FullOpacity', ?)",
+            ('[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":1}]',)
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        assert len(scripts) == 0
+
+    def test_skips_invisible_fills(self, temp_db):
+        """Should not restore opacity on invisible fills."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'Hidden', ?)",
+            ('[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":0.5,"visible":false}]',)
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        assert len(scripts) == 0
+
+    def test_handles_mixed_fills_strokes_effects(self, temp_db):
+        """Should handle fills, strokes, and effects with sub-1 opacity/alpha."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            """INSERT INTO nodes (screen_id, figma_node_id, name, fills, strokes, effects)
+            VALUES (1, '1:101', 'Mixed', ?, ?, ?)""",
+            (
+                '[{"type":"SOLID","opacity":0.5}]',
+                '[{"type":"SOLID","opacity":0.3}]',
+                '[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":0.1},"radius":5}]',
+            )
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        all_scripts = '\n'.join(scripts)
+        assert "1:101" in all_scripts
+        # All three types present
+        assert "0.5" in all_scripts  # fill opacity
+        assert "0.3" in all_scripts  # stroke opacity
+        assert "0.1" in all_scripts  # effect alpha
+
+    def test_scripts_fit_50k_limit(self, temp_db):
+        """Restore scripts must fit within 50K char limit."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        # Create many nodes with sub-1 opacity
+        for i in range(1000):
+            conn.execute(
+                "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, ?, ?, ?)",
+                (f'1:{i}', f'Node{i}', '[{"type":"SOLID","opacity":0.12}]')
+            )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+
+        for script in scripts:
+            assert len(script) < 50000, f"Script too large: {len(script)} chars"
+
+    def test_returns_empty_when_no_restorations_needed(self, temp_db):
+        """Should return empty list when all opacities are full."""
+        conn = temp_db
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'Normal', ?)",
+            ('[{"type":"SOLID","opacity":1}]',)
+        )
+        conn.commit()
+
+        scripts = generate_opacity_restore_scripts(conn, file_id=1)
+        assert scripts == []
 
 
 class TestGetRebindSummary:

@@ -313,6 +313,37 @@ class TestGeneratePushManifest:
         assert rebind["summary"]["total_bindings"] > 0
 
 
+    def test_manifest_always_includes_opacity_restore(self, db):
+        """Every manifest should include restore_opacities phase when restorations exist."""
+        self._seed_with_variable_ids(db)
+
+        # Add a node with sub-1 fill opacity so restoration is needed
+        db.execute("""
+            UPDATE nodes SET fills = '[{"type":"SOLID","opacity":0.12}]'
+            WHERE id = 1
+        """)
+        db.commit()
+
+        for phase in ("variables", "rebind", "all"):
+            manifest = generate_push_manifest(db, file_id=1, figma_state_json=None, phase=phase)
+            assert "restore_opacities" in manifest["phases"], (
+                f"Phase '{phase}' should include restore_opacities"
+            )
+            assert len(manifest["phases"]["restore_opacities"]["scripts"]) > 0
+
+    def test_manifest_no_restore_when_all_full_opacity(self, db):
+        """No restore_opacities phase when all opacities are 1.0."""
+        self._seed_with_variable_ids(db)
+
+        # Clear all sub-1 opacities from fixtures
+        db.execute("UPDATE nodes SET fills = NULL, strokes = NULL, effects = NULL")
+        db.commit()
+
+        manifest = generate_push_manifest(db, file_id=1, figma_state_json=None, phase="rebind")
+
+        assert "restore_opacities" not in manifest["phases"]
+
+
 class TestPushCLI:
     """Test dd push CLI subcommand."""
 
