@@ -1,9 +1,5 @@
 """Test export_rebind module for rebind script generation."""
 
-import sqlite3
-import tempfile
-from pathlib import Path
-
 import math
 
 import pytest
@@ -23,67 +19,20 @@ from dd.export_rebind import (
 )
 
 
-@pytest.fixture
-def temp_db():
-    """Create a temporary database with schema."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmpfile:
-        db_path = Path(tmpfile.name)
+# Uses temp_db fixture from conftest.py (full schema via init_db)
 
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
 
-    # Create minimal schema for testing
-    conn.executescript("""
-        CREATE TABLE files (
-            id INTEGER PRIMARY KEY,
-            file_key TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE screens (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER NOT NULL REFERENCES files(id),
-            figma_node_id TEXT NOT NULL,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE nodes (
-            id INTEGER PRIMARY KEY,
-            screen_id INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
-            figma_node_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            primary_align TEXT,
-            fills TEXT,
-            strokes TEXT,
-            effects TEXT,
-            UNIQUE(screen_id, figma_node_id)
-        );
-
-        CREATE TABLE tokens (
-            id INTEGER PRIMARY KEY,
-            collection_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            figma_variable_id TEXT
-        );
-
-        CREATE TABLE node_token_bindings (
-            id INTEGER PRIMARY KEY,
-            node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-            property TEXT NOT NULL,
-            token_id INTEGER REFERENCES tokens(id),
-            raw_value TEXT NOT NULL,
-            resolved_value TEXT NOT NULL,
-            binding_status TEXT NOT NULL DEFAULT 'unbound'
-                CHECK(binding_status IN ('unbound', 'proposed', 'bound', 'overridden', 'intentionally_unbound')),
-            UNIQUE(node_id, property)
-        );
-    """)
-
-    yield conn
-
-    conn.close()
-    db_path.unlink()
+def seed_file_and_collection(conn):
+    """Insert minimum parent rows needed for rebind tests. Returns (file_id, coll_id, screen_id)."""
+    cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
+    file_id = cursor.lastrowid
+    cursor = conn.execute("INSERT INTO token_collections (file_id, name) VALUES (?, 'TestColors')", (file_id,))
+    coll_id = cursor.lastrowid
+    conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Default', 1)", (coll_id,))
+    cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (?, '1:100', 'Screen', 428, 926)", (file_id,))
+    screen_id = cursor.lastrowid
+    conn.commit()
+    return file_id, coll_id, screen_id
 
 
 @pytest.fixture
@@ -95,55 +44,60 @@ def populated_db(temp_db):
     cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test123', 'test.figma')")
     file_id = cursor.lastrowid
 
+    # Create collection + mode (required by real schema FK)
+    cursor = conn.execute("INSERT INTO token_collections (file_id, name) VALUES (?, 'Colors')", (file_id,))
+    coll_id = cursor.lastrowid
+    conn.execute("INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, 'Default', 1)", (coll_id,))
+
     # Create a screen
-    cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen 1')", (file_id,))
+    cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (?, '1:100', 'Screen 1', 428, 926)", (file_id,))
     screen_id = cursor.lastrowid
 
     # Create nodes
-    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '2219:235701', 'Button')", (screen_id,))
+    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '2219:235701', 'Button', 'FRAME')", (screen_id,))
     node1_id = cursor.lastrowid
-    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '2219:235702', 'Text')", (screen_id,))
+    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '2219:235702', 'Text', 'TEXT')", (screen_id,))
     node2_id = cursor.lastrowid
-    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '2219:235703', 'Card')", (screen_id,))
+    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '2219:235703', 'Card', 'RECTANGLE')", (screen_id,))
     node3_id = cursor.lastrowid
-    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '2219:235704', 'Frame')", (screen_id,))
+    cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '2219:235704', 'Frame', 'FRAME')", (screen_id,))
     node4_id = cursor.lastrowid
 
     # Create tokens with figma_variable_id
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, figma_variable_id)
-        VALUES (1, 'color.primary', 'color', 'VariableID:123:456')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
+        VALUES (?, 'color.primary', 'color', 'curated', 'VariableID:123:456')
+    """, (coll_id,))
     token1_id = cursor.lastrowid
 
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, figma_variable_id)
-        VALUES (1, 'size.md', 'dimension', 'VariableID:123:789')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
+        VALUES (?, 'size.md', 'dimension', 'curated', 'VariableID:123:789')
+    """, (coll_id,))
     token2_id = cursor.lastrowid
 
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, figma_variable_id)
-        VALUES (1, 'shadow.sm', 'color', 'VariableID:123:012')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
+        VALUES (?, 'shadow.sm', 'color', 'curated', 'VariableID:123:012')
+    """, (coll_id,))
     token3_id = cursor.lastrowid
 
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, figma_variable_id)
-        VALUES (1, 'space.4', 'dimension', 'VariableID:123:345')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
+        VALUES (?, 'space.4', 'dimension', 'curated', 'VariableID:123:345')
+    """, (coll_id,))
     token4_id = cursor.lastrowid
 
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type, figma_variable_id)
-        VALUES (1, 'radius.md', 'dimension', 'VariableID:123:678')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id)
+        VALUES (?, 'radius.md', 'dimension', 'curated', 'VariableID:123:678')
+    """, (coll_id,))
     token5_id = cursor.lastrowid
 
     cursor = conn.execute("""
-        INSERT INTO tokens (collection_id, name, type)
-        VALUES (1, 'color.secondary', 'color')
-    """)
+        INSERT INTO tokens (collection_id, name, type, tier)
+        VALUES (?, 'color.secondary', 'color', 'curated')
+    """, (coll_id,))
     token6_id = cursor.lastrowid  # No figma_variable_id
 
     # Create bindings - mix of bound and unbound, with various property types
@@ -302,13 +256,10 @@ class TestQueryBindableEntries:
     def test_query_filters_unknown_properties(self, temp_db):
         """Test that unknown properties are filtered out."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
-        screen_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '1:101', 'Node')", (screen_id,))
+        file_id, coll_id, screen_id = seed_file_and_collection(conn)
+        cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '1:101', 'Node', 'FRAME')", (screen_id,))
         node_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'test', 'color', 'VariableID:123')")
+        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id) VALUES (?, 'test', 'color', 'curated', 'VariableID:123')", (coll_id,))
         token_id = cursor.lastrowid
 
         # Add binding with unknown property
@@ -324,24 +275,21 @@ class TestQueryBindableEntries:
     def test_query_excludes_item_spacing_on_space_between(self, temp_db):
         """itemSpacing bindings should be excluded when node has SPACE_BETWEEN alignment."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
-        screen_id = cursor.lastrowid
+        file_id, coll_id, screen_id = seed_file_and_collection(conn)
 
         # Node with SPACE_BETWEEN
         cursor = conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, primary_align) VALUES (?, '1:101', 'AutoNode', 'SPACE_BETWEEN')",
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, primary_align) VALUES (?, '1:101', 'AutoNode', 'FRAME', 'SPACE_BETWEEN')",
             (screen_id,))
         auto_node_id = cursor.lastrowid
 
         # Node without SPACE_BETWEEN
         cursor = conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, primary_align) VALUES (?, '1:102', 'FixedNode', 'MIN')",
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, primary_align) VALUES (?, '1:102', 'FixedNode', 'FRAME', 'MIN')",
             (screen_id,))
         fixed_node_id = cursor.lastrowid
 
-        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'space.s10', 'dimension', 'VariableID:123')")
+        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id) VALUES (?, 'space.s10', 'dimension', 'curated', 'VariableID:123')", (coll_id,))
         token_id = cursor.lastrowid
 
         # Both nodes get itemSpacing bindings
@@ -364,9 +312,7 @@ class TestQueryBindableEntries:
     def test_query_empty(self, temp_db):
         """Test with no bindable entries."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
+        file_id, _, _ = seed_file_and_collection(conn)
 
         entries = query_bindable_entries(conn, file_id)
         assert entries == []
@@ -463,16 +409,13 @@ class TestGenerateRebindScripts:
     def test_generate_scripts_large_batch(self, temp_db):
         """Test batching with many entries splits into correct number of scripts."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
-        screen_id = cursor.lastrowid
+        file_id, coll_id, screen_id = seed_file_and_collection(conn)
 
         entry_count = 1500
         for i in range(entry_count):
-            cursor = conn.execute(f"INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '1:{i}', 'Node{i}')", (screen_id,))
+            cursor = conn.execute(f"INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '1:{i}', 'Node{i}', 'FRAME')", (screen_id,))
             node_id = cursor.lastrowid
-            cursor = conn.execute(f"INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'token{i}', 'color', 'VariableID:{i}')")
+            cursor = conn.execute(f"INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id) VALUES (?, 'token{i}', 'color', 'curated', 'VariableID:{i}')", (coll_id,))
             token_id = cursor.lastrowid
             conn.execute("""
                 INSERT INTO node_token_bindings (node_id, property, token_id, raw_value, resolved_value, binding_status)
@@ -493,9 +436,7 @@ class TestGenerateRebindScripts:
     def test_generate_scripts_empty(self, temp_db):
         """Test with no scripts to generate."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
+        file_id, _, _ = seed_file_and_collection(conn)
 
         scripts = generate_rebind_scripts(conn, file_id)
         assert scripts == []
@@ -789,11 +730,10 @@ class TestGenerateOpacityRestoreScripts:
     def test_generates_scripts_for_sub_opacity_fills(self, temp_db):
         """Should generate restore scripts when fills have opacity < 1."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'SearchBar', ?)",
-            ('[{"type":"SOLID","color":{"r":0.46,"g":0.46,"b":0.5,"a":1},"opacity":0.12,"visible":true}]',)
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills) VALUES (?, '1:101', 'SearchBar', 'FRAME', ?)",
+            (screen_id, '[{"type":"SOLID","color":{"r":0.46,"g":0.46,"b":0.5,"a":1},"opacity":0.12,"visible":true}]')
         )
         conn.commit()
 
@@ -806,11 +746,10 @@ class TestGenerateOpacityRestoreScripts:
     def test_generates_scripts_for_sub_alpha_effects(self, temp_db):
         """Should generate restore scripts when effects have color alpha < 1."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, effects) VALUES (1, '1:102', 'Card', ?)",
-            ('[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":0.05},"radius":10,"offset":{"x":0,"y":1},"spread":0,"visible":true}]',)
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, effects) VALUES (?, '1:102', 'Card', 'FRAME', ?)",
+            (screen_id, '[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":0.05},"radius":10,"offset":{"x":0,"y":1},"spread":0,"visible":true}]')
         )
         conn.commit()
 
@@ -823,11 +762,10 @@ class TestGenerateOpacityRestoreScripts:
     def test_skips_full_opacity_fills(self, temp_db):
         """Should not generate scripts for fills at full opacity."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'FullOpacity', ?)",
-            ('[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":1}]',)
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills) VALUES (?, '1:101', 'FullOpacity', 'FRAME', ?)",
+            (screen_id, '[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":1}]')
         )
         conn.commit()
 
@@ -838,11 +776,10 @@ class TestGenerateOpacityRestoreScripts:
     def test_skips_invisible_fills(self, temp_db):
         """Should not restore opacity on invisible fills."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'Hidden', ?)",
-            ('[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":0.5,"visible":false}]',)
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills) VALUES (?, '1:101', 'Hidden', 'FRAME', ?)",
+            (screen_id, '[{"type":"SOLID","color":{"r":1,"g":0,"b":0,"a":1},"opacity":0.5,"visible":false}]')
         )
         conn.commit()
 
@@ -853,12 +790,12 @@ class TestGenerateOpacityRestoreScripts:
     def test_handles_mixed_fills_strokes_effects(self, temp_db):
         """Should handle fills, strokes, and effects with sub-1 opacity/alpha."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            """INSERT INTO nodes (screen_id, figma_node_id, name, fills, strokes, effects)
-            VALUES (1, '1:101', 'Mixed', ?, ?, ?)""",
+            """INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills, strokes, effects)
+            VALUES (?, '1:101', 'Mixed', 'FRAME', ?, ?, ?)""",
             (
+                screen_id,
                 '[{"type":"SOLID","opacity":0.5}]',
                 '[{"type":"SOLID","opacity":0.3}]',
                 '[{"type":"DROP_SHADOW","color":{"r":0,"g":0,"b":0,"a":0.1},"radius":5}]',
@@ -878,13 +815,12 @@ class TestGenerateOpacityRestoreScripts:
     def test_scripts_fit_50k_limit(self, temp_db):
         """Restore scripts must fit within 50K char limit."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         # Create many nodes with sub-1 opacity
         for i in range(1000):
             conn.execute(
-                "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, ?, ?, ?)",
-                (f'1:{i}', f'Node{i}', '[{"type":"SOLID","opacity":0.12}]')
+                "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills) VALUES (?, ?, ?, 'FRAME', ?)",
+                (screen_id, f'1:{i}', f'Node{i}', '[{"type":"SOLID","opacity":0.12}]')
             )
         conn.commit()
 
@@ -896,11 +832,10 @@ class TestGenerateOpacityRestoreScripts:
     def test_returns_empty_when_no_restorations_needed(self, temp_db):
         """Should return empty list when all opacities are full."""
         conn = temp_db
-        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (1, '1:100', 'Screen')")
+        file_id, _, screen_id = seed_file_and_collection(conn)
         conn.execute(
-            "INSERT INTO nodes (screen_id, figma_node_id, name, fills) VALUES (1, '1:101', 'Normal', ?)",
-            ('[{"type":"SOLID","opacity":1}]',)
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, fills) VALUES (?, '1:101', 'Normal', 'FRAME', ?)",
+            (screen_id, '[{"type":"SOLID","opacity":1}]')
         )
         conn.commit()
 
@@ -928,13 +863,10 @@ class TestGetRebindSummary:
     def test_summary_with_unknown(self, temp_db):
         """Test summary with unbindable properties."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
-        screen_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '1:101', 'Node')", (screen_id,))
+        file_id, coll_id, screen_id = seed_file_and_collection(conn)
+        cursor = conn.execute("INSERT INTO nodes (screen_id, figma_node_id, name, node_type) VALUES (?, '1:101', 'Node', 'FRAME')", (screen_id,))
         node_id = cursor.lastrowid
-        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'test', 'color', 'VariableID:123')")
+        cursor = conn.execute("INSERT INTO tokens (collection_id, name, type, tier, figma_variable_id) VALUES (?, 'test', 'color', 'curated', 'VariableID:123')", (coll_id,))
         token_id = cursor.lastrowid
 
         # Add binding with unknown property
@@ -958,9 +890,7 @@ class TestGetRebindSummary:
     def test_summary_empty(self, temp_db):
         """Test summary with no bindings."""
         conn = temp_db
-        cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
-        file_id = cursor.lastrowid
-        conn.commit()
+        file_id, _, _ = seed_file_and_collection(conn)
 
         summary = get_rebind_summary(conn, file_id)
 

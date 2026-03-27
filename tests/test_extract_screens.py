@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+from dd.db import init_db
 from dd.extract_screens import (
     compute_is_semantic,
     generate_extraction_script,
@@ -206,54 +207,8 @@ def test_compute_is_semantic_nested_hierarchy():
     assert result[0]["is_semantic"] == 0  # Frame 1 has only 1 child (Frame 2), not 2+
 
 
-def test_insert_nodes_basic(tmp_path):
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
-
-    # Create minimal schema
-    conn.executescript("""
-        CREATE TABLE files (
-            id INTEGER PRIMARY KEY,
-            file_key TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE screens (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER NOT NULL REFERENCES files(id),
-            figma_node_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            width REAL NOT NULL,
-            height REAL NOT NULL
-        );
-
-        CREATE TABLE nodes (
-            id INTEGER PRIMARY KEY,
-            screen_id INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
-            figma_node_id TEXT NOT NULL,
-            parent_id INTEGER REFERENCES nodes(id),
-            path TEXT,
-            name TEXT NOT NULL,
-            node_type TEXT NOT NULL,
-            depth INTEGER NOT NULL DEFAULT 0,
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            is_semantic INTEGER NOT NULL DEFAULT 0,
-            component_id INTEGER,
-            x REAL, y REAL, width REAL, height REAL,
-            layout_mode TEXT,
-            padding_top REAL, padding_right REAL, padding_bottom REAL, padding_left REAL,
-            item_spacing REAL, counter_axis_spacing REAL,
-            primary_align TEXT, counter_align TEXT,
-            layout_sizing_h TEXT, layout_sizing_v TEXT,
-            fills TEXT, strokes TEXT, effects TEXT, corner_radius TEXT,
-            opacity REAL DEFAULT 1.0, blend_mode TEXT DEFAULT 'NORMAL',
-            visible INTEGER NOT NULL DEFAULT 1,
-            font_family TEXT, font_weight INTEGER, font_size REAL,
-            line_height TEXT, letter_spacing TEXT, text_align TEXT, text_content TEXT,
-            extracted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            UNIQUE(screen_id, figma_node_id)
-        );
-    """)
+def test_insert_nodes_basic():
+    conn = init_db(":memory:")
 
     # Insert test data
     conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
@@ -291,62 +246,17 @@ def test_insert_nodes_basic(tmp_path):
     cursor = conn.execute("SELECT figma_node_id, parent_id, name, node_type FROM nodes ORDER BY id")
     rows = cursor.fetchall()
     assert len(rows) == 2
-    assert rows[0] == ("1:1", None, "Root Frame", "FRAME")
-    assert rows[1][0:1] == ("1:2",)  # Check figma_node_id
-    assert rows[1][1] == node_ids[0]  # Parent ID should be first node's ID
-    assert rows[1][2:4] == ("Child Text", "TEXT")
+    assert tuple(rows[0]) == ("1:1", None, "Root Frame", "FRAME")
+    assert rows[1]["figma_node_id"] == "1:2"
+    assert rows[1]["parent_id"] == node_ids[0]  # Parent ID should be first node's ID
+    assert rows[1]["name"] == "Child Text"
+    assert rows[1]["node_type"] == "TEXT"
 
     conn.close()
 
 
-def test_insert_nodes_upsert(tmp_path):
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
-
-    # Create minimal schema
-    conn.executescript("""
-        CREATE TABLE files (
-            id INTEGER PRIMARY KEY,
-            file_key TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE screens (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER NOT NULL REFERENCES files(id),
-            figma_node_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            width REAL NOT NULL,
-            height REAL NOT NULL
-        );
-
-        CREATE TABLE nodes (
-            id INTEGER PRIMARY KEY,
-            screen_id INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
-            figma_node_id TEXT NOT NULL,
-            parent_id INTEGER REFERENCES nodes(id),
-            path TEXT,
-            name TEXT NOT NULL,
-            node_type TEXT NOT NULL,
-            depth INTEGER NOT NULL DEFAULT 0,
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            is_semantic INTEGER NOT NULL DEFAULT 0,
-            component_id INTEGER,
-            x REAL, y REAL, width REAL, height REAL,
-            layout_mode TEXT,
-            padding_top REAL, padding_right REAL, padding_bottom REAL, padding_left REAL,
-            item_spacing REAL, counter_axis_spacing REAL,
-            primary_align TEXT, counter_align TEXT,
-            layout_sizing_h TEXT, layout_sizing_v TEXT,
-            fills TEXT, strokes TEXT, effects TEXT, corner_radius TEXT,
-            opacity REAL DEFAULT 1.0, blend_mode TEXT DEFAULT 'NORMAL',
-            visible INTEGER NOT NULL DEFAULT 1,
-            font_family TEXT, font_weight INTEGER, font_size REAL,
-            line_height TEXT, letter_spacing TEXT, text_align TEXT, text_content TEXT,
-            extracted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            UNIQUE(screen_id, figma_node_id)
-        );
-    """)
+def test_insert_nodes_upsert():
+    conn = init_db(":memory:")
 
     # Insert test data
     conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
@@ -380,7 +290,7 @@ def test_insert_nodes_upsert(tmp_path):
     # Verify update
     cursor = conn.execute("SELECT name, is_semantic FROM nodes WHERE figma_node_id = '1:1'")
     row = cursor.fetchone()
-    assert row == ("Updated Frame", 1)
+    assert tuple(row) == ("Updated Frame", 1)
 
     # Verify no duplicates
     cursor = conn.execute("SELECT COUNT(*) FROM nodes")
@@ -441,49 +351,12 @@ def test_parse_extraction_response_auto_layout():
     assert parsed[0]["layout_sizing_h"] == "HUG"
 
 
-def test_update_screen_status(tmp_path):
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
-
-    # Create minimal schema
-    conn.executescript("""
-        CREATE TABLE extraction_runs (
-            id INTEGER PRIMARY KEY,
-            status TEXT NOT NULL
-        );
-
-        CREATE TABLE files (
-            id INTEGER PRIMARY KEY,
-            file_key TEXT NOT NULL UNIQUE,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE screens (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER NOT NULL REFERENCES files(id),
-            figma_node_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            width REAL NOT NULL,
-            height REAL NOT NULL
-        );
-
-        CREATE TABLE screen_extraction_status (
-            id INTEGER PRIMARY KEY,
-            run_id INTEGER NOT NULL REFERENCES extraction_runs(id),
-            screen_id INTEGER NOT NULL REFERENCES screens(id),
-            status TEXT NOT NULL DEFAULT 'pending',
-            started_at TEXT,
-            completed_at TEXT,
-            node_count INTEGER,
-            binding_count INTEGER,
-            error TEXT,
-            UNIQUE(run_id, screen_id)
-        );
-    """)
+def test_update_screen_status():
+    conn = init_db(":memory:")
 
     # Insert test data
-    conn.execute("INSERT INTO extraction_runs (status) VALUES ('running')")
     conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
+    conn.execute("INSERT INTO extraction_runs (file_id, status) VALUES (1, 'running')")
     conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:0', 'Screen', 375, 667)")
     conn.execute("INSERT INTO screen_extraction_status (run_id, screen_id, status) VALUES (1, 1, 'pending')")
 
