@@ -1,0 +1,43 @@
+# Patch: Add PROXY_EXECUTE handler to figma-console-mcp WebSocket server
+# Apply to: node_modules/figma-console-mcp/dist/core/websocket-server.js
+# Purpose: Allows external WebSocket clients to execute code in Figma plugin
+# Usage: Connect to ws://127.0.0.1:9224, send:
+#   {"type": "PROXY_EXECUTE", "id": "my_id", "code": "return 1+1;", "timeout": 5000}
+# Response:
+#   {"type": "PROXY_EXECUTE_RESULT", "id": "my_id", "result": {...}}
+#
+# Insert this block BEFORE the line:
+#   // Unsolicited data from plugin (FILE_INFO, events, forwarded data)
+#   if (message.type) {
+
+        // PROXY_EXECUTE: Forward code execution to the active plugin client
+        // Allows external WebSocket clients to execute code in Figma's plugin context
+        if (message.type === 'PROXY_EXECUTE') {
+            const code = message.code;
+            const timeout = message.timeout || 5000;
+            const proxyId = message.id || null;
+            // Keep this client alive — it's a proxy, not a plugin
+            const pendingTimeout = this._pendingClients.get(ws);
+            if (pendingTimeout) {
+                clearTimeout(pendingTimeout);
+                this._pendingClients.delete(ws);
+            }
+            if (!code) {
+                try {
+                    ws.send(JSON.stringify({ type: 'PROXY_EXECUTE_RESULT', id: proxyId, error: 'Missing "code" field' }));
+                } catch { /* ignore */ }
+                return;
+            }
+            this.sendCommand('EXECUTE_CODE', { code, timeout }, timeout + 2000)
+                .then((result) => {
+                    try {
+                        ws.send(JSON.stringify({ type: 'PROXY_EXECUTE_RESULT', id: proxyId, result }));
+                    } catch { /* ignore */ }
+                })
+                .catch((error) => {
+                    try {
+                        ws.send(JSON.stringify({ type: 'PROXY_EXECUTE_RESULT', id: proxyId, error: error instanceof Error ? error.message : String(error) }));
+                    } catch { /* ignore */ }
+                });
+            return;
+        }
