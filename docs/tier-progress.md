@@ -224,7 +224,27 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 
 ---
 
-## Tier 5: Conjure — not started
+## Tier 5: Conjure
+
+### Group A: Transform (modify existing nodes)
+- T5.1 Systematic Refactor — not started
+- T5.2 Theme Application — not started
+- T5.3 Generate Variant States — not started
+- T5.4 Layout Reflow — not started
+- T5.5 Component Instance Override — not started
+
+### Group B: Compose (create new nodes)
+- T5.6 Duplicate Screen With Modifications — not started
+- T5.7 Design System Documentation Page — not started
+- T5.8 Compose Component From Prompt — not started
+- T5.9 Compose Screen From Prompt — not started
+- T5.10 Responsive Adaptation — not started
+- T5.11 Flow/Multi-Screen Generation — not started
+
+### Group C: Intelligence (analyze and infer)
+- T5.12 Pattern Extraction → Template — not started
+- T5.13 Pattern Extraction → Component — not started
+- T5.14 Screenshot to System-Native — not started
 ## Tier 6: Sync
 
 ### T6.1 — Push Variables to Figma

@@ -156,77 +156,111 @@ Affects collections, modes, or the overall organization of the token system.
 
 ## Tier 5: Conjure — Compose (Read DB → Create in Figma)
 
-The core value proposition. Agent reads the design vocabulary from DB, creates new designs in Figma using real tokens and components.
+The core value proposition. Agent reads the design vocabulary from DB, creates new designs in Figma using real tokens and components. Grouped by capability: transformations first (modify existing), then composition (create new), then intelligence (analyze and infer).
 
-### T5.1 — Compose Screen From Prompt
-- **Trigger**: "Build me a settings page"
-- **Input**: Natural language description + DB vocabulary (tokens, components, screen patterns)
-- **Action**: Agent queries DB for relevant components and tokens. Composes frame in Figma using `figma_execute` or `use_figma`. Every color/type/spacing value comes from a token — nothing hardcoded.
-- **Verify**: Screenshot matches intent. All nodes are bound to tokens (zero hardcoded values). Layout uses auto-layout.
-- **Figma required**: Yes (MCP)
+### Group A: Transform (modify existing nodes)
 
-### T5.2 — Compose Component From Prompt
-- **Trigger**: "Create a notification banner component"
-- **Input**: Description, desired variants, slots
-- **Action**: Agent creates component set in Figma with variants (info/warning/error/success), proper auto-layout, all values from tokens. Registers in DB.
-- **Verify**: Component has correct variants. All values are token-bound. Slots are configurable.
-- **Figma required**: Yes
+#### T5.1 — Systematic Refactor
+- **Trigger**: "Migrate all screens from this old color to the new one"
+- **Input**: Old token ID, new token ID, scope (all screens or specific ones)
+- **Action**: Rebind all nodes from old token to new token in DB. Then push rebinding to Figma.
+- **Verify**: No bindings reference old token. Figma nodes updated.
+- **Figma required**: Yes (for the push step)
 
-### T5.3 — Generate Variant States
-- **Trigger**: "Add hover, focus, disabled states to all buttons"
-- **Input**: Component ID, list of desired states
-- **Action**: For each existing button variant, create state variants. Derive state-specific values (hover = darken 10%, disabled = 50% opacity) from existing token values.
-- **Verify**: New variants exist. State values are systematically derived, not random.
-- **Figma required**: Yes
-
-### T5.4 — Responsive Adaptation
-- **Trigger**: "Make an iPhone version of this iPad screen"
-- **Input**: Source screen ID, target device dimensions
-- **Action**: Read source screen composition tree from DB. Re-compose at target dimensions, adjusting layout (columns → stack, horizontal → vertical), maintaining all token bindings.
-- **Verify**: New screen exists at target dimensions. Same tokens used. Layout adapts sensibly.
-- **Figma required**: Yes
-
-### T5.5 — Screenshot to System-Native
-- **Trigger**: User provides screenshot/wireframe + "recreate this with my system"
-- **Input**: Image + DB vocabulary
-- **Action**: Analyze image (colors, layout, typography). Match observed values to closest tokens in DB. Compose in Figma using matched tokens and available components.
-- **Verify**: Visual similarity to reference. All values are token-bound.
-- **Figma required**: Yes
-
-### T5.6 — Pattern Extraction → Component
-- **Trigger**: "This card layout appears on 12 screens, make it a component"
-- **Input**: Representative node subtree (or agent detects repeated subtrees)
-- **Action**: Extract common structure, create component with proper variants/slots, replace all instances in Figma with component instances.
-- **Verify**: Component created. Original nodes replaced with instances. Visual output identical.
-- **Figma required**: Yes
-
-### T5.7 — Theme Application
+#### T5.2 — Theme Application
 - **Trigger**: "Apply my design system to this wireframe"
 - **Input**: Unstyled Figma frame + DB vocabulary
 - **Action**: Walk frame tree, match each node to appropriate tokens (frames → surface colors, text → type tokens, spacing → space tokens). Bind all.
 - **Verify**: Frame is now fully tokenized. Visual appearance follows system.
 - **Figma required**: Yes
 
-### T5.8 — Flow/Multi-Screen Generation
-- **Trigger**: "Build an onboarding flow — splash, email, password, confirm, welcome"
-- **Input**: Flow description, screen count, DB vocabulary
-- **Action**: Compose each screen, link with prototype connections, maintain consistent token usage across flow.
-- **Verify**: All screens exist. Navigation works. Consistent system usage.
+#### T5.3 — Generate Variant States
+- **Trigger**: "Add hover, focus, disabled states to all buttons"
+- **Input**: Component ID, list of desired states
+- **Action**: For each existing button variant, create state variants. Derive state-specific values (hover = darken 10%, disabled = 50% opacity) from existing token values.
+- **Verify**: New variants exist. State values are systematically derived, not random.
 - **Figma required**: Yes
 
-### T5.9 — Design System Documentation Page
+#### T5.4 — Layout Reflow
+- **Trigger**: "Change this 2-column grid to a single-column stack"
+- **Input**: Frame ID, target layout description
+- **Action**: Modify auto-layout settings (direction, sizing, alignment) on existing frame. Reorder children if needed. Preserve all token bindings.
+- **Verify**: Layout changed. No bindings lost. Visual hierarchy maintained.
+- **Figma required**: Yes
+
+#### T5.5 — Component Instance Override
+- **Trigger**: "Swap the icon in all instances of this button to the new one"
+- **Input**: Component ID or instance scope, property name, new override value
+- **Action**: Query all instances of the component. Apply property overrides (TEXT, BOOLEAN, INSTANCE_SWAP) via Plugin API. Update `instance_overrides` in DB.
+- **Verify**: All targeted instances show the override. DB reflects the change.
+- **Figma required**: Yes
+
+### Group B: Compose (create new nodes)
+
+#### T5.6 — Duplicate Screen With Modifications
+- **Trigger**: "Copy screen 12 but change the header to show the logged-out state"
+- **Input**: Source screen ID, list of modifications (text changes, component swaps, visibility toggles)
+- **Action**: Clone the screen's node tree in Figma. Apply modifications. All token bindings carried forward from source.
+- **Verify**: New screen exists. Modifications applied. All token bindings intact.
+- **Figma required**: Yes
+
+#### T5.7 — Design System Documentation Page
 - **Trigger**: "Create a component spec page for the Button"
 - **Input**: Component ID from DB
 - **Action**: Generate a Figma page showing all variants in a grid, with labels, spacing specs, token names annotated. Like a Storybook page but in Figma.
 - **Verify**: Page exists with all variants rendered. Annotations match DB.
 - **Figma required**: Yes
 
-### T5.10 — Systematic Refactor
-- **Trigger**: "Migrate all screens from this old color to the new one"
-- **Input**: Old token ID, new token ID, scope (all screens or specific ones)
-- **Action**: Rebind all nodes from old token to new token in DB. Then push rebinding to Figma.
-- **Verify**: No bindings reference old token. Figma nodes updated.
-- **Figma required**: Yes (for the push step)
+#### T5.8 — Compose Component From Prompt
+- **Trigger**: "Create a notification banner component"
+- **Input**: Description, desired variants, slots
+- **Action**: Agent creates component set in Figma with variants (info/warning/error/success), proper auto-layout, all values from tokens. Registers in DB.
+- **Verify**: Component has correct variants. All values are token-bound. Slots are configurable.
+- **Figma required**: Yes
+
+#### T5.9 — Compose Screen From Prompt
+- **Trigger**: "Build me a settings page"
+- **Input**: Natural language description + DB vocabulary (tokens, components, screen patterns)
+- **Action**: Agent queries DB for relevant components and tokens. Composes frame in Figma using composition template from `patterns` table. Every color/type/spacing value comes from a token — nothing hardcoded.
+- **Verify**: Screenshot matches intent. All nodes are bound to tokens (zero hardcoded values). Layout uses auto-layout.
+- **Figma required**: Yes (MCP)
+
+#### T5.10 — Responsive Adaptation
+- **Trigger**: "Make an iPhone version of this iPad screen"
+- **Input**: Source screen ID, target device dimensions
+- **Action**: Read source screen composition tree from DB. Re-compose at target dimensions, adjusting layout (columns → stack, horizontal → vertical), maintaining all token bindings.
+- **Verify**: New screen exists at target dimensions. Same tokens used. Layout adapts sensibly.
+- **Figma required**: Yes
+
+#### T5.11 — Flow/Multi-Screen Generation
+- **Trigger**: "Build an onboarding flow — splash, email, password, confirm, welcome"
+- **Input**: Flow description, screen count, DB vocabulary
+- **Action**: Compose each screen, link with prototype connections, maintain consistent token usage across flow.
+- **Verify**: All screens exist. Navigation works. Consistent system usage.
+- **Figma required**: Yes
+
+### Group C: Intelligence (analyze and infer)
+
+#### T5.12 — Pattern Extraction → Template
+- **Trigger**: "This card layout appears on 12 screens, save it as a pattern"
+- **Input**: Representative node subtree (or agent detects repeated subtrees)
+- **Action**: Extract common structure into a composition template. Store in `patterns` table with parameterized slots. Does NOT create Figma components — produces reusable DB templates for T5.9.
+- **Verify**: Pattern stored. Template is valid (all referenced tokens/components exist).
+- **Figma required**: No (reads DB only)
+
+#### T5.13 — Pattern Extraction → Component
+- **Trigger**: "This card layout appears on 12 screens, make it a component"
+- **Input**: Representative node subtree (or agent detects repeated subtrees)
+- **Action**: Extract common structure, create component with proper variants/slots, replace all instances in Figma with component instances.
+- **Verify**: Component created. Original nodes replaced with instances. Visual output identical.
+- **Figma required**: Yes
+
+#### T5.14 — Screenshot to System-Native
+- **Trigger**: User provides screenshot/wireframe + "recreate this with my system"
+- **Input**: Image + DB vocabulary
+- **Action**: Analyze image (colors, layout, typography). Match observed values to closest tokens in DB. Compose in Figma using matched tokens and available components.
+- **Verify**: Visual similarity to reference. All values are token-bound.
+- **Figma required**: Yes
 
 ---
 
