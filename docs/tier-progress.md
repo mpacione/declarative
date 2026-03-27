@@ -6,7 +6,7 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
 **Figma variables**: 353 live (8 collections: Color Primitives, Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
 **DB tokens**: 379 total (45 color primitives + 52 color semantics + 282 other curated + 26 aliased)
-**Tests**: 656 passing
+**Tests**: 709 passing
 
 ## Verification Pattern
 
@@ -191,18 +191,19 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
   - **DB state**: 66 Color Primitives (45 base + 21 alpha), 499 total tokens, 182,877 bound, 22,605 intentionally_unbound, 100% coverage
 
 ### T4.3 — Run Value Provenance Migration
-- **Status**: PENDING
-- **Scope**: Apply `migrations/001_value_provenance.sql` to production DB. Adds `source`, `sync_status`, `last_verified_at` to `token_values`, creates `token_value_history` table.
-- **Prerequisite for**: all future value mutations — `update_token_value()` writes history; without the schema columns it will fail.
+- **Status**: DONE
+- **Scope**: Applied `migrations/001_value_provenance.sql` to production DB. Added `source`, `sync_status`, `last_verified_at` to `token_values`, created `token_value_history` table. Migration heuristic: `source='derived'` on 616 non-default mode rows, `source='figma'` on 310 default rows.
 
 ### T4.4 — Wire `update_token_value()` into call sites
-- **Status**: PENDING
-- **Scope**: Replace direct SQL writes in `curate.py`, `modes.py`, `export_figma_vars.py` (writeback) with `db.update_token_value()` so every mutation writes a history row.
-- **Why deferred**: T4.0 added the helper and tests but stopped short of migrating all call sites.
+- **Status**: DONE
+- **Scope**: Replaced direct `UPDATE token_values` SQL in `dd/modes.py` (`apply_oklch_inversion`, `apply_scale_factor`, `apply_high_contrast`) with `db.update_token_value()`. Every value mutation now writes a `token_value_history` row with `changed_by='modes'` and descriptive `reason`.
+- **Call site analysis**: `curate.py` has no direct value mutations on `resolved_value` (split_token copies via INSERT, not UPDATE). `export_figma_vars.py` writeback updates `tokens.sync_status` and `figma_variable_id`, not `token_values.resolved_value`. Only `modes.py` transforms had direct writes.
+- **Tests**: 3 new tests verifying history rows for oklch_inversion, scale_factor, high_contrast. 709 total passing.
 
 ### T4.5 — `dd maintenance` CLI command
-- **Status**: PENDING
-- **Scope**: Retention policy — `prune_extraction_runs(conn, keep_last=50)` and `prune_export_validations(conn, keep_last=50)`. Logic already exists in `dd/maintenance.py`; needs CLI wiring.
+- **Status**: DONE
+- **Scope**: `python -m dd maintenance [--keep-last N] [--dry-run]` wired into CLI. Calls `prune_extraction_runs()` and `prune_export_validations()` from `dd/maintenance.py`. `--dry-run` prints counts without deleting. `--keep-last` defaults to 50.
+- **Tests**: 3 new CLI tests (prune, dry-run, defaults). 709 total passing.
 
 ### T4.6–T4.x — Structural (future)
 - **Status**: not started

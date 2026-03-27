@@ -585,3 +585,70 @@ def test_create_high_contrast_mode_convenience(db):
     assert result["values_copied"] > 0
     assert result["values_transformed"] > 0
     assert result["mode_id"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Value provenance: history rows written by transform functions
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_oklch_inversion_writes_history(db):
+    """apply_oklch_inversion should write a token_value_history row per inverted value."""
+    seed_post_curation(db)
+
+    dark_mode_id = create_mode(db, 1, "Dark")
+    copy_values_from_default(db, 1, dark_mode_id)
+
+    apply_oklch_inversion(db, 1, dark_mode_id)
+
+    rows = db.execute(
+        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        (dark_mode_id,),
+    ).fetchall()
+
+    assert len(rows) == 4
+    assert all(r["changed_by"] == "modes" for r in rows)
+    assert all(r["reason"] == "oklch_inversion" for r in rows)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_scale_factor_writes_history(db):
+    """apply_scale_factor should write a token_value_history row per scaled value."""
+    seed_post_curation(db)
+
+    compact_mode_id = create_mode(db, 2, "Compact")
+    copy_values_from_default(db, 2, compact_mode_id)
+
+    apply_scale_factor(db, 2, compact_mode_id, 0.5)
+
+    rows = db.execute(
+        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        (compact_mode_id,),
+    ).fetchall()
+
+    assert len(rows) == 1
+    assert rows[0]["changed_by"] == "modes"
+    assert rows[0]["reason"] == "scale_factor"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_high_contrast_writes_history(db):
+    """apply_high_contrast should write a token_value_history row per transformed value."""
+    seed_post_curation(db)
+
+    mode_id = create_mode(db, 1, "HighContrast")
+    copy_values_from_default(db, 1, mode_id)
+
+    apply_high_contrast(db, 1, mode_id)
+
+    rows = db.execute(
+        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        (mode_id,),
+    ).fetchall()
+
+    assert len(rows) == 4
+    assert all(r["changed_by"] == "modes" for r in rows)
+    assert all(r["reason"] == "high_contrast" for r in rows)

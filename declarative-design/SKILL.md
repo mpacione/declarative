@@ -34,6 +34,9 @@ python -m dd push [--db PATH] [--phase variables|rebind|all] [--dry-run]
 python -m dd push [--db PATH] --figma-state FILE [--phase variables|rebind|all]
 python -m dd push [--db PATH] --writeback --figma-state FILE
 
+# Maintenance
+python -m dd maintenance [--db PATH] [--keep-last N] [--dry-run]
+
 # Diagnostics
 python -m dd status [--db PATH]
 python -m dd curate-report [--db PATH] [--json]

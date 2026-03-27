@@ -280,6 +280,77 @@ class TestDbAutoDetect:
         assert detect_db_path(explicit) == explicit
 
 
+@pytest.mark.integration
+class TestRunMaintenance:
+    def _seed_runs(self, conn, count):
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'S', 400, 800)"
+        )
+        conn.commit()
+        for i in range(1, count + 1):
+            conn.execute(
+                "INSERT INTO extraction_runs (id, file_id, started_at, status) "
+                "VALUES (?, 1, datetime('now', ? || ' seconds'), 'completed')",
+                (i, str(i)),
+            )
+            conn.execute(
+                "INSERT INTO screen_extraction_status (run_id, screen_id, status) "
+                "VALUES (?, 1, 'completed')",
+                (i,),
+            )
+        conn.commit()
+
+    def test_maintenance_prunes_old_runs(self, tmp_path):
+        from dd.db import init_db
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        self._seed_runs(conn, 10)
+        conn.close()
+
+        main(["maintenance", "--db", db_path, "--keep-last", "3"])
+
+        conn = sqlite3.connect(db_path)
+        remaining = conn.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0]
+        assert remaining == 3
+        conn.close()
+
+    def test_maintenance_dry_run_does_not_delete(self, tmp_path, capsys):
+        from dd.db import init_db
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        self._seed_runs(conn, 10)
+        conn.close()
+
+        main(["maintenance", "--db", db_path, "--keep-last", "3", "--dry-run"])
+
+        conn = sqlite3.connect(db_path)
+        remaining = conn.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0]
+        assert remaining == 10
+        conn.close()
+
+        captured = capsys.readouterr()
+        assert "Would delete" in captured.out or "would delete" in captured.out
+
+    def test_maintenance_defaults_keep_50(self, tmp_path):
+        from dd.db import init_db
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        self._seed_runs(conn, 5)
+        conn.close()
+
+        main(["maintenance", "--db", db_path])
+
+        conn = sqlite3.connect(db_path)
+        remaining = conn.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0]
+        assert remaining == 5
+        conn.close()
+
+
 @pytest.mark.unit
 class TestMainArgParsing:
     def test_extract_missing_file_key_exits(self):

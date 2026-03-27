@@ -12,26 +12,12 @@ Declarative Design is a CLI + agent system that extracts design tokens from Figm
 - **Variable IDs**: All written back to DB (`tokens.figma_variable_id`)
 - **Rebinding**: DONE — 182,877 bindings (original) + 6,207 alpha-primitive rebinds. 0 errors.
 - **Alpha-baked colors**: FULLY COMPLETE. 21 alpha primitives (`prim.{hue}.{shade}.a{N}`) live in Figma. Paint opacity encoded as 8-digit hex in variable values — no opacity restoration step.
-- **Tests**: 703 passing (as of T4.0 — recount after migration)
-- **Tiers 1–3**: Complete. T4.0 (arch repair) done. T4.1 (primitives/semantics split) done. T4.2 (modes + alpha-baked) done.
+- **Tests**: 709 passing
+- **Tiers 1–3**: Complete. T4.0–T4.5 complete (arch repair, primitives/semantics, modes, migration, value provenance wiring, maintenance CLI).
 
 ## What To Do Next (in order)
 
-### 1. Wire `update_token_value()` into call sites (T4.4)
-
-`db.update_token_value(conn, token_id, mode_id, new_resolved, changed_by, reason)` exists but the existing value-mutation call sites in these files still write directly to `token_values`:
-
-- `dd/curate.py` — all direct `UPDATE token_values` calls
-- `dd/modes.py` — `copy_values_from_default()` and `apply_oklch_inversion()` writes
-- `dd/export_figma_vars.py` — writeback after push
-
-Replace each with `update_token_value()` so the history table is populated. Run tests after each file.
-
-### 3. `dd maintenance` CLI command (T4.5)
-
-`dd/maintenance.py` has `prune_extraction_runs(conn, keep_last=50)` and `prune_export_validations(conn, keep_last=50)`. Wire them into `dd/cli.py` as `dd maintenance [--dry-run]`.
-
-### 4. Tier 5 — Conjure
+### 1. Tier 5 — Conjure
 
 The main event. Compose new screens/components from the token vocabulary. See `docs/action-taxonomy.md` Tier 5 section.
 

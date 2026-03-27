@@ -7,6 +7,7 @@ Usage:
     python -m dd validate [--db PATH]
     python -m dd status [--db PATH]
     python -m dd export css|tailwind|dtcg [--db PATH] [--out FILE]
+    python -m dd maintenance [--db PATH] [--keep-last N] [--dry-run]
 """
 
 import argparse
@@ -287,6 +288,39 @@ def _run_curate_report(db_path: str, as_json: bool = False) -> None:
     conn.close()
 
 
+def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.maintenance import prune_extraction_runs, prune_export_validations
+
+    conn = get_connection(db_path)
+    keep_last = args.keep_last
+
+    if args.dry_run:
+        runs_count = conn.execute(
+            "SELECT COUNT(*) FROM extraction_runs"
+        ).fetchone()[0]
+        runs_to_delete = max(0, runs_count - keep_last)
+
+        validations_count = conn.execute(
+            "SELECT COUNT(DISTINCT run_at) FROM export_validations"
+        ).fetchone()[0]
+        validations_to_delete = max(0, validations_count - keep_last)
+
+        print(f"Would delete {runs_to_delete} extraction runs (keeping {min(runs_count, keep_last)})")
+        print(f"Would delete ~{validations_to_delete} export validation runs (keeping {min(validations_count, keep_last)})")
+        conn.close()
+        return
+
+    runs_deleted = prune_extraction_runs(conn, keep_last=keep_last)
+    validations_deleted = prune_export_validations(conn, keep_last=keep_last)
+
+    print(f"Deleted {runs_deleted} extraction runs, {validations_deleted} export validation rows")
+    conn.close()
+
+
 def _run_push(db_path: str, args: argparse.Namespace) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -374,6 +408,11 @@ def main(argv: Optional[list] = None) -> None:
     curate_report_parser.add_argument("--db", help="Database path")
     curate_report_parser.add_argument("--json", action="store_true", help="Output as JSON (for agent consumption)")
 
+    maintenance_parser = subparsers.add_parser("maintenance", help="Prune old extraction runs and export validations")
+    maintenance_parser.add_argument("--db", help="Database path")
+    maintenance_parser.add_argument("--keep-last", type=int, default=50, help="Number of recent runs to keep (default: 50)")
+    maintenance_parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -415,6 +454,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "curate-report":
         db_path = detect_db_path(args.db)
         _run_curate_report(db_path, as_json=args.json)
+    elif args.command == "maintenance":
+        db_path = detect_db_path(args.db)
+        _run_maintenance(db_path, args)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)

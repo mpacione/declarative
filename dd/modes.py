@@ -6,6 +6,7 @@ import sqlite3
 from typing import Any
 
 from dd.color import hex_to_oklch, oklch_invert_lightness, rgba_to_hex
+from dd.db import update_token_value
 
 
 def create_mode(conn: sqlite3.Connection, collection_id: int, mode_name: str) -> int:
@@ -165,7 +166,7 @@ def apply_oklch_inversion(conn: sqlite3.Connection, collection_id: int, mode_id:
     """
     # Query all color values in the mode
     cursor = conn.execute("""
-        SELECT tv.id, tv.resolved_value, t.type
+        SELECT tv.id, tv.token_id, tv.resolved_value, t.type
         FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
         WHERE tv.mode_id = ? AND t.collection_id = ? AND t.type = 'color'
@@ -175,7 +176,7 @@ def apply_oklch_inversion(conn: sqlite3.Connection, collection_id: int, mode_id:
     count = 0
 
     for row in rows:
-        value_id = row['id']
+        token_id = row['token_id']
         hex_color = row['resolved_value']
 
         try:
@@ -194,10 +195,11 @@ def apply_oklch_inversion(conn: sqlite3.Connection, collection_id: int, mode_id:
             if alpha_suffix:
                 new_hex = new_hex + alpha_suffix
 
-            # Update the value
+            # Update value and raw_value, write history
+            update_token_value(conn, token_id, mode_id, new_hex, "modes", "oklch_inversion")
             conn.execute(
-                "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE id = ?",
-                (new_hex, json.dumps(new_hex), value_id)
+                "UPDATE token_values SET raw_value = ? WHERE token_id = ? AND mode_id = ?",
+                (json.dumps(new_hex), token_id, mode_id)
             )
             count += 1
         except Exception:
@@ -222,7 +224,7 @@ def apply_scale_factor(conn: sqlite3.Connection, collection_id: int, mode_id: in
     """
     # Query all dimension values in the mode
     cursor = conn.execute("""
-        SELECT tv.id, tv.resolved_value, t.type
+        SELECT tv.id, tv.token_id, tv.resolved_value, t.type
         FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
         WHERE tv.mode_id = ? AND t.collection_id = ? AND t.type = 'dimension'
@@ -232,7 +234,7 @@ def apply_scale_factor(conn: sqlite3.Connection, collection_id: int, mode_id: in
     count = 0
 
     for row in rows:
-        value_id = row['id']
+        token_id = row['token_id']
         value_str = row['resolved_value']
 
         try:
@@ -242,10 +244,11 @@ def apply_scale_factor(conn: sqlite3.Connection, collection_id: int, mode_id: in
             # Apply scale factor
             new_value = round(numeric_value * factor)
 
-            # Update the value
+            # Update value and raw_value, write history
+            update_token_value(conn, token_id, mode_id, str(new_value), "modes", "scale_factor")
             conn.execute(
-                "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE id = ?",
-                (str(new_value), json.dumps(new_value), value_id)
+                "UPDATE token_values SET raw_value = ? WHERE token_id = ? AND mode_id = ?",
+                (json.dumps(new_value), token_id, mode_id)
             )
             count += 1
         except (ValueError, TypeError):
@@ -333,7 +336,7 @@ def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: i
         Count of values transformed
     """
     cursor = conn.execute("""
-        SELECT tv.id, tv.resolved_value, t.type
+        SELECT tv.id, tv.token_id, tv.resolved_value, t.type
         FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
         WHERE tv.mode_id = ? AND t.collection_id = ? AND t.type = 'color'
@@ -343,7 +346,7 @@ def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: i
     count = 0
 
     for row in rows:
-        value_id = row['id']
+        token_id = row['token_id']
         hex_color = row['resolved_value']
 
         try:
@@ -364,9 +367,10 @@ def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: i
             if alpha_suffix:
                 new_hex = new_hex + alpha_suffix
 
+            update_token_value(conn, token_id, mode_id, new_hex, "modes", "high_contrast")
             conn.execute(
-                "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE id = ?",
-                (new_hex, json.dumps(new_hex), value_id)
+                "UPDATE token_values SET raw_value = ? WHERE token_id = ? AND mode_id = ?",
+                (json.dumps(new_hex), token_id, mode_id)
             )
             count += 1
         except Exception:
