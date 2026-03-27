@@ -194,6 +194,37 @@ def _add_visual_properties(node: dict, api_node: dict) -> None:
 
     node["visible"] = api_node.get("visible", True)
 
+    # Stroke properties
+    if api_node.get("strokeWeight") is not None:
+        node["stroke_weight"] = api_node["strokeWeight"]
+    individual = api_node.get("individualStrokeWeights")
+    if individual:
+        node["stroke_top_weight"] = individual.get("top")
+        node["stroke_right_weight"] = individual.get("right")
+        node["stroke_bottom_weight"] = individual.get("bottom")
+        node["stroke_left_weight"] = individual.get("left")
+    if api_node.get("strokeAlign"):
+        node["stroke_align"] = api_node["strokeAlign"]
+    if api_node.get("strokeCap"):
+        node["stroke_cap"] = api_node["strokeCap"]
+    if api_node.get("strokeJoin"):
+        node["stroke_join"] = api_node["strokeJoin"]
+    dash = api_node.get("strokeDashes") or api_node.get("dashPattern")
+    if dash:
+        node["dash_pattern"] = json.dumps(dash)
+
+    # Transform
+    if api_node.get("rotation") is not None:
+        node["rotation"] = api_node["rotation"]
+    if "clipsContent" in api_node:
+        node["clips_content"] = 1 if api_node["clipsContent"] else 0
+
+    # Constraints
+    constraints = api_node.get("constraints")
+    if constraints:
+        node["constraint_h"] = constraints.get("horizontal")
+        node["constraint_v"] = constraints.get("vertical")
+
 
 def _add_corner_radius(node: dict, api_node: dict) -> None:
     mixed = api_node.get("rectangleCornerRadii")
@@ -228,6 +259,11 @@ def _add_layout_properties(node: dict, api_node: dict) -> None:
         "counterAxisAlignItems": "counter_align",
         "layoutSizingHorizontal": "layout_sizing_h",
         "layoutSizingVertical": "layout_sizing_v",
+        "layoutWrap": "layout_wrap",
+        "minWidth": "min_width",
+        "maxWidth": "max_width",
+        "minHeight": "min_height",
+        "maxHeight": "max_height",
     }
 
     for api_key, db_key in field_map.items():
@@ -253,8 +289,33 @@ def _add_typography_properties(node: dict, api_node: dict) -> None:
     if style.get("fontSize") is not None:
         node["font_size"] = float(style["fontSize"])
 
+    if style.get("fontPostScriptName"):
+        # Extract style from fontPostScriptName (e.g. "Inter-BoldItalic" → "Bold Italic")
+        # Or use the explicit style field if available
+        pass
+    if style.get("italic") is not None:
+        font_style_parts = []
+        if style.get("fontWeight", 400) >= 700:
+            font_style_parts.append("Bold")
+        if style.get("italic"):
+            font_style_parts.append("Italic")
+        if font_style_parts:
+            node["font_style"] = " ".join(font_style_parts)
+
+    if style.get("paragraphSpacing") is not None:
+        node["paragraph_spacing"] = float(style["paragraphSpacing"])
+
     if style.get("textAlignHorizontal"):
         node["text_align"] = style["textAlignHorizontal"]
+
+    if style.get("textAlignVertical"):
+        node["text_align_v"] = style["textAlignVertical"]
+
+    if style.get("textDecoration"):
+        node["text_decoration"] = style["textDecoration"]
+
+    if style.get("textCase"):
+        node["text_case"] = style["textCase"]
 
     if api_node.get("characters") is not None:
         node["text_content"] = api_node["characters"]
@@ -294,5 +355,9 @@ def _add_letter_spacing(node: dict, style: dict) -> None:
 
 
 def _add_component_reference(node: dict, api_node: dict) -> None:
-    if api_node.get("type") == "INSTANCE" and api_node.get("componentId"):
-        node["component_figma_id"] = api_node["componentId"]
+    if api_node.get("type") == "INSTANCE":
+        if api_node.get("componentId"):
+            node["component_figma_id"] = api_node["componentId"]
+        # Component key is available at the file level in the components map,
+        # not directly on the instance node in REST API.
+        # It gets populated via Plugin API extraction (mainComponent.key).

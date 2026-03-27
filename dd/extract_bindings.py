@@ -10,7 +10,10 @@ from dd.normalize import (
     normalize_effect,
     normalize_typography,
     normalize_spacing,
-    normalize_radius
+    normalize_radius,
+    normalize_stroke_weight,
+    normalize_paragraph_spacing,
+    normalize_font_style,
 )
 
 
@@ -87,6 +90,9 @@ def create_bindings_for_node(node_row: Dict[str, Any]) -> List[Dict[str, str]]:
     if corner_radius is not None:
         bindings.extend(normalize_radius(corner_radius))
 
+    # Process stroke weight
+    bindings.extend(normalize_stroke_weight(node_row))
+
     # Process opacity (only if not 1.0)
     opacity = node_row.get('opacity')
     if opacity is not None and opacity != 1.0:
@@ -95,6 +101,14 @@ def create_bindings_for_node(node_row: Dict[str, Any]) -> List[Dict[str, str]]:
             'raw_value': json.dumps(opacity),
             'resolved_value': str(opacity)
         })
+
+    # Process paragraph spacing (TEXT nodes only, via font_size presence)
+    if node_row.get('paragraph_spacing') is not None:
+        bindings.extend(normalize_paragraph_spacing(node_row))
+
+    # Process font style (TEXT nodes only, via font_size presence)
+    if node_row.get('font_style') is not None:
+        bindings.extend(normalize_font_style(node_row))
 
     return bindings
 
@@ -199,7 +213,10 @@ def create_bindings_for_screen(
         SELECT id, fills, strokes, effects, corner_radius,
                font_family, font_weight, font_size, line_height, letter_spacing,
                padding_top, padding_right, padding_bottom, padding_left,
-               item_spacing, counter_axis_spacing, opacity
+               item_spacing, counter_axis_spacing, opacity,
+               stroke_weight, stroke_top_weight, stroke_right_weight,
+               stroke_bottom_weight, stroke_left_weight,
+               paragraph_spacing, font_style
         FROM nodes
         WHERE screen_id = ?
     """, (screen_id,))
@@ -226,7 +243,14 @@ def create_bindings_for_screen(
             'padding_left': row[13],
             'item_spacing': row[14],
             'counter_axis_spacing': row[15],
-            'opacity': row[16]
+            'opacity': row[16],
+            'stroke_weight': row[17],
+            'stroke_top_weight': row[18],
+            'stroke_right_weight': row[19],
+            'stroke_bottom_weight': row[20],
+            'stroke_left_weight': row[21],
+            'paragraph_spacing': row[22],
+            'font_style': row[23],
         }
 
         # Create bindings for this node

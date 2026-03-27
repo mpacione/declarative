@@ -32,6 +32,7 @@ PROPERTY_SHORTCODES: dict[str, str] = {
     "lineHeight": "lh",
     "letterSpacing": "ls",
     "paragraphSpacing": "ps",
+    "visible": "vi",
 }
 
 EFFECT_FIELD_CODES: dict[str, str] = {
@@ -103,6 +104,7 @@ PROPERTY_HANDLERS = {
     "lineHeight": "direct",
     "letterSpacing": "direct",
     "paragraphSpacing": "direct",
+    "visible": "direct",
 }
 
 
@@ -131,7 +133,7 @@ def classify_property(property_path: str) -> str:
         "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "paragraphSpacing",
         "counterAxisSpacing", "strokeWeight", "topLeftRadius", "topRightRadius",
         "bottomLeftRadius", "bottomRightRadius", "strokeTopWeight", "strokeRightWeight",
-        "strokeBottomWeight", "strokeLeftWeight"
+        "strokeBottomWeight", "strokeLeftWeight", "visible"
     }
     if property_path in direct_properties:
         return "direct"

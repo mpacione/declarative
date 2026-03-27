@@ -41,7 +41,6 @@ def generate_extraction_script(screen_node_id: str) -> str:
     // Handle cornerRadius - can be number or mixed
     if ('cornerRadius' in node) {
       if (node.cornerRadius === figma.mixed) {
-        // Extract individual corner radii
         entry.corner_radius = JSON.stringify({
           tl: node.topLeftRadius || 0,
           tr: node.topRightRadius || 0,
@@ -57,6 +56,32 @@ def generate_extraction_script(screen_node_id: str) -> str:
     if ('blendMode' in node) entry.blend_mode = node.blendMode;
     if ('visible' in node) entry.visible = node.visible;
 
+    // Stroke properties
+    if ('strokeWeight' in node) {
+      if (node.strokeWeight === figma.mixed) {
+        entry.stroke_top_weight = node.strokeTopWeight;
+        entry.stroke_right_weight = node.strokeRightWeight;
+        entry.stroke_bottom_weight = node.strokeBottomWeight;
+        entry.stroke_left_weight = node.strokeLeftWeight;
+      } else {
+        entry.stroke_weight = node.strokeWeight;
+      }
+    }
+    if ('strokeAlign' in node) entry.stroke_align = node.strokeAlign;
+    if ('strokeCap' in node && node.strokeCap !== figma.mixed) entry.stroke_cap = node.strokeCap;
+    if ('strokeJoin' in node && node.strokeJoin !== figma.mixed) entry.stroke_join = node.strokeJoin;
+    if ('dashPattern' in node && node.dashPattern?.length) entry.dash_pattern = JSON.stringify(node.dashPattern);
+
+    // Transform + clipping
+    if ('rotation' in node && node.rotation !== 0) entry.rotation = node.rotation;
+    if ('clipsContent' in node) entry.clips_content = node.clipsContent ? 1 : 0;
+
+    // Constraints
+    if ('constraints' in node) {
+      entry.constraint_h = node.constraints?.horizontal;
+      entry.constraint_v = node.constraints?.vertical;
+    }
+
     // Auto-layout
     if (node.layoutMode && node.layoutMode !== 'NONE') {
       entry.layout_mode = node.layoutMode;
@@ -70,23 +95,33 @@ def generate_extraction_script(screen_node_id: str) -> str:
       entry.counter_align = node.counterAxisAlignItems;
       entry.layout_sizing_h = node.layoutSizingHorizontal;
       entry.layout_sizing_v = node.layoutSizingVertical;
+      if ('layoutWrap' in node) entry.layout_wrap = node.layoutWrap;
+      if ('minWidth' in node) entry.min_width = node.minWidth;
+      if ('maxWidth' in node) entry.max_width = node.maxWidth;
+      if ('minHeight' in node) entry.min_height = node.minHeight;
+      if ('maxHeight' in node) entry.max_height = node.maxHeight;
     }
 
     // Typography (TEXT nodes)
     if (node.type === 'TEXT') {
-      // fontName is an object {family: "Inter", style: "Regular"}
       entry.font_family = node.fontName?.family;
+      entry.font_style = node.fontName?.style;
       entry.font_weight = node.fontWeight;
       entry.font_size = node.fontSize;
       entry.line_height = JSON.stringify(node.lineHeight);
       entry.letter_spacing = JSON.stringify(node.letterSpacing);
+      if ('paragraphSpacing' in node) entry.paragraph_spacing = node.paragraphSpacing;
       entry.text_align = node.textAlignHorizontal;
+      if ('textAlignVertical' in node) entry.text_align_v = node.textAlignVertical;
+      if ('textDecoration' in node && node.textDecoration !== figma.mixed) entry.text_decoration = node.textDecoration;
+      if ('textCase' in node && node.textCase !== figma.mixed) entry.text_case = node.textCase;
       entry.text_content = node.characters;
     }
 
     // Component reference (INSTANCE nodes)
     if (node.type === 'INSTANCE' && node.mainComponent) {
       entry.component_figma_id = node.mainComponent.id;
+      entry.component_key = node.mainComponent.key;
     }
 
     const idx = nodes.length;
@@ -178,26 +213,57 @@ def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, 
             elif value is not None:
                 cleaned["corner_radius"] = str(value)
 
+        # Stroke properties
+        for field in ["stroke_weight", "stroke_top_weight", "stroke_right_weight",
+                      "stroke_bottom_weight", "stroke_left_weight"]:
+            if field in node and node[field] is not None:
+                cleaned[field] = float(node[field])
+        for field in ["stroke_align", "stroke_cap", "stroke_join"]:
+            if field in node:
+                cleaned[field] = node[field]
+        if "dash_pattern" in node:
+            value = node["dash_pattern"]
+            if isinstance(value, list):
+                cleaned["dash_pattern"] = json.dumps(value)
+            else:
+                cleaned["dash_pattern"] = value
+
+        # Transform + clipping
+        if "rotation" in node and node["rotation"] is not None:
+            cleaned["rotation"] = float(node["rotation"])
+        if "clips_content" in node:
+            cleaned["clips_content"] = 1 if node["clips_content"] else 0
+
+        # Constraints
+        for field in ["constraint_h", "constraint_v"]:
+            if field in node:
+                cleaned[field] = node[field]
+
         # Auto-layout properties
         if "layout_mode" in node:
             cleaned["layout_mode"] = node["layout_mode"]
             for field in ["padding_top", "padding_right", "padding_bottom", "padding_left",
-                          "item_spacing", "counter_axis_spacing"]:
+                          "item_spacing", "counter_axis_spacing",
+                          "min_width", "max_width", "min_height", "max_height"]:
                 if field in node:
                     cleaned[field] = float(node[field]) if node[field] is not None else None
-            for field in ["primary_align", "counter_align", "layout_sizing_h", "layout_sizing_v"]:
+            for field in ["primary_align", "counter_align", "layout_sizing_h", "layout_sizing_v",
+                          "layout_wrap"]:
                 if field in node:
                     cleaned[field] = node[field]
 
         # Typography properties
         if node.get("node_type") == "TEXT":
-            for field in ["font_family", "text_align", "text_content"]:
+            for field in ["font_family", "font_style", "text_align", "text_align_v",
+                          "text_decoration", "text_case", "text_content"]:
                 if field in node:
                     cleaned[field] = node[field]
             if "font_weight" in node:
                 cleaned["font_weight"] = int(node["font_weight"]) if node["font_weight"] is not None else None
             if "font_size" in node:
                 cleaned["font_size"] = float(node["font_size"]) if node["font_size"] is not None else None
+            if "paragraph_spacing" in node and node["paragraph_spacing"] is not None:
+                cleaned["paragraph_spacing"] = float(node["paragraph_spacing"])
 
             # Line height and letter spacing - ensure JSON strings
             for field in ["line_height", "letter_spacing"]:
@@ -211,6 +277,8 @@ def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, 
         # Component reference
         if "component_figma_id" in node:
             cleaned["component_figma_id"] = node["component_figma_id"]
+        if "component_key" in node:
+            cleaned["component_key"] = node["component_key"]
 
         parsed.append(cleaned)
 
@@ -317,11 +385,19 @@ def insert_nodes(conn, screen_id: int, nodes: List[Dict[str, Any]]) -> List[int]
             "x", "y", "width", "height",
             "layout_mode", "padding_top", "padding_right", "padding_bottom", "padding_left",
             "item_spacing", "counter_axis_spacing", "primary_align", "counter_align",
-            "layout_sizing_h", "layout_sizing_v",
+            "layout_sizing_h", "layout_sizing_v", "layout_wrap",
+            "min_width", "max_width", "min_height", "max_height",
             "fills", "strokes", "effects", "corner_radius",
             "opacity", "blend_mode", "visible",
-            "font_family", "font_weight", "font_size",
-            "line_height", "letter_spacing", "text_align", "text_content"
+            "stroke_weight", "stroke_top_weight", "stroke_right_weight",
+            "stroke_bottom_weight", "stroke_left_weight",
+            "stroke_align", "stroke_cap", "stroke_join", "dash_pattern",
+            "rotation", "clips_content",
+            "constraint_h", "constraint_v",
+            "font_family", "font_weight", "font_size", "font_style",
+            "line_height", "letter_spacing", "paragraph_spacing",
+            "text_align", "text_align_v", "text_decoration", "text_case", "text_content",
+            "component_key",
         ]
 
         for field in optional_fields:

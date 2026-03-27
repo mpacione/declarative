@@ -22,6 +22,7 @@ DTCG_TO_FIGMA_TYPE: Dict[str, str] = {
     "shadow": "FLOAT",  # individual shadow fields are FLOAT except color
     "border": "FLOAT",
     "gradient": "COLOR",
+    "boolean": "BOOLEAN",
 }
 
 
