@@ -17,24 +17,7 @@ Declarative Design is a CLI + agent system that extracts design tokens from Figm
 
 ## What To Do Next (in order)
 
-### 1. Run Value Provenance Migration (T4.3 — do first)
-
-The schema changes from T4.0 exist in code (`migrations/001_value_provenance.sql`, `dd/db.py`) but have NOT yet been applied to the production DB. Every future value mutation will fail without this.
-
-```bash
-source build/.venv/bin/activate
-sqlite3 Dank-EXP-02.declarative.db < migrations/001_value_provenance.sql
-```
-
-Then run the data migration (already in the migration file, but verify):
-```sql
-UPDATE token_values SET source = 'derived'
-WHERE mode_id NOT IN (SELECT id FROM token_modes WHERE is_default = 1);
-```
-
-Then re-run tests to confirm the schema is live and everything still passes.
-
-### 2. Wire `update_token_value()` into call sites (T4.4)
+### 1. Wire `update_token_value()` into call sites (T4.4)
 
 `db.update_token_value(conn, token_id, mode_id, new_resolved, changed_by, reason)` exists but the existing value-mutation call sites in these files still write directly to `token_values`:
 
@@ -88,9 +71,9 @@ For scripts too large for `figma_execute` (>50K chars), use the PROXY_EXECUTE We
 
 See `patches/figma-console-mcp-proxy-execute.patch` and `docs/learnings.md` for full pattern.
 
-## Value Provenance Architecture (T4.0 — Done in Code, Migration Pending)
+## Value Provenance Architecture (T4.0 + T4.3 — Complete)
 
-`token_values` now has (after migration): `source` (`'figma'|'derived'|'manual'|'imported'`), `sync_status`, `last_verified_at`. `token_value_history` is an append-only audit table. All value mutations must go through `db.update_token_value()`. See `docs/learnings.md` "Value Provenance & History Architecture".
+`token_values` has `source` (`'figma'|'derived'|'manual'|'imported'`), `sync_status`, `last_verified_at`. `token_value_history` is an append-only audit table. Migration applied to prod DB (`source='derived'` on 616 non-default mode rows, `source='figma'` on 310 default rows). All value mutations must go through `db.update_token_value()` — call sites not yet updated (T4.4). See `docs/learnings.md` "Value Provenance & History Architecture".
 
 ## Environment
 

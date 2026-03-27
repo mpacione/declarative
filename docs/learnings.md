@@ -201,6 +201,14 @@ Accumulated insights from building and testing the curation pipeline. These info
 - Patch is ~30 lines in `websocket-server.js`, saved as `patches/figma-console-mcp-proxy-execute.patch`.
 - Won't survive package updates — must be re-applied.
 
+### setBoundVariableForEffect Fails on Deeply Nested Instance Children
+- `figma.variables.setBoundVariableForEffect(effect, 'color', variable)` throws when the target node's effect is inherited from a component at 3+ levels of instance nesting (e.g. `I123:456;789:012;107:925`).
+- The effect is owned by the innermost component definition; Figma doesn't allow overriding it as an instance property at that depth.
+- **Symptom**: Compact handler logs `{n, p: 'e0c'}` failure — no changes applied to `nd.effects`.
+- **Fix**: Mark these bindings `intentionally_unbound` in the DB. The shadow still renders from the component definition; it just can't be tokenized at this nesting depth.
+- **Detection**: Count semicolons in `node.id` — 2+ semicolons means 3+ levels deep. All 6 failures were `_KeyContainer` nodes inside a keyboard component.
+- **Rule**: Before rebinding `effect.N.color`, check instance depth. If `node.id` contains 2+ semicolons and the effect is not an override, skip it and log as `intentionally_unbound`.
+
 ### PROXY_EXECUTE: Patch Activation Requires Killing the Stale Process
 - The figma-console-mcp node server is a long-running process. Restarting Claude Desktop spawns a new process only if the old one is dead.
 - If the server (port 9224) was started before the patch was applied, the patched file is on disk but the running process in memory uses the old code. PROXY_EXECUTE messages silently time out.
