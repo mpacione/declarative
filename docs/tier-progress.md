@@ -152,12 +152,13 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Scope**: 308/308 tokens mapped to Figma variable IDs via name matching
 
 ### T6.3 — Rebind Nodes to Variables
-- **Status**: DONE (with residual artifacts to investigate)
-- **Scope**: 182,877 bindings across 193 compact scripts (~950 bindings each)
-- **Execution**: 108 seconds via PROXY_EXECUTE with 200ms inter-script delay, 0 errors
+- **Status**: DONE
+- **Scope**: 182,877 bindings across 193 compact scripts (~950 bindings each), 0 errors
+- **Execution**: 108 seconds via PROXY_EXECUTE with 200ms inter-script delay
 - **Property types**: fill.color, stroke.color, effect.color/radius/offset/spread, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight, opacity, strokeWeight
 - **Error persistence**: Errors written to `figma.root.pluginData('rebind_errors')` — survives crashes
-- **Known issue**: First run (with shortcode bug) left some visual artifacts. Second clean run (0 errors) applied correctly, but artifacts from run 1 may persist and need restore
+- **Post-rebind restorations**: 5,128 fill opacities, 297 stroke opacities, 9,807 effect color alphas, 1,408 auto-spacing nodes
+- **Handler fixes committed**: preserves paint opacity, effect alpha, skips itemSpacing on SPACE_BETWEEN nodes
 
 ### T6.4 — `dd push` CLI Command
 - **Status**: DONE
