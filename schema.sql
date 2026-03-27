@@ -96,15 +96,44 @@ END;
 -- Per-mode token values. One row per token per mode.
 -- raw_value: exact Figma representation (JSON). Lossless round-trip.
 -- resolved_value: normalized for querying/clustering. Hex for colors, number for dimensions.
+-- source: where the value came from. 'figma'=extracted from Figma (re-extractable),
+--   'derived'=computed by pipeline (e.g. modes.py dark/compact) — recompute, don't re-extract,
+--   'manual'=agent-curated directly, 'imported'=external token set.
+-- sync_status: per-value sync state. Ground truth (tokens.sync_status is a cached aggregate).
+-- last_verified_at: when this value was last confirmed against Figma via push+readback.
 CREATE TABLE token_values (
     id              INTEGER PRIMARY KEY,
     token_id        INTEGER NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
     mode_id         INTEGER NOT NULL REFERENCES token_modes(id) ON DELETE CASCADE,
     raw_value       TEXT NOT NULL,               -- JSON: {"r":0.035,"g":0.035,"b":0.043,"a":1} or {"value":16,"unit":"px"}
     resolved_value  TEXT NOT NULL,               -- "#09090B" or "16" or "Inter/600/16px/24px"
+    source          TEXT NOT NULL DEFAULT 'figma'
+                    CHECK(source IN ('figma', 'derived', 'manual', 'imported')),
+    sync_status     TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(sync_status IN ('pending', 'synced', 'drifted', 'figma_only', 'code_only')),
+    last_verified_at TEXT,                       -- ISO 8601, null until first push+readback confirmation
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(token_id, mode_id)
 );
+
+-- Append-only history of every change to token_values.resolved_value.
+-- Provides rollback, audit, and "why did this token change?" queries.
+-- changed_by: which pipeline stage made the change
+--   ('extract', 'modes', 'curate', 'manual', 'force_renormalize', 'writeback')
+-- reason: human-readable context ('dark_mode_derivation', 'alpha_baking', 'curation', etc.)
+CREATE TABLE token_value_history (
+    id              INTEGER PRIMARY KEY,
+    token_id        INTEGER NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
+    mode_id         INTEGER NOT NULL REFERENCES token_modes(id) ON DELETE CASCADE,
+    old_resolved    TEXT,                        -- NULL for first-ever write to this (token, mode) pair
+    new_resolved    TEXT NOT NULL,
+    changed_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    changed_by      TEXT NOT NULL,
+    reason          TEXT
+);
+
+CREATE INDEX idx_tvh_token_mode ON token_value_history(token_id, mode_id);
+CREATE INDEX idx_tvh_changed_at ON token_value_history(changed_at);
 
 -- Component definitions (not instances — those live in nodes table).
 -- Maps to Figma component sets or standalone components.
@@ -619,6 +648,41 @@ JOIN token_modes tm ON tm.id = tv.mode_id
 JOIN token_collections tc ON tc.id = t.collection_id
 WHERE t.sync_status IN ('pending', 'drifted', 'figma_only', 'code_only')
 ORDER BY t.sync_status, tc.name, t.name;
+
+-- Binding-token value mismatches — bindings whose resolved_value
+-- doesn't match their token's default-mode value (resolving aliases).
+-- Catches stale bindings from normalization changes, designer edits,
+-- or token value modifications.
+CREATE VIEW v_binding_mismatches AS
+SELECT
+    ntb.id AS binding_id,
+    ntb.node_id,
+    ntb.property,
+    ntb.resolved_value AS binding_value,
+    t.id AS token_id,
+    t.name AS token_name,
+    COALESCE(tv_target.resolved_value, tv_direct.resolved_value) AS token_value,
+    s.file_id
+FROM node_token_bindings ntb
+JOIN tokens t ON ntb.token_id = t.id
+JOIN nodes n ON ntb.node_id = n.id
+JOIN screens s ON n.screen_id = s.id
+LEFT JOIN token_values tv_direct
+    ON tv_direct.token_id = t.id
+    AND tv_direct.mode_id = (
+        SELECT tm.id FROM token_modes tm
+        WHERE tm.collection_id = t.collection_id AND tm.is_default = 1
+    )
+LEFT JOIN token_values tv_target
+    ON tv_target.token_id = t.alias_of
+    AND tv_target.mode_id = (
+        SELECT tm2.id FROM token_modes tm2
+        WHERE tm2.collection_id = (
+            SELECT t2.collection_id FROM tokens t2 WHERE t2.id = t.alias_of
+        ) AND tm2.is_default = 1
+    )
+WHERE ntb.binding_status IN ('bound', 'proposed')
+  AND ntb.resolved_value != COALESCE(tv_target.resolved_value, tv_direct.resolved_value);
 
 -- Curation progress — overall pipeline status at a glance.
 CREATE VIEW v_curation_progress AS

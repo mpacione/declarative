@@ -201,6 +201,29 @@ Accumulated insights from building and testing the curation pipeline. These info
 - Patch is ~30 lines in `websocket-server.js`, saved as `patches/figma-console-mcp-proxy-execute.patch`.
 - Won't survive package updates — must be re-applied.
 
+### PROXY_EXECUTE: Patch Activation Requires Killing the Stale Process
+- The figma-console-mcp node server is a long-running process. Restarting Claude Desktop spawns a new process only if the old one is dead.
+- If the server (port 9224) was started before the patch was applied, the patched file is on disk but the running process in memory uses the old code. PROXY_EXECUTE messages silently time out.
+- **Fix**: `lsof -i :9224` to find PID → `kill <PID>` → restart Claude Desktop. Verify PID changed.
+- **Symptom**: PROXY_EXECUTE sends but `PROXY_EXECUTE_RESULT` never arrives (8s timeout). If `SERVER_HELLO` arrives, the socket is live — it's definitely the stale process, not a network issue.
+
+### PROXY_EXECUTE: Sequential Execution Pattern
+- Best executed as a Node.js script that opens a new WebSocket per script, waits for `PROXY_EXECUTE_RESULT`, then closes and opens the next.
+- One connection per script (not a persistent connection) avoids interleaved responses and makes error attribution unambiguous.
+- Pattern:
+  ```js
+  for (const script of scripts) {
+    const ws = new WebSocket('ws://127.0.0.1:9224');
+    ws.on('message', msg => {
+      if (JSON.parse(msg).type === 'SERVER_HELLO')
+        ws.send(JSON.stringify({ type:'PROXY_EXECUTE', id:script, code, timeout:30000 }));
+      if (JSON.parse(msg).type === 'PROXY_EXECUTE_RESULT')
+        resolve(msg); ws.close();
+    });
+  }
+  ```
+- Set `timeout` to 30000ms for large scripts; the outer Node.js timeout should be `timeout + 5000`.
+
 ### Rapid Rebinding Can Hang Figma
 - First full run (76s, no delay): Figma hung and required force-quit. All 182K node updates arrived faster than the renderer could process.
 - Second run (108s, 200ms delay between scripts): No hang, Figma stayed responsive.
@@ -255,6 +278,49 @@ Accumulated insights from building and testing the curation pipeline. These info
 
 ---
 
+## Value Provenance & History Architecture
+
+### The Four Structural Gaps
+
+All edge cases in the pipeline (force_renormalize, binding mismatches, false positives, opacity loss) trace to four structural gaps in `token_values`:
+
+**Gap 1 — Stored normalization without provenance**
+`resolved_value` is computed at write time and stored as a dumb string. When normalization rules change, every stored value silently becomes wrong with no way to detect staleness or know whether a value is re-extractable (figma), recomputable (derived), or must be preserved (manual). Every workaround in the alpha-baked colors work was a symptom of this missing `source` column.
+
+**Gap 2 — Sync state too coarse and misplaced**
+`tokens.sync_status` is one field shared across all mode values. Per-mode sync state and push confirmation timestamps (`last_verified_at`) are invisible.
+
+**Gap 3 — No value history**
+Every write overwrites in place. No audit trail, no rollback. Fatal for frontend code sync and T5 Conjure where the vocabulary must be stable and trustworthy.
+
+**Gap 4 — Unbounded operations tables**
+`screen_extraction_status` grows at N_runs × N_screens. No retention policy.
+
+### The Fix: token_values Provenance + History
+
+Three columns added to `token_values`:
+- `source TEXT` — `'figma' | 'derived' | 'manual' | 'imported'`
+- `sync_status TEXT` — per-value (not per-token)
+- `last_verified_at TEXT` — when last confirmed against Figma
+
+New `token_value_history` table — append-only record of every change, with `changed_by` and `reason`.
+
+New `db.update_token_value()` helper — single call site pattern for all value mutations, ensures history is always written.
+
+`force_renormalize` becomes scoped: only applies to `source='figma'` values. Derived values are recomputed by re-running `modes.py`, not renormalized from stale raw_value.
+
+### Design Decision: Fix Root, Not Symptoms
+
+The architectural lesson: `force_renormalize`, `detect_binding_mismatches`, `unbind_mismatched` are all correct at what they do, but they patch consequences. The root cause is that normalization has no version/source metadata. With `source` on `token_values`, these tools become narrower and more correct (only operate on `source='figma'` values that haven't been re-extracted yet).
+
+### Migration Heuristic
+
+Modes-derived values are always in non-default modes. One-time migration:
+```sql
+UPDATE token_values SET source = 'derived'
+WHERE mode_id NOT IN (SELECT id FROM token_modes WHERE is_default = 1);
+```
+
 ## Alpha-Baked Color Architecture
 
 ### The Problem: Figma Loses Paint Opacity on Variable Re-evaluation
@@ -277,10 +343,38 @@ Instead of treating paint opacity as a separate property, encode it directly int
 6. **`export_rebind.py`**: Removed manual opacity preservation from the compact handler. The alpha is in the variable value, so the handler does not need to save/restore it.
 7. **`push.py`**: Removed the `restore_opacities` phase from the push manifest. No longer needed.
 
-### Pending Steps (7-9)
+### Step 7 — force_renormalize
 
-- Re-run `extract_bindings` on all screens to regenerate `node_token_bindings` with alpha-inclusive `resolved_value` (uses existing `nodes.fills`/`strokes`/`effects` JSON, no Figma API call needed).
-- Re-cluster to create ~29 new alpha-baked primitives (e.g., `prim.gray.950.a5`, `prim.gray.950.a25`).
+The existing `insert_bindings()` protects bound bindings from overwrite (Step 1: UPSERT only touches `unbound`; Step 2: marks `bound` as `overridden` if value changed). Neither behavior is correct for normalization changes — we need to update the value while preserving `binding_status = 'bound'`.
+
+**Solution**: Added `force_renormalize=True` parameter to `insert_bindings()` and threaded through `create_bindings_for_screen()`. When set, Step 2 updates `raw_value`/`resolved_value` without changing `binding_status`. This is a permanent pipeline capability, not a one-off: any future normalization change (not just alpha-baking) can use the same flag.
+
+### Binding-Token Consistency Detection
+
+After renormalization, bound bindings have updated values (e.g., `#0000000D`) but still point to tokens with old values (`#000000`). The system had no way to detect or resolve this internal mismatch.
+
+**Problem scope**: This isn't alpha-specific. The same mismatch occurs when:
+1. Normalization rules change (alpha-baking, format changes)
+2. A designer manually edits nodes in Figma and you re-extract
+3. An agent edits a token's value during curation
+
+**Solution**: Three composable functions in `validate.py`:
+- `detect_binding_mismatches(conn, file_id, token_id=None, screen_id=None)` — finds all bound bindings where `resolved_value` doesn't match token value. Uses type-aware normalization (reuses `drift.py`'s `normalize_value_for_comparison`) to avoid false positives from format differences (`10` vs `10.0`). Resolves alias chains.
+- `unbind_mismatched(conn, file_id, token_id=None, screen_id=None)` — sets mismatched bindings to `unbound` + clears `token_id`, so they re-enter the clustering pipeline.
+- `check_binding_token_consistency(conn, file_id)` — validation check #8, returns warning-severity issues grouped by token.
+
+All three accept optional `token_id`/`screen_id` filters for atomic operations. The functions compose: validate calls detect for reporting, cluster can call unbind before clustering, agent can call detect for a single token.
+
+A `v_binding_mismatches` view in `schema.sql` provides the same detection as an always-available SQL query for dashboards and `dd status`.
+
+**Key insight**: the normalization comparison must be type-aware. Raw SQL `!=` produces 87K false positives (dimension `10` vs `10.0`, lineHeight JSON vs number). Using `normalize_value_for_comparison` from `drift.py` reduces to ~20K genuine mismatches. Remaining categories beyond alpha: lineHeight JSON format, actual value drift, and floating point noise — pre-existing issues to address separately.
+
+### Pending Steps (continued)
+
+- Run `create_bindings_for_screen(force_renormalize=True)` across all screens to propagate alpha-inclusive values to bound bindings.
+- Run `unbind_mismatched()` to release alpha-mismatched bindings for re-clustering.
+- Run `dd cluster` to create new alpha-baked primitives. Colors at different alphas cluster separately.
+- Curate, derive mode values, push, and rebind through existing pipeline.
 - Push new alpha-baked primitives to Figma as variables, rebind affected nodes, test mode switching.
 
 ### Design Decisions
@@ -288,3 +382,5 @@ Instead of treating paint opacity as a separate property, encode it directly int
 - **Paint opacity vs color.a**: Figma paints have both `paint.opacity` and `paint.color.a`. The extraction uses `paint.opacity` as the authoritative alpha source, not `color.a`. This matches Figma's visual rendering behavior.
 - **Alpha naming convention**: Alpha-baked primitives use `.aN` suffix where N is the opacity percentage (e.g., `prim.gray.950.a5` for 5% opacity).
 - **Clustering**: Colors at different alphas are treated as distinct values. `#09090B` and `#09090B0D` will never cluster together, even though the RGB components are identical.
+- **Pipeline composability**: Mismatch detection, unbinding, and clustering are separate atomic functions that compose rather than a monolithic "reconcile" step. Each can operate on 1 or N items via optional filters. This supports just-in-time incremental processing.
+- **Type-aware comparison**: Reuses `drift.py`'s `normalize_value_for_comparison` to avoid false positives. The SQL view (`v_binding_mismatches`) does raw comparison for dashboards; the Python function does normalized comparison for pipeline decisions.

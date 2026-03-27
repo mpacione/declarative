@@ -99,16 +99,26 @@ def create_bindings_for_node(node_row: Dict[str, Any]) -> List[Dict[str, str]]:
     return bindings
 
 
-def insert_bindings(conn: sqlite3.Connection, node_id: int, bindings: List[Dict[str, str]]) -> int:
+def insert_bindings(
+    conn: sqlite3.Connection,
+    node_id: int,
+    bindings: List[Dict[str, str]],
+    force_renormalize: bool = False,
+) -> int:
     """Insert or update bindings for a node.
 
     Implements re-extraction safety: only unbound bindings are overwritten.
     For bound/proposed bindings where the value changed, sets binding_status to 'overridden'.
 
+    When force_renormalize=True, updates resolved_value on bound/proposed bindings
+    without changing binding_status. Use this when normalization rules change and
+    existing bound bindings need their values updated while preserving curation.
+
     Args:
         conn: Database connection
         node_id: The node ID to insert bindings for
         bindings: List of binding dicts
+        force_renormalize: If True, update bound/proposed values without marking overridden
 
     Returns:
         Count of bindings inserted/updated
@@ -130,23 +140,35 @@ def insert_bindings(conn: sqlite3.Connection, node_id: int, bindings: List[Dict[
             WHERE binding_status = 'unbound'
         """, (node_id, binding['property'], binding['raw_value'], binding['resolved_value']))
 
-        # Check if the row was inserted or updated
         if cursor.rowcount > 0:
             count += 1
 
-        # Step 2: Check for value changes in bound/proposed bindings
-        # If a bound/proposed binding has a different value, mark it as overridden
-        cursor.execute("""
-            UPDATE node_token_bindings
-            SET raw_value = ?,
-                resolved_value = ?,
-                binding_status = 'overridden'
-            WHERE node_id = ?
-                AND property = ?
-                AND binding_status IN ('proposed', 'bound')
-                AND resolved_value != ?
-        """, (binding['raw_value'], binding['resolved_value'],
-              node_id, binding['property'], binding['resolved_value']))
+        # Step 2: Handle value changes in bound/proposed bindings
+        if force_renormalize:
+            # Update value only, preserve binding_status
+            cursor.execute("""
+                UPDATE node_token_bindings
+                SET raw_value = ?,
+                    resolved_value = ?
+                WHERE node_id = ?
+                    AND property = ?
+                    AND binding_status IN ('proposed', 'bound')
+                    AND resolved_value != ?
+            """, (binding['raw_value'], binding['resolved_value'],
+                  node_id, binding['property'], binding['resolved_value']))
+        else:
+            # Mark as overridden (existing behavior)
+            cursor.execute("""
+                UPDATE node_token_bindings
+                SET raw_value = ?,
+                    resolved_value = ?,
+                    binding_status = 'overridden'
+                WHERE node_id = ?
+                    AND property = ?
+                    AND binding_status IN ('proposed', 'bound')
+                    AND resolved_value != ?
+            """, (binding['raw_value'], binding['resolved_value'],
+                  node_id, binding['property'], binding['resolved_value']))
 
         if cursor.rowcount > 0:
             count += 1
@@ -155,12 +177,17 @@ def insert_bindings(conn: sqlite3.Connection, node_id: int, bindings: List[Dict[
     return count
 
 
-def create_bindings_for_screen(conn: sqlite3.Connection, screen_id: int) -> int:
+def create_bindings_for_screen(
+    conn: sqlite3.Connection,
+    screen_id: int,
+    force_renormalize: bool = False,
+) -> int:
     """Create bindings for all nodes in a screen.
 
     Args:
         conn: Database connection
         screen_id: The screen ID to process
+        force_renormalize: If True, update bound/proposed values without marking overridden
 
     Returns:
         Total count of bindings created/updated
@@ -207,7 +234,7 @@ def create_bindings_for_screen(conn: sqlite3.Connection, screen_id: int) -> int:
 
         # Insert bindings
         if bindings:
-            count = insert_bindings(conn, node_data['id'], bindings)
+            count = insert_bindings(conn, node_data['id'], bindings, force_renormalize=force_renormalize)
             total_count += count
 
     return total_count

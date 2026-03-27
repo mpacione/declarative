@@ -62,10 +62,11 @@ def copy_values_from_default(conn: sqlite3.Connection, collection_id: int, new_m
 
     default_mode_id = row['id']
 
-    # Copy values from default to new mode (skip aliased tokens)
+    # Copy values from default to new mode (skip aliased tokens).
+    # source='derived': these values are computed by the pipeline, not extracted from Figma.
     cursor = conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-        SELECT tv.token_id, ?, tv.raw_value, tv.resolved_value
+        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, source)
+        SELECT tv.token_id, ?, tv.raw_value, tv.resolved_value, 'derived'
         FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
         WHERE tv.mode_id = ? AND t.collection_id = ? AND t.alias_of IS NULL

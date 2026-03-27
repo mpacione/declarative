@@ -65,6 +65,49 @@ def init_db(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def update_token_value(
+    conn: sqlite3.Connection,
+    token_id: int,
+    mode_id: int,
+    new_resolved: str,
+    changed_by: str,
+    reason: str = None,
+) -> None:
+    """Update a token's resolved_value and write an audit history row.
+
+    This is the single authoritative call site for mutating token values.
+    It reads the current resolved_value before overwriting so the history
+    row captures old → new. Also resets sync_status to 'pending' since the
+    value is no longer confirmed against Figma.
+
+    Args:
+        conn: Database connection
+        token_id: Token to update
+        mode_id: Mode to update
+        new_resolved: New resolved_value string
+        changed_by: Pipeline stage making the change
+            ('extract', 'modes', 'curate', 'manual', 'force_renormalize', 'writeback')
+        reason: Optional human-readable context for the change
+    """
+    row = conn.execute(
+        "SELECT resolved_value FROM token_values WHERE token_id = ? AND mode_id = ?",
+        (token_id, mode_id),
+    ).fetchone()
+    old_resolved = row["resolved_value"] if row else None
+
+    conn.execute(
+        "UPDATE token_values SET resolved_value = ?, sync_status = 'pending' "
+        "WHERE token_id = ? AND mode_id = ?",
+        (new_resolved, token_id, mode_id),
+    )
+    conn.execute(
+        "INSERT INTO token_value_history (token_id, mode_id, old_resolved, new_resolved, changed_by, reason) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (token_id, mode_id, old_resolved, new_resolved, changed_by, reason),
+    )
+    conn.commit()
+
+
 def backup_db(source_path: str) -> str:
     """
     Create a timestamped backup of a database file.

@@ -154,16 +154,59 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **DB collections**: Colors renamed to "Color Semantics", new "Color Primitives" collection added (now 8 collections total)
 - **New functions**: `create_collection()`, `convert_to_alias()` in `dd/curate.py`
 
+### T4.0 — Architectural Repair: Value Provenance & History
+- **Status**: DONE
+- **Scope**: Four structural gaps fixed. 25 new tests. 703 total passing.
+- **Schema changes** (additive):
+  - `token_values.source` — `'figma' | 'derived' | 'manual' | 'imported'` (default 'figma')
+  - `token_values.sync_status` — per-value ground truth (not per-token)
+  - `token_values.last_verified_at` — push+readback confirmation timestamp
+  - `token_value_history` — append-only audit table with indexes
+- **Code changes**:
+  - `dd/db.py`: `update_token_value(conn, token_id, mode_id, new_resolved, changed_by, reason)` — single call site for all value mutations, always writes history
+  - `dd/modes.py`: `copy_values_from_default()` sets `source='derived'` on all non-default mode values
+  - `dd/curate.py`: `split_token()` carries `source` forward from parent token
+  - `dd/maintenance.py`: `prune_extraction_runs(conn, keep_last=50)`, `prune_export_validations(conn, keep_last=50)`
+- **Migration**: `migrations/001_value_provenance.sql` — run against production DB before next pipeline operation
+- **Rationale**: See `docs/learnings.md` "Value Provenance & History Architecture"
+
 ### T4.2 — Add Modes (Dark, Compact, High Contrast)
 - **Status**: DONE (DB), Figma push pending
 - **Dark mode completed**: Added to Effects (26), Opacity (4), Radius (23), Spacing (27), Typography (164). Non-color values copied as-is.
 - **Compact mode**: Applied to Effects, Radius, Spacing, Typography with 0.875 scale factor. Dimension values scaled, non-dimensions copied.
 - **High Contrast mode**: New `apply_high_contrast()` function. Pushes light colors lighter (L > 0.5 → L×1.2+0.1), dark colors darker (L < 0.5 → L×0.6). Applied to Color Primitives (45) and Semantic/Component States (12).
 - **Mode coverage**: 8 collections × 2-3 modes each. Color Semantics has no values (aliases). Opacity has no Compact (not applicable).
-- **Alpha-baked colors (Steps 1-6)**: DONE. Paint opacity is now encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). Eliminates the opacity restoration post-step entirely. OKLCH transforms and clustering updated to handle alpha suffix. 656 tests passing.
-- **Alpha-baked colors (Steps 7-9)**: PENDING. Re-extract bindings with alpha-inclusive resolved values, re-cluster to create ~29 new alpha-baked primitives, push to Figma and rebind.
+- **Alpha-baked colors (Steps 1-6)**: DONE. Paint opacity is now encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). Eliminates the opacity restoration post-step entirely. OKLCH transforms and clustering updated to handle alpha suffix.
+- **Alpha-baked colors (Step 7 — infrastructure)**: DONE. `force_renormalize` flag added to `insert_bindings()`/`create_bindings_for_screen()`. Binding-token consistency detection added: `detect_binding_mismatches()`, `unbind_mismatched()`, `check_binding_token_consistency()` (validation check #8). `v_binding_mismatches` view added to schema. Type-aware comparison reuses `drift.py` normalization. 678 tests passing.
+- **Alpha-baked colors (Steps 7-9)**: DONE.
+  - `force_renormalize` confirmed 6,207 alpha bindings already present from prior partial run
+  - `unbind_mismatched()` on 13 affected tokens released 6,910 bindings (693 extra beyond alpha were genuine value drift — `#007AFF` vs `#047AFF` and `#404040` vs `#3C3C43`)
+  - `dd cluster` created 21 genuine alpha extracted tokens + 2 non-alpha drift tokens in Colors collection
+  - Non-alpha drift tokens (#007AFF → `color.brand.link`, #404040 → `color.text.secondary`) merged into nearest semantic tokens and deleted
+  - Alpha tokens moved to Color Primitives collection, renamed `prim.{hue}.{shade}.a{N}`, promoted to `curated`
+  - Dark and High Contrast mode values derived (OKLCH inversion preserves alpha suffix correctly)
+  - Color Primitives token_values restored from backup (were missing — bug from T4.1 creation script)
+  - 6,910 proposed bindings accepted; 8 fractional-value outliers marked `intentionally_unbound`
+  - **Step 9**: 21 alpha primitive variables pushed to Figma (`VariableID:5468:359938`–`VariableID:5468:359958`), IDs written back to DB. 6,207 rebind operations executed via PROXY_EXECUTE (script 0: 950 bindings via `figma_execute`; scripts ar_0–ar_26: 5,257 bindings at 200/script). 0 errors.
+  - **DB state**: 66 Color Primitives (45 base + 21 alpha), 499 total tokens, 182,877 bound, 22,605 intentionally_unbound, 100% coverage
 
-### T4.3–T4.5 — not started
+### T4.3 — Run Value Provenance Migration
+- **Status**: PENDING
+- **Scope**: Apply `migrations/001_value_provenance.sql` to production DB. Adds `source`, `sync_status`, `last_verified_at` to `token_values`, creates `token_value_history` table.
+- **Prerequisite for**: all future value mutations — `update_token_value()` writes history; without the schema columns it will fail.
+
+### T4.4 — Wire `update_token_value()` into call sites
+- **Status**: PENDING
+- **Scope**: Replace direct SQL writes in `curate.py`, `modes.py`, `export_figma_vars.py` (writeback) with `db.update_token_value()` so every mutation writes a history row.
+- **Why deferred**: T4.0 added the helper and tests but stopped short of migrating all call sites.
+
+### T4.5 — `dd maintenance` CLI command
+- **Status**: PENDING
+- **Scope**: Retention policy — `prune_extraction_runs(conn, keep_last=50)` and `prune_export_validations(conn, keep_last=50)`. Logic already exists in `dd/maintenance.py`; needs CLI wiring.
+
+### T4.6–T4.x — Structural (future)
+- **Status**: not started
+- Import external token set (Radix, shadcn, Material) — T4.x
 
 ---
 

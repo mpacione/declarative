@@ -241,8 +241,8 @@ def split_token(conn: sqlite3.Connection, token_id: int, new_name: str,
     new_token_id = cursor.lastrowid
 
     conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, extracted_at)
-        SELECT ?, mode_id, raw_value, resolved_value, extracted_at
+        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, source, extracted_at)
+        SELECT ?, mode_id, raw_value, resolved_value, source, extracted_at
         FROM token_values
         WHERE token_id = ?
     """, (new_token_id, token_id))

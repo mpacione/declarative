@@ -305,6 +305,180 @@ def check_value_format(conn: sqlite3.Connection, file_id: int) -> List[Dict[str,
     return issues
 
 
+def _build_candidates_query(
+    file_id: int,
+    token_id: int | None = None,
+    screen_id: int | None = None,
+) -> tuple[str, list]:
+    """Build SQL to fetch bound bindings with their token values for comparison.
+
+    Resolves aliases: if a binding points to an aliased token, fetches
+    the alias target's default-mode value.
+    """
+    sql = """
+        SELECT ntb.id AS binding_id, ntb.node_id, ntb.property,
+               ntb.resolved_value AS binding_value,
+               t.id AS token_id, t.name AS token_name, t.type AS token_type,
+               COALESCE(tv_target.resolved_value, tv_direct.resolved_value) AS token_value
+        FROM node_token_bindings ntb
+        JOIN tokens t ON ntb.token_id = t.id
+        JOIN nodes n ON ntb.node_id = n.id
+        JOIN screens s ON n.screen_id = s.id
+        LEFT JOIN token_values tv_direct
+            ON tv_direct.token_id = t.id
+            AND tv_direct.mode_id = (
+                SELECT tm.id FROM token_modes tm
+                WHERE tm.collection_id = t.collection_id AND tm.is_default = 1
+            )
+        LEFT JOIN token_values tv_target
+            ON tv_target.token_id = t.alias_of
+            AND tv_target.mode_id = (
+                SELECT tm2.id FROM token_modes tm2
+                WHERE tm2.collection_id = (
+                    SELECT t2.collection_id FROM tokens t2 WHERE t2.id = t.alias_of
+                ) AND tm2.is_default = 1
+            )
+        WHERE s.file_id = ?
+          AND ntb.binding_status IN ('bound', 'proposed')
+    """
+    params: list = [file_id]
+
+    if token_id is not None:
+        sql += " AND ntb.token_id = ?"
+        params.append(token_id)
+
+    if screen_id is not None:
+        sql += " AND n.screen_id = ?"
+        params.append(screen_id)
+
+    return sql, params
+
+
+def _values_match(binding_value: str, token_value: str | None, token_type: str) -> bool:
+    """Compare binding and token values with type-aware normalization.
+
+    Reuses the same normalization logic as drift detection to avoid
+    false positives from format differences (e.g., '10' vs '10.0').
+    """
+    if token_value is None:
+        return False
+
+    from dd.drift import normalize_value_for_comparison
+
+    norm_binding = normalize_value_for_comparison(binding_value, token_type)
+    norm_token = normalize_value_for_comparison(token_value, token_type)
+    return norm_binding == norm_token
+
+
+def detect_binding_mismatches(
+    conn: sqlite3.Connection,
+    file_id: int,
+    token_id: int | None = None,
+    screen_id: int | None = None,
+) -> Dict[str, Any]:
+    """Detect bound bindings whose resolved_value doesn't match their token's value.
+
+    Uses type-aware normalization to avoid false positives (e.g., '10' vs '10.0').
+    Resolves alias chains: if the token is an alias, compares against the
+    alias target's default-mode value.
+
+    Args:
+        conn: Database connection
+        file_id: File ID to check
+        token_id: Optional filter to a specific token
+        screen_id: Optional filter to a specific screen
+
+    Returns:
+        Dict with 'total' count and 'mismatches' list of detail dicts
+    """
+    sql, params = _build_candidates_query(file_id, token_id, screen_id)
+    rows = conn.execute(sql, params).fetchall()
+
+    mismatches = []
+    for row in rows:
+        if not _values_match(row["binding_value"], row["token_value"], row["token_type"]):
+            mismatches.append({
+                "binding_id": row["binding_id"],
+                "node_id": row["node_id"],
+                "property": row["property"],
+                "binding_value": row["binding_value"],
+                "token_id": row["token_id"],
+                "token_name": row["token_name"],
+                "token_value": row["token_value"],
+            })
+
+    return {"total": len(mismatches), "mismatches": mismatches}
+
+
+def unbind_mismatched(
+    conn: sqlite3.Connection,
+    file_id: int,
+    token_id: int | None = None,
+    screen_id: int | None = None,
+) -> int:
+    """Unbind bindings that don't match their token's value.
+
+    Sets binding_status to 'unbound' and clears token_id so the binding
+    re-enters the clustering pipeline.
+
+    Args:
+        conn: Database connection
+        file_id: File ID to process
+        token_id: Optional filter to a specific token
+        screen_id: Optional filter to a specific screen
+
+    Returns:
+        Count of bindings unbound
+    """
+    result = detect_binding_mismatches(conn, file_id, token_id, screen_id)
+    mismatch_ids = [m["binding_id"] for m in result["mismatches"]]
+
+    if not mismatch_ids:
+        return 0
+
+    placeholders = ",".join("?" for _ in mismatch_ids)
+    conn.execute(
+        f"UPDATE node_token_bindings SET binding_status = 'unbound', token_id = NULL WHERE id IN ({placeholders})",
+        mismatch_ids,
+    )
+    conn.commit()
+    return len(mismatch_ids)
+
+
+def check_binding_token_consistency(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+    """Validation check: flag bound bindings whose value doesn't match their token.
+
+    Args:
+        conn: Database connection
+        file_id: File ID to check
+
+    Returns:
+        List of validation issues with severity 'warning'
+    """
+    result = detect_binding_mismatches(conn, file_id)
+
+    if result["total"] == 0:
+        return []
+
+    token_counts: Dict[str, int] = {}
+    for m in result["mismatches"]:
+        name = m["token_name"]
+        token_counts[name] = token_counts.get(name, 0) + 1
+
+    issues = []
+    for token_name, count in token_counts.items():
+        issues.append({
+            "check_name": "binding_token_consistency",
+            "severity": Severity.WARNING.value,
+            "message": f"{count} binding(s) for token '{token_name}' have mismatched values",
+            "affected_ids": json.dumps([
+                m["binding_id"] for m in result["mismatches"] if m["token_name"] == token_name
+            ]),
+        })
+
+    return issues
+
+
 def run_validation(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
     """Run all validation checks and write results to database.
 
@@ -333,6 +507,7 @@ def run_validation(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
     all_issues.extend(check_alias_targets_curated(conn, file_id))
     all_issues.extend(check_name_uniqueness(conn, file_id))
     all_issues.extend(check_value_format(conn, file_id))
+    all_issues.extend(check_binding_token_consistency(conn, file_id))
 
     # Write to database
     for issue in all_issues:

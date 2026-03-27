@@ -407,12 +407,14 @@ def validate_no_orphan_tokens(conn: sqlite3.Connection, file_id: int) -> list[in
     Returns:
         List of deleted token IDs
     """
-    # Find orphan tokens
+    # Find orphan tokens — only extracted-tier tokens with no bindings.
+    # Curated and aliased tokens legitimately have no direct bindings
+    # (they're semantic aliases or curated names without node-level bindings).
     cursor = conn.execute("""
         SELECT t.id FROM tokens t
         JOIN token_collections tc ON t.collection_id = tc.id
         LEFT JOIN node_token_bindings ntb ON ntb.token_id = t.id
-        WHERE tc.file_id = ? AND ntb.id IS NULL
+        WHERE tc.file_id = ? AND ntb.id IS NULL AND t.tier = 'extracted'
     """, (file_id,))
 
     orphan_ids = [row['id'] for row in cursor.fetchall()]
