@@ -346,3 +346,97 @@ def create_alias(conn: sqlite3.Connection, alias_name: str, target_token_id: int
         "target_id": target_token_id,
         "target_name": target["name"]
     }
+
+
+def create_collection(conn: sqlite3.Connection, name: str, file_id: int,
+                      mode_names: Optional[list[str]] = None) -> dict:
+    """
+    Create a new token collection with mode(s).
+
+    Args:
+        conn: Database connection
+        name: Collection name
+        file_id: File ID
+        mode_names: Mode names (default: ["Default"])
+
+    Returns:
+        Dict with collection_id, name, mode_id (first mode)
+
+    Raises:
+        ValueError: If collection name already exists for this file
+    """
+    existing = conn.execute(
+        "SELECT id FROM token_collections WHERE file_id = ? AND name = ?",
+        (file_id, name)
+    ).fetchone()
+    if existing:
+        raise ValueError(f"Collection '{name}' already exists for file {file_id}")
+
+    cursor = conn.execute(
+        "INSERT INTO token_collections (file_id, name) VALUES (?, ?)",
+        (file_id, name)
+    )
+    collection_id = cursor.lastrowid
+
+    if mode_names is None:
+        mode_names = ["Default"]
+
+    first_mode_id = None
+    for i, mode_name in enumerate(mode_names):
+        cursor = conn.execute(
+            "INSERT INTO token_modes (collection_id, name, is_default) VALUES (?, ?, ?)",
+            (collection_id, mode_name, 1 if i == 0 else 0)
+        )
+        if i == 0:
+            first_mode_id = cursor.lastrowid
+
+    conn.commit()
+    return {
+        "collection_id": collection_id,
+        "name": name,
+        "mode_id": first_mode_id,
+    }
+
+
+def convert_to_alias(conn: sqlite3.Connection, token_id: int,
+                     target_token_id: int) -> dict:
+    """
+    Convert a valued token into an alias of another token.
+
+    Preserves the token's ID, collection, and bindings. Clears token_values
+    (aliases derive values from their target). Sets tier to 'aliased'.
+
+    Args:
+        conn: Database connection
+        token_id: Token to convert
+        target_token_id: Token to alias
+
+    Returns:
+        Dict with token_id, target_token_id
+
+    Raises:
+        ValueError: If target doesn't exist or is an alias
+    """
+    target = conn.execute(
+        "SELECT id, alias_of FROM tokens WHERE id = ?",
+        (target_token_id,)
+    ).fetchone()
+    if target is None:
+        raise ValueError(f"Target token {target_token_id} does not exist")
+    if target["alias_of"] is not None:
+        raise ValueError("Target token cannot be an alias")
+
+    token = conn.execute(
+        "SELECT id FROM tokens WHERE id = ?", (token_id,)
+    ).fetchone()
+    if token is None:
+        raise ValueError(f"Token {token_id} does not exist")
+
+    conn.execute(
+        "UPDATE tokens SET alias_of = ?, tier = 'aliased' WHERE id = ?",
+        (target_token_id, token_id)
+    )
+    conn.execute("DELETE FROM token_values WHERE token_id = ?", (token_id,))
+
+    conn.commit()
+    return {"token_id": token_id, "target_token_id": target_token_id}

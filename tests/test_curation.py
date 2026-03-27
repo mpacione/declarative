@@ -10,6 +10,8 @@ from dd.curate import (
     split_token,
     reject_token,
     create_alias,
+    create_collection,
+    convert_to_alias,
 )
 from dd.status import (
     get_curation_progress,
@@ -307,6 +309,120 @@ def test_reject_token_nonexistent(db):
 
     with pytest.raises(ValueError, match="Token 999 does not exist"):
         reject_token(db, 999)
+
+
+@pytest.mark.unit
+def test_create_collection(db):
+    """Test creating a new collection with default mode."""
+    seed_post_curation(db)
+
+    result = create_collection(db, "Color Primitives", file_id=1)
+
+    assert result["collection_id"] > 0
+    assert result["name"] == "Color Primitives"
+    assert result["mode_id"] > 0
+
+    cursor = db.execute("SELECT name FROM token_collections WHERE id = ?", (result["collection_id"],))
+    assert cursor.fetchone()["name"] == "Color Primitives"
+
+    cursor = db.execute("SELECT name, is_default FROM token_modes WHERE collection_id = ?", (result["collection_id"],))
+    mode = cursor.fetchone()
+    assert mode["name"] == "Default"
+    assert mode["is_default"] == 1
+
+
+@pytest.mark.unit
+def test_create_collection_with_custom_modes(db):
+    """Test creating a collection with specific mode names."""
+    seed_post_curation(db)
+
+    result = create_collection(db, "Themed Colors", file_id=1, mode_names=["Light", "Dark"])
+
+    modes = db.execute(
+        "SELECT name, is_default FROM token_modes WHERE collection_id = ? ORDER BY id",
+        (result["collection_id"],)
+    ).fetchall()
+    assert len(modes) == 2
+    assert modes[0]["name"] == "Light"
+    assert modes[0]["is_default"] == 1
+    assert modes[1]["name"] == "Dark"
+
+
+@pytest.mark.unit
+def test_create_collection_duplicate_name_raises(db):
+    """Test creating a collection with an existing name raises ValueError."""
+    seed_post_curation(db)
+
+    create_collection(db, "MyCollection", file_id=1)
+    with pytest.raises(ValueError, match="already exists"):
+        create_collection(db, "MyCollection", file_id=1)
+
+
+@pytest.mark.unit
+def test_convert_to_alias(db):
+    """Test converting a valued token into an alias."""
+    seed_post_curation(db)
+
+    # Create a target primitive token
+    coll = create_collection(db, "Primitives", file_id=1)
+    cursor = db.execute(
+        "INSERT INTO tokens (collection_id, name, type, tier) VALUES (?, 'prim.white', 'color', 'curated')",
+        (coll["collection_id"],)
+    )
+    primitive_id = cursor.lastrowid
+    mode_id = coll["mode_id"]
+    db.execute(
+        "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (?, ?, '#FFFFFF', '#FFFFFF')",
+        (primitive_id, mode_id)
+    )
+    db.commit()
+
+    # Token 1 is a curated color token with bindings
+    original_bindings = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = 1"
+    ).fetchone()["cnt"]
+    assert original_bindings > 0
+
+    result = convert_to_alias(db, token_id=1, target_token_id=primitive_id)
+
+    assert result["token_id"] == 1
+    assert result["target_token_id"] == primitive_id
+
+    # Token should now be an alias
+    token = db.execute("SELECT alias_of, tier FROM tokens WHERE id = 1").fetchone()
+    assert token["alias_of"] == primitive_id
+    assert token["tier"] == "aliased"
+
+    # Token values should be cleared (aliases derive from target)
+    values = db.execute("SELECT COUNT(*) as cnt FROM token_values WHERE token_id = 1").fetchone()["cnt"]
+    assert values == 0
+
+    # Bindings should be preserved
+    post_bindings = db.execute(
+        "SELECT COUNT(*) as cnt FROM node_token_bindings WHERE token_id = 1"
+    ).fetchone()["cnt"]
+    assert post_bindings == original_bindings
+
+
+@pytest.mark.unit
+def test_convert_to_alias_target_must_not_be_alias(db):
+    """Test converting to alias fails if target is itself an alias."""
+    seed_post_curation(db)
+
+    alias_result = create_alias(db, "color.bg", 1, 1)
+    alias_id = alias_result["alias_id"]
+
+    with pytest.raises(ValueError, match="cannot be an alias"):
+        convert_to_alias(db, token_id=2, target_token_id=alias_id)
+
+
+@pytest.mark.unit
+def test_convert_to_alias_nonexistent_target_raises(db):
+    """Test converting to alias fails with nonexistent target."""
+    seed_post_curation(db)
+
+    with pytest.raises(ValueError, match="does not exist"):
+        convert_to_alias(db, token_id=1, target_token_id=9999)
 
 
 @pytest.mark.unit
