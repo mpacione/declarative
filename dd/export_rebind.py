@@ -269,7 +269,7 @@ COMPACT_HANDLER = r"""const R=D.split('\n').filter(l=>l);let b=0,f=0;
 for(const l of R){const[n,p,v]=l.split('|');try{
 const nd=await figma.getNodeByIdAsync(n);if(!nd){f++;continue;}
 const vr=await figma.variables.getVariableByIdAsync('VariableID:'+v);if(!vr){f++;continue;}
-if(p[0]==='f'&&p.length<=2){const i=+p[1],fl=[...nd.fills];fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);nd.fills=fl;}
+if(p[0]==='f'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],fl=[...nd.fills];fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);nd.fills=fl;}
 else if(p[0]==='s'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],st=[...nd.strokes];st[i]=figma.variables.setBoundVariableForPaint(st[i],'color',vr);nd.strokes=st;}
 else if(p[0]==='e'){const i=+p[1],fm={c:'color',r:'radius',x:'offsetX',y:'offsetY',s:'spread'}[p[2]],ef=[...nd.effects];ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);nd.effects=ef;}
 else{const M={cr:'cornerRadius',tlr:'topLeftRadius',trr:'topRightRadius',blr:'bottomLeftRadius',brr:'bottomRightRadius',pt:'paddingTop',pr:'paddingRight',pb:'paddingBottom',pl:'paddingLeft',is:'itemSpacing',cas:'counterAxisSpacing',op:'opacity',sw:'strokeWeight',stw:'strokeTopWeight',srw:'strokeRightWeight',sbw:'strokeBottomWeight',slw:'strokeLeftWeight',fs:'fontSize',ff:'fontFamily',fw:'fontWeight',fst:'fontStyle',lh:'lineHeight',ls:'letterSpacing',ps:'paragraphSpacing'};

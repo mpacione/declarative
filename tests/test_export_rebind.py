@@ -595,6 +595,29 @@ class TestGenerateCompactScript:
         assert script.startswith("(async()=>{")
         assert "figma.notify" in script
 
+    def test_compact_handler_font_shortcodes_not_treated_as_fills(self):
+        """Font shortcodes (fs, ff, fw, fst) must NOT match the fill branch (f0, f1)."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fontSize", "variable_id": "VariableID:1:1"},
+            {"binding_id": 2, "node_id": "1:2", "property": "fontFamily", "variable_id": "VariableID:1:2"},
+            {"binding_id": 3, "node_id": "1:3", "property": "fontWeight", "variable_id": "VariableID:1:3"},
+            {"binding_id": 4, "node_id": "1:4", "property": "fontStyle", "variable_id": "VariableID:1:4"},
+            {"binding_id": 5, "node_id": "1:5", "property": "fill.0.color", "variable_id": "VariableID:1:5"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "1:1|fs|" in script
+        assert "1:5|f0|" in script
+        # Fill branch (p[0]==='f') must also check digit, not just length
+        # Otherwise fs/ff/fw (font properties) match the fill paint branch
+        fill_branch_start = script.find("p[0]==='f'")
+        assert fill_branch_start != -1
+        # The fill condition must include a digit check before the closing )
+        fill_condition = script[fill_branch_start:script.find("{", fill_branch_start)]
+        assert "isNaN" in fill_condition or ">='0'" in fill_condition, (
+            f"Fill branch missing digit check: {fill_condition}"
+        )
+
 
 class TestGetRebindSummary:
     """Test get_rebind_summary function."""
