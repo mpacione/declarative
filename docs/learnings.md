@@ -154,5 +154,29 @@ Accumulated insights from building and testing the curation pipeline. These info
 ### Variable ID Writeback is Critical Infrastructure
 - Rebinding requires `figma_variable_id` on every token.
 - We had 0/308 IDs after pushing — had to fetch them all back via `figma_execute` and map by name.
-- **Fix needed**: `dd push` must write back IDs immediately after creating variables.
+- **Fixed**: `dd push --writeback --figma-state response.json` handles this as a CLI step.
 - The name→ID mapping uses slash-to-dot conversion (`color/surface/white` → `color.surface.white`).
+
+---
+
+## dd push
+
+### Compact Rebind Encoding Reduces Script Count 3x
+- Original verbose format: ~110 chars/binding → 500 bindings/script → 366 scripts for 182K bindings.
+- Compact format: ~30 chars/binding using property shortcodes (`fontSize`→`fs`, `fill.0.color`→`f0`) and stripped `VariableID:` prefix → 950 bindings/script → 193 scripts.
+- `figma_execute` has a hard 50K character limit. Compact encoding is essential for practical batch sizes.
+
+### CLI Generates Manifests, Agent Executes MCP
+- The CLI cannot make MCP calls. It outputs structured JSON manifests.
+- Agent reads manifest, executes each MCP call, reports progress.
+- This separation keeps deterministic logic in the CLI and Figma interaction in the agent.
+
+### Incremental Sync Reuses drift.py
+- `compare_token_values()` from `drift.py` already classifies tokens as synced/drifted/pending/figma_only/code_only.
+- Push maps these directly: pending/code_only → CREATE, drifted → UPDATE, figma_only → DELETE, synced → no action.
+- No duplicate diff logic needed — reuse what exists.
+
+### query_exportable_tokens() Extended Not Replaced
+- Added `include_existing=True` parameter instead of writing a new query function.
+- Default behavior unchanged (`include_existing=False` filters to `figma_variable_id IS NULL`).
+- Avoids parallel query functions that could drift.

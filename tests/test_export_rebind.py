@@ -4,11 +4,17 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import math
+
 import pytest
 
+from dd.config import MAX_BINDINGS_PER_SCRIPT
 from dd.export_rebind import (
     PROPERTY_HANDLERS,
+    PROPERTY_SHORTCODES,
     classify_property,
+    encode_property,
+    generate_compact_script,
     generate_rebind_scripts,
     generate_single_script,
     get_rebind_summary,
@@ -405,20 +411,20 @@ class TestGenerateRebindScripts:
         conn, file_id = populated_db
         scripts = generate_rebind_scripts(conn, file_id)
 
-        # With 5 bindable entries and batch size 500, should get 1 script
+        # With 5 bindable entries and batch size 1500, should get 1 script
         assert len(scripts) == 1
-        assert "(async () =>" in scripts[0]
+        assert "(async()=>{" in scripts[0]
 
     def test_generate_scripts_large_batch(self, temp_db):
-        """Test batching with many entries."""
+        """Test batching with many entries splits into correct number of scripts."""
         conn = temp_db
         cursor = conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'test.figma')")
         file_id = cursor.lastrowid
         cursor = conn.execute("INSERT INTO screens (file_id, figma_node_id, name) VALUES (?, '1:100', 'Screen')", (file_id,))
         screen_id = cursor.lastrowid
 
-        # Create 1500 bindings (should result in 3 scripts of 500 each)
-        for i in range(1500):
+        entry_count = 1500
+        for i in range(entry_count):
             cursor = conn.execute(f"INSERT INTO nodes (screen_id, figma_node_id, name) VALUES (?, '1:{i}', 'Node{i}')", (screen_id,))
             node_id = cursor.lastrowid
             cursor = conn.execute(f"INSERT INTO tokens (collection_id, name, type, figma_variable_id) VALUES (1, 'token{i}', 'color', 'VariableID:{i}')")
@@ -431,16 +437,13 @@ class TestGenerateRebindScripts:
         conn.commit()
 
         scripts = generate_rebind_scripts(conn, file_id)
-        assert len(scripts) == 3
+        expected_scripts = math.ceil(entry_count / MAX_BINDINGS_PER_SCRIPT)
+        assert len(scripts) == expected_scripts
 
-        # Check that each script has the right number of bindings
-        for i, script in enumerate(scripts):
-            if i < 2:
-                # First two scripts should have 500 bindings each
-                assert script.count('nodeId:') == 500
-            else:
-                # Last script should have 500 bindings
-                assert script.count('nodeId:') == 500
+        # Total bindings across all scripts should equal entry_count
+        # Compact scripts use pipe-delimited lines, count by newlines in data
+        total = sum(s.count('|f0|') for s in scripts)
+        assert total == entry_count
 
     def test_generate_scripts_empty(self, temp_db):
         """Test with no scripts to generate."""
@@ -451,6 +454,146 @@ class TestGenerateRebindScripts:
 
         scripts = generate_rebind_scripts(conn, file_id)
         assert scripts == []
+
+
+class TestPropertyShortcodes:
+    """Test PROPERTY_SHORTCODES mapping and encode_property function."""
+
+    def test_shortcodes_cover_all_known_properties(self):
+        """Every classifiable property path has a shortcode."""
+        known_properties = [
+            "fill.0.color", "stroke.0.color", "effect.0.color", "effect.0.radius",
+            "effect.0.offsetX", "effect.0.offsetY", "effect.0.spread",
+            "cornerRadius", "topLeftRadius", "topRightRadius",
+            "bottomLeftRadius", "bottomRightRadius",
+            "padding.top", "padding.right", "padding.bottom", "padding.left",
+            "itemSpacing", "counterAxisSpacing", "opacity",
+            "strokeWeight", "strokeTopWeight", "strokeRightWeight",
+            "strokeBottomWeight", "strokeLeftWeight",
+            "fontSize", "fontFamily", "fontWeight", "fontStyle",
+            "lineHeight", "letterSpacing", "paragraphSpacing",
+        ]
+        for prop in known_properties:
+            code = encode_property(prop)
+            assert code is not None, f"No shortcode for {prop}"
+            assert len(code) <= 4, f"Shortcode too long for {prop}: {code}"
+
+    def test_shortcodes_are_unique(self):
+        """All shortcode values must be unique to avoid decode collisions."""
+        values = list(PROPERTY_SHORTCODES.values())
+        assert len(values) == len(set(values)), "Duplicate shortcode values found"
+
+    def test_encode_fill_with_index(self):
+        """Fill properties encode the paint index."""
+        assert encode_property("fill.0.color") == "f0"
+        assert encode_property("fill.1.color") == "f1"
+        assert encode_property("fill.9.color") == "f9"
+
+    def test_encode_stroke_with_index(self):
+        """Stroke properties encode the paint index."""
+        assert encode_property("stroke.0.color") == "s0"
+        assert encode_property("stroke.2.color") == "s2"
+
+    def test_encode_effect_with_index_and_field(self):
+        """Effect properties encode index and field."""
+        assert encode_property("effect.0.color") == "e0c"
+        assert encode_property("effect.1.radius") == "e1r"
+        assert encode_property("effect.0.offsetX") == "e0x"
+        assert encode_property("effect.0.offsetY") == "e0y"
+        assert encode_property("effect.2.spread") == "e2s"
+
+    def test_encode_direct_properties(self):
+        """Direct-bind properties use short fixed codes."""
+        assert encode_property("cornerRadius") == "cr"
+        assert encode_property("fontSize") == "fs"
+        assert encode_property("padding.top") == "pt"
+
+    def test_encode_unknown_returns_none(self):
+        """Unknown properties return None."""
+        assert encode_property("unknownProp") is None
+
+
+class TestGenerateCompactScript:
+    """Test generate_compact_script function."""
+
+    def test_compact_script_uses_pipe_delimited_data(self):
+        """Compact script encodes bindings as pipe-delimited string."""
+        entries = [
+            {"binding_id": 1, "node_id": "2219:235701", "property": "fill.0.color", "variable_id": "VariableID:123:456"},
+            {"binding_id": 2, "node_id": "2219:235702", "property": "fontSize", "variable_id": "VariableID:123:789"},
+        ]
+        script = generate_compact_script(entries)
+
+        # Should contain pipe-delimited data, not JSON objects
+        assert "2219:235701|f0|123:456" in script
+        assert "2219:235702|fs|123:789" in script
+        assert "nodeId:" not in script
+
+    def test_compact_script_strips_variable_id_prefix(self):
+        """VariableID: prefix is stripped and reconstructed in handler."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:5438:33595"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "5438:33595" in script
+        assert "VariableID:5438:33595" not in script.split("const D=")[1].split(";")[0]
+        assert "VariableID:" in script  # Should be in the handler to reconstruct
+
+    def test_compact_script_is_valid_structure(self):
+        """Compact script has proper async IIFE structure."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:2"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert script.startswith("(async()=>{")
+        assert script.endswith("})();")
+        assert script.count("{") == script.count("}")
+        assert script.count("(") == script.count(")")
+
+    def test_compact_script_handles_all_property_types(self):
+        """Compact script handler supports all property type categories."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:1"},
+            {"binding_id": 2, "node_id": "1:2", "property": "stroke.0.color", "variable_id": "VariableID:1:2"},
+            {"binding_id": 3, "node_id": "1:3", "property": "effect.0.color", "variable_id": "VariableID:1:3"},
+            {"binding_id": 4, "node_id": "1:4", "property": "padding.top", "variable_id": "VariableID:1:4"},
+            {"binding_id": 5, "node_id": "1:5", "property": "cornerRadius", "variable_id": "VariableID:1:5"},
+            {"binding_id": 6, "node_id": "1:6", "property": "fontSize", "variable_id": "VariableID:1:6"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "setBoundVariableForPaint" in script
+        assert "setBoundVariableForEffect" in script
+        assert "setBoundVariable" in script
+
+    def test_compact_script_smaller_than_verbose(self):
+        """Compact scripts are significantly smaller than verbose ones."""
+        entries = [
+            {"binding_id": i, "node_id": f"1:{i}", "property": "fill.0.color", "variable_id": f"VariableID:100:{i}"}
+            for i in range(100)
+        ]
+        compact = generate_compact_script(entries)
+        verbose = generate_single_script(entries)
+
+        assert len(compact) < len(verbose) * 0.6
+
+    def test_compact_script_fits_50k_with_1500_bindings(self):
+        """1500 bindings should fit within the 50K char limit."""
+        entries = [
+            {"binding_id": i, "node_id": f"2219:{235700 + i}", "property": "stroke.0.color", "variable_id": f"VariableID:5438:{33000 + i}"}
+            for i in range(1500)
+        ]
+        script = generate_compact_script(entries)
+
+        assert len(script) < 50000, f"Script too large: {len(script)} chars"
+
+    def test_compact_empty_entries(self):
+        """Compact script handles empty entries list."""
+        script = generate_compact_script([])
+        assert script.startswith("(async()=>{")
+        assert "figma.notify" in script
 
 
 class TestGetRebindSummary:

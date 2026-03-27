@@ -6,6 +6,70 @@ from typing import Any
 
 from dd.config import MAX_BINDINGS_PER_SCRIPT
 
+PROPERTY_SHORTCODES: dict[str, str] = {
+    "cornerRadius": "cr",
+    "topLeftRadius": "tlr",
+    "topRightRadius": "trr",
+    "bottomLeftRadius": "blr",
+    "bottomRightRadius": "brr",
+    "padding.top": "pt",
+    "padding.right": "pr",
+    "padding.bottom": "pb",
+    "padding.left": "pl",
+    "itemSpacing": "is",
+    "counterAxisSpacing": "cas",
+    "opacity": "op",
+    "strokeWeight": "sw",
+    "strokeTopWeight": "stw",
+    "strokeRightWeight": "srw",
+    "strokeBottomWeight": "sbw",
+    "strokeLeftWeight": "slw",
+    "fontSize": "fs",
+    "fontFamily": "ff",
+    "fontWeight": "fw",
+    "fontStyle": "fst",
+    "lineHeight": "lh",
+    "letterSpacing": "ls",
+    "paragraphSpacing": "ps",
+}
+
+EFFECT_FIELD_CODES: dict[str, str] = {
+    "color": "c",
+    "radius": "r",
+    "offsetX": "x",
+    "offsetY": "y",
+    "spread": "s",
+}
+
+
+def encode_property(property_path: str) -> str | None:
+    """
+    Encode a property path to a compact shortcode.
+
+    Returns None for unknown properties.
+    """
+    if property_path in PROPERTY_SHORTCODES:
+        return PROPERTY_SHORTCODES[property_path]
+
+    if property_path.startswith("fill.") and property_path.endswith(".color"):
+        idx = property_path.split(".")[1]
+        return f"f{idx}"
+
+    if property_path.startswith("stroke.") and property_path.endswith(".color"):
+        idx = property_path.split(".")[1]
+        return f"s{idx}"
+
+    if property_path.startswith("effect."):
+        parts = property_path.split(".")
+        idx = parts[1]
+        field = parts[2]
+        field_code = EFFECT_FIELD_CODES.get(field)
+        if field_code:
+            return f"e{idx}{field_code}"
+
+    return None
+
+
 PROPERTY_HANDLERS = {
     "fill.N.color": "paint",
     "stroke.N.color": "paint",
@@ -201,6 +265,45 @@ def generate_single_script(entries: list[dict[str, Any]]) -> str:
     return script
 
 
+COMPACT_HANDLER = r"""const R=D.split('\n').filter(l=>l);let b=0,f=0;
+for(const l of R){const[n,p,v]=l.split('|');try{
+const nd=await figma.getNodeByIdAsync(n);if(!nd){f++;continue;}
+const vr=await figma.variables.getVariableByIdAsync('VariableID:'+v);if(!vr){f++;continue;}
+if(p[0]==='f'&&p.length<=2){const i=+p[1],fl=[...nd.fills];fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);nd.fills=fl;}
+else if(p[0]==='s'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],st=[...nd.strokes];st[i]=figma.variables.setBoundVariableForPaint(st[i],'color',vr);nd.strokes=st;}
+else if(p[0]==='e'){const i=+p[1],fm={c:'color',r:'radius',x:'offsetX',y:'offsetY',s:'spread'}[p[2]],ef=[...nd.effects];ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);nd.effects=ef;}
+else{const M={cr:'cornerRadius',tlr:'topLeftRadius',trr:'topRightRadius',blr:'bottomLeftRadius',brr:'bottomRightRadius',pt:'paddingTop',pr:'paddingRight',pb:'paddingBottom',pl:'paddingLeft',is:'itemSpacing',cas:'counterAxisSpacing',op:'opacity',sw:'strokeWeight',stw:'strokeTopWeight',srw:'strokeRightWeight',sbw:'strokeBottomWeight',slw:'strokeLeftWeight',fs:'fontSize',ff:'fontFamily',fw:'fontWeight',fst:'fontStyle',lh:'lineHeight',ls:'letterSpacing',ps:'paragraphSpacing'};
+const prop=M[p];if(prop){nd.setBoundVariable(prop,vr);}else{f++;continue;}}
+b++;}catch(e){f++;}}
+figma.notify(`Rebound ${b}/${R.length} (${f} failures)`);"""
+
+
+def generate_compact_script(entries: list[dict[str, Any]]) -> str:
+    """
+    Generate a compact rebind script using pipe-delimited encoding.
+
+    Each binding is encoded as `nodeId|propertyCode|variableIdSuffix` where:
+    - propertyCode is a short code from PROPERTY_SHORTCODES
+    - variableIdSuffix strips the 'VariableID:' prefix
+
+    This produces scripts ~60% smaller than generate_single_script,
+    allowing ~1500 bindings per script within the 50K char limit.
+    """
+    if not entries:
+        return f"(async()=>{{const D='';{COMPACT_HANDLER}}})();"
+
+    lines = []
+    for entry in entries:
+        code = encode_property(entry["property"])
+        if code is None:
+            continue
+        var_suffix = entry["variable_id"].removeprefix("VariableID:")
+        lines.append(f"{entry['node_id']}|{code}|{var_suffix}")
+
+    data_str = "\\n".join(lines)
+    return f"(async()=>{{const D='{data_str}';{COMPACT_HANDLER}}})();"
+
+
 def generate_rebind_scripts(conn: sqlite3.Connection, file_id: int) -> list[str]:
     """
     Generate rebind scripts for all bindable entries in a file.
@@ -220,7 +323,7 @@ def generate_rebind_scripts(conn: sqlite3.Connection, file_id: int) -> list[str]
     scripts = []
     for i in range(0, len(entries), MAX_BINDINGS_PER_SCRIPT):
         batch = entries[i:i + MAX_BINDINGS_PER_SCRIPT]
-        scripts.append(generate_single_script(batch))
+        scripts.append(generate_compact_script(batch))
 
     return scripts
 

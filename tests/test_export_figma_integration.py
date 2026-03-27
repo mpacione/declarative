@@ -280,11 +280,11 @@ def test_rebind_scripts_syntactically_valid(db):
         assert script, f"Script {i} is empty"
         assert isinstance(script, str), f"Script {i} is not a string"
 
-        # Verify IIFE structure
-        assert script.startswith("(async () =>"), f"Script {i} doesn't start with async IIFE"
+        # Verify compact IIFE structure
+        assert script.startswith("(async()=>{"), f"Script {i} doesn't start with compact async IIFE"
         assert script.endswith("})();"), f"Script {i} doesn't end with }})();"
 
-        # Verify key API calls present
+        # Verify key API calls present in compact handler
         assert "figma.getNodeByIdAsync" in script, f"Script {i} missing getNodeByIdAsync"
         assert "figma.variables.getVariableByIdAsync" in script, f"Script {i} missing getVariableByIdAsync"
 
@@ -302,8 +302,8 @@ def test_rebind_scripts_syntactically_valid(db):
             f"Script {i} has unbalanced parentheses: {open_parens} open, {close_parens} close"
         )
 
-        # Verify bindings array is present
-        assert "const bindings = " in script, f"Script {i} missing bindings array"
+        # Verify compact data string is present
+        assert "const D='" in script, f"Script {i} missing compact data string"
 
         # Verify notification at end
         assert "figma.notify" in script, f"Script {i} missing notification"
@@ -370,34 +370,34 @@ def test_rebind_scripts_cover_all_property_types(db):
     # Generate rebind scripts
     scripts = generate_rebind_scripts(db, file_id=1)
 
-    # Extract property types from scripts
-    all_properties = set()
+    # Extract property shortcodes from compact pipe-delimited data
+    all_shortcodes = set()
     for script in scripts:
-        # Parse bindings array from script
-        bindings_start = script.find("const bindings = [")
-        bindings_end = script.find("];", bindings_start)
-        if bindings_start > -1 and bindings_end > -1:
-            bindings_text = script[bindings_start:bindings_end]
-            # Extract property values
-            import re
-            property_matches = re.findall(r'property:\s*"([^"]+)"', bindings_text)
-            all_properties.update(property_matches)
+        data_start = script.find("const D='") + len("const D='")
+        data_end = script.find("';", data_start)
+        if data_start > -1 and data_end > -1:
+            data_str = script[data_start:data_end]
+            for line in data_str.split("\\n"):
+                if line:
+                    parts = line.split("|")
+                    if len(parts) >= 2:
+                        all_shortcodes.add(parts[1])
 
-    # Verify we have color fill bindings
-    fill_properties = [p for p in all_properties if p.startswith("fill.") and p.endswith(".color")]
-    assert len(fill_properties) > 0, "Missing fill.*.color bindings"
+    # Verify we have fill bindings (shortcode f0, f1, etc.)
+    fill_codes = [c for c in all_shortcodes if c.startswith("f") and c[1:].isdigit()]
+    assert len(fill_codes) > 0, "Missing fill shortcodes (f0, f1, etc.)"
 
-    # Verify we have spacing bindings
-    spacing_properties = [p for p in all_properties if p.startswith("padding.") or p == "itemSpacing"]
-    assert len(spacing_properties) > 0, "Missing spacing bindings (padding.* or itemSpacing)"
+    # Verify we have spacing bindings (pt, pr, pb, pl, is)
+    spacing_codes = [c for c in all_shortcodes if c in ("pt", "pr", "pb", "pl", "is")]
+    assert len(spacing_codes) > 0, "Missing spacing shortcodes (pt/pr/pb/pl/is)"
 
-    # Verify we have radius bindings
-    radius_properties = [p for p in all_properties if "Radius" in p]
-    assert len(radius_properties) > 0, "Missing radius bindings"
+    # Verify we have radius bindings (cr)
+    radius_codes = [c for c in all_shortcodes if c in ("cr", "tlr", "trr", "blr", "brr")]
+    assert len(radius_codes) > 0, "Missing radius shortcodes (cr, tlr, etc.)"
 
-    # Verify we have effect bindings
-    effect_properties = [p for p in all_properties if p.startswith("effect.")]
-    assert len(effect_properties) > 0, "Missing effect bindings"
+    # Verify we have effect bindings (e0c, e0r, etc.)
+    effect_codes = [c for c in all_shortcodes if c.startswith("e") and len(c) >= 2 and c[1].isdigit()]
+    assert len(effect_codes) > 0, "Missing effect shortcodes (e0c, e0r, etc.)"
 
     # Use get_rebind_summary to verify property type distribution
     summary = get_rebind_summary(db, file_id=1)
@@ -409,7 +409,7 @@ def test_rebind_scripts_cover_all_property_types(db):
     )
 
     # Verify effect properties in summary
-    if effect_properties:
+    if effect_codes:
         assert "effect" in summary["by_property_type"], "Missing effect property type in summary"
 
 
@@ -609,10 +609,20 @@ def test_export_pipeline_end_to_end_from_curation(db):
     rebind_scripts = generate_rebind_scripts(db, file_id=1)
     assert len(rebind_scripts) > 0, "No rebind scripts generated"
 
-    # Verify rebind scripts reference valid variable IDs
+    # Verify rebind scripts encode variable IDs in compact pipe-delimited data
     for script in rebind_scripts:
-        # Check that script contains actual variable IDs (V:*)
-        assert "variableId: \"V:" in script, "Script doesn't reference variable IDs"
+        # In compact format, variable ID suffixes appear after the second pipe
+        # e.g., "200:1|f0|1:test" where "1:test" is the suffix of "V:1:test"
+        data_start = script.find("const D='") + len("const D='")
+        data_end = script.find("';", data_start)
+        data_str = script[data_start:data_end]
+        assert data_str, "Script has empty data string"
+        # Each line should have a variable ID suffix (third field)
+        for line in data_str.split("\\n"):
+            if line:
+                parts = line.split("|")
+                assert len(parts) == 3, f"Expected 3 pipe-delimited fields, got {len(parts)}"
+                assert parts[2], f"Missing variable ID suffix in line: {line}"
 
     # Get rebind summary
     rebind_summary = get_rebind_summary(db, file_id=1)

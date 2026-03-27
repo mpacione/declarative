@@ -315,6 +315,50 @@ def test_payload_skips_already_exported(db):
     assert "color.surface.primary" not in token_names
 
 
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_include_existing_returns_tokens_with_figma_variable_id(db):
+    """Test include_existing=True includes tokens that already have figma_variable_id."""
+    seed_post_curation(db)
+
+    # Set figma_variable_id on one token
+    db.execute(
+        "UPDATE tokens SET figma_variable_id = ? WHERE name = ?",
+        ("VariableID:1:1", "color.surface.primary")
+    )
+    db.commit()
+
+    tokens = query_exportable_tokens(db, 1, include_existing=True)
+
+    token_names = [t["name"] for t in tokens]
+    assert "color.surface.primary" in token_names
+
+    exported = [t for t in tokens if t["name"] == "color.surface.primary"][0]
+    assert exported["figma_variable_id"] == "VariableID:1:1"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_include_existing_default_preserves_original_behavior(db):
+    """Test that default behavior (include_existing=False) is unchanged."""
+    seed_post_curation(db)
+
+    db.execute(
+        "UPDATE tokens SET figma_variable_id = ? WHERE name = ?",
+        ("VariableID:1:1", "color.surface.primary")
+    )
+    db.commit()
+
+    tokens_default = query_exportable_tokens(db, 1)
+    tokens_explicit = query_exportable_tokens(db, 1, include_existing=False)
+
+    assert len(tokens_default) == len(tokens_explicit)
+    default_names = {t["name"] for t in tokens_default}
+    explicit_names = {t["name"] for t in tokens_explicit}
+    assert default_names == explicit_names
+    assert "color.surface.primary" not in default_names
+
+
 # Test Group 4: Validation gate tests
 @pytest.mark.unit
 @pytest.mark.timeout(10)
@@ -695,8 +739,11 @@ def test_rebind_batching(db):
 
     # Parse each script to count bindings
     for script in scripts:
-        # Count occurrences of nodeId in bindings array
-        binding_count = script.count('nodeId:')
+        # Count pipe-delimited binding lines in compact format data string
+        data_start = script.find("const D='") + len("const D='")
+        data_end = script.find("';", data_start)
+        data_str = script[data_start:data_end]
+        binding_count = len(data_str.split("\\n")) if data_str else 0
         assert binding_count <= MAX_BINDINGS_PER_SCRIPT
 
 
@@ -712,10 +759,14 @@ def test_rebind_scripts_cover_all_bound(db):
 
     scripts = generate_rebind_scripts(db, 1)
 
-    # Count total bindings in all scripts
+    # Count total bindings across all compact scripts by counting pipe-delimited lines
     total_bindings = 0
     for script in scripts:
-        total_bindings += script.count('nodeId:')
+        data_start = script.find("const D='") + len("const D='")
+        data_end = script.find("';", data_start)
+        data_str = script[data_start:data_end]
+        if data_str:
+            total_bindings += len(data_str.split("\\n"))
 
     # Should have bindings for all bound entries that have figma_variable_ids
     assert total_bindings == entry_count

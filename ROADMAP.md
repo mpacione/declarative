@@ -1,18 +1,21 @@
 # Declarative Design — Roadmap
 
-> Last updated: 2026-03-26 (session: v0.2.0-cli-rest)
+> Last updated: 2026-03-26
 
 ## Current State
 
-Pipeline works end-to-end when called from Python functions directly:
+Full pipeline works end-to-end: extract → cluster → curate → push → rebind.
 - REST API extraction: 83s for 338 screens, 86,761 nodes
 - Clustering: 339 tokens, 100% binding coverage (205,482 bindings)
-- Export: CSS custom properties, Tailwind theme, DTCG JSON
-- Tests: 545 passing
+- Curation: Tiers 1-3 complete (308 curated + 26 aliased tokens)
+- Export: CSS, Tailwind, DTCG JSON, Figma variables (308 across 7 collections)
+- Push: `dd push` CLI generates manifests for agent MCP execution
+- Rebinding: 193 compact scripts, execution in progress
+- Tests: 609 passing
 
-## Phase 1: CLI (current priority)
+## Phase 1: CLI — DONE
 
-Make `python -m dd` the real entry point. One command per pipeline stage:
+All commands wired and tested:
 
 ```
 dd extract <figma-url>          # REST API → SQLite
@@ -21,36 +24,20 @@ dd status                       # Show coverage, token counts, unbound
 dd accept-all                   # Accept all proposed tokens
 dd validate                     # Check DTCG compliance, export readiness
 dd export css|tailwind|dtcg     # Write token files
+dd curate-report [--json]       # Structured curation issues for agent
+dd push [--phase variables|rebind|all] [--figma-state FILE] [--dry-run]  # Figma sync
 ```
 
-### What exists
-- `dd/cli.py` — scaffolded but not tested end-to-end
-- `dd/figma_api.py` — REST API client, works in isolation
-- All pipeline functions exist and are tested individually
+## Phase 2: Agent Curation Protocol — DONE (Tiers 1-3)
 
-### What needs building
-- [ ] Wire CLI commands to actual pipeline functions
-- [ ] FIGMA_ACCESS_TOKEN handling (env var, .env file, or prompt)
-- [ ] Progress output during extraction (screen count, ETA)
-- [ ] Error handling and recovery (resume interrupted extraction)
-- [ ] End-to-end test: `dd extract <url> && dd cluster && dd export css`
-
-## Phase 2: Agent Curation Protocol
-
-The CLI handles deterministic operations. The agent (Claude Code) handles
-creative/curation work by calling CLI commands and reading the DB:
-
-- Rename tokens to semantic names (e.g., `color.surface.n10` → `color.accent.lime`)
-- Merge near-duplicate tokens (ΔE < threshold)
-- Generate dark mode from light mode tokens
-- Conjure: natural-language design system modifications
-- Push curated tokens back to Figma as variables
-
-### What needs designing
-- [ ] Which operations are CLI commands vs agent-only?
-- [ ] How does the agent read DB state? (CLI `dd status --json`?)
-- [ ] Conjure skill prompt template
-- [ ] MCP tools for Figma variable push-back
+- [x] CLI for deterministic, agent for judgment
+- [x] `dd curate-report --json` bridges CLI → agent
+- [x] Curation operations: rename, merge, split, alias, reject
+- [x] Dark mode derivation (OKLCH)
+- [x] Component token generation
+- [x] `dd push` for Figma variable sync + rebinding
+- [ ] Tier 4: Structural (split primitives/semantics, add modes)
+- [ ] Tier 5: Conjure (compose screens/components from token vocabulary)
 
 ## Phase 3: Dashboard UX
 

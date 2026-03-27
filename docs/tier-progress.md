@@ -155,5 +155,16 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Status**: IN PROGRESS
 - **Proof of concept**: 27/27 bindings successful (1 icon + 26 on iPhone screen), 0 failures
 - **Property types verified**: fill.color, stroke.color, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight
-- **Full scope**: 182,877 bindings across 366 batches of ~500 — needs `dd push --rebind` automation
-- **Next**: Execute remaining batches, verify visually in Figma
+- **Full scope**: 182,877 bindings across 193 compact scripts (~950 bindings each)
+- **Next**: Execute all scripts via `dd push --phase rebind`, verify visually in Figma
+
+### T6.4 — `dd push` CLI Command
+- **Status**: DONE
+- **Scope**: CLI command generating structured JSON manifests for agent-executed MCP calls
+- **Phases**: `--phase variables` (create/update/delete Figma variables), `--phase rebind` (generate rebind scripts), `--phase all` (both)
+- **Incremental sync**: Diffs DB vs Figma state via `--figma-state`, classifies tokens as CREATE/UPDATE/DELETE/UNCHANGED
+- **Writeback**: `--writeback --figma-state` applies variable ID writeback after agent executes CREATE actions
+- **Dry run**: `--dry-run` shows summary counts without generating action payloads
+- **Compact rebind encoding**: Property shortcodes (e.g. `fontSize`→`fs`, `fill.0.color`→`f0`) reduce script size ~60%, fitting ~950 bindings per 50K char script
+- **Tests**: 31 new tests (609 total passing)
+- **Real DB**: 334 tokens → 8 MCP calls (batched at 100), 182,877 bindings → 193 rebind scripts

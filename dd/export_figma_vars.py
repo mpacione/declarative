@@ -97,24 +97,31 @@ def get_mode_names_for_collection(conn: sqlite3.Connection, collection_id: int) 
     return [row["name"] for row in cursor]
 
 
-def query_exportable_tokens(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def query_exportable_tokens(
+    conn: sqlite3.Connection,
+    file_id: int,
+    include_existing: bool = False,
+) -> List[Dict[str, Any]]:
     """Query tokens that are ready for Figma export.
 
-    Finds all curated and aliased tokens that don't yet have Figma variable IDs.
-    For aliased tokens, resolves to the target token's values.
+    Finds curated and aliased tokens. By default only returns tokens without
+    Figma variable IDs (new tokens). With include_existing=True, returns all
+    curated/aliased tokens including those already exported.
 
     Args:
         conn: Database connection
         file_id: File ID to query
+        include_existing: If True, include tokens that already have figma_variable_id
 
     Returns:
         List of token dicts with keys: id, name, type, tier, collection_id,
-        collection_name, alias_of, values (dict mapping mode_name -> resolved_value)
+        collection_name, figma_variable_id, alias_of, values (dict mapping mode_name -> resolved_value)
     """
     tokens = []
 
-    # Query tokens ready for export
-    cursor = conn.execute("""
+    filter_clause = "" if include_existing else "AND t.figma_variable_id IS NULL"
+
+    cursor = conn.execute(f"""
         SELECT t.id, t.name, t.type, t.tier, t.collection_id,
                tc.name AS collection_name,
                t.figma_variable_id, t.alias_of
@@ -122,7 +129,7 @@ def query_exportable_tokens(conn: sqlite3.Connection, file_id: int) -> List[Dict
         JOIN token_collections tc ON t.collection_id = tc.id
         WHERE tc.file_id = ?
           AND t.tier IN ('curated', 'aliased')
-          AND t.figma_variable_id IS NULL
+          {filter_clause}
         ORDER BY tc.name, t.name
     """, (file_id,))
 
@@ -134,6 +141,7 @@ def query_exportable_tokens(conn: sqlite3.Connection, file_id: int) -> List[Dict
             "tier": row["tier"],
             "collection_id": row["collection_id"],
             "collection_name": row["collection_name"],
+            "figma_variable_id": row["figma_variable_id"],
             "alias_of": row["alias_of"],
             "values": {}
         }

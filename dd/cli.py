@@ -287,6 +287,54 @@ def _run_curate_report(db_path: str, as_json: bool = False) -> None:
     conn.close()
 
 
+def _run_push(db_path: str, args: argparse.Namespace) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.writeback:
+        if not args.figma_state:
+            print("Error: --writeback requires --figma-state", file=sys.stderr)
+            sys.exit(1)
+
+        from dd.export_figma_vars import writeback_variable_ids
+
+        figma_response = json.loads(Path(args.figma_state).read_text())
+        conn = get_connection(db_path)
+        file_id = _get_file_id(conn)
+        writeback_variable_ids(conn, file_id, figma_response)
+        conn.close()
+        print("Variable IDs written back to DB.")
+        return
+
+    from dd.push import generate_push_manifest
+
+    figma_state = None
+    if args.figma_state:
+        figma_state = json.loads(Path(args.figma_state).read_text())
+
+    conn = get_connection(db_path)
+    file_id = _get_file_id(conn)
+    manifest = generate_push_manifest(conn, file_id, figma_state, phase=args.phase)
+    conn.close()
+
+    if args.dry_run:
+        for phase_name, phase_data in manifest["phases"].items():
+            summary = phase_data.get("summary", {})
+            print(f"Phase: {phase_name}")
+            for key, val in summary.items():
+                print(f"  {key}: {val}")
+        return
+
+    output = json.dumps(manifest, indent=2)
+
+    if args.out:
+        Path(args.out).write_text(output)
+        print(f"Manifest written to {args.out}", file=sys.stderr)
+    else:
+        print(output)
+
+
 def _parse_figma_input(raw: str) -> str:
     match = re.search(r'figma\.com/(?:design|file)/([a-zA-Z0-9]+)', raw)
     if match:
@@ -326,6 +374,14 @@ def main(argv: Optional[list] = None) -> None:
     curate_report_parser.add_argument("--db", help="Database path")
     curate_report_parser.add_argument("--json", action="store_true", help="Output as JSON (for agent consumption)")
 
+    push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
+    push_parser.add_argument("--db", help="Database path")
+    push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
+    push_parser.add_argument("--phase", choices=["variables", "rebind", "all"], default="all", help="Which phase to generate")
+    push_parser.add_argument("--dry-run", action="store_true", help="Show summary only, no action payloads")
+    push_parser.add_argument("--writeback", action="store_true", help="Apply variable ID writeback from Figma response")
+    push_parser.add_argument("--out", help="Write manifest to file instead of stdout")
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -359,6 +415,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "curate-report":
         db_path = detect_db_path(args.db)
         _run_curate_report(db_path, as_json=args.json)
+    elif args.command == "push":
+        db_path = detect_db_path(args.db)
+        _run_push(db_path, args)
 
 
 if __name__ == "__main__":
