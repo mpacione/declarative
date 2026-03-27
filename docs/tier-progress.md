@@ -5,8 +5,8 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 **DB**: `Dank-EXP-02.declarative.db`
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
 **Figma variables**: 353 live (8 collections: Color Primitives, Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
-**DB tokens**: 379 total (45 color primitives + 52 color semantics + 282 other curated + 26 aliased)
-**Tests**: 709 passing
+**DB tokens**: 388 total (45 color primitives + 52 color semantics + other curated + 26 aliased)
+**Tests**: 729 passing
 
 ## Verification Pattern
 

@@ -6,13 +6,13 @@ Declarative Design is a CLI + agent system that extracts design tokens from Figm
 
 ## Current State
 
-- **DB**: `Dank-EXP-02.declarative.db` — 499 total tokens (66 color primitives [45 base + 21 alpha] + 52 color semantics + other curated + 26 aliased), 182,877 bound, 22,605 intentionally_unbound, 100% coverage
+- **DB**: `Dank-EXP-02.declarative.db` — 388 total tokens (45 color primitives + 52 color semantics + other curated + 26 aliased), 182,871 bound, 22,611 intentionally_unbound, 50 unbound (36 gradients). Validation: 0 errors, 102 warnings (45 expected primitive orphans, 57 binding-token mismatches from Figma scaling)
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
 - **Figma variables**: 374 across 8 collections (Color Primitives [66], Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
 - **Variable IDs**: All written back to DB (`tokens.figma_variable_id`)
 - **Rebinding**: DONE — 182,877 bindings (original) + 6,207 alpha-primitive rebinds. 0 errors.
 - **Alpha-baked colors**: FULLY COMPLETE. 21 alpha primitives (`prim.{hue}.{shade}.a{N}`) live in Figma. Paint opacity encoded as 8-digit hex in variable values — no opacity restoration step.
-- **Tests**: 709 passing
+- **Tests**: 729 passing
 - **Tiers 1–3**: Complete. T4.0–T4.5 complete (arch repair, primitives/semantics, modes, migration, value provenance wiring, maintenance CLI).
 
 ## What To Do Next (in order)
