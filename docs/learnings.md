@@ -218,4 +218,21 @@ Accumulated insights from building and testing the curation pipeline. These info
 - 182,877 bindings, 193 scripts, 0 errors on clean run (after shortcode fix).
 - Previous run had 234 errors from font shortcode collision (fs/ff/fw hitting fill paint branch).
 - Visual artifacts from first run (solid black brush selector cards, misplaced opacity) resolved by the shortcode fix.
-- Some residual artifacts remain from the first (buggy) run — need investigation and possible restore from DB state.
+- Residual artifacts from opacity/alpha loss required separate restoration scripts (see below).
+
+### Binding Color Variables Resets Paint/Effect Opacity
+- `setBoundVariableForPaint(paint, 'color', variable)` returns a new paint with `opacity: 1.0`, losing the original paint's opacity.
+- `setBoundVariableForEffect(effect, 'color', variable)` resets `effect.color.a` to `1.0`, losing the original alpha.
+- **Scope**: 5,128 fill opacities, 297 stroke opacities, 9,807 effect color alphas — all reset to 1.0 during rebind.
+- **Restoration**: Separate scripts read original values from `nodes.fills`/`nodes.strokes`/`nodes.effects` JSON columns and re-apply.
+- **Prevention needed**: The compact rebind handler must preserve paint opacity and effect color alpha. Two approaches:
+  1. Include opacity/alpha in the binding data (e.g., `nodeId|f0:0.12|varId`) so the handler restores it after binding.
+  2. Have the handler read the current opacity before binding and restore it after.
+- Option 2 is safer for re-runs but won't work for first-time binds. Option 1 requires extraction pipeline changes.
+- **Note**: Fill-level opacity is a separate concept from node-level opacity. Both exist in the extraction data (`nodes.fills` JSON has `paint.opacity`, `nodes.opacity` has node-level). Only node-level opacity was extracted as a binding.
+
+### Extraction Gaps: Properties Stored But Not Normalized to Bindings
+- **Fill/stroke paint opacity**: Stored in `nodes.fills`/`nodes.strokes` JSON but `normalize_fill()`/`normalize_stroke()` only extract color.
+- **Effect color alpha**: Stored in `nodes.effects` JSON `color.a` field but `normalize_effect()` only extracts color as hex (discards alpha).
+- **Non-tokenizable properties** (auto-layout sizing mode, text alignment, blend mode, visibility) are stored in node columns but correctly NOT extracted as bindings — they're structural, not design tokens.
+- **Action**: Add `fill.N.opacity`, `stroke.N.opacity` as binding properties when < 1.0. For effect alpha, include in the color extraction or as separate `effect.N.alpha` binding.
