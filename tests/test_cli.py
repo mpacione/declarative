@@ -350,6 +350,60 @@ class TestRunMaintenance:
         assert remaining == 5
         conn.close()
 
+    def _seed_validations(self, conn, run_count):
+        for i in range(1, run_count + 1):
+            run_at = f"2026-03-{i:02d}T00:00:00Z"
+            conn.execute(
+                "INSERT INTO export_validations (run_at, check_name, severity, message) "
+                "VALUES (?, 'test_check', 'info', 'test')",
+                (run_at,),
+            )
+            conn.execute(
+                "INSERT INTO export_validations (run_at, check_name, severity, message) "
+                "VALUES (?, 'test_check_2', 'warning', 'test2')",
+                (run_at,),
+            )
+        conn.commit()
+
+    def test_maintenance_prunes_export_validations(self, tmp_path):
+        from dd.db import init_db
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        self._seed_runs(conn, 3)
+        self._seed_validations(conn, 10)
+        conn.close()
+
+        main(["maintenance", "--db", db_path, "--keep-last", "3"])
+
+        conn = sqlite3.connect(db_path)
+        remaining_runs = conn.execute(
+            "SELECT COUNT(DISTINCT run_at) FROM export_validations"
+        ).fetchone()[0]
+        assert remaining_runs == 3
+        conn.close()
+
+    def test_maintenance_dry_run_reports_validation_counts(self, tmp_path, capsys):
+        from dd.db import init_db
+
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        self._seed_runs(conn, 2)
+        self._seed_validations(conn, 10)
+        conn.close()
+
+        main(["maintenance", "--db", db_path, "--keep-last", "3", "--dry-run"])
+
+        conn = sqlite3.connect(db_path)
+        remaining = conn.execute(
+            "SELECT COUNT(DISTINCT run_at) FROM export_validations"
+        ).fetchone()[0]
+        assert remaining == 10
+        conn.close()
+
+        captured = capsys.readouterr()
+        assert "export validation" in captured.out.lower()
+
 
 @pytest.mark.unit
 class TestMainArgParsing:

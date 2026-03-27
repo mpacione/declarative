@@ -117,13 +117,15 @@ reject_token(conn, token_id=789, cascade=True)
 Figma scaling produces values like `36.86px`. These should be rounded to the nearest integer.
 
 ```python
-# Update the token value directly
-conn.execute(
-    "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE token_id = ?",
-    ("37", "37", token_id)
-)
-conn.commit()
+from dd.db import update_token_value
+
+# mode_id is the default mode for the token's collection
+update_token_value(conn, token_id=123, mode_id=1,
+                   new_resolved="37", changed_by="curate",
+                   reason="round fractional font size 36.86→37")
 ```
+
+**All value mutations must go through `update_token_value()`** — never write directly to `token_values`. This ensures every change is recorded in `token_value_history` with `changed_by` and `reason`.
 
 ### 5. Semantic Layer → Create Aliases
 

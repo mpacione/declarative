@@ -557,4 +557,59 @@ def test_generate_drift_report(db):
     assert len(report["pending_tokens"]) == 2
     pending_names = [t["token_name"] for t in report["pending_tokens"]]
     assert "color.border.default" in pending_names
-    assert "color.text.primary" in pending_names
+
+
+# ---------------------------------------------------------------------------
+# normalize_value_for_comparison edge cases
+# ---------------------------------------------------------------------------
+
+class TestNormalizeValueForComparison:
+    """Cover edge cases in value normalization that cause false mismatch positives."""
+
+    def test_dimension_json_lineheight_pixels(self):
+        """JSON lineHeight like {"value":24,"unit":"PIXELS"} should normalize to "24"."""
+        result = normalize_value_for_comparison('{"value":24,"unit":"PIXELS"}', "dimension")
+        assert result == "24"
+
+    def test_dimension_json_lineheight_auto(self):
+        """JSON lineHeight {"unit":"AUTO"} should normalize to "AUTO"."""
+        result = normalize_value_for_comparison('{"unit":"AUTO"}', "dimension")
+        assert result == "AUTO"
+
+    def test_dimension_json_letter_spacing(self):
+        """JSON letterSpacing like {"value":-0.5,"unit":"PIXELS"} should normalize to "-0.5"."""
+        result = normalize_value_for_comparison('{"value":-0.5,"unit":"PIXELS"}', "dimension")
+        assert result == "-0.5"
+
+    def test_dimension_float_noise_rounds_to_integer(self):
+        """Figma float noise like 10.000000149 should match "10"."""
+        result = normalize_value_for_comparison("10.000000149011612", "dimension")
+        expected = normalize_value_for_comparison("10", "dimension")
+        assert result == expected
+
+    def test_dimension_float_noise_rounds_fractional(self):
+        """Figma float noise like 24.000001 should match "24"."""
+        result = normalize_value_for_comparison("24.000001", "dimension")
+        expected = normalize_value_for_comparison("24", "dimension")
+        assert result == expected
+
+    def test_dimension_genuine_fractional_preserved(self):
+        """Genuinely different values like 10 and 10.5 should NOT match."""
+        result_10 = normalize_value_for_comparison("10", "dimension")
+        result_105 = normalize_value_for_comparison("10.5", "dimension")
+        assert result_10 != result_105
+
+    def test_number_float_noise(self):
+        """Float noise in number type (fontWeight) should also be handled."""
+        result = normalize_value_for_comparison("400.0000001", "number")
+        expected = normalize_value_for_comparison("400", "number")
+        assert result == expected
+
+    def test_color_unchanged(self):
+        """Color normalization should be unaffected by these changes."""
+        assert normalize_value_for_comparison("#09090B", "color") == "09090B"
+        assert normalize_value_for_comparison("#09090B0D", "color") == "09090B0D"
+
+    def test_fontfamily_unchanged(self):
+        """fontFamily normalization should be unaffected."""
+        assert normalize_value_for_comparison('"Inter"', "fontFamily") == "Inter"

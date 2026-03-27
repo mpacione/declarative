@@ -4,7 +4,7 @@ import re
 import sqlite3
 from typing import Optional
 
-from dd.db import backup_db
+from dd.db import backup_db, insert_token_value
 
 
 def _validate_dtcg_name(name: str) -> bool:
@@ -240,12 +240,16 @@ def split_token(conn: sqlite3.Connection, token_id: int, new_name: str,
     """, (collection_id, new_name, token_type))
     new_token_id = cursor.lastrowid
 
-    conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, source, extracted_at)
-        SELECT ?, mode_id, raw_value, resolved_value, source, extracted_at
-        FROM token_values
-        WHERE token_id = ?
-    """, (new_token_id, token_id))
+    source_values = conn.execute(
+        "SELECT mode_id, raw_value, resolved_value, source FROM token_values WHERE token_id = ?",
+        (token_id,),
+    ).fetchall()
+    for sv in source_values:
+        insert_token_value(
+            conn, token_id=new_token_id, mode_id=sv["mode_id"],
+            raw_value=sv["raw_value"], resolved_value=sv["resolved_value"],
+            source=sv["source"], changed_by="curate", reason="split_from_token",
+        )
 
     if binding_ids:
         placeholders = ','.join('?' * len(binding_ids))

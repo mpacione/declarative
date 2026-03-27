@@ -291,6 +291,96 @@ class TestUpdateTokenValue:
 
 
 # ---------------------------------------------------------------------------
+# db.insert_token_value() helper
+# ---------------------------------------------------------------------------
+
+class TestInsertTokenValue:
+    """insert_token_value() creates a token_values row and writes a history row."""
+
+    def test_inserts_row_with_correct_values(self, db):
+        from dd.db import insert_token_value
+        _seed_collection_token_mode(db)
+        insert_token_value(db, token_id=1, mode_id=1, raw_value='"#FFF"',
+                           resolved_value="#FFF", source="derived",
+                           changed_by="modes", reason="dark_mode_copy")
+        row = _get_token_value(db)
+        assert row["resolved_value"] == "#FFF"
+        assert row["source"] == "derived"
+
+    def test_writes_history_row_with_null_old(self, db):
+        from dd.db import insert_token_value
+        _seed_collection_token_mode(db)
+        insert_token_value(db, token_id=1, mode_id=1, raw_value='"#FFF"',
+                           resolved_value="#FFF", source="derived",
+                           changed_by="modes", reason="dark_mode_copy")
+        rows = _get_history(db)
+        assert len(rows) == 1
+        assert rows[0]["old_resolved"] is None
+        assert rows[0]["new_resolved"] == "#FFF"
+        assert rows[0]["changed_by"] == "modes"
+        assert rows[0]["reason"] == "dark_mode_copy"
+
+    def test_source_defaults_to_figma(self, db):
+        from dd.db import insert_token_value
+        _seed_collection_token_mode(db)
+        insert_token_value(db, token_id=1, mode_id=1, raw_value='"#FFF"',
+                           resolved_value="#FFF", changed_by="extract")
+        row = _get_token_value(db)
+        assert row["source"] == "figma"
+
+
+# ---------------------------------------------------------------------------
+# copy_values_from_default writes history via insert_token_value
+# ---------------------------------------------------------------------------
+
+class TestCopyValuesWritesHistory:
+    """copy_values_from_default should write history rows for seeded values."""
+
+    def test_copy_values_writes_history(self, db):
+        _seed_collection_token_mode(db)
+        _insert_token_value(db, token_id=1, mode_id=1, resolved="#000", source="figma")
+
+        from dd.modes import copy_values_from_default
+        dark_mode_id = 2  # Already seeded as non-default
+        copy_values_from_default(db, collection_id=1, new_mode_id=dark_mode_id)
+
+        rows = _get_history(db, token_id=1, mode_id=dark_mode_id)
+        assert len(rows) == 1
+        assert rows[0]["old_resolved"] is None
+        assert rows[0]["new_resolved"] == "#000"
+        assert rows[0]["changed_by"] == "modes"
+        assert rows[0]["reason"] == "copy_from_default"
+
+
+# ---------------------------------------------------------------------------
+# split_token writes history via insert_token_value
+# ---------------------------------------------------------------------------
+
+class TestSplitTokenWritesHistory:
+    """split_token should write history rows for cloned values."""
+
+    def test_split_writes_history_for_new_token(self, db):
+        _seed_collection_token_mode(db)
+        _insert_token_value(db, token_id=1, mode_id=1, resolved="#000", source="figma")
+        _seed_screen_node(db)
+        _insert_binding(db, 1, "fill.0.color", "#000", token_id=1, status="bound")
+
+        from dd.curate import split_token
+        binding_id = db.execute(
+            "SELECT id FROM node_token_bindings WHERE node_id = 1"
+        ).fetchone()["id"]
+
+        result = split_token(db, token_id=1, new_name="color.split.new", binding_ids=[binding_id])
+        new_token_id = result["new_token_id"]
+
+        rows = _get_history(db, token_id=new_token_id, mode_id=1)
+        assert len(rows) == 1
+        assert rows[0]["old_resolved"] is None
+        assert rows[0]["changed_by"] == "curate"
+        assert rows[0]["reason"] == "split_from_token"
+
+
+# ---------------------------------------------------------------------------
 # force_renormalize scoped to source='figma' only
 # ---------------------------------------------------------------------------
 
@@ -396,3 +486,45 @@ class TestPruneExtractionRuns:
         prune_extraction_runs(db, keep_last=0)
         assert db.execute("SELECT COUNT(*) FROM extraction_runs").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM screen_extraction_status").fetchone()[0] == 0
+
+
+class TestPruneExportValidations:
+    """prune_export_validations() keeps the last N distinct run timestamps."""
+
+    def _seed_validations(self, db, run_count: int, rows_per_run: int = 3):
+        for i in range(1, run_count + 1):
+            run_at = f"2026-03-{i:02d}T00:00:00Z"
+            for j in range(rows_per_run):
+                db.execute(
+                    "INSERT INTO export_validations (run_at, check_name, severity, message) "
+                    "VALUES (?, ?, 'info', 'test')",
+                    (run_at, f"check_{j}"),
+                )
+        db.commit()
+
+    def test_keeps_last_n_run_timestamps(self, db):
+        from dd.maintenance import prune_export_validations
+        self._seed_validations(db, 10)
+        deleted = prune_export_validations(db, keep_last=3)
+        remaining = db.execute("SELECT COUNT(DISTINCT run_at) FROM export_validations").fetchone()[0]
+        assert remaining == 3
+        assert deleted == 7 * 3
+
+    def test_keeps_all_rows_for_retained_runs(self, db):
+        from dd.maintenance import prune_export_validations
+        self._seed_validations(db, 10, rows_per_run=5)
+        prune_export_validations(db, keep_last=3)
+        remaining_rows = db.execute("SELECT COUNT(*) FROM export_validations").fetchone()[0]
+        assert remaining_rows == 3 * 5
+
+    def test_keep_more_than_exist_deletes_nothing(self, db):
+        from dd.maintenance import prune_export_validations
+        self._seed_validations(db, 3)
+        deleted = prune_export_validations(db, keep_last=10)
+        assert deleted == 0
+
+    def test_keep_zero_deletes_all(self, db):
+        from dd.maintenance import prune_export_validations
+        self._seed_validations(db, 5)
+        prune_export_validations(db, keep_last=0)
+        assert db.execute("SELECT COUNT(*) FROM export_validations").fetchone()[0] == 0

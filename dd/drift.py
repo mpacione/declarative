@@ -5,10 +5,47 @@ drift and maintain sync status. This module does NOT call MCP directly -
 it receives Figma data from agents with MCP access.
 """
 
+import json
 import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dd.export_figma_vars import figma_path_to_dtcg
+
+
+def _try_extract_json_dimension(value: str) -> str | None:
+    """Extract a scalar from a JSON dimension object like {"value":24,"unit":"PIXELS"}.
+
+    Returns the extracted string, or None if the value isn't a JSON dimension object.
+    """
+    if not value.startswith("{"):
+        return None
+    try:
+        obj = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("unit") == "AUTO":
+        return "AUTO"
+    if "value" in obj:
+        return str(obj["value"])
+    return None
+
+
+def _normalize_numeric(value: str) -> str:
+    """Normalize a numeric string, rounding Figma float noise.
+
+    Figma produces values like 10.000000149011612 from internal float32
+    representation. If the fractional part is < 0.001, round to integer.
+    """
+    try:
+        f = float(value)
+        rounded = round(f)
+        if abs(f - rounded) < 0.001:
+            return str(rounded)
+        return str(f)
+    except ValueError:
+        return value
 
 
 def normalize_value_for_comparison(value: str, token_type: str) -> str:
@@ -31,18 +68,19 @@ def normalize_value_for_comparison(value: str, token_type: str) -> str:
         normalized = normalized.upper()
         # Keep 8-digit hex as-is — alpha is a distinct value
 
-    elif token_type == "dimension":
-        # Strip trailing px, normalize decimal representation
+    elif token_type in ("dimension", "number", "fontWeight"):
+        # Try to extract from JSON object (lineHeight, letterSpacing)
+        extracted = _try_extract_json_dimension(normalized)
+        if extracted is not None:
+            normalized = extracted
+
+        # Strip trailing px
         if normalized.endswith("px"):
             normalized = normalized[:-2].strip()
-        # Convert to float and back to normalize decimal representation
-        try:
-            normalized = str(float(normalized))
-            # Remove trailing .0 for whole numbers
-            if normalized.endswith(".0"):
-                normalized = normalized[:-2]
-        except ValueError:
-            pass  # Keep original if not a valid number
+
+        # Normalize numeric representation with float noise rounding
+        if normalized != "AUTO":
+            normalized = _normalize_numeric(normalized)
 
     elif token_type == "fontFamily":
         # Strip surrounding quotes

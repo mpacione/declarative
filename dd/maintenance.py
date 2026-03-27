@@ -52,7 +52,7 @@ def prune_export_validations(conn: sqlite3.Connection, keep_last: int = 50) -> i
         Number of rows deleted
     """
     cutoff = conn.execute(
-        "SELECT run_at FROM export_validations "
+        "SELECT DISTINCT run_at FROM export_validations "
         "ORDER BY run_at DESC "
         "LIMIT 1 OFFSET ?",
         (keep_last,),

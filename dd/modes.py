@@ -6,7 +6,7 @@ import sqlite3
 from typing import Any
 
 from dd.color import hex_to_oklch, oklch_invert_lightness, rgba_to_hex
-from dd.db import update_token_value
+from dd.db import insert_token_value, update_token_value
 
 
 def create_mode(conn: sqlite3.Connection, collection_id: int, mode_name: str) -> int:
@@ -63,19 +63,24 @@ def copy_values_from_default(conn: sqlite3.Connection, collection_id: int, new_m
 
     default_mode_id = row['id']
 
-    # Copy values from default to new mode (skip aliased tokens).
-    # source='derived': these values are computed by the pipeline, not extracted from Figma.
+    # Query default-mode values for non-aliased tokens in this collection.
     cursor = conn.execute("""
-        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, source)
-        SELECT tv.token_id, ?, tv.raw_value, tv.resolved_value, 'derived'
+        SELECT tv.token_id, tv.raw_value, tv.resolved_value
         FROM token_values tv
         JOIN tokens t ON tv.token_id = t.id
         WHERE tv.mode_id = ? AND t.collection_id = ? AND t.alias_of IS NULL
-    """, (new_mode_id, default_mode_id, collection_id))
+    """, (default_mode_id, collection_id))
 
-    count = cursor.rowcount
-    conn.commit()
-    return count
+    rows = cursor.fetchall()
+
+    for row in rows:
+        insert_token_value(
+            conn, token_id=row["token_id"], mode_id=new_mode_id,
+            raw_value=row["raw_value"], resolved_value=row["resolved_value"],
+            source="derived", changed_by="modes", reason="copy_from_default",
+        )
+
+    return len(rows)
 
 
 def oklch_to_hex(L: float, C: float, h: float) -> str:

@@ -108,6 +108,44 @@ def update_token_value(
     conn.commit()
 
 
+def insert_token_value(
+    conn: sqlite3.Connection,
+    token_id: int,
+    mode_id: int,
+    raw_value: str,
+    resolved_value: str,
+    changed_by: str,
+    reason: str = None,
+    source: str = "figma",
+) -> None:
+    """Insert a new token_values row and write an initial history entry.
+
+    Use this for first-write scenarios (mode seeding, token splitting)
+    where no previous value exists.
+
+    Args:
+        conn: Database connection
+        token_id: Token to insert value for
+        mode_id: Mode to insert value for
+        raw_value: JSON raw value
+        resolved_value: Normalized resolved value
+        changed_by: Pipeline stage making the change
+        reason: Human-readable context
+        source: Value provenance ('figma', 'derived', 'manual', 'imported')
+    """
+    conn.execute(
+        "INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value, source) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (token_id, mode_id, raw_value, resolved_value, source),
+    )
+    conn.execute(
+        "INSERT INTO token_value_history (token_id, mode_id, old_resolved, new_resolved, changed_by, reason) "
+        "VALUES (?, ?, NULL, ?, ?, ?)",
+        (token_id, mode_id, resolved_value, changed_by, reason),
+    )
+    conn.commit()
+
+
 def backup_db(source_path: str) -> str:
     """
     Create a timestamped backup of a database file.

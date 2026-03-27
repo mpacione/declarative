@@ -603,13 +603,13 @@ def test_apply_oklch_inversion_writes_history(db):
     apply_oklch_inversion(db, 1, dark_mode_id)
 
     rows = db.execute(
-        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        "SELECT changed_by, reason FROM token_value_history "
+        "WHERE mode_id = ? AND reason = 'oklch_inversion'",
         (dark_mode_id,),
     ).fetchall()
 
     assert len(rows) == 4
     assert all(r["changed_by"] == "modes" for r in rows)
-    assert all(r["reason"] == "oklch_inversion" for r in rows)
 
 
 @pytest.mark.unit
@@ -624,13 +624,13 @@ def test_apply_scale_factor_writes_history(db):
     apply_scale_factor(db, 2, compact_mode_id, 0.5)
 
     rows = db.execute(
-        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        "SELECT changed_by, reason FROM token_value_history "
+        "WHERE mode_id = ? AND reason = 'scale_factor'",
         (compact_mode_id,),
     ).fetchall()
 
     assert len(rows) == 1
     assert rows[0]["changed_by"] == "modes"
-    assert rows[0]["reason"] == "scale_factor"
 
 
 @pytest.mark.unit
@@ -645,10 +645,10 @@ def test_apply_high_contrast_writes_history(db):
     apply_high_contrast(db, 1, mode_id)
 
     rows = db.execute(
-        "SELECT changed_by, reason FROM token_value_history WHERE mode_id = ?",
+        "SELECT changed_by, reason FROM token_value_history "
+        "WHERE mode_id = ? AND reason = 'high_contrast'",
         (mode_id,),
     ).fetchall()
 
     assert len(rows) == 4
     assert all(r["changed_by"] == "modes" for r in rows)
-    assert all(r["reason"] == "high_contrast" for r in rows)
