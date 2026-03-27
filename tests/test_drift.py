@@ -115,13 +115,13 @@ def test_normalize_font_family_quotes():
 
 @pytest.mark.unit
 @pytest.mark.timeout(10)
-def test_normalize_color_8digit_to_6digit():
-    """Test that 8-digit hex with full alpha normalizes to 6-digit."""
-    assert normalize_value_for_comparison("#09090BFF", "color") == normalize_value_for_comparison("#09090B", "color")
-    assert normalize_value_for_comparison("#09090BFF", "color") == "09090B"
+def test_normalize_color_preserves_alpha():
+    """Test that 8-digit hex preserves alpha — it's a distinct value."""
+    assert normalize_value_for_comparison("#09090BFF", "color") == "09090BFF"
     assert normalize_value_for_comparison("#09090B", "color") == "09090B"
-    # Alpha not full should remain
-    assert normalize_value_for_comparison("#09090BFE", "color") == "09090BFE"
+    # Different alpha = different value
+    assert normalize_value_for_comparison("#09090BFF", "color") != normalize_value_for_comparison("#09090B", "color")
+    assert normalize_value_for_comparison("#09090B80", "color") == "09090B80"
 
 
 @pytest.mark.unit

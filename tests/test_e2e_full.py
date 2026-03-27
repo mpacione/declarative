@@ -615,7 +615,7 @@ def test_e2e_mode_values_seeded_correctly(db):
 
     for row in cursor.fetchall():
         # Verify values are valid hex
-        assert re.match(r'^#[0-9a-fA-F]{6}$', row["dark_val"])
+        assert re.match(r'^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$', row["dark_val"])
         # Verify different from default
         assert row["dark_val"] != row["default_val"]
 

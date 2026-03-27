@@ -29,9 +29,7 @@ def normalize_value_for_comparison(value: str, token_type: str) -> str:
         if normalized.startswith("#"):
             normalized = normalized[1:]
         normalized = normalized.upper()
-        # Normalize 8-digit hex with full alpha to 6-digit
-        if len(normalized) == 8 and normalized.endswith("FF"):
-            normalized = normalized[:6]
+        # Keep 8-digit hex as-is — alpha is a distinct value
 
     elif token_type == "dimension":
         # Strip trailing px, normalize decimal representation

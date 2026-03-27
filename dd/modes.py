@@ -178,14 +178,20 @@ def apply_oklch_inversion(conn: sqlite3.Connection, collection_id: int, mode_id:
         hex_color = row['resolved_value']
 
         try:
-            # Convert to OKLCH
+            # Preserve alpha suffix if present (8-digit hex)
+            hex_clean = hex_color.lstrip('#')
+            alpha_suffix = hex_clean[6:] if len(hex_clean) == 8 else ""
+
+            # Convert to OKLCH (alpha is stripped internally)
             L, C, h = hex_to_oklch(hex_color)
 
             # Invert lightness
             new_L, new_C, new_h = oklch_invert_lightness(L, C, h)
 
-            # Convert back to hex
+            # Convert back to hex and re-append alpha
             new_hex = oklch_to_hex(new_L, new_C, new_h)
+            if alpha_suffix:
+                new_hex = new_hex + alpha_suffix
 
             # Update the value
             conn.execute(
@@ -340,6 +346,10 @@ def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: i
         hex_color = row['resolved_value']
 
         try:
+            # Preserve alpha suffix if present
+            hex_clean = hex_color.lstrip('#')
+            alpha_suffix = hex_clean[6:] if len(hex_clean) == 8 else ""
+
             L, C, h = hex_to_oklch(hex_color)
 
             if L > 0.5:
@@ -350,6 +360,8 @@ def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: i
             new_C = min(0.4, C * 1.15)
 
             new_hex = oklch_to_hex(new_L, new_C, h)
+            if alpha_suffix:
+                new_hex = new_hex + alpha_suffix
 
             conn.execute(
                 "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE id = ?",
