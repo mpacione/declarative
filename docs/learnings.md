@@ -180,3 +180,23 @@ Accumulated insights from building and testing the curation pipeline. These info
 - Added `include_existing=True` parameter instead of writing a new query function.
 - Default behavior unchanged (`include_existing=False` filters to `figma_variable_id IS NULL`).
 - Avoids parallel query functions that could drift.
+
+### Figma Opacity Variables Use 0-100 Scale, Not 0-1
+- Figma's node `opacity` property is 0-1 (e.g. `0.20` = 20%).
+- Figma FLOAT variables bound to `opacity` are interpreted as **percentages**: value `20` → node opacity `0.20`.
+- Our DB stores the raw Figma node value (0-1 range, e.g. `0.20`).
+- When we created variables with `0.20`, Figma interpreted it as 0.2% → node opacity `0.002`.
+- **Fix**: Multiply opacity values by 100 when creating/updating Figma variables. `convert_value_for_figma()` handles this based on token name containing "opacity".
+- This affected ~1,247 bindings across 4 opacity tokens — elements appeared invisible.
+
+### Compact Handler: Fill Shortcode Collision With Font Shortcodes
+- The fill branch `p[0]==='f'&&p.length<=2` matched both `f0` (fill.0.color) and `fs` (fontSize), `ff` (fontFamily), `fw` (fontWeight).
+- `fs`/`ff`/`fw` hit `setBoundVariableForPaint` and failed with "paintCopy validation" error.
+- **Fix**: Added `!isNaN(p[1])` digit check to the fill branch, matching the pattern already used by the stroke branch.
+
+### PROXY_EXECUTE Patch Enables Direct Script Execution
+- Patching the figma-console-mcp WebSocket server with a `PROXY_EXECUTE` handler lets external scripts execute code in the Figma plugin without going through Claude's tool interface.
+- Eliminates the 50K char tool parameter bottleneck — can send full 31KB scripts directly.
+- 193 scripts × 950 bindings executed in 76 seconds (vs estimated 10+ hours via MCP tool calls).
+- Patch is ~30 lines in `websocket-server.js`, saved as `patches/figma-console-mcp-proxy-execute.patch`.
+- Won't survive package updates — must be re-applied.

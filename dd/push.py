@@ -18,12 +18,15 @@ from dd.export_figma_vars import (
 from dd.export_rebind import generate_rebind_scripts, get_rebind_summary
 
 
-def convert_value_for_figma(value_str: str, figma_type: str) -> str | float | bool:
+def convert_value_for_figma(
+    value_str: str, figma_type: str, is_opacity: bool = False,
+) -> str | float | bool:
     """Convert a DB string value to a Figma-native typed value.
 
     Args:
         value_str: The string value from the database
         figma_type: The Figma variable type (COLOR, FLOAT, STRING, BOOLEAN)
+        is_opacity: If True, scale 0-1 value to 0-100 (Figma opacity convention)
 
     Returns:
         The value in the appropriate Python type for JSON serialization
@@ -33,7 +36,10 @@ def convert_value_for_figma(value_str: str, figma_type: str) -> str | float | bo
 
     if figma_type == "FLOAT":
         cleaned = value_str.rstrip("px")
-        return float(cleaned)
+        result = float(cleaned)
+        if is_opacity:
+            result = result * 100
+        return result
 
     if figma_type == "STRING":
         stripped = value_str.strip()
@@ -103,8 +109,9 @@ def _build_create_actions(
 
             for token in batch:
                 figma_type = map_token_type_to_figma(token["type"], token["name"])
+                opacity = token["name"].startswith("opacity.")
                 converted_values = {
-                    mode: convert_value_for_figma(val, figma_type)
+                    mode: convert_value_for_figma(val, figma_type, is_opacity=opacity)
                     for mode, val in token["values"].items()
                 }
                 token_entries.append({

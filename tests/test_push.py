@@ -58,6 +58,20 @@ class TestConvertValueForFigma:
     def test_boolean_numeric_zero(self):
         assert convert_value_for_figma("0", "BOOLEAN") is False
 
+    def test_float_opacity_scaled_to_percentage(self):
+        """Figma opacity variables use 0-100 scale, not 0-1."""
+        assert convert_value_for_figma("0.20", "FLOAT", is_opacity=True) == 20.0
+
+    def test_float_opacity_zero(self):
+        assert convert_value_for_figma("0", "FLOAT", is_opacity=True) == 0.0
+
+    def test_float_opacity_one(self):
+        assert convert_value_for_figma("1.0", "FLOAT", is_opacity=True) == 100.0
+
+    def test_float_non_opacity_not_scaled(self):
+        """Non-opacity FLOAT values should NOT be scaled."""
+        assert convert_value_for_figma("0.20", "FLOAT", is_opacity=False) == 0.20
+
 
 class TestGenerateVariableActionsFirstPush:
     """Test generate_variable_actions with no Figma state (first push — all CREATE)."""
