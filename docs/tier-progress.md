@@ -6,7 +6,7 @@ Tracking round-trip verified curation actions against `Dank (Experimental)`.
 **Figma file**: `drxXOUOdYEBBQ09mrXJeYu`
 **Figma variables**: 353 live (8 collections: Color Primitives, Color Semantics, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
 **DB tokens**: 388 total (45 color primitives + 52 color semantics + other curated + 26 aliased)
-**Tests**: 729 passing
+**Tests**: 753 passing
 
 ## Verification Pattern
 
@@ -205,7 +205,20 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Scope**: `python -m dd maintenance [--keep-last N] [--dry-run]` wired into CLI. Calls `prune_extraction_runs()` and `prune_export_validations()` from `dd/maintenance.py`. `--dry-run` prints counts without deleting. `--keep-last` defaults to 50.
 - **Tests**: 3 new CLI tests (prune, dry-run, defaults). 709 total passing.
 
-### T4.6–T4.x — Structural (future)
+### T4.6 — Comprehensive Property Extraction
+- **Status**: DONE
+- **Scope**: Extended extraction pipeline to capture every visual property Figma exposes.
+- **Schema**: 22 new nullable columns on `nodes` table + `instance_overrides` table. Migration `002_extended_properties.sql`.
+- **New tokenizable properties**: strokeWeight (uniform + per-side), paragraphSpacing, fontStyle, visible (BOOLEAN), BACKGROUND_BLUR radius.
+- **New stored properties** (for Conjure): stroke_align/cap/join, dash_pattern, rotation, clips_content, constraint_h/v, layout_wrap, min/max width/height, text_decoration, text_case, text_align_v, font_style, paragraph_spacing, component_key.
+- **Improved handling**: IMAGE fills now stored (was skipped). Gradient stops decomposed into individual color bindings. BACKGROUND_BLUR handled alongside LAYER_BLUR.
+- **Extraction**: Both REST API (`figma_api.py`) and Plugin API (`extract_screens.py`) paths updated. Parse + insert handle all new fields.
+- **Normalization**: 4 new functions (`normalize_stroke_weight`, `normalize_paragraph_spacing`, `normalize_font_style`, extended `normalize_effect`). `normalize_fill` now handles IMAGE fills and gradient stop colors.
+- **Clustering**: Generic `_cluster_simple_dimension()` pattern reused by `cluster_stroke_weight()` and `cluster_paragraph_spacing()`.
+- **Rebinding**: `visible` shortcode + BOOLEAN type mapping added. strokeWeight/fontStyle/paragraphSpacing shortcodes already existed.
+- **Tests**: 24 new tests. 753 total passing.
+
+### T4.7–T4.x — Structural (future)
 - **Status**: not started
 - Import external token set (Radix, shadcn, Material) — T4.x
 

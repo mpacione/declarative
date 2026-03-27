@@ -251,6 +251,20 @@ scripts = generate_rebind_scripts(conn, file_id=1)
 # No opacity restoration needed — alpha is baked into color variable values
 ```
 
+### Tokenizable Properties (bindable to Figma variables)
+
+| Category | Properties |
+|---|---|
+| **Color** | fill.N.color, stroke.N.color, effect.N.color |
+| **Shadow** | effect.N.radius, effect.N.offsetX/Y, effect.N.spread |
+| **Radius** | cornerRadius, topLeft/topRight/bottomLeft/bottomRightRadius |
+| **Spacing** | padding.top/right/bottom/left, itemSpacing, counterAxisSpacing |
+| **Typography** | fontSize, fontFamily, fontWeight, fontStyle, lineHeight, letterSpacing, paragraphSpacing |
+| **Stroke** | strokeWeight, strokeTopWeight/Right/Bottom/Left |
+| **Other** | opacity, visible (BOOLEAN) |
+
+Properties not bindable to variables but stored for Conjure: layout_mode, alignment, sizing, rotation, clipsContent, constraints, strokeAlign/Cap/Join, dashPattern, textDecoration, textCase, textAlignVertical, layoutWrap, min/max dimensions, componentKey.
+
 ### Known Figma API Behaviors
 - `setBoundVariableForPaint` resets paint opacity to 1.0 — **solved** by alpha-baked colors (opacity encoded in 8-digit hex `#RRGGBBAA` variable value)
 - `setBoundVariableForEffect` resets effect color.a to 1.0 — **solved** by alpha-baked colors

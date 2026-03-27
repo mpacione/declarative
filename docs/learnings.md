@@ -398,3 +398,36 @@ A `v_binding_mismatches` view in `schema.sql` provides the same detection as an 
   - `stroke.N.color` → `setBoundVariableForPaint` on `node.strokes` (297 bindings, 267 ok)
   Missing any property class leaves those bindings with alpha=1.0. The original targeted fill-only pass missed effects and strokes entirely.
 - **normalize_value_for_comparison improvements**: JSON dimension objects (`{"value":24,"unit":"PIXELS"}`) are now extracted to scalars. Figma float32 noise (e.g., `10.000000149`) rounds to nearest integer if difference < 0.001. This eliminated ~2,700 false positive mismatches in binding-token consistency checks.
+
+---
+
+## Extended Property Extraction (T4.6)
+
+### Comprehensive Property Coverage
+The system now extracts every visual property Figma exposes, not just the subset needed for the original Dank file. This was done for public release — users will bring diverse files and expect full coverage.
+
+### Three Categories of Properties
+1. **Tokenizable** (bound to Figma variables via `setBoundVariable`): fills, strokes, effects, cornerRadius, padding, spacing, fontSize, fontFamily, fontWeight, fontStyle, lineHeight, letterSpacing, paragraphSpacing, opacity, strokeWeight (uniform + per-side), visible (BOOLEAN).
+2. **Stored but not tokenizable** (for Conjure screen generation): layout_mode, alignment, sizing modes, rotation, clipsContent, constraints, strokeAlign/Cap/Join, dashPattern, textDecoration, textCase, textAlignVertical, layoutWrap, min/max width/height, componentKey.
+3. **Structural** (composition tree): parent_id, path, depth, sort_order, component references, instance overrides.
+
+### Gradient Stop Decomposition
+Gradient fills now produce individual color bindings per stop (`fill.0.gradient.stop.0.color`, `fill.0.gradient.stop.1.color`). The whole gradient is still stored as `fill.0.gradient` (intentionally_unbound since Figma can't bind variables to gradients), but the stop colors ARE tokenizable as regular color values. This enables color consistency checking across gradients.
+
+### IMAGE Fill Storage
+IMAGE fills were previously skipped entirely. They now produce `fill.N.image` bindings with `resolved_value='image'` and raw_value containing `imageRef` and `scaleMode`. Marked `intentionally_unbound` during clustering. Needed for Conjure to know where images are placed.
+
+### BACKGROUND_BLUR
+Previously unhandled. Now extracted as `effect.N.radius` alongside LAYER_BLUR. Same pattern — the radius is tokenizable.
+
+### Rebinding Infrastructure Was Already There
+`export_rebind.py` already had PROPERTY_SHORTCODES and handlers for `strokeWeight`, `fontStyle`, `paragraphSpacing` before any of these properties were extracted. The gap was purely extraction + normalization + clustering. This is good architecture — the rebind layer was designed for extensibility.
+
+### Generic Clustering Pattern
+`_cluster_simple_dimension()` in `cluster_misc.py` handles any single-property dimension clustering. Pass a property name and token prefix, it queries unbound bindings, creates tokens per unique value, and proposes bindings. Reused by `cluster_stroke_weight()` and `cluster_paragraph_spacing()`. Use this for any new dimension property.
+
+### Instance Overrides Table
+New `instance_overrides` table tracks what properties an INSTANCE node has overridden from its main component. Needed for T5 Conjure to recreate instances with correct property settings (TEXT overrides, BOOLEAN toggles, INSTANCE_SWAP choices).
+
+### component_key Column
+The `component_key` field on nodes (populated from `mainComponent.key` via Plugin API) is the critical piece for Conjure screen generation. It's what `importComponentByKeyAsync()` needs to instantiate a component from a library.
