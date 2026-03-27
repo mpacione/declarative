@@ -16,7 +16,6 @@ from dd.export_figma_vars import (
     query_exportable_tokens,
 )
 from dd.export_rebind import (
-    generate_opacity_restore_scripts,
     generate_rebind_scripts,
     get_rebind_summary,
 )
@@ -270,19 +269,6 @@ def generate_push_manifest(
         manifest["phases"]["rebind"] = {
             "summary": summary,
             "scripts": scripts,
-            "tool": "figma_execute",
-            "timeout": 30000,
-        }
-
-    # Always append opacity restoration as the final phase.
-    # Figma resets paint opacities and effect color alphas whenever
-    # variable bindings are evaluated (rebind, variable value change,
-    # alias update). This step restores them from the DB source of truth.
-    restore_scripts = generate_opacity_restore_scripts(conn, file_id)
-    if restore_scripts:
-        manifest["phases"]["restore_opacities"] = {
-            "summary": {"scripts": len(restore_scripts)},
-            "scripts": restore_scripts,
             "tool": "figma_execute",
             "timeout": 30000,
         }

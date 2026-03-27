@@ -278,9 +278,9 @@ const prev=figma.root.getPluginData('rebind_errors');const errs=prev?JSON.parse(
 for(const l of R){const[n,p,v]=l.split('|');try{
 const nd=await figma.getNodeByIdAsync(n);if(!nd){f++;E.push({n,p,r:'NODE_NOT_FOUND'});continue;}
 const vr=await figma.variables.getVariableByIdAsync('VariableID:'+v);if(!vr){f++;E.push({n,p,r:'VAR_NOT_FOUND'});continue;}
-if(p[0]==='f'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],fl=[...nd.fills];const origOp=fl[i].opacity;fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);fl[i]={...fl[i],opacity:origOp};nd.fills=fl;}
-else if(p[0]==='s'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],st=[...nd.strokes];const origOp=st[i].opacity;st[i]=figma.variables.setBoundVariableForPaint(st[i],'color',vr);st[i]={...st[i],opacity:origOp};nd.strokes=st;}
-else if(p[0]==='e'){const i=+p[1],fm={c:'color',r:'radius',x:'offsetX',y:'offsetY',s:'spread'}[p[2]],ef=[...nd.effects];if(fm==='color'){const origA=ef[i].color?ef[i].color.a:1;ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);ef[i]={...ef[i],color:{...ef[i].color,a:origA}};}else{ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);}nd.effects=ef;}
+if(p[0]==='f'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],fl=[...nd.fills];fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);nd.fills=fl;}
+else if(p[0]==='s'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],st=[...nd.strokes];st[i]=figma.variables.setBoundVariableForPaint(st[i],'color',vr);nd.strokes=st;}
+else if(p[0]==='e'){const i=+p[1],fm={c:'color',r:'radius',x:'offsetX',y:'offsetY',s:'spread'}[p[2]],ef=[...nd.effects];ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);nd.effects=ef;}
 else{const M={cr:'cornerRadius',tlr:'topLeftRadius',trr:'topRightRadius',blr:'bottomLeftRadius',brr:'bottomRightRadius',pt:'paddingTop',pr:'paddingRight',pb:'paddingBottom',pl:'paddingLeft',is:'itemSpacing',cas:'counterAxisSpacing',op:'opacity',sw:'strokeWeight',stw:'strokeTopWeight',srw:'strokeRightWeight',sbw:'strokeBottomWeight',slw:'strokeLeftWeight',fs:'fontSize',ff:'fontFamily',fw:'fontWeight',fst:'fontStyle',lh:'lineHeight',ls:'letterSpacing',ps:'paragraphSpacing'};
 const prop=M[p];if(prop==='itemSpacing'&&nd.primaryAxisAlignItems==='SPACE_BETWEEN'){b++;continue;}
 if(prop){nd.setBoundVariable(prop,vr);}else{f++;E.push({n,p,r:'UNKNOWN_PROP'});continue;}}

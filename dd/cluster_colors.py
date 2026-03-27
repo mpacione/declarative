@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Optional
 
-from dd.color import hex_to_oklch, oklch_delta_e
+from dd.color import hex_to_oklch, hex_to_rgba, oklch_delta_e
 from dd.db import get_connection
 
 
@@ -61,6 +61,7 @@ def group_by_delta_e(colors: list[dict], threshold: float = 2.0) -> list[list[di
     for color in sorted_colors:
         hex_color = color['resolved_value']
         oklch = hex_to_oklch(hex_color)
+        _, _, _, color_alpha = hex_to_rgba(hex_color)
 
         # Try to find an existing group this color belongs to
         placed = False
@@ -68,6 +69,11 @@ def group_by_delta_e(colors: list[dict], threshold: float = 2.0) -> list[list[di
             # Compare to group's representative (first color, highest usage)
             representative = group[0]
             rep_oklch = hex_to_oklch(representative['resolved_value'])
+            _, _, _, rep_alpha = hex_to_rgba(representative['resolved_value'])
+
+            # Different alphas never cluster (e.g., #000000 vs #00000020)
+            if abs(color_alpha - rep_alpha) > 0.01:
+                continue
 
             delta_e = oklch_delta_e(oklch, rep_oklch)
             if delta_e < threshold:
