@@ -236,3 +236,11 @@ Accumulated insights from building and testing the curation pipeline. These info
 - **Effect color alpha**: Stored in `nodes.effects` JSON `color.a` field but `normalize_effect()` only extracts color as hex (discards alpha).
 - **Non-tokenizable properties** (auto-layout sizing mode, text alignment, blend mode, visibility) are stored in node columns but correctly NOT extracted as bindings — they're structural, not design tokens.
 - **Action**: Add `fill.N.opacity`, `stroke.N.opacity` as binding properties when < 1.0. For effect alpha, include in the color extraction or as separate `effect.N.alpha` binding.
+
+### Binding itemSpacing on SPACE_BETWEEN Nodes Overrides Auto Gap
+- Figma's "Auto" gap is `primaryAxisAlignItems: "SPACE_BETWEEN"`. The `itemSpacing` property reports the computed value but the gap is auto-distributed.
+- Binding a variable to `itemSpacing` forces a fixed gap, losing the auto behavior. The layout snaps from space-between distribution to fixed spacing.
+- **Scope**: 1,408 nodes had SPACE_BETWEEN alignment but got `itemSpacing` bound to a token.
+- **Fix**: The rebind handler must skip `itemSpacing` binding when `primaryAxisAlignItems === "SPACE_BETWEEN"`.
+- **Restoration**: Unbind `itemSpacing` (`setBoundVariable('itemSpacing', null)`) and reset `primaryAxisAlignItems = 'SPACE_BETWEEN'`.
+- **Broader rule**: Before binding any layout property, check if the node uses an auto/distributed mode that the binding would override.
