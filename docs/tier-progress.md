@@ -139,7 +139,18 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 
 ---
 
-## Tier 4: Structural — not started
+## Tier 4: Structural
+
+### T4.1 — Split Primitives and Semantics (Colors)
+- **Status**: DONE
+- **Scope**: 52 color tokens split into Primitives (45 value-based) + Semantics (52 aliases)
+- **Primitives**: 45 tokens named by hue family + shade (`prim.gray.500`, `prim.blue.400`, etc.), 9 hue families, 2 modes (Default + Dark)
+- **Semantics**: 52 existing color tokens converted to aliases of primitives. Names unchanged (`color.surface.searchbar` → `prim.gray.500`)
+- **Figma**: "Color Primitives" collection (45 variables), "Colors" collection variables updated to alias primitives via `createVariableAlias`
+- **Re-pointed aliases**: 14 Semantic collection aliases re-pointed from color tokens directly to primitives (prevents depth-2 chains)
+- **Bindings**: 58,073 bindings unchanged (reference semantic token IDs, not affected by alias conversion)
+- **DB collections**: Colors renamed to "Color Semantics", new "Color Primitives" collection added (now 8 collections total)
+- **New functions**: `create_collection()`, `convert_to_alias()` in `dd/curate.py`
 ## Tier 5: Conjure — not started
 ## Tier 6: Sync
 
