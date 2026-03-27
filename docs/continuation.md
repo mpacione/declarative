@@ -2,41 +2,30 @@
 
 ## Quick Context
 
-Declarative Design is a CLI + agent system that extracts design tokens from Figma files, curates them, and pushes variables back. The full round-trip is proven working.
+Declarative Design is a CLI + agent system that extracts design tokens from Figma files, curates them, and pushes variables back. The full round-trip is proven working. Primitives/semantics split is done for colors.
 
 ## Current State
 
-- **DB**: `Dank-EXP-02.declarative.db` — 334 tokens (308 curated + 26 aliased), 182K bindings
+- **DB**: `Dank-EXP-02.declarative.db` — 379 tokens (45 color primitives + 52 color semantics + 282 other curated + 26 aliased), 182K bindings
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Figma variables**: 308 across 7 collections (Colors+Dark, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
-- **Variable IDs**: All 308 written back to DB (`tokens.figma_variable_id`)
-- **Rebinding**: IN PROGRESS — 193 compact scripts generated, execution underway
-- **Tests**: 609 passing
-- **Tiers 1-3**: Complete. Tier 4 (Structural) and Tier 5 (Conjure) pending.
-- **`dd push`**: DONE — CLI command generating structured JSON manifests for agent MCP execution
+- **Figma variables**: 353 across 8 collections (Color Primitives, Color Semantics+Dark, Component States+Dark, Typography, Spacing, Effects, Radius, Opacity)
+- **Variable IDs**: All written back to DB (`tokens.figma_variable_id`)
+- **Rebinding**: DONE — 182,877 bindings, 0 errors
+- **Opacity restoration**: Automatic post-step in `dd push` pipeline
+- **Tests**: 641 passing
+- **Tiers 1-3**: Complete. T4.1 (Primitives/Semantics split) complete. T4.2-T4.5 pending. T5 (Conjure) pending.
 
 ## What To Do Next (in order)
 
-### 1. Complete Rebind Execution
+### 1. Tier 4.2 — Add Modes
 
-Execute remaining rebind scripts via `figma_execute` MCP tool:
+Add compact and/or high-contrast modes. See `docs/action-taxonomy.md` T4.2.
 
-```bash
-# Generate rebind manifest
-python -m dd push --db Dank-EXP-02.declarative.db --phase rebind --out /tmp/rebind.json
+### 2. Tier 4.3-T4.5 — Structural
 
-# Agent reads manifest and executes each script via figma_execute
-# 193 scripts, ~950 bindings each, <1s per script
-```
-
-After rebinding, verify visually: select nodes in Figma, check that properties show variable indicators.
-
-### 2. Tier 4 — Structural
-
-- T4.1: Split Primitives and Semantics into separate collections
-- T4.2: Add modes (compact, high-contrast)
-- See `docs/action-taxonomy.md` for full list
-- Use `dd push` to verify each action: curate → `dd push --dry-run` → `dd push` → agent executes → verify
+- T4.3: Restructure naming convention
+- T4.4: Re-cluster with different parameters
+- T4.5: Import external token set (Radix, shadcn, Material)
 
 ### 3. Tier 5 — Conjure
 
@@ -48,37 +37,22 @@ See `docs/action-taxonomy.md` Tier 5 section.
 | File | Purpose |
 |------|---------|
 | `dd/cli.py` | CLI entrypoint — all `python -m dd` commands including `push` |
-| `dd/push.py` | Push manifest generation (variable actions + rebind orchestration) |
+| `dd/push.py` | Push manifest generation (variable actions + rebind + opacity restore) |
 | `dd/export_figma_vars.py` | Variable payload generation + writeback |
-| `dd/export_rebind.py` | Compact rebind script generation |
-| `dd/drift.py` | DB↔Figma drift detection and value comparison |
+| `dd/export_rebind.py` | Compact rebind scripts + opacity restoration scripts |
+| `dd/drift.py` | DB-Figma drift detection and value comparison |
 | `dd/figma_api.py` | REST API client + node tree conversion |
 | `dd/modes.py` | Dark mode / theme creation (OKLCH) |
-| `dd/curate.py` | All curation operations (rename, merge, split, alias) |
+| `dd/curate.py` | All curation operations (rename, merge, split, alias, create_collection, convert_to_alias) |
 | `dd/curate_report.py` | Generates structured curation report |
 | `docs/action-taxonomy.md` | Full taxonomy of all curation/conjure actions |
 | `docs/tier-progress.md` | Progress tracker for each tier |
 | `docs/learnings.md` | Accumulated infrastructure insights |
-| `declarative-design/SKILL.md` | Agent protocol (CLI + curation) |
+| `declarative-design/SKILL.md` | Agent protocol v0.3.0 (CLI + curation + push) |
 
-## `dd push` Usage
+## Critical: Opacity Restoration
 
-```bash
-# First push (no existing Figma state):
-python -m dd push --db Dank-EXP-02.declarative.db --dry-run
-python -m dd push --db Dank-EXP-02.declarative.db --phase variables
-# Agent executes MCP actions from manifest
-# Agent: figma_get_variables → save response
-python -m dd push --db Dank-EXP-02.declarative.db --writeback --figma-state response.json
-python -m dd push --db Dank-EXP-02.declarative.db --phase rebind
-# Agent executes rebind scripts via figma_execute
-
-# Incremental push (after curation changes):
-# Agent: figma_get_variables → save to figma_state.json
-python -m dd push --db Dank-EXP-02.declarative.db --figma-state figma_state.json --dry-run
-python -m dd push --db Dank-EXP-02.declarative.db --figma-state figma_state.json --phase variables
-# Agent executes actions, then rebind phase
-```
+Figma resets paint opacities and effect color alphas whenever variable bindings are re-evaluated. The `dd push` manifest automatically includes a `restore_opacities` phase. This MUST run after any Figma variable operation. See `docs/learnings.md` for details.
 
 ## Environment
 
@@ -94,3 +68,4 @@ python -m pytest tests/ --tb=short
 ```
 
 Figma Desktop Bridge plugin must be running for MCP rebinding operations.
+PROXY_EXECUTE patch on figma-console-mcp WebSocket server enables direct script execution (see `patches/` directory).
