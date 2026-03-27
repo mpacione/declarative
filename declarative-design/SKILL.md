@@ -1,6 +1,6 @@
 # Declarative Design Companion Skill
 
-**Version**: 0.2.0
+**Version**: 0.3.0
 **Skill Name**: declarative-design
 **Description**: Agent protocol for extracting, curating, and exporting design tokens from Figma files.
 **Activation**: When encountering `*.declarative.db` files, Figma URLs, or requests to work with design systems/tokens.
@@ -28,6 +28,11 @@ python -m dd validate [--db PATH]
 
 # Phase 5: Export — generate code artifacts
 python -m dd export css|tailwind|dtcg [--db PATH] [--out FILE]
+
+# Phase 6: Push — sync tokens to Figma as variables + rebind nodes
+python -m dd push [--db PATH] [--phase variables|rebind|all] [--dry-run]
+python -m dd push [--db PATH] --figma-state FILE [--phase variables|rebind|all]
+python -m dd push [--db PATH] --writeback --figma-state FILE
 
 # Diagnostics
 python -m dd status [--db PATH]
@@ -136,13 +141,15 @@ All curation functions are in `dd.curate`:
 
 ```python
 from dd.curate import (
-    accept_token,      # Accept a single proposed token
-    rename_token,      # Rename to DTCG convention (validates format)
-    merge_tokens,      # Combine two tokens (rebinds all nodes)
-    split_token,       # Split one token into two (moves specific nodes)
-    reject_token,      # Remove a token (optionally unbinds nodes)
-    create_alias,      # Create semantic alias → primitive
-    accept_all,        # Bulk accept all proposed tokens
+    accept_token,        # Accept a single proposed token
+    rename_token,        # Rename to DTCG convention (validates format)
+    merge_tokens,        # Combine two tokens (rebinds all nodes)
+    split_token,         # Split one token into two (moves specific nodes)
+    reject_token,        # Remove a token (optionally unbinds nodes)
+    create_alias,        # Create semantic alias → primitive
+    create_collection,   # Create new token collection with modes
+    convert_to_alias,    # Convert a valued token into an alias of another
+    accept_all,          # Bulk accept all proposed tokens
 )
 ```
 
@@ -209,21 +216,44 @@ python -m dd export tailwind # Tailwind theme config
 python -m dd export dtcg     # W3C DTCG tokens.json
 ```
 
-### Figma Variable Push (Agent + MCP)
-```python
-from dd.export_figma_vars import export_figma_variables
+### Figma Push Pipeline (Agent + MCP)
 
-payload = export_figma_variables(conn, file_id=1)
-# Then use figma_setup_design_tokens MCP tool with payload
+The `dd push` CLI generates a manifest of MCP actions. The agent executes them.
+
+```bash
+# First push (no existing Figma state):
+python -m dd push --phase variables --dry-run     # Preview CREATE counts
+python -m dd push --phase variables               # Output MCP action specs
+# Agent executes actions, saves figma_get_variables response
+python -m dd push --writeback --figma-state response.json  # Write back IDs
+python -m dd push --phase rebind                  # Output rebind scripts
+# Agent executes scripts via figma_execute or PROXY_EXECUTE
+
+# Incremental push (after curation changes):
+# Agent: figma_get_variables → save to figma_state.json
+python -m dd push --figma-state figma_state.json --dry-run  # Preview diff
+python -m dd push --figma-state figma_state.json            # Execute
 ```
+
+The manifest always includes a `restore_opacities` phase as the final step. This is mandatory — Figma resets paint opacities whenever variable bindings are re-evaluated.
 
 ### Figma Rebinding (Agent + MCP)
 ```python
-from dd.export_rebind import generate_rebinding_script
+from dd.export_rebind import generate_rebind_scripts, generate_opacity_restore_scripts
 
-script = generate_rebinding_script(conn, file_id=1)
-# Then use figma_execute MCP tool with script
+scripts = generate_rebind_scripts(conn, file_id=1)
+# Execute each script via figma_execute MCP tool (batched at 950 bindings/script)
+
+restore_scripts = generate_opacity_restore_scripts(conn, file_id=1)
+# MUST run after rebinding — restores fill/stroke opacity and effect color alpha
 ```
+
+### Known Figma API Behaviors
+- `setBoundVariableForPaint` resets paint opacity to 1.0
+- `setBoundVariableForEffect` resets effect color.a to 1.0
+- Variable value changes (including alias updates) re-evaluate all bound nodes, resetting opacities
+- Binding `itemSpacing` on `SPACE_BETWEEN` nodes overrides auto gap
+- The compact handler and query layer guard against all of these
 
 ## Disconnected Mode
 
@@ -233,7 +263,18 @@ script = generate_rebinding_script(conn, file_id=1)
 
 **Requires Figma MCP:** Variable push, rebinding, drift detection against live file.
 
-## Conjure (Future)
+## Primitives / Semantics Architecture
+
+Color tokens are split into two layers:
+
+- **Color Primitives**: 45 value-based tokens (`prim.gray.500`, `prim.blue.400`). Raw hex values.
+- **Color Semantics**: 52 context-based aliases (`color.surface.searchbar` → `prim.gray.500`). These are what nodes bind to.
+
+Node bindings reference semantic token IDs. Changing a primitive value propagates to all semantics that alias it. In Figma, semantic variables use `createVariableAlias` to reference primitive variables.
+
+Spacing, Radius, Opacity already have 1:1 value:token mappings — they are effectively primitives.
+
+## Conjure (Tier 5 — Future)
 
 Composing new screens from prompts using the token/component vocabulary in the DB. The agent queries components, tokens, and screen patterns from the DB, then uses Figma MCP tools to compose the screen using real tokens — no hardcoded values.
 
@@ -241,11 +282,20 @@ Composing new screens from prompts using the token/component vocabulary in the D
 -- Get available components
 SELECT * FROM v_component_catalog ORDER BY category, name;
 
+-- Get semantic color tokens with resolved primitive values
+SELECT t.name, t2.name as primitive, tv.resolved_value
+FROM tokens t
+JOIN tokens t2 ON t.alias_of = t2.id
+JOIN token_values tv ON tv.token_id = t2.id
+JOIN token_modes tm ON tv.mode_id = tm.id
+WHERE tm.name = 'Default' AND t.tier = 'aliased'
+ORDER BY t.name;
+
 -- Get tokens for a specific mode
 SELECT t.name, tv.resolved_value
 FROM tokens t
 JOIN token_values tv ON t.id = tv.token_id
 JOIN token_modes tm ON tv.mode_id = tm.id
-WHERE tm.name = 'light' AND t.tier IN ('curated', 'aliased')
+WHERE tm.name = 'Default' AND t.tier IN ('curated', 'aliased')
 ORDER BY t.type, t.name;
 ```
