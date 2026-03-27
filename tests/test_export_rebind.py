@@ -619,6 +619,50 @@ class TestGenerateCompactScript:
         )
 
 
+class TestCompactHandlerPreservation:
+    """Test that compact handler preserves paint opacity, effect alpha, and respects auto-spacing."""
+
+    def test_handler_preserves_fill_opacity_after_color_bind(self):
+        """Fill paint opacity must be saved before setBoundVariableForPaint and restored after."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        # The fill branch must capture opacity before binding and restore it after
+        fill_section = script[script.find("p[0]==='f'"):script.find("else if(p[0]==='s'")]
+        assert "opacity" in fill_section, "Fill branch must preserve paint opacity"
+
+    def test_handler_preserves_stroke_opacity_after_color_bind(self):
+        """Stroke paint opacity must be preserved during color variable binding."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "stroke.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        stroke_section = script[script.find("p[0]==='s'"):script.find("else if(p[0]==='e'")]
+        assert "opacity" in stroke_section, "Stroke branch must preserve paint opacity"
+
+    def test_handler_preserves_effect_color_alpha(self):
+        """Effect color alpha must be preserved when binding a color variable to an effect."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "effect.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        effect_section = script[script.find("p[0]==='e'"):script.find("else{const M=")]
+        assert ".a" in effect_section or "alpha" in effect_section, "Effect branch must preserve color alpha"
+
+    def test_handler_skips_item_spacing_on_space_between(self):
+        """itemSpacing binding must be skipped when node uses SPACE_BETWEEN (auto gap)."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "itemSpacing", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "SPACE_BETWEEN" in script, "Handler must check for SPACE_BETWEEN before binding itemSpacing"
+
+
 class TestCompactHandlerErrorPersistence:
     """Test that compact handler persists errors to figma.root.pluginData."""
 
