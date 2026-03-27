@@ -311,6 +311,85 @@ def create_compact_mode(
     }
 
 
+def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: int) -> int:
+    """Apply high contrast transform to color tokens in a mode.
+
+    Pushes light colors toward white and dark colors toward black,
+    maximizing the contrast gap. Slightly boosts chroma for vivid colors.
+
+    Args:
+        conn: Database connection
+        collection_id: ID of the collection
+        mode_id: ID of the mode to modify
+
+    Returns:
+        Count of values transformed
+    """
+    cursor = conn.execute("""
+        SELECT tv.id, tv.resolved_value, t.type
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE tv.mode_id = ? AND t.collection_id = ? AND t.type = 'color'
+    """, (mode_id, collection_id))
+
+    rows = cursor.fetchall()
+    count = 0
+
+    for row in rows:
+        value_id = row['id']
+        hex_color = row['resolved_value']
+
+        try:
+            L, C, h = hex_to_oklch(hex_color)
+
+            if L > 0.5:
+                new_L = min(1.0, L * 1.2 + 0.1)
+            else:
+                new_L = max(0.0, L * 0.6)
+
+            new_C = min(0.4, C * 1.15)
+
+            new_hex = oklch_to_hex(new_L, new_C, h)
+
+            conn.execute(
+                "UPDATE token_values SET resolved_value = ?, raw_value = ? WHERE id = ?",
+                (new_hex, json.dumps(new_hex), value_id)
+            )
+            count += 1
+        except Exception:
+            pass
+
+    conn.commit()
+    return count
+
+
+def create_high_contrast_mode(
+    conn: sqlite3.Connection,
+    collection_id: int,
+    mode_name: str = "High Contrast"
+) -> dict[str, Any]:
+    """Create a high contrast mode for accessibility.
+
+    Args:
+        conn: Database connection
+        collection_id: ID of the collection
+        mode_name: Name for the new mode (default: "High Contrast")
+
+    Returns:
+        Dictionary with mode creation details
+    """
+    mode_id = create_mode(conn, collection_id, mode_name)
+    values_copied = copy_values_from_default(conn, collection_id, mode_id)
+    values_transformed = apply_high_contrast(conn, collection_id, mode_id)
+
+    return {
+        "mode_id": mode_id,
+        "mode_name": mode_name,
+        "values_copied": values_copied,
+        "values_transformed": values_transformed
+    }
+
+
 def create_theme(
     conn: sqlite3.Connection,
     file_id: int,

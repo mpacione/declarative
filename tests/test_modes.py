@@ -8,9 +8,11 @@ from dd.modes import (
     create_mode,
     copy_values_from_default,
     apply_oklch_inversion,
+    apply_high_contrast,
     apply_scale_factor,
     create_dark_mode,
     create_compact_mode,
+    create_high_contrast_mode,
     create_theme,
     oklch_to_hex
 )
@@ -503,3 +505,83 @@ def test_create_theme_multi_collection(db):
     """)
     spacing_value = cursor.fetchone()["resolved_value"]
     assert spacing_value == "16"  # Unchanged
+
+
+# High Contrast Tests
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_high_contrast_pushes_light_colors_lighter(db):
+    """Light colors should get pushed toward white in high contrast."""
+    seed_post_curation(db)
+
+    mode_id = create_mode(db, 1, "HighContrast")
+    copy_values_from_default(db, 1, mode_id)
+    apply_high_contrast(db, 1, mode_id)
+
+    # color.border.default is #D4D4D8 (light gray, L~0.87)
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE t.name = 'color.border.default' AND tv.mode_id = ?
+    """, (mode_id,))
+    hc_value = cursor.fetchone()["resolved_value"]
+
+    # Should be lighter than original (#D4D4D8 avg=212)
+    hex_clean = hc_value.lstrip('#')
+    r, g, b = int(hex_clean[0:2], 16), int(hex_clean[2:4], 16), int(hex_clean[4:6], 16)
+    avg = (r + g + b) / 3
+    assert avg > 220, f"Light color should be pushed lighter, got avg={avg} ({hc_value})"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_high_contrast_pushes_dark_colors_darker(db):
+    """Dark colors should get pushed toward black in high contrast."""
+    seed_post_curation(db)
+
+    mode_id = create_mode(db, 1, "HighContrast")
+    copy_values_from_default(db, 1, mode_id)
+    apply_high_contrast(db, 1, mode_id)
+
+    # color.surface.primary is #09090B (near-black, L~0.03)
+    cursor = db.execute("""
+        SELECT tv.resolved_value
+        FROM token_values tv
+        JOIN tokens t ON tv.token_id = t.id
+        WHERE t.name = 'color.surface.primary' AND tv.mode_id = ?
+    """, (mode_id,))
+    hc_value = cursor.fetchone()["resolved_value"]
+
+    hex_clean = hc_value.lstrip('#')
+    r, g, b = int(hex_clean[0:2], 16), int(hex_clean[2:4], 16), int(hex_clean[4:6], 16)
+    avg = (r + g + b) / 3
+    assert avg < 15, f"Dark color should be pushed darker, got avg={avg} ({hc_value})"
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_apply_high_contrast_skips_non_color_tokens(db):
+    """Non-color tokens should be unchanged by high contrast transform."""
+    seed_post_curation(db)
+
+    # Apply to spacing collection (has no colors)
+    mode_id = create_mode(db, 2, "HighContrast")
+    copy_values_from_default(db, 2, mode_id)
+    count = apply_high_contrast(db, 2, mode_id)
+
+    assert count == 0
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(10)
+def test_create_high_contrast_mode_convenience(db):
+    """create_high_contrast_mode should create mode, copy values, and apply transform."""
+    seed_post_curation(db)
+
+    result = create_high_contrast_mode(db, 1)
+
+    assert result["mode_name"] == "High Contrast"
+    assert result["values_copied"] > 0
+    assert result["values_transformed"] > 0
+    assert result["mode_id"] > 0

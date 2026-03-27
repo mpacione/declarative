@@ -154,7 +154,14 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **DB collections**: Colors renamed to "Color Semantics", new "Color Primitives" collection added (now 8 collections total)
 - **New functions**: `create_collection()`, `convert_to_alias()` in `dd/curate.py`
 
-### T4.2–T4.5 — not started
+### T4.2 — Add Modes (Dark, Compact, High Contrast)
+- **Status**: DONE (DB), Figma push pending
+- **Dark mode completed**: Added to Effects (26), Opacity (4), Radius (23), Spacing (27), Typography (164). Non-color values copied as-is.
+- **Compact mode**: Applied to Effects, Radius, Spacing, Typography with 0.875 scale factor. Dimension values scaled, non-dimensions copied.
+- **High Contrast mode**: New `apply_high_contrast()` function. Pushes light colors lighter (L > 0.5 → L×1.2+0.1), dark colors darker (L < 0.5 → L×0.6). Applied to Color Primitives (45) and Semantic/Component States (12).
+- **Mode coverage**: 8 collections × 2-3 modes each. Color Semantics has no values (aliases). Opacity has no Compact (not applicable).
+
+### T4.3–T4.5 — not started
 
 ---
 
