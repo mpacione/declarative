@@ -265,16 +265,18 @@ def generate_single_script(entries: list[dict[str, Any]]) -> str:
     return script
 
 
-COMPACT_HANDLER = r"""const R=D.split('\n').filter(l=>l);let b=0,f=0;
+COMPACT_HANDLER = r"""const R=D.split('\n').filter(l=>l);let b=0,f=0;const E=[];
+const prev=figma.root.getPluginData('rebind_errors');const errs=prev?JSON.parse(prev):[];
 for(const l of R){const[n,p,v]=l.split('|');try{
-const nd=await figma.getNodeByIdAsync(n);if(!nd){f++;continue;}
-const vr=await figma.variables.getVariableByIdAsync('VariableID:'+v);if(!vr){f++;continue;}
+const nd=await figma.getNodeByIdAsync(n);if(!nd){f++;E.push({n,p,r:'NODE_NOT_FOUND'});continue;}
+const vr=await figma.variables.getVariableByIdAsync('VariableID:'+v);if(!vr){f++;E.push({n,p,r:'VAR_NOT_FOUND'});continue;}
 if(p[0]==='f'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],fl=[...nd.fills];fl[i]=figma.variables.setBoundVariableForPaint(fl[i],'color',vr);nd.fills=fl;}
 else if(p[0]==='s'&&p.length<=2&&!isNaN(p[1])){const i=+p[1],st=[...nd.strokes];st[i]=figma.variables.setBoundVariableForPaint(st[i],'color',vr);nd.strokes=st;}
 else if(p[0]==='e'){const i=+p[1],fm={c:'color',r:'radius',x:'offsetX',y:'offsetY',s:'spread'}[p[2]],ef=[...nd.effects];ef[i]=figma.variables.setBoundVariableForEffect(ef[i],fm,vr);nd.effects=ef;}
 else{const M={cr:'cornerRadius',tlr:'topLeftRadius',trr:'topRightRadius',blr:'bottomLeftRadius',brr:'bottomRightRadius',pt:'paddingTop',pr:'paddingRight',pb:'paddingBottom',pl:'paddingLeft',is:'itemSpacing',cas:'counterAxisSpacing',op:'opacity',sw:'strokeWeight',stw:'strokeTopWeight',srw:'strokeRightWeight',sbw:'strokeBottomWeight',slw:'strokeLeftWeight',fs:'fontSize',ff:'fontFamily',fw:'fontWeight',fst:'fontStyle',lh:'lineHeight',ls:'letterSpacing',ps:'paragraphSpacing'};
-const prop=M[p];if(prop){nd.setBoundVariable(prop,vr);}else{f++;continue;}}
-b++;}catch(e){f++;}}
+const prop=M[p];if(prop){nd.setBoundVariable(prop,vr);}else{f++;E.push({n,p,r:'UNKNOWN_PROP'});continue;}}
+b++;}catch(e){f++;E.push({n,p,r:e.message});}}
+figma.root.setPluginData('rebind_errors',JSON.stringify(errs.concat(E)));
 figma.notify(`Rebound ${b}/${R.length} (${f} failures)`);"""
 
 
@@ -302,6 +304,21 @@ def generate_compact_script(entries: list[dict[str, Any]]) -> str:
 
     data_str = "\\n".join(lines)
     return f"(async()=>{{const D='{data_str}';{COMPACT_HANDLER}}})();"
+
+
+def generate_error_read_script() -> str:
+    """Generate a script that reads persisted rebind errors from pluginData."""
+    return (
+        "const d=figma.root.getPluginData('rebind_errors');"
+        "const errors=d?JSON.parse(d):[];"
+        "console.log('REBIND_ERRORS:'+JSON.stringify(errors));"
+        "return {count:errors.length,errors:errors.slice(0,200)};"
+    )
+
+
+def generate_error_clear_script() -> str:
+    """Generate a script that clears persisted rebind errors from pluginData."""
+    return "figma.root.setPluginData('rebind_errors','[]');return 'cleared';"
 
 
 def generate_rebind_scripts(conn: sqlite3.Connection, file_id: int) -> list[str]:

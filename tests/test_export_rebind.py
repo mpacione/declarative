@@ -619,6 +619,81 @@ class TestGenerateCompactScript:
         )
 
 
+class TestCompactHandlerErrorPersistence:
+    """Test that compact handler persists errors to figma.root.pluginData."""
+
+    def test_handler_stores_errors_in_plugin_data(self):
+        """Compact handler must write error details to figma.root.setPluginData."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "setPluginData" in script
+        assert "rebind_errors" in script
+
+    def test_handler_captures_error_reason(self):
+        """Each failure should record nodeId, property code, and reason."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "NODE_NOT_FOUND" in script or "node_missing" in script
+        assert "VAR_NOT_FOUND" in script or "var_missing" in script
+
+    def test_handler_appends_not_overwrites(self):
+        """Errors must append to existing plugin data, not overwrite previous batches."""
+        entries = [
+            {"binding_id": 1, "node_id": "1:1", "property": "fill.0.color", "variable_id": "VariableID:1:1"},
+        ]
+        script = generate_compact_script(entries)
+
+        assert "getPluginData" in script
+        assert "concat" in script or "push" in script or "..." in script
+
+    def test_handler_still_fits_50k_with_error_logging(self):
+        """Error logging overhead must not push 950-binding scripts over the 50K limit."""
+        entries = [
+            {"binding_id": i, "node_id": f"2219:{235700 + i}", "property": "stroke.0.color", "variable_id": f"VariableID:5438:{33000 + i}"}
+            for i in range(950)
+        ]
+        script = generate_compact_script(entries)
+
+        assert len(script) < 50000, f"Script too large with error logging: {len(script)} chars"
+
+
+class TestGenerateErrorReadScript:
+    """Test generate_error_read_script function."""
+
+    def test_error_read_script_reads_plugin_data(self):
+        """Should generate a script that reads rebind_errors from pluginData."""
+        from dd.export_rebind import generate_error_read_script
+        script = generate_error_read_script()
+
+        assert "getPluginData" in script
+        assert "rebind_errors" in script
+
+    def test_error_read_script_returns_data(self):
+        """Should return the error data for consumption."""
+        from dd.export_rebind import generate_error_read_script
+        script = generate_error_read_script()
+
+        assert "return" in script or "console.log" in script
+
+
+class TestGenerateErrorClearScript:
+    """Test generate_error_clear_script function."""
+
+    def test_error_clear_script_clears_plugin_data(self):
+        """Should generate a script that clears rebind_errors from pluginData."""
+        from dd.export_rebind import generate_error_clear_script
+        script = generate_error_clear_script()
+
+        assert "setPluginData" in script
+        assert "rebind_errors" in script
+
+
 class TestGetRebindSummary:
     """Test get_rebind_summary function."""
 

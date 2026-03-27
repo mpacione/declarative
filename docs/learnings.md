@@ -197,6 +197,25 @@ Accumulated insights from building and testing the curation pipeline. These info
 ### PROXY_EXECUTE Patch Enables Direct Script Execution
 - Patching the figma-console-mcp WebSocket server with a `PROXY_EXECUTE` handler lets external scripts execute code in the Figma plugin without going through Claude's tool interface.
 - Eliminates the 50K char tool parameter bottleneck — can send full 31KB scripts directly.
-- 193 scripts × 950 bindings executed in 76 seconds (vs estimated 10+ hours via MCP tool calls).
+- 193 scripts × 950 bindings executed in 108 seconds with 200ms inter-script delay.
 - Patch is ~30 lines in `websocket-server.js`, saved as `patches/figma-console-mcp-proxy-execute.patch`.
 - Won't survive package updates — must be re-applied.
+
+### Rapid Rebinding Can Hang Figma
+- First full run (76s, no delay): Figma hung and required force-quit. All 182K node updates arrived faster than the renderer could process.
+- Second run (108s, 200ms delay between scripts): No hang, Figma stayed responsive.
+- **Rule**: Always add `asyncio.sleep(0.2)` between PROXY_EXECUTE calls. The cost is ~38s extra on 193 scripts — worth it vs a crash.
+
+### Persistent Error Logging via pluginData
+- Figma console logs (`console.error`) are lost on crash/restart — useless for diagnosing rebind failures.
+- **Fix**: Compact handler writes errors to `figma.root.setPluginData('rebind_errors', JSON.stringify(errors))`.
+- Each script reads existing errors, appends its own, writes back — errors accumulate across all scripts.
+- Error format: `{n: nodeId, p: propertyCode, r: reason}` where reason is `NODE_NOT_FOUND`, `VAR_NOT_FOUND`, `UNKNOWN_PROP`, or the exception message.
+- Companion scripts: `generate_error_read_script()` and `generate_error_clear_script()` for reading/clearing.
+- Persists in the Figma document itself — survives crashes, restarts, and session changes.
+
+### Full Rebind Results
+- 182,877 bindings, 193 scripts, 0 errors on clean run (after shortcode fix).
+- Previous run had 234 errors from font shortcode collision (fs/ff/fw hitting fill paint branch).
+- Visual artifacts from first run (solid black brush selector cards, misplaced opacity) resolved by the shortcode fix.
+- Some residual artifacts remain from the first (buggy) run — need investigation and possible restore from DB state.

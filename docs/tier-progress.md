@@ -152,11 +152,12 @@ Dark mode derived, component tokens created. 308 Figma variables (2 collections 
 - **Scope**: 308/308 tokens mapped to Figma variable IDs via name matching
 
 ### T6.3 — Rebind Nodes to Variables
-- **Status**: IN PROGRESS
-- **Proof of concept**: 27/27 bindings successful (1 icon + 26 on iPhone screen), 0 failures
-- **Property types verified**: fill.color, stroke.color, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight
-- **Full scope**: 182,877 bindings across 193 compact scripts (~950 bindings each)
-- **Next**: Execute all scripts via `dd push --phase rebind`, verify visually in Figma
+- **Status**: DONE (with residual artifacts to investigate)
+- **Scope**: 182,877 bindings across 193 compact scripts (~950 bindings each)
+- **Execution**: 108 seconds via PROXY_EXECUTE with 200ms inter-script delay, 0 errors
+- **Property types**: fill.color, stroke.color, effect.color/radius/offset/spread, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight, opacity, strokeWeight
+- **Error persistence**: Errors written to `figma.root.pluginData('rebind_errors')` — survives crashes
+- **Known issue**: First run (with shortcode bug) left some visual artifacts. Second clean run (0 errors) applied correctly, but artifacts from run 1 may persist and need restore
 
 ### T6.4 — `dd push` CLI Command
 - **Status**: DONE
