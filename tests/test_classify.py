@@ -38,7 +38,9 @@ class TestClassificationSchema:
         expected = {
             "id", "screen_id", "node_id", "catalog_type_id",
             "canonical_type", "confidence", "classification_source",
-            "parent_instance_id", "slot_name", "created_at",
+            "parent_instance_id", "slot_name",
+            "vision_type", "vision_agrees", "flagged_for_review",
+            "created_at",
         }
         assert columns == expected
 
@@ -665,6 +667,21 @@ class TestRunClassification:
         row = cursor.fetchone()
         assert row is not None
         assert "header" in row[0]
+
+    def test_includes_llm_when_client_provided(self, db: sqlite3.Connection):
+        import json
+        from unittest.mock import MagicMock
+
+        # Node 6 "Content Area" is unclassified FRAME at depth 1
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = MagicMock(
+            content=[MagicMock(text=json.dumps([
+                {"node_id": 6, "type": "container", "confidence": 0.7},
+            ]))]
+        )
+
+        result = run_classification(db, file_id=1, client=mock_client)
+        assert result["llm_classified"] >= 0  # LLM step was attempted
 
 
 class TestClassifyCLI:

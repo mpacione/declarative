@@ -324,7 +324,7 @@ def _run_generate_ir(db_path: str, screen_arg: str) -> None:
     conn.close()
 
 
-def _run_classify(db_path: str) -> None:
+def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
@@ -337,7 +337,7 @@ def _run_classify(db_path: str) -> None:
     # Ensure catalog is seeded before classifying
     seed_catalog(conn)
 
-    cursor = conn.execute("SELECT id FROM files LIMIT 1")
+    cursor = conn.execute("SELECT id, file_key FROM files LIMIT 1")
     row = cursor.fetchone()
     if row is None:
         print("Error: No file found in database.", file=sys.stderr)
@@ -345,14 +345,61 @@ def _run_classify(db_path: str) -> None:
         sys.exit(1)
 
     file_id = row[0]
-    result = run_classification(conn, file_id)
+    file_key = row[1]
+
+    client = None
+    fetch_screenshot = None
+
+    if use_llm or use_vision:
+        import anthropic
+        client = anthropic.Anthropic()
+
+    if use_vision:
+        fetch_screenshot = _make_figma_screenshot_fetcher()
+
+    result = run_classification(
+        conn, file_id,
+        client=client,
+        file_key=file_key if use_vision else None,
+        fetch_screenshot=fetch_screenshot,
+    )
     conn.close()
 
     print(f"Classification complete:")
     print(f"  Screens processed:     {result['screens_processed']}")
     print(f"  Formal classified:     {result['formal_classified']}")
     print(f"  Heuristic classified:  {result['heuristic_classified']}")
+    if use_llm:
+        print(f"  LLM classified:        {result['llm_classified']}")
+    print(f"  Parent links:          {result['parent_links']}")
+    if use_vision:
+        v = result["vision"]
+        print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
     print(f"  Skeletons generated:   {result['skeletons_generated']}")
+
+
+def _make_figma_screenshot_fetcher():
+    """Create a screenshot fetcher using the Figma REST API."""
+    import requests
+
+    figma_token = os.environ.get("FIGMA_ACCESS_TOKEN", "")
+
+    def fetch(file_key: str, figma_node_id: str) -> bytes | None:
+        url = f"https://api.figma.com/v1/images/{file_key}?ids={figma_node_id}&format=png&scale=1"
+        headers = {"X-Figma-Token": figma_token}
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            image_url = resp.json().get("images", {}).get(figma_node_id)
+            if not image_url:
+                return None
+            img_resp = requests.get(image_url, timeout=30)
+            img_resp.raise_for_status()
+            return img_resp.content
+        except requests.RequestException:
+            return None
+
+    return fetch
 
 
 def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
@@ -485,6 +532,8 @@ def main(argv: Optional[list] = None) -> None:
 
     classify_parser = subparsers.add_parser("classify", help="Classify screen components against catalog")
     classify_parser.add_argument("--db", help="Database path")
+    classify_parser.add_argument("--llm", action="store_true", help="Enable LLM classification (requires ANTHROPIC_API_KEY)")
+    classify_parser.add_argument("--vision", action="store_true", help="Enable vision cross-validation (requires ANTHROPIC_API_KEY + FIGMA_ACCESS_TOKEN)")
 
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
@@ -539,7 +588,7 @@ def main(argv: Optional[list] = None) -> None:
         _run_seed_catalog(db_path)
     elif args.command == "classify":
         db_path = detect_db_path(args.db)
-        _run_classify(db_path)
+        _run_classify(db_path, use_llm=args.llm, use_vision=args.vision)
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
         _run_generate_ir(db_path, args.screen)

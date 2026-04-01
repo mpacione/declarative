@@ -446,6 +446,9 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     )),
     parent_instance_id    INTEGER REFERENCES screen_component_instances(id),
     slot_name             TEXT,
+    vision_type           TEXT,                        -- vision classifier result
+    vision_agrees         INTEGER,                     -- 1=agree, 0=disagree with structural
+    flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
     created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, node_id)
 );

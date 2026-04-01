@@ -63,7 +63,7 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     },
     {
         "canonical_name": "button_group",
-        "aliases": ["btn_group", "button_bar"],
+        "aliases": ["btn_group", "button_bar", "button set - leading", "button set - trailing"],
         "category": "actions",
         "behavioral_description": "A row or column of related buttons presented as a unit.",
         "prop_definitions": {"orientation": "enum:horizontal|vertical", "size": "enum:sm|md|lg"},

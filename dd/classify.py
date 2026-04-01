@@ -215,11 +215,19 @@ def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> Dict[str,
     return {"linked": len(updates)}
 
 
-def run_classification(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
+def run_classification(
+    conn: sqlite3.Connection,
+    file_id: int,
+    client: Any = None,
+    file_key: Optional[str] = None,
+    fetch_screenshot: Any = None,
+) -> Dict[str, Any]:
     """Orchestrate the full classification cascade for all screens in a file.
 
-    Runs: formal matching → structural heuristics → skeleton extraction.
-    Skips component_sheet screens. Returns summary dict.
+    Runs: formal → heuristics → [LLM] → parent linkage → [vision] → skeleton.
+    LLM step runs only if client is provided.
+    Vision step runs only if client, file_key, and fetch_screenshot are provided.
+    Skips component_sheet screens.
     """
     from dd.classify_heuristics import classify_heuristics
     from dd.classify_skeleton import extract_skeleton
@@ -234,7 +242,9 @@ def run_classification(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]
 
     total_formal = 0
     total_heuristic = 0
+    total_llm = 0
     total_linked = 0
+    total_vision = {"validated": 0, "agreed": 0, "disagreed": 0}
     total_skeletons = 0
 
     for screen_id in screen_ids:
@@ -244,8 +254,22 @@ def run_classification(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]
         heuristic_result = classify_heuristics(conn, screen_id)
         total_heuristic += heuristic_result["classified"]
 
+        if client is not None:
+            from dd.classify_llm import classify_llm
+            llm_result = classify_llm(conn, screen_id, client)
+            total_llm += llm_result["classified"]
+
         link_result = link_parent_instances(conn, screen_id)
         total_linked += link_result["linked"]
+
+        if client is not None and file_key is not None and fetch_screenshot is not None:
+            from dd.classify_vision import cross_validate_vision
+            vision_result = cross_validate_vision(
+                conn, screen_id, file_key, client, fetch_screenshot,
+            )
+            total_vision["validated"] += vision_result["validated"]
+            total_vision["agreed"] += vision_result["agreed"]
+            total_vision["disagreed"] += vision_result["disagreed"]
 
         skeleton_result = extract_skeleton(conn, screen_id)
         if skeleton_result is not None:
@@ -255,6 +279,8 @@ def run_classification(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]
         "screens_processed": len(screen_ids),
         "formal_classified": total_formal,
         "heuristic_classified": total_heuristic,
+        "llm_classified": total_llm,
         "parent_links": total_linked,
+        "vision": total_vision,
         "skeletons_generated": total_skeletons,
     }
