@@ -6,7 +6,7 @@ import pytest
 
 from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.classify import build_alias_index, parse_component_name, classify_formal, link_parent_instances, run_classification
+from dd.classify import build_alias_index, parse_component_name, is_system_chrome, classify_formal, link_parent_instances, run_classification
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_skeleton import extract_skeleton
 from dd.types import ClassificationSource
@@ -193,6 +193,48 @@ class TestParseComponentName:
         assert candidates[1] == "button"
 
 
+class TestSystemChrome:
+    """Verify system chrome detection."""
+
+    def test_ios_status_bar(self):
+        assert is_system_chrome("ios/status-bar") is True
+
+    def test_ios_capitalized(self):
+        assert is_system_chrome("iOS/StatusBar") is True
+
+    def test_home_indicator(self):
+        assert is_system_chrome("Home Indicator") is True
+        assert is_system_chrome("HomeIndicator") is True
+
+    def test_safari_bottom(self):
+        assert is_system_chrome("Safari - Bottom") is True
+
+    def test_keyboard_keys(self):
+        assert is_system_chrome("a") is True
+        assert is_system_chrome("z") is True
+        assert is_system_chrome("shift") is True
+        assert is_system_chrome("caps lock") is True
+        assert is_system_chrome("Enter") is True
+        assert is_system_chrome("Emoji") is True
+        assert is_system_chrome("Dictation") is True
+        assert is_system_chrome(".?123") is True
+        assert is_system_chrome("Keyboard Layout") is True
+        assert is_system_chrome("Keyboard Close") is True
+
+    def test_key_container(self):
+        assert is_system_chrome("_KeyContainer") is True
+        assert is_system_chrome("_Key") is True
+
+    def test_view_mode(self):
+        assert is_system_chrome("View Mode") is True
+
+    def test_real_components_not_chrome(self):
+        assert is_system_chrome("button/primary") is False
+        assert is_system_chrome("icon/back") is False
+        assert is_system_chrome("card/sheet") is False
+        assert is_system_chrome("nav/top-nav") is False
+
+
 # ---------------------------------------------------------------------------
 # Step 3: Formal matching tests
 # ---------------------------------------------------------------------------
@@ -213,6 +255,11 @@ def _seed_classifiable_screen(db: sqlite3.Connection) -> None:
         (5, 1, "n5", "Frame 359", "FRAME", 1, 4, 0, 100),
         (6, 1, "n6", "ios/status-bar", "INSTANCE", 1, 5, 0, 0),
         (7, 1, "n7", "logo/dank", "INSTANCE", 1, 6, 0, 50),
+        # Additional patterns
+        (8, 1, "n8", ".icons/chevron", "INSTANCE", 2, 0, 0, 0),
+        (9, 1, "n9", "Button 3", "INSTANCE", 2, 1, 0, 48),
+        (10, 1, "n10", "Previous", "INSTANCE", 2, 2, 0, 0),
+        (11, 1, "n11", "Home Indicator", "INSTANCE", 1, 7, 0, 0),
     ]
     db.executemany(
         "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, y, height) "
@@ -293,6 +340,33 @@ class TestFormalMatching:
         first = classify_formal(db, screen_id=1)
         second = classify_formal(db, screen_id=1)
         assert second["classified"] == 0
+
+    def test_classifies_dot_icons_as_icon(self, db: sqlite3.Connection):
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 8"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "icon"
+
+    def test_classifies_button_n_as_button(self, db: sqlite3.Connection):
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 9"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "button"
+
+    def test_skips_system_chrome(self, db: sqlite3.Connection):
+        classify_formal(db, screen_id=1)
+        # ios/status-bar and Home Indicator should be skipped
+        for nid in (6, 11):
+            cursor = db.execute(
+                "SELECT id FROM screen_component_instances WHERE node_id = ?", (nid,)
+            )
+            assert cursor.fetchone() is None, f"Node {nid} should be skipped as system chrome"
 
     def test_sets_catalog_type_id(self, db: sqlite3.Connection):
         classify_formal(db, screen_id=1)

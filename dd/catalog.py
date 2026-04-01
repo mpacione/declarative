@@ -30,7 +30,7 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     # ── Actions (6) ──────────────────────────────────────────────────────
     {
         "canonical_name": "button",
-        "aliases": ["btn", "cta"],
+        "aliases": ["btn", "cta", "previous", "next", "new folder"],
         "category": "actions",
         "behavioral_description": "Primary interactive control that triggers an action on press.",
         "prop_definitions": {"label": "text", "variant": "enum:primary|secondary|ghost|destructive", "size": "enum:sm|md|lg", "disabled": "boolean", "icon": "slot"},
@@ -296,7 +296,7 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     },
     {
         "canonical_name": "icon",
-        "aliases": ["glyph", "symbol"],
+        "aliases": ["glyph", "symbol", ".icons"],
         "category": "content_and_display",
         "behavioral_description": "A small symbolic graphic conveying meaning or affordance.",
         "prop_definitions": {"name": "text", "size": "enum:xs|sm|md|lg", "color": "token_ref"},
