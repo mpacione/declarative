@@ -388,13 +388,14 @@ def make_figma_screenshot_fetcher(
     max_retries: int = 5,
     retry_delay: float = 2.0,
 ):
-    """Create a screenshot fetcher with retry/backoff for Figma rate limits.
+    """Create a batch screenshot fetcher with retry/backoff for Figma rate limits.
 
-    Args:
-        session: requests.Session (or mock). Created automatically if None.
-        token: Figma access token. Read from FIGMA_ACCESS_TOKEN if None.
-        max_retries: Max retry attempts on 429.
-        retry_delay: Base delay in seconds (doubles on each retry).
+    Supports both single and batch calls:
+      - fetch(file_key, "node_id") → bytes | None
+      - fetch(file_key, ["id1", "id2", ...]) → {node_id: bytes}
+
+    Figma's image API accepts comma-separated IDs, so batch mode makes
+    one API call per screen instead of one per node.
     """
     import time
     if session is None:
@@ -403,10 +404,10 @@ def make_figma_screenshot_fetcher(
     if token is None:
         token = os.environ.get("FIGMA_ACCESS_TOKEN", "")
 
-    def fetch(file_key: str, figma_node_id: str) -> bytes | None:
+    def _fetch_image_urls(file_key: str, node_ids: list[str]) -> dict[str, str]:
         url = f"https://api.figma.com/v1/images/{file_key}"
         headers = {"X-Figma-Token": token}
-        params = {"ids": figma_node_id, "format": "png", "scale": "1"}
+        params = {"ids": ",".join(node_ids), "format": "png", "scale": "1"}
 
         delay = retry_delay
         for attempt in range(max_retries + 1):
@@ -417,23 +418,40 @@ def make_figma_screenshot_fetcher(
                         time.sleep(delay)
                         delay *= 2
                         continue
-                    return None
+                    return {}
                 resp.raise_for_status()
-                images = resp.json().get("images", {})
-                image_url = images.get(figma_node_id)
-                if not image_url:
-                    return None
-                img_resp = session.get(image_url, timeout=30)
-                img_resp.raise_for_status()
-                return img_resp.content
+                return resp.json().get("images", {})
             except Exception:
                 if attempt < max_retries:
                     time.sleep(delay)
                     delay *= 2
                     continue
-                return None
+                return {}
+        return {}
 
-        return None
+    def _download_image(image_url: str) -> bytes | None:
+        try:
+            resp = session.get(image_url, timeout=30)
+            resp.raise_for_status()
+            return resp.content
+        except Exception:
+            return None
+
+    def fetch(file_key: str, node_ids_or_id):
+        if isinstance(node_ids_or_id, list):
+            if not node_ids_or_id:
+                return {}
+            image_urls = _fetch_image_urls(file_key, node_ids_or_id)
+            results = {}
+            for nid, img_url in image_urls.items():
+                if img_url:
+                    data = _download_image(img_url)
+                    if data:
+                        results[nid] = data
+            return results
+        else:
+            result = fetch(file_key, [node_ids_or_id])
+            return result.get(node_ids_or_id)
 
     return fetch
 

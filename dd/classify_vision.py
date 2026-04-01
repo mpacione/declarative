@@ -20,7 +20,7 @@ def cross_validate_vision(
     screen_id: int,
     file_key: str,
     client: Any,
-    fetch_screenshot: Callable[[str, str], Optional[bytes]],
+    fetch_screenshot: Callable,
     confidence_threshold: float = 0.95,
 ) -> Dict[str, Any]:
     """Cross-validate classified instances using vision.
@@ -29,17 +29,17 @@ def cross_validate_vision(
     screenshot and asks the vision model to classify it. Updates vision_type,
     vision_agrees, and flagged_for_review columns.
 
-    Args:
-        conn: Database connection
-        screen_id: Screen to validate
-        file_key: Figma file key for screenshot API
-        client: Anthropic client (or mock)
-        fetch_screenshot: Callable(file_key, figma_node_id) → PNG bytes or None
-        confidence_threshold: Only validate instances below this confidence
+    fetch_screenshot can be either:
+      - Callable(file_key, node_id) → bytes | None  (single fetch)
+      - Callable(file_key, [node_ids]) → {node_id: bytes}  (batch fetch)
+    The function auto-detects based on whether the second arg is a list.
     """
     instances = _get_instances_to_validate(conn, screen_id, confidence_threshold)
     if not instances:
         return {"validated": 0, "agreed": 0, "disagreed": 0}
+
+    node_ids = [inst["figma_node_id"] for inst in instances]
+    screenshots = _fetch_screenshots_batch(fetch_screenshot, file_key, node_ids)
 
     catalog_types = [e["canonical_name"] for e in get_catalog(conn)]
     validated = 0
@@ -47,7 +47,7 @@ def cross_validate_vision(
     disagreed = 0
 
     for instance in instances:
-        screenshot = fetch_screenshot(file_key, instance["figma_node_id"])
+        screenshot = screenshots.get(instance["figma_node_id"])
         if screenshot is None:
             continue
 
@@ -76,6 +76,34 @@ def cross_validate_vision(
 
     conn.commit()
     return {"validated": validated, "agreed": agreed, "disagreed": disagreed}
+
+
+def _fetch_screenshots_batch(
+    fetch_fn: Callable,
+    file_key: str,
+    node_ids: List[str],
+) -> Dict[str, bytes]:
+    """Fetch screenshots, auto-detecting single vs batch fetch function.
+
+    Tries to call fetch_fn with a list of node_ids first. If it returns
+    a dict, use that. Otherwise falls back to calling per-node.
+    """
+    if not node_ids:
+        return {}
+
+    try:
+        result = fetch_fn(file_key, node_ids)
+        if isinstance(result, dict):
+            return result
+    except TypeError:
+        pass
+
+    screenshots = {}
+    for nid in node_ids:
+        data = fetch_fn(file_key, nid)
+        if data is not None:
+            screenshots[nid] = data
+    return screenshots
 
 
 def _get_instances_to_validate(
