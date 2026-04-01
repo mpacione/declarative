@@ -47,6 +47,35 @@ class TestMapNodeToElement:
             "top": 16, "right": 24, "bottom": 16, "left": 24,
         }
 
+    def test_token_bound_padding_in_layout_not_style(self):
+        node = _make_node(
+            padding_top=16, padding_right=24, padding_bottom=16, padding_left=24,
+            bindings=[
+                {"property": "padding.top", "token_name": "space.s16", "resolved_value": "16"},
+                {"property": "padding.right", "token_name": "space.s24", "resolved_value": "24"},
+                {"property": "padding.bottom", "token_name": "space.s16", "resolved_value": "16"},
+                {"property": "padding.left", "token_name": "space.s24", "resolved_value": "24"},
+            ],
+        )
+        element = map_node_to_element(node)
+        # Token refs should appear in layout.padding
+        assert element["layout"]["padding"]["top"] == "{space.s16}"
+        assert element["layout"]["padding"]["right"] == "{space.s24}"
+        # And NOT duplicated in style
+        assert "paddingTop" not in element.get("style", {})
+        assert "paddingRight" not in element.get("style", {})
+
+    def test_token_bound_gap_in_layout_not_style(self):
+        node = _make_node(
+            item_spacing=16,
+            bindings=[
+                {"property": "itemSpacing", "token_name": "space.s16", "resolved_value": "16"},
+            ],
+        )
+        element = map_node_to_element(node)
+        assert element["layout"]["gap"] == "{space.s16}"
+        assert "gap" not in element.get("style", {})
+
     def test_omits_zero_padding(self):
         node = _make_node(
             padding_top=0, padding_right=0, padding_bottom=0, padding_left=0
@@ -283,6 +312,81 @@ class TestBuildCompositionSpec:
 # ---------------------------------------------------------------------------
 # Step 4: generate_ir wrapper + CLI
 # ---------------------------------------------------------------------------
+
+class TestContainerInjection:
+    """Verify unclassified parent FRAMEs become container elements."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Home', 428, 926)"
+        )
+        # Unclassified FRAME "Content Area" at depth 1 with two classified children
+        nodes = [
+            (10, 1, "f1", "Content Area", "FRAME", 1, 0, 0, 56, 428, 802, "VERTICAL", 16, None),
+            (11, 1, "b1", "button/primary", "INSTANCE", 2, 0, 16, 100, 200, 48, None, None, 10),
+            (12, 1, "b2", "button/secondary", "INSTANCE", 2, 1, 16, 160, 200, 48, None, None, 10),
+        ]
+        conn.executemany(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, layout_mode, item_spacing, parent_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            nodes,
+        )
+        # Only classify the buttons, NOT the parent frame
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (1, 11, 'button', 1.0, 'formal')"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (1, 12, 'button', 1.0, 'formal')"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_injects_container_for_unclassified_parent(self, db):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+
+        # The two buttons should NOT be root children
+        root = spec["elements"][spec["root"]]
+        # There should be a container element that holds them
+        container = None
+        for eid, el in spec["elements"].items():
+            if el.get("type") == "container":
+                container = el
+                break
+
+        assert container is not None, "Expected a container element for unclassified parent FRAME"
+        assert "children" in container
+        assert len(container["children"]) == 2
+
+    def test_container_preserves_layout(self, db):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+
+        container = next(
+            el for el in spec["elements"].values() if el.get("type") == "container"
+        )
+        assert container["layout"]["direction"] == "vertical"
+        assert container["layout"]["gap"] == 16
+
+    def test_reduces_root_children(self, db):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+
+        root = spec["elements"][spec["root"]]
+        # Should have 1 container, not 2 loose buttons
+        assert len(root["children"]) == 1
+
 
 class TestGenerateIR:
     """Verify generate_ir() end-to-end wrapper."""
