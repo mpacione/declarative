@@ -75,6 +75,28 @@ class DTCGType(str, enum.Enum):
     GRADIENT = "gradient"
 
 
+class ComponentCategory(str, enum.Enum):
+    """Intent-based categories for canonical UI component types."""
+    ACTIONS = "actions"
+    SELECTION_AND_INPUT = "selection_and_input"
+    CONTENT_AND_DISPLAY = "content_and_display"
+    NAVIGATION = "navigation"
+    FEEDBACK_AND_STATUS = "feedback_and_status"
+    CONTAINMENT_AND_OVERLAY = "containment_and_overlay"
+
+
+VALID_CATEGORIES: FrozenSet[str] = frozenset(c.value for c in ComponentCategory)
+
+
+class ClassificationSource(str, enum.Enum):
+    """How a component instance was classified."""
+    FORMAL = "formal"
+    HEURISTIC = "heuristic"
+    LLM = "llm"
+    VISION = "vision"
+    MANUAL = "manual"
+
+
 # Device classification mapping
 DEVICE_DIMENSIONS: Dict[Tuple[int, int], DeviceClass] = {
     (428, 926): DeviceClass.IPHONE,

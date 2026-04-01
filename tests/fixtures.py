@@ -324,6 +324,13 @@ def seed_post_validation(db: sqlite3.Connection) -> sqlite3.Connection:
     return db
 
 
+def seed_with_catalog(db: sqlite3.Connection) -> sqlite3.Connection:
+    """Seed DB with the universal component type catalog (T5 Phase 0)."""
+    from dd.catalog import seed_catalog
+    seed_catalog(db)
+    return db
+
+
 def make_mock_figma_response(screen_name: str, node_count: int = 10) -> List[Dict[str, Any]]:
     """
     Generate mock Figma extraction response data.

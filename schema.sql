@@ -135,6 +135,28 @@ CREATE TABLE token_value_history (
 CREATE INDEX idx_tvh_token_mode ON token_value_history(token_id, mode_id);
 CREATE INDEX idx_tvh_changed_at ON token_value_history(changed_at);
 
+-- Universal component type vocabulary (~48 canonical UI types).
+-- Not per-file — this is the abstract vocabulary for classification and generation.
+CREATE TABLE IF NOT EXISTS component_type_catalog (
+    id                      INTEGER PRIMARY KEY,
+    canonical_name          TEXT NOT NULL UNIQUE,
+    aliases                 TEXT,                        -- JSON array of alternate names
+    category                TEXT NOT NULL CHECK(category IN (
+        'actions','selection_and_input','content_and_display',
+        'navigation','feedback_and_status','containment_and_overlay'
+    )),
+    behavioral_description  TEXT,                        -- One-sentence description
+    prop_definitions        TEXT,                        -- JSON: typed property specs
+    slot_definitions        TEXT,                        -- JSON: named insertion points
+    semantic_role           TEXT,                        -- WCAG/accessibility role
+    recognition_heuristics  TEXT,                        -- JSON: structural patterns for classification
+    related_types           TEXT,                        -- JSON array of related canonical names
+    created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ctc_category ON component_type_catalog(category);
+CREATE INDEX IF NOT EXISTS idx_ctc_semantic_role ON component_type_catalog(semantic_role);
+
 -- Component definitions (not instances — those live in nodes table).
 -- Maps to Figma component sets or standalone components.
 CREATE TABLE components (
@@ -405,6 +427,40 @@ CREATE TABLE route_mappings (
     platform        TEXT NOT NULL DEFAULT 'web', -- web, ios, android
     component_path  TEXT,                        -- src/pages/Settings.tsx
     UNIQUE(screen_id, route, platform)
+);
+
+-- ============================================================
+-- CLASSIFICATION TABLES — T5 compositional analysis
+-- ============================================================
+
+-- Classified component instances per screen. Maps nodes to canonical types.
+CREATE TABLE IF NOT EXISTS screen_component_instances (
+    id                    INTEGER PRIMARY KEY,
+    screen_id             INTEGER NOT NULL REFERENCES screens(id) ON DELETE CASCADE,
+    node_id               INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    catalog_type_id       INTEGER REFERENCES component_type_catalog(id),
+    canonical_type        TEXT NOT NULL,
+    confidence            REAL NOT NULL DEFAULT 1.0,
+    classification_source TEXT NOT NULL CHECK(classification_source IN (
+        'formal','heuristic','llm','vision','manual'
+    )),
+    parent_instance_id    INTEGER REFERENCES screen_component_instances(id),
+    slot_name             TEXT,
+    created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(screen_id, node_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sci_screen ON screen_component_instances(screen_id);
+CREATE INDEX IF NOT EXISTS idx_sci_type ON screen_component_instances(canonical_type);
+
+-- Screen-level skeleton: abstract structural arrangement after classification.
+CREATE TABLE IF NOT EXISTS screen_skeletons (
+    id                    INTEGER PRIMARY KEY,
+    screen_id             INTEGER NOT NULL UNIQUE REFERENCES screens(id) ON DELETE CASCADE,
+    skeleton_notation     TEXT NOT NULL,
+    skeleton_type         TEXT,
+    zone_map              TEXT,
+    created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 -- ============================================================

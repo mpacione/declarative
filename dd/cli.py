@@ -288,6 +288,19 @@ def _run_curate_report(db_path: str, as_json: bool = False) -> None:
     conn.close()
 
 
+def _run_seed_catalog(db_path: str) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.catalog import seed_catalog
+
+    conn = get_connection(db_path)
+    count = seed_catalog(conn)
+    conn.close()
+    print(f"Seeded {count} component types into catalog.")
+
+
 def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -413,6 +426,9 @@ def main(argv: Optional[list] = None) -> None:
     maintenance_parser.add_argument("--keep-last", type=int, default=50, help="Number of recent runs to keep (default: 50)")
     maintenance_parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
 
+    seed_catalog_parser = subparsers.add_parser("seed-catalog", help="Seed universal component type catalog")
+    seed_catalog_parser.add_argument("--db", help="Database path")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -457,6 +473,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "maintenance":
         db_path = detect_db_path(args.db)
         _run_maintenance(db_path, args)
+    elif args.command == "seed-catalog":
+        db_path = detect_db_path(args.db)
+        _run_seed_catalog(db_path)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)
