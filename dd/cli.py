@@ -14,8 +14,9 @@ import argparse
 import glob
 import json
 
+from pathlib import Path as _Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env", override=True)
 import os
 import re
 import sys
@@ -388,12 +389,14 @@ def _make_figma_screenshot_fetcher():
     figma_token = os.environ.get("FIGMA_ACCESS_TOKEN", "")
 
     def fetch(file_key: str, figma_node_id: str) -> bytes | None:
-        url = f"https://api.figma.com/v1/images/{file_key}?ids={figma_node_id}&format=png&scale=1"
+        url = f"https://api.figma.com/v1/images/{file_key}"
         headers = {"X-Figma-Token": figma_token}
+        params = {"ids": figma_node_id, "format": "png", "scale": "1"}
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
             resp.raise_for_status()
-            image_url = resp.json().get("images", {}).get(figma_node_id)
+            images = resp.json().get("images", {})
+            image_url = images.get(figma_node_id)
             if not image_url:
                 return None
             img_resp = requests.get(image_url, timeout=30)
