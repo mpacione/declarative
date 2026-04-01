@@ -154,6 +154,94 @@ class TestCrossValidateVision:
 
 
 # ---------------------------------------------------------------------------
+# Batched screenshot fetcher tests
+# ---------------------------------------------------------------------------
+
+class TestBatchedScreenshotFetcher:
+    """Verify the batched Figma screenshot fetcher with retry."""
+
+    def test_fetches_single_node(self):
+        from dd.cli import make_figma_screenshot_fetcher
+        mock_session = _make_mock_figma_session({
+            "10:100": b"png_bytes_1",
+        })
+        fetcher = make_figma_screenshot_fetcher(session=mock_session, token="fake")
+        result = fetcher("fk", "10:100")
+        assert result == b"png_bytes_1"
+
+    def test_retries_on_429(self):
+        from dd.cli import make_figma_screenshot_fetcher
+        call_count = {"n": 0}
+
+        def mock_get(url, **kwargs):
+            call_count["n"] += 1
+            resp = MagicMock()
+            if call_count["n"] <= 2:
+                resp.status_code = 429
+                resp.raise_for_status.side_effect = Exception("429")
+                return resp
+            resp.status_code = 200
+            resp.json.return_value = {
+                "images": {"10:100": "https://fake-image-url.com/img.png"}
+            }
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        mock_session = MagicMock()
+        mock_session.get.side_effect = mock_get
+        fetcher = make_figma_screenshot_fetcher(
+            session=mock_session, token="fake", retry_delay=0.01,
+        )
+        result = fetcher("fk", "10:100")
+        # Should have retried and eventually returned None (since we can't fetch the image URL)
+        assert call_count["n"] >= 2
+
+    def test_returns_none_after_max_retries(self):
+        from dd.cli import make_figma_screenshot_fetcher
+        mock_session = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 429
+        resp.raise_for_status.side_effect = Exception("429")
+        mock_session.get.return_value = resp
+
+        fetcher = make_figma_screenshot_fetcher(
+            session=mock_session, token="fake", max_retries=2, retry_delay=0.01,
+        )
+        result = fetcher("fk", "10:100")
+        assert result is None
+
+
+def _make_mock_figma_session(node_bytes_map: dict) -> MagicMock:
+    """Mock requests.Session that returns image URLs then image bytes."""
+    call_count = {"n": 0}
+
+    def mock_get(url, **kwargs):
+        call_count["n"] += 1
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+
+        if "api.figma.com" in url:
+            params = kwargs.get("params", {})
+            node_id = params.get("ids", "")
+            images = {}
+            if node_id in node_bytes_map:
+                images[node_id] = f"https://fake-s3/{node_id}.png"
+            resp.json.return_value = {"images": images}
+        else:
+            for nid, data in node_bytes_map.items():
+                if nid in url:
+                    resp.content = data
+                    return resp
+            resp.content = b""
+        return resp
+
+    session = MagicMock()
+    session.get.side_effect = mock_get
+    return session
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

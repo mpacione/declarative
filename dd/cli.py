@@ -359,7 +359,7 @@ def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False)
         client = anthropic.Anthropic()
 
     if use_vision:
-        fetch_screenshot = _make_figma_screenshot_fetcher()
+        fetch_screenshot = make_figma_screenshot_fetcher()
 
     result = run_classification(
         conn, file_id,
@@ -382,28 +382,58 @@ def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False)
     print(f"  Skeletons generated:   {result['skeletons_generated']}")
 
 
-def _make_figma_screenshot_fetcher():
-    """Create a screenshot fetcher using the Figma REST API."""
-    import requests
+def make_figma_screenshot_fetcher(
+    session=None,
+    token: str | None = None,
+    max_retries: int = 5,
+    retry_delay: float = 2.0,
+):
+    """Create a screenshot fetcher with retry/backoff for Figma rate limits.
 
-    figma_token = os.environ.get("FIGMA_ACCESS_TOKEN", "")
+    Args:
+        session: requests.Session (or mock). Created automatically if None.
+        token: Figma access token. Read from FIGMA_ACCESS_TOKEN if None.
+        max_retries: Max retry attempts on 429.
+        retry_delay: Base delay in seconds (doubles on each retry).
+    """
+    import time
+    if session is None:
+        import requests
+        session = requests.Session()
+    if token is None:
+        token = os.environ.get("FIGMA_ACCESS_TOKEN", "")
 
     def fetch(file_key: str, figma_node_id: str) -> bytes | None:
         url = f"https://api.figma.com/v1/images/{file_key}"
-        headers = {"X-Figma-Token": figma_token}
+        headers = {"X-Figma-Token": token}
         params = {"ids": figma_node_id, "format": "png", "scale": "1"}
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=30)
-            resp.raise_for_status()
-            images = resp.json().get("images", {})
-            image_url = images.get(figma_node_id)
-            if not image_url:
+
+        delay = retry_delay
+        for attempt in range(max_retries + 1):
+            try:
+                resp = session.get(url, headers=headers, params=params, timeout=30)
+                if resp.status_code == 429:
+                    if attempt < max_retries:
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    return None
+                resp.raise_for_status()
+                images = resp.json().get("images", {})
+                image_url = images.get(figma_node_id)
+                if not image_url:
+                    return None
+                img_resp = session.get(image_url, timeout=30)
+                img_resp.raise_for_status()
+                return img_resp.content
+            except Exception:
+                if attempt < max_retries:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
                 return None
-            img_resp = requests.get(image_url, timeout=30)
-            img_resp.raise_for_status()
-            return img_resp.content
-        except requests.RequestException:
-            return None
+
+        return None
 
     return fetch
 
