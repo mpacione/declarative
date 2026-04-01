@@ -301,6 +301,37 @@ def _run_seed_catalog(db_path: str) -> None:
     print(f"Seeded {count} component types into catalog.")
 
 
+def _run_classify(db_path: str) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.catalog import seed_catalog
+    from dd.classify import run_classification
+
+    conn = get_connection(db_path)
+
+    # Ensure catalog is seeded before classifying
+    seed_catalog(conn)
+
+    cursor = conn.execute("SELECT id FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+
+    file_id = row[0]
+    result = run_classification(conn, file_id)
+    conn.close()
+
+    print(f"Classification complete:")
+    print(f"  Screens processed:     {result['screens_processed']}")
+    print(f"  Formal classified:     {result['formal_classified']}")
+    print(f"  Heuristic classified:  {result['heuristic_classified']}")
+    print(f"  Skeletons generated:   {result['skeletons_generated']}")
+
+
 def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -429,6 +460,9 @@ def main(argv: Optional[list] = None) -> None:
     seed_catalog_parser = subparsers.add_parser("seed-catalog", help="Seed universal component type catalog")
     seed_catalog_parser.add_argument("--db", help="Database path")
 
+    classify_parser = subparsers.add_parser("classify", help="Classify screen components against catalog")
+    classify_parser.add_argument("--db", help="Database path")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -476,6 +510,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "seed-catalog":
         db_path = detect_db_path(args.db)
         _run_seed_catalog(db_path)
+    elif args.command == "classify":
+        db_path = detect_db_path(args.db)
+        _run_classify(db_path)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)

@@ -6,7 +6,9 @@ import pytest
 
 from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.classify import build_alias_index, parse_component_prefix, classify_formal
+from dd.classify import build_alias_index, parse_component_prefix, classify_formal, run_classification
+from dd.classify_heuristics import classify_heuristics
+from dd.classify_skeleton import extract_skeleton
 from dd.types import ClassificationSource
 
 
@@ -288,3 +290,321 @@ class TestFormalMatching:
         )
         row = cursor.fetchone()
         assert row[0] is not None  # should be set to the button's catalog ID
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Structural heuristics tests
+# ---------------------------------------------------------------------------
+
+def _seed_heuristic_screen(db: sqlite3.Connection) -> None:
+    """Insert nodes that should be classifiable by structural heuristics."""
+    seed_catalog(db)
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'Home', 428, 926)"
+    )
+    nodes = [
+        # Header-like: full width, at top, horizontal layout
+        (10, 1, "h1", "Top Bar", "FRAME", 1, 0,
+         0, 0, 428, 56, "HORIZONTAL", None, None, None, None, None),
+        # Bottom nav-like: full width, at bottom, horizontal layout, short
+        (11, 1, "b1", "Tab Bar", "FRAME", 1, 1,
+         0, 858, 428, 68, "HORIZONTAL", None, None, None, None, None),
+        # Heading-like: TEXT node with large font
+        (12, 1, "t1", "Section Title", "TEXT", 2, 0,
+         16, 80, 396, 28, None, "Inter", 700, 24, None, "Settings"),
+        # Body text: TEXT node with standard font
+        (13, 1, "t2", "Description", "TEXT", 2, 1,
+         16, 110, 396, 18, None, "Inter", 400, 14, None, "Configure your preferences"),
+        # Generic frame — too ambiguous for heuristics
+        (14, 1, "f1", "Frame 100", "FRAME", 2, 2,
+         16, 140, 200, 200, None, None, None, None, None, None),
+        # Vertical list-like: FRAME with vertical layout and multiple similar children
+        (15, 1, "l1", "Options", "FRAME", 1, 2,
+         0, 130, 428, 600, "VERTICAL", None, None, None, None, None),
+        # Children of the list (similar heights — list items)
+        (16, 1, "li1", "Option 1", "FRAME", 2, 0,
+         0, 0, 428, 56, "HORIZONTAL", None, None, None, None, None),
+        (17, 1, "li2", "Option 2", "FRAME", 2, 1,
+         0, 56, 428, 56, "HORIZONTAL", None, None, None, None, None),
+        (18, 1, "li3", "Option 3", "FRAME", 2, 2,
+         0, 112, 428, 56, "HORIZONTAL", None, None, None, None, None),
+    ]
+    db.executemany(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height, layout_mode, font_family, font_weight, font_size, line_height, text_content) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        nodes,
+    )
+    # Set parent_ids for list children
+    db.execute("UPDATE nodes SET parent_id = 15 WHERE id IN (16, 17, 18)")
+    db.commit()
+
+
+class TestStructuralHeuristics:
+    """Verify classify_heuristics() uses position/layout/text rules."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_heuristic_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_classifies_header_by_position(self, db: sqlite3.Connection):
+        result = classify_heuristics(db, screen_id=1)
+        assert result["classified"] > 0
+
+        cursor = db.execute(
+            "SELECT canonical_type, confidence, classification_source "
+            "FROM screen_component_instances WHERE node_id = 10"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "header"
+        assert row[1] < 1.0  # heuristic confidence < formal
+        assert row[2] == "heuristic"
+
+    def test_classifies_bottom_nav_by_position(self, db: sqlite3.Connection):
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 11"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "bottom_nav"
+
+    def test_classifies_heading_by_font(self, db: sqlite3.Connection):
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 12"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "heading"
+
+    def test_classifies_body_text_by_font(self, db: sqlite3.Connection):
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 13"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "text"
+
+    def test_skips_already_classified(self, db: sqlite3.Connection):
+        # Pre-classify node 10 formally
+        db.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (1, 10, 'header', 1.0, 'formal')"
+        )
+        db.commit()
+        result = classify_heuristics(db, screen_id=1)
+        # Should not re-classify node 10
+        cursor = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances WHERE node_id = 10"
+        )
+        assert cursor.fetchone()[0] == 1
+
+    def test_returns_count(self, db: sqlite3.Connection):
+        result = classify_heuristics(db, screen_id=1)
+        assert isinstance(result, dict)
+        assert "classified" in result
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Skeleton extraction tests
+# ---------------------------------------------------------------------------
+
+def _seed_classified_screen(db: sqlite3.Connection) -> None:
+    """Insert a screen with pre-classified components for skeleton tests."""
+    seed_catalog(db)
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'Settings', 428, 926)"
+    )
+    nodes = [
+        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, 0, 0, 428, 56),
+        (11, 1, "c1", "content-area", "FRAME", 1, 1, 0, 56, 428, 802),
+        (12, 1, "b1", "nav/bottom-tabs", "INSTANCE", 1, 2, 0, 858, 428, 68),
+    ]
+    db.executemany(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        nodes,
+    )
+    # Pre-classify them
+    classifications = [
+        (1, 10, "header", 1.0, "formal"),
+        (1, 12, "bottom_nav", 1.0, "formal"),
+    ]
+    db.executemany(
+        "INSERT INTO screen_component_instances "
+        "(screen_id, node_id, canonical_type, confidence, classification_source) "
+        "VALUES (?, ?, ?, ?, ?)",
+        classifications,
+    )
+    db.commit()
+
+
+class TestSkeletonExtraction:
+    """Verify extract_skeleton() generates notation from classified instances."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_classified_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_generates_notation(self, db: sqlite3.Connection):
+        result = extract_skeleton(db, screen_id=1)
+        assert result is not None
+        assert "notation" in result
+        assert "header" in result["notation"]
+        assert "bottom_nav" in result["notation"]
+
+    def test_persists_to_table(self, db: sqlite3.Connection):
+        extract_skeleton(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT skeleton_notation FROM screen_skeletons WHERE screen_id = 1"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert "header" in row[0]
+
+    def test_idempotent(self, db: sqlite3.Connection):
+        extract_skeleton(db, screen_id=1)
+        extract_skeleton(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT COUNT(*) FROM screen_skeletons WHERE screen_id = 1"
+        )
+        assert cursor.fetchone()[0] == 1
+
+    def test_content_only_screen(self, db: sqlite3.Connection):
+        # Add a screen with no header or nav
+        db.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (2, 1, 's2', 'Splash', 428, 926)"
+        )
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height) VALUES (20, 2, 'x1', 'Main Content', 'FRAME', 1, 0, 0, 0, 428, 926)"
+        )
+        db.commit()
+
+        result = extract_skeleton(db, screen_id=2)
+        assert result is not None
+        assert "content" in result["notation"]
+        assert "header" not in result["notation"]
+
+
+# ---------------------------------------------------------------------------
+# Step 6: Orchestrator + CLI tests
+# ---------------------------------------------------------------------------
+
+def _seed_full_screen(db: sqlite3.Connection) -> None:
+    """Insert a complete screen for end-to-end orchestrator testing."""
+    seed_catalog(db)
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height, device_class) "
+        "VALUES (1, 1, 's1', 'Home', 428, 926, 'iphone')"
+    )
+    nodes = [
+        # Formal: INSTANCE nodes with catalog-matching names
+        (1, 1, "n1", "button/large/solid", "INSTANCE", 2, 0, 50, 400, 200, 48),
+        (2, 1, "n2", "icon/back", "INSTANCE", 2, 1, 16, 10, 24, 24),
+        # Heuristic: positional header
+        (3, 1, "n3", "Top Bar", "FRAME", 1, 0, 0, 0, 428, 56),
+        # Heuristic: TEXT heading
+        (4, 1, "n4", "Page Title", "TEXT", 2, 0, 16, 70, 396, 28),
+        # Heuristic: bottom nav
+        (5, 1, "n5", "Navigation", "FRAME", 1, 2, 0, 858, 428, 68),
+        # Content area (unclassified FRAME — becomes content in skeleton)
+        (6, 1, "n6", "Content Area", "FRAME", 1, 1, 0, 56, 428, 802),
+    ]
+    db.executemany(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        nodes,
+    )
+    # Set font props for heading
+    db.execute("UPDATE nodes SET font_size = 24, font_weight = 700, layout_mode = 'HORIZONTAL' WHERE id = 4")
+    db.execute("UPDATE nodes SET layout_mode = 'HORIZONTAL' WHERE id IN (3, 5)")
+    db.commit()
+
+
+class TestRunClassification:
+    """Verify run_classification() orchestrates formal → heuristic → skeleton."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_full_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_runs_all_steps(self, db: sqlite3.Connection):
+        result = run_classification(db, file_id=1)
+        assert isinstance(result, dict)
+        assert result["screens_processed"] == 1
+        assert result["formal_classified"] > 0
+        assert result["heuristic_classified"] > 0
+        assert result["skeletons_generated"] == 1
+
+    def test_formal_then_heuristic_order(self, db: sqlite3.Connection):
+        run_classification(db, file_id=1)
+
+        # Button should be formal (INSTANCE with catalog prefix)
+        cursor = db.execute(
+            "SELECT classification_source FROM screen_component_instances WHERE node_id = 1"
+        )
+        assert cursor.fetchone()[0] == "formal"
+
+        # Top Bar should be heuristic (FRAME at top)
+        cursor = db.execute(
+            "SELECT classification_source FROM screen_component_instances WHERE node_id = 3"
+        )
+        assert cursor.fetchone()[0] == "heuristic"
+
+    def test_skeleton_generated(self, db: sqlite3.Connection):
+        run_classification(db, file_id=1)
+        cursor = db.execute(
+            "SELECT skeleton_notation FROM screen_skeletons WHERE screen_id = 1"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert "header" in row[0]
+
+
+class TestClassifyCLI:
+    """Verify classify CLI command works end-to-end."""
+
+    def test_classify_command(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Home', 428, 926)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height) "
+            "VALUES (1, 1, 'n1', 'button/primary', 'INSTANCE', 1, 0, 0, 400, 200, 48)"
+        )
+        conn.commit()
+        conn.close()
+
+        from dd.cli import main
+        main(["classify", "--db", db_path])
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("SELECT COUNT(*) FROM screen_component_instances")
+        assert cursor.fetchone()[0] > 0
+        conn.close()

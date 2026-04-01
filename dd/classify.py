@@ -113,3 +113,43 @@ def classify_formal(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
         conn.commit()
 
     return {"classified": len(inserts)}
+
+
+def run_classification(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
+    """Orchestrate the full classification cascade for all screens in a file.
+
+    Runs: formal matching → structural heuristics → skeleton extraction.
+    Skips component_sheet screens. Returns summary dict.
+    """
+    from dd.classify_heuristics import classify_heuristics
+    from dd.classify_skeleton import extract_skeleton
+
+    cursor = conn.execute(
+        "SELECT id FROM screens WHERE file_id = ? "
+        "AND (device_class IS NULL OR device_class != 'component_sheet') "
+        "ORDER BY id",
+        (file_id,),
+    )
+    screen_ids = [row[0] for row in cursor.fetchall()]
+
+    total_formal = 0
+    total_heuristic = 0
+    total_skeletons = 0
+
+    for screen_id in screen_ids:
+        formal_result = classify_formal(conn, screen_id)
+        total_formal += formal_result["classified"]
+
+        heuristic_result = classify_heuristics(conn, screen_id)
+        total_heuristic += heuristic_result["classified"]
+
+        skeleton_result = extract_skeleton(conn, screen_id)
+        if skeleton_result is not None:
+            total_skeletons += 1
+
+    return {
+        "screens_processed": len(screen_ids),
+        "formal_classified": total_formal,
+        "heuristic_classified": total_heuristic,
+        "skeletons_generated": total_skeletons,
+    }
