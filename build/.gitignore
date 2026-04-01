@@ -1,8 +1,0 @@
-.venv/
-logs/
-packets/*-dry-run-prompt.md
-packets/archive/
-__pycache__/
-*.pyc
-.daemon.lock
-.pause

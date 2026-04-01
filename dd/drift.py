@@ -3,6 +3,9 @@
 Compares database token values against Figma variable values to detect
 drift and maintain sync status. This module does NOT call MCP directly -
 it receives Figma data from agents with MCP access.
+
+Library-only module: not exposed via CLI. Used internally by push.py
+and validate.py for value comparison and normalization.
 """
 
 import json

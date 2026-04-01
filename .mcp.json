@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "code-graph-mcp": {
+      "type": "stdio",
+      "command": "/usr/local/bin/npx",
+      "args": [
+        "-y",
+        "@sdsrs/code-graph"
+      ],
+      "env": {
+        "PATH": "/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
