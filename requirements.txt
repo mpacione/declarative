@@ -1,5 +1,6 @@
 anthropic>=0.40
 coloraide>=0.15
+python-dotenv>=1.0
 requests>=2.28
 pytest>=7.0
 pytest-xdist

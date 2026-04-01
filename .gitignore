@@ -18,6 +18,10 @@ extraction_runner.py
 extract_with_real_data.py
 run_extraction_with_mcp.py
 
+# Environment / secrets
+.env
+.env.*
+
 # Misc
 =2.28
 .code-graph/

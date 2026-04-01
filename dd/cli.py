@@ -13,6 +13,9 @@ Usage:
 import argparse
 import glob
 import json
+
+from dotenv import load_dotenv
+load_dotenv()
 import os
 import re
 import sys
