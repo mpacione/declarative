@@ -385,3 +385,32 @@ class TestCatalogEnrichment:
         toggle = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "toggle")
         props = toggle["prop_definitions"]
         assert "on" in props or "checked" in props or "value" in props
+
+    def test_header_slots_have_position(self):
+        header = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "header")
+        slots = header["slot_definitions"]
+        assert slots["leading"]["position"] == "start"
+        assert slots["title"]["position"] == "center"
+        assert slots["trailing"]["position"] == "end"
+
+    def test_card_slots_have_position(self):
+        card = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "card")
+        slots = card["slot_definitions"]
+        assert slots["image"]["position"] == "start"
+        assert slots["actions"]["position"] == "end"
+
+    def test_button_slots_have_position(self):
+        button = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "button")
+        slots = button["slot_definitions"]
+        assert slots["icon"]["position"] == "start"
+        assert slots["label"]["position"] == "fill"
+
+    def test_key_slots_have_quantity(self):
+        header = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "header")
+        assert header["slot_definitions"]["leading"]["quantity"] == "single"
+        assert header["slot_definitions"]["trailing"]["quantity"] == "multiple"
+
+    def test_default_slot_on_key_types(self):
+        card = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "card")
+        assert "_default" in card["slot_definitions"]
+        assert card["slot_definitions"]["_default"]["allowed"] == ["any"]

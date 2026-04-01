@@ -6,7 +6,7 @@ import pytest
 
 from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.classify import build_alias_index, parse_component_prefix, classify_formal, run_classification
+from dd.classify import build_alias_index, parse_component_name, classify_formal, link_parent_instances, run_classification
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_skeleton import extract_skeleton
 from dd.types import ClassificationSource
@@ -156,39 +156,41 @@ class TestAliasIndex:
         assert index["btn"]["canonical_name"] == "button"
         assert index["modal"]["canonical_name"] == "dialog"
 
+    def test_multi_segment_aliases(self, seeded_db):
+        index = build_alias_index(seeded_db)
+        assert "nav/top-nav" in index
+        assert index["nav/top-nav"]["canonical_name"] == "header"
+        assert "nav/tabs" in index
+        assert index["nav/tabs"]["canonical_name"] == "tabs"
 
-class TestParseComponentPrefix:
-    """Verify component name prefix extraction."""
 
-    def test_slash_delimited(self):
-        assert parse_component_prefix("button/large/translucent") == "button"
+class TestParseComponentName:
+    """Verify component name candidate extraction."""
+
+    def test_returns_candidates_longest_first(self):
+        candidates = parse_component_name("button/large/translucent")
+        assert candidates[0] == "button/large/translucent"
+        assert candidates[-1] == "button"
 
     def test_single_word(self):
-        assert parse_component_prefix("Sidebar") == "sidebar"
+        candidates = parse_component_name("Sidebar")
+        assert candidates == ["sidebar"]
 
     def test_rejects_generic_frame(self):
-        assert parse_component_prefix("Frame 359") is None
+        assert parse_component_name("Frame 359") == []
 
     def test_rejects_generic_group(self):
-        assert parse_component_prefix("Group 12") is None
+        assert parse_component_name("Group 12") == []
 
-    def test_rejects_generic_rectangle(self):
-        assert parse_component_prefix("Rectangle 4") is None
-
-    def test_accepts_named_frame(self):
-        assert parse_component_prefix("card/sheet/success") == "card"
+    def test_slash_path(self):
+        candidates = parse_component_name("nav/top-nav")
+        assert "nav/top-nav" in candidates
+        assert "nav" in candidates
 
     def test_lowercases(self):
-        assert parse_component_prefix("Button/Primary") == "button"
-
-    def test_nav_prefix(self):
-        assert parse_component_prefix("nav/top-nav") == "nav"
-
-    def test_ios_prefix(self):
-        assert parse_component_prefix("ios/status-bar") == "ios"
-
-    def test_dot_prefix(self):
-        assert parse_component_prefix(".icons/chevron") == ".icons"
+        candidates = parse_component_name("Button/Primary")
+        assert candidates[0] == "button/primary"
+        assert candidates[1] == "button"
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +266,15 @@ class TestFormalMatching:
             "SELECT id FROM screen_component_instances WHERE node_id = 5"
         )
         assert cursor.fetchone() is None
+
+    def test_classifies_nav_top_nav_as_header(self, db: sqlite3.Connection):
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 3"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "header"
 
     def test_skips_unrecognized_prefix(self, db: sqlite3.Connection):
         classify_formal(db, screen_id=1)
@@ -554,6 +565,7 @@ class TestRunClassification:
         assert result["screens_processed"] == 1
         assert result["formal_classified"] > 0
         assert result["heuristic_classified"] > 0
+        assert "parent_links" in result
         assert result["skeletons_generated"] == 1
 
     def test_formal_then_heuristic_order(self, db: sqlite3.Connection):
@@ -608,3 +620,101 @@ class TestClassifyCLI:
         cursor = conn.execute("SELECT COUNT(*) FROM screen_component_instances")
         assert cursor.fetchone()[0] > 0
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Parent linkage tests
+# ---------------------------------------------------------------------------
+
+def _seed_nested_screen(db: sqlite3.Connection) -> None:
+    """Insert a screen with nested component instances for parent linkage tests."""
+    seed_catalog(db)
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'Home', 428, 926)"
+    )
+    # header (depth 1) contains icon_button (depth 2) which contains icon (depth 3)
+    nodes = [
+        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, 0, 0, 428, 56, None),
+        (11, 1, "ib1", "icon_button/back", "INSTANCE", 2, 0, 8, 8, 40, 40, 10),
+        (12, 1, "ic1", "icon/back", "INSTANCE", 3, 0, 8, 8, 24, 24, 11),
+        # card (depth 1) contains button (depth 2) and icon (depth 2)
+        (20, 1, "c1", "card/action", "FRAME", 1, 1, 0, 60, 428, 200, None),
+        (21, 1, "b1", "button/primary", "INSTANCE", 2, 0, 16, 140, 200, 48, 20),
+        (22, 1, "ic2", "icon/star", "INSTANCE", 2, 1, 380, 16, 24, 24, 20),
+        # standalone icon (depth 1) — no parent
+        (30, 1, "ic3", "icon/settings", "INSTANCE", 1, 2, 400, 0, 24, 24, None),
+    ]
+    db.executemany(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        nodes,
+    )
+    db.commit()
+
+
+class TestParentLinkage:
+    """Verify link_parent_instances() connects nested classified instances."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_nested_screen(conn)
+        # Classify formally first
+        classify_formal(conn, screen_id=1)
+        yield conn
+        conn.close()
+
+    def test_links_icon_button_to_header(self, db: sqlite3.Connection):
+        link_parent_instances(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT parent_instance_id FROM screen_component_instances WHERE node_id = 11"
+        )
+        child_row = cursor.fetchone()
+        assert child_row is not None
+
+        # The parent should be the header instance (node 10)
+        cursor = db.execute(
+            "SELECT id FROM screen_component_instances WHERE node_id = 10"
+        )
+        parent_row = cursor.fetchone()
+        assert child_row[0] == parent_row[0]
+
+    def test_links_icon_to_icon_button(self, db: sqlite3.Connection):
+        link_parent_instances(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT parent_instance_id FROM screen_component_instances WHERE node_id = 12"
+        )
+        child_row = cursor.fetchone()
+
+        cursor = db.execute(
+            "SELECT id FROM screen_component_instances WHERE node_id = 11"
+        )
+        parent_row = cursor.fetchone()
+        assert child_row[0] == parent_row[0]
+
+    def test_standalone_has_no_parent(self, db: sqlite3.Connection):
+        link_parent_instances(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT parent_instance_id FROM screen_component_instances WHERE node_id = 30"
+        )
+        assert cursor.fetchone()[0] is None
+
+    def test_button_inside_card_linked(self, db: sqlite3.Connection):
+        link_parent_instances(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT parent_instance_id FROM screen_component_instances WHERE node_id = 21"
+        )
+        child_row = cursor.fetchone()
+
+        cursor = db.execute(
+            "SELECT id FROM screen_component_instances WHERE node_id = 20"
+        )
+        parent_row = cursor.fetchone()
+        assert child_row[0] == parent_row[0]
+
+    def test_returns_count(self, db: sqlite3.Connection):
+        result = link_parent_instances(db, screen_id=1)
+        assert isinstance(result, dict)
+        assert result["linked"] > 0
