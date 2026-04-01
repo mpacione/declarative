@@ -301,6 +301,29 @@ def _run_seed_catalog(db_path: str) -> None:
     print(f"Seeded {count} component types into catalog.")
 
 
+def _run_generate_ir(db_path: str, screen_arg: str) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.ir import generate_ir
+
+    conn = get_connection(db_path)
+
+    if screen_arg == "all":
+        cursor = conn.execute("SELECT id, name FROM screens ORDER BY id")
+        screens = cursor.fetchall()
+        for screen_id, name in screens:
+            result = generate_ir(conn, screen_id)
+            print(f"Screen {screen_id} ({name}): {result['element_count']} elements, {result['token_count']} tokens")
+    else:
+        screen_id = int(screen_arg)
+        result = generate_ir(conn, screen_id)
+        print(result["json"])
+
+    conn.close()
+
+
 def _run_classify(db_path: str) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -463,6 +486,10 @@ def main(argv: Optional[list] = None) -> None:
     classify_parser = subparsers.add_parser("classify", help="Classify screen components against catalog")
     classify_parser.add_argument("--db", help="Database path")
 
+    ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
+    ir_parser.add_argument("--db", help="Database path")
+    ir_parser.add_argument("--screen", required=True, help="Screen ID or 'all'")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -513,6 +540,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "classify":
         db_path = detect_db_path(args.db)
         _run_classify(db_path)
+    elif args.command == "generate-ir":
+        db_path = detect_db_path(args.db)
+        _run_generate_ir(db_path, args.screen)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)
