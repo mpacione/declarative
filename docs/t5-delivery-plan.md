@@ -1,5 +1,7 @@
 # T5 Delivery Plan — Incremental Build with Real Data Validation
 
+> **Declarative Design is a bi-directional design compiler.** It parses UI from any source — Figma, code, screenshots, or plain English — into an abstract compositional IR, then generates to any target: Figma with real variable bindings, React, SwiftUI, or HTML. Every color, every spacing value, every font is bound to your design tokens. Not probabilistic. Not approximate. Compiler-grade fidelity, from any input to any output.
+
 Compiled 2026-04-01. This document defines the phased delivery plan for T5, building from the existing T1-T4 infrastructure toward the full Pattern Language + IR architecture. Each phase is independently testable with real data (the Dank file). Each proves a specific architectural assumption before investing in the next layer.
 
 ---

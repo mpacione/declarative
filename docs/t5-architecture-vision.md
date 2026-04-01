@@ -1,6 +1,8 @@
 # T5 Architecture Vision — Generation, Critique, and Taste
 
-Captured from conversation 2026-03-31. This document defines the full architectural vision for T5 Conjure: how screens are generated, critiqued, steered, and refined. Includes the autonomous exploration model, the critique cascade, the taste model concept, the corpus pipeline design, the distribution architecture, and the terminology definitions.
+> **Declarative Design is a bi-directional design compiler.** It parses UI from any source — Figma, code, screenshots, or plain English — into an abstract compositional IR, then generates to any target: Figma with real variable bindings, React, SwiftUI, or HTML. Every color, every spacing value, every font is bound to your design tokens. Not probabilistic. Not approximate. Compiler-grade fidelity, from any input to any output.
+
+Captured from conversation 2026-03-31 to 2026-04-01. This document defines the full architectural vision for T5 Conjure: how screens are generated, critiqued, steered, and refined. Includes the autonomous exploration model, the critique cascade, the taste model concept, the corpus pipeline design, the distribution architecture, and the terminology definitions.
 
 ---
 

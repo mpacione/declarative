@@ -1,5 +1,7 @@
 # T5 Intermediate Representation (IR) Design
 
+> **Declarative Design is a bi-directional design compiler.** It parses UI from any source — Figma, code, screenshots, or plain English — into an abstract compositional IR, then generates to any target: Figma with real variable bindings, React, SwiftUI, or HTML. Every color, every spacing value, every font is bound to your design tokens. Not probabilistic. Not approximate. Compiler-grade fidelity, from any input to any output.
+
 Compiled 2026-04-01. This document defines the Intermediate Representation — the abstract component layer that sits at the center of the hub-and-spoke architecture. Every input parses INTO this format, every output generates FROM it.
 
 ---
