@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dd.cli import main, resolve_token, run_extract
+from dd.db import init_db
 
 
 @pytest.mark.unit
@@ -406,6 +407,22 @@ class TestRunMaintenance:
 
 
 @pytest.mark.unit
+class TestExtractSupplement:
+    def test_dry_run_shows_count(self, tmp_path, capsys):
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's1', 'Phone', 428, 926)")
+        conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's2', 'Icon', 20, 20)")
+        conn.commit()
+        conn.close()
+
+        main(["extract-supplement", "--db", db_path, "--dry-run"])
+        captured = capsys.readouterr()
+        assert "1 app screens" in captured.out
+        assert "componentKey" in captured.out
+
+
 class TestMainArgParsing:
     def test_extract_missing_file_key_exits(self):
         with pytest.raises(SystemExit):

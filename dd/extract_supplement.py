@@ -5,11 +5,20 @@ properties for all nodes on a screen. These fields are not available in the
 REST API and require the Plugin API (Desktop Bridge).
 
 Output format: {figma_node_id: {lp: "ABSOLUTE", ck: "abc123", gr: 3, gc: 4, ...}}
+
+Usage:
+    from dd.extract_supplement import run_supplement
+    result = run_supplement(conn, execute_fn)
+
+Where execute_fn(js_string) -> dict executes JS in Figma's plugin context
+and returns the result. This can be figma_execute MCP, PROXY_EXECUTE WebSocket,
+or any other execution mechanism.
 """
 
 import json
 import sqlite3
-from typing import Any, Dict, List
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 
 def generate_supplement_script(screen_node_ids: List[str]) -> str:
@@ -123,4 +132,106 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: Dict[str, Dict[s
         "component_key": component_key_count,
         "grid": grid_count,
         "total_nodes_updated": len(supplement_data),
+    }
+
+
+def run_supplement(
+    conn: sqlite3.Connection,
+    execute_fn: Callable[[str], Dict[str, Any]],
+    batch_size: int = 5,
+    delay: float = 0.3,
+    screen_type: str = "app_screen",
+) -> Dict[str, Any]:
+    """Run supplemental extraction on all screens of the given type.
+
+    Auto-batches screens, retries failed batches at batch_size=1,
+    and tracks progress. The execute_fn should accept a JS string
+    and return the result dict (or raise on failure).
+
+    Args:
+        conn: Database connection
+        execute_fn: Callable that executes JS in Figma plugin context.
+            Takes a JS string, returns the result dict from evaluation.
+            Should raise on execution failure.
+        batch_size: Screens per batch (reduced automatically on truncation)
+        delay: Seconds between batches
+        screen_type: Only process screens of this type
+
+    Returns:
+        Summary dict with counts of updated nodes and properties.
+    """
+    screens = conn.execute(
+        "SELECT figma_node_id, name FROM screens WHERE screen_type = ? ORDER BY id",
+        (screen_type,),
+    ).fetchall()
+    screen_ids = [r[0] for r in screens]
+
+    if not screen_ids:
+        return {"total_nodes": 0, "component_key": 0, "layout_positioning": 0, "grid": 0, "batches": 0, "failed": 0}
+
+    total_nodes = 0
+    total_ck = 0
+    total_lp = 0
+    total_grid = 0
+    batches_run = 0
+    failed_screens: List[str] = []
+
+    i = 0
+    while i < len(screen_ids):
+        batch = screen_ids[i:i + batch_size]
+        script = generate_supplement_script(batch)
+
+        try:
+            result = execute_fn(script)
+
+            if not isinstance(result, dict):
+                raise ValueError(f"Expected dict, got {type(result)}")
+
+            counts = apply_supplement(conn, result)
+            total_nodes += counts["total_nodes_updated"]
+            total_ck += counts["component_key"]
+            total_lp += counts["layout_positioning"]
+            total_grid += counts["grid"]
+            batches_run += 1
+            i += batch_size
+
+        except Exception as e:
+            error_msg = str(e)
+
+            if "Unterminated string" in error_msg or "65536" in error_msg or "65533" in error_msg:
+                if batch_size > 1 and len(batch) > 1:
+                    batch_size = max(1, batch_size // 2)
+                    continue
+
+            if len(batch) == 1:
+                failed_screens.append(batch[0])
+                i += 1
+            else:
+                for sid in batch:
+                    try:
+                        single_script = generate_supplement_script([sid])
+                        single_result = execute_fn(single_script)
+                        if isinstance(single_result, dict):
+                            counts = apply_supplement(conn, single_result)
+                            total_nodes += counts["total_nodes_updated"]
+                            total_ck += counts["component_key"]
+                            total_lp += counts["layout_positioning"]
+                            total_grid += counts["grid"]
+                            batches_run += 1
+                    except Exception:
+                        failed_screens.append(sid)
+                    time.sleep(delay)
+                i += len(batch)
+
+        if delay > 0:
+            time.sleep(delay)
+
+    return {
+        "total_nodes": total_nodes,
+        "component_key": total_ck,
+        "layout_positioning": total_lp,
+        "grid": total_grid,
+        "batches": batches_run,
+        "failed": len(failed_screens),
+        "failed_screens": failed_screens,
     }

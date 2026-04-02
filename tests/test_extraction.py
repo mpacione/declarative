@@ -333,11 +333,11 @@ def test_generate_extraction_script_format():
     """Verify script contains function, node ID, return statement, under 50K chars."""
     script = generate_extraction_script("123:456")
 
-    assert "function extractScreen" in script
+    assert "async function extractScreen" in script
     assert "123:456" in script
-    assert "return extractScreen" in script
+    assert "return await extractScreen" in script
     assert len(script) < 50000
-    assert "walk(screen, null, 0)" in script
+    assert "await walk(screen, null, 0)" in script
 
 
 @pytest.mark.unit

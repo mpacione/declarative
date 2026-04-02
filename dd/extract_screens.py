@@ -17,11 +17,11 @@ def generate_extraction_script(screen_node_id: str) -> str:
     Returns:
         Self-contained JavaScript string that extracts the node tree
     """
-    script = '''function extractScreen(screenId) {
-  const screen = figma.getNodeById(screenId);
+    script = '''async function extractScreen(screenId) {
+  const screen = await figma.getNodeByIdAsync(screenId);
   const nodes = [];
 
-  function walk(node, parentIdx, depth) {
+  async function walk(node, parentIdx, depth) {
     const entry = {
       figma_node_id: node.id,
       parent_idx: parentIdx,
@@ -132,24 +132,31 @@ def generate_extraction_script(screen_node_id: str) -> str:
     }
 
     // Component reference (INSTANCE nodes)
-    if (node.type === 'INSTANCE' && node.mainComponent) {
-      entry.component_figma_id = node.mainComponent.id;
-      entry.component_key = node.mainComponent.key;
+    if (node.type === 'INSTANCE') {
+      try {
+        const main = await node.getMainComponentAsync();
+        if (main) {
+          entry.component_figma_id = main.id;
+          entry.component_key = main.key;
+        }
+      } catch (e) {}
     }
 
     const idx = nodes.length;
     nodes.push(entry);
 
     if ('children' in node) {
-      node.children.forEach(child => walk(child, idx, depth + 1));
+      for (const child of node.children) {
+        await walk(child, idx, depth + 1);
+      }
     }
   }
 
-  walk(screen, null, 0);
+  await walk(screen, null, 0);
   return nodes;
 }
 
-return extractScreen("''' + screen_node_id + '''");'''
+return await extractScreen("''' + screen_node_id + '''");'''
 
     if len(script) > USE_FIGMA_CODE_LIMIT:
         raise ValueError(f"Generated script exceeds {USE_FIGMA_CODE_LIMIT} character limit")

@@ -21,14 +21,14 @@ def test_generate_extraction_script_basic():
     script = generate_extraction_script("100:1")
     assert "100:1" in script
     assert len(script) < 50000
-    assert "function extractScreen(screenId)" in script
-    assert 'return extractScreen("100:1");' in script
+    assert "async function extractScreen(screenId)" in script
+    assert 'return await extractScreen("100:1");' in script
 
 
 def test_generate_extraction_script_contains_expected_elements():
     script = generate_extraction_script("2219:235687")
     assert "figma.getNodeById" in script or "getNodeById" in script
-    assert "function walk(node, parentIdx, depth)" in script
+    assert "async function walk(node, parentIdx, depth)" in script
     assert "fills" in script
     assert "strokes" in script
     assert "effects" in script
@@ -129,6 +129,14 @@ def test_parse_extraction_response_text_node():
     assert isinstance(parsed[0]["letter_spacing"], str)
     assert parsed[0]["text_align"] == "LEFT"
     assert parsed[0]["text_content"] == "Hello World"
+
+
+def test_extraction_script_uses_async_api():
+    script = generate_extraction_script("1:1")
+    assert "getNodeByIdAsync" in script
+    assert "getMainComponentAsync" in script
+    assert "await walk(" in script
+    assert "return await extractScreen" in script
 
 
 def test_extraction_script_captures_layout_positioning():
@@ -498,6 +506,63 @@ def test_update_screen_status():
 # ---------------------------------------------------------------------------
 # Migration + screen classification tests
 # ---------------------------------------------------------------------------
+
+def test_run_supplement_with_mock_execute():
+    from dd.extract_supplement import run_supplement, apply_supplement
+
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height, screen_type) VALUES (1, '1:0', 'Phone', 428, 926, 'app_screen')")
+    conn.execute(
+        "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order) "
+        "VALUES (1, '1:1', 'button/large', 'INSTANCE', 1, 0)"
+    )
+    conn.commit()
+
+    def mock_execute(script):
+        assert "getNodeByIdAsync" in script
+        return {"1:1": {"ck": "abc123"}}
+
+    result = run_supplement(conn, mock_execute, batch_size=5, delay=0)
+    assert result["component_key"] == 1
+    assert result["total_nodes"] == 1
+    assert result["failed"] == 0
+
+    row = conn.execute("SELECT component_key FROM nodes WHERE figma_node_id = '1:1'").fetchone()
+    assert row[0] == "abc123"
+
+    conn.close()
+
+
+def test_run_supplement_retries_on_truncation():
+    from dd.extract_supplement import run_supplement
+
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+    for i in range(3):
+        conn.execute(
+            f"INSERT INTO screens (file_id, figma_node_id, name, width, height, screen_type) "
+            f"VALUES (1, '{i}:0', 'Screen {i}', 428, 926, 'app_screen')"
+        )
+    conn.commit()
+
+    call_count = 0
+
+    def mock_execute_truncation(script):
+        nonlocal call_count
+        call_count += 1
+        screen_ids = json.loads(script.split("const screenIds = ")[1].split(";")[0])
+        if len(screen_ids) > 1:
+            raise RuntimeError("Unterminated string starting at: line 1 column 65533")
+        return {f"{screen_ids[0].replace(':0', ':1')}": {"ck": f"key_{screen_ids[0]}"}}
+
+    result = run_supplement(conn, mock_execute_truncation, batch_size=3, delay=0)
+    assert result["component_key"] == 3
+    assert result["failed"] == 0
+    assert call_count > 1  # Had to retry individually
+
+    conn.close()
+
 
 def test_migration_adds_columns_to_old_schema():
     """Simulate an old DB missing columns, run migration, verify columns added."""

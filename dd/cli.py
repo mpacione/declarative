@@ -510,6 +510,92 @@ def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
     conn.close()
 
 
+def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.extract_supplement import run_supplement
+    from dd.db import classify_screens
+
+    conn = get_connection(db_path)
+
+    # Ensure screen_type is populated
+    classify_screens(conn)
+
+    screen_count = conn.execute(
+        "SELECT COUNT(*) FROM screens WHERE screen_type = 'app_screen'"
+    ).fetchone()[0]
+
+    if args.dry_run:
+        print(f"Would extract Plugin API fields for {screen_count} app screens")
+        print(f"  Port: {args.port}")
+        print(f"  Batch size: {args.batch_size}")
+        print(f"  Fields: componentKey, layoutPositioning, Grid properties")
+        conn.close()
+        return
+
+    def execute_via_ws(script: str) -> dict:
+        """Execute JS in Figma via PROXY_EXECUTE WebSocket."""
+        import subprocess
+        node_js = (
+            'const WebSocket = require("ws");'
+            f'const ws = new WebSocket("ws://127.0.0.1:{args.port}");'
+            f'const code = {json.dumps(script)};'
+            'ws.on("open", () => {'
+            '  ws.send(JSON.stringify({ type: "PROXY_EXECUTE", id: "supp", code, timeout: 60000 }));'
+            '});'
+            'ws.on("message", (data) => {'
+            '  const msg = JSON.parse(data);'
+            '  if (msg.type === "PROXY_EXECUTE_RESULT") {'
+            '    console.log(JSON.stringify(msg));'
+            '    ws.close(); process.exit(0);'
+            '  }'
+            '});'
+            'ws.on("error", (err) => { console.log(JSON.stringify({error: err.message})); process.exit(1); });'
+            'setTimeout(() => { console.log(JSON.stringify({error: "timeout"})); process.exit(1); }, 65000);'
+        )
+        result = subprocess.run(
+            [_find_node_binary(), "-e", node_js],
+            capture_output=True, text=True, timeout=70,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr[:200] or "node process failed")
+        msg = json.loads(result.stdout.strip())
+        if "error" in msg and isinstance(msg["error"], str):
+            raise RuntimeError(msg["error"])
+        inner = msg.get("result", {})
+        if inner.get("success") is False:
+            raise RuntimeError(inner.get("error", "execution failed"))
+        return inner.get("result", inner)
+
+    print(f"Supplemental extraction: {screen_count} app screens (port {args.port}, batch {args.batch_size})")
+
+    result = run_supplement(conn, execute_via_ws, batch_size=args.batch_size)
+    conn.close()
+
+    print(f"\nDone: {result['total_nodes']} nodes updated")
+    print(f"  component_key: {result['component_key']}")
+    print(f"  layout_positioning: {result['layout_positioning']}")
+    print(f"  grid: {result['grid']}")
+    if result["failed"] > 0:
+        print(f"  failed: {result['failed']} screens")
+
+
+def _find_node_binary() -> str:
+    """Find the node binary, checking common locations."""
+    import shutil
+    node = shutil.which("node")
+    if node:
+        return node
+    # Check nvm
+    import glob
+    nvm_nodes = glob.glob(str(Path.home() / ".nvm/versions/node/*/bin/node"))
+    if nvm_nodes:
+        return sorted(nvm_nodes)[-1]  # Latest version
+    raise FileNotFoundError("node binary not found — required for Plugin API extraction")
+
+
 def _run_push(db_path: str, args: argparse.Namespace) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -619,6 +705,12 @@ def main(argv: Optional[list] = None) -> None:
     gen_parser.add_argument("--screen", required=True, help="Screen ID")
     gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
 
+    supp_parser = subparsers.add_parser("extract-supplement", help="Extract Plugin API-only fields (componentKey, layoutPositioning, Grid)")
+    supp_parser.add_argument("--db", help="Database path")
+    supp_parser.add_argument("--port", type=int, default=9227, help="WebSocket port for PROXY_EXECUTE")
+    supp_parser.add_argument("--batch-size", type=int, default=5, help="Screens per batch")
+    supp_parser.add_argument("--dry-run", action="store_true", help="Show what would be extracted, don't execute")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -675,6 +767,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "generate":
         db_path = detect_db_path(args.db)
         _run_generate(db_path, int(args.screen), dry_run=args.dry_run)
+    elif args.command == "extract-supplement":
+        db_path = detect_db_path(args.db)
+        _run_extract_supplement(db_path, args)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)
