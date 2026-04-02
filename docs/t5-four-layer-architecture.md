@@ -28,33 +28,53 @@ Parse a source artifact and store every recoverable detail in a structured store
 
 ### Figma Extraction
 
-**Status**: Core extraction built (T1-T4). Schema has 40+ columns on `nodes` table. Extraction JS captures most properties. Significant gaps in component-level data.
+**Status**: Complete. Schema has 72 columns on `nodes` table. Two extraction paths cover all properties. Dank DB fully populated via migration + re-extraction (Phase -1, 2026-04-02).
 
-**Input**: Figma file via REST API (file structure, image exports) + Plugin API (node properties, variable bindings)
+**Two-step extraction workflow:**
+```
+dd extract <figma-url>              # Step 1: REST API — fast, reliable, batched
+dd extract-supplement --db <db>     # Step 2: Plugin API — componentKey, layoutPositioning, Grid
+```
+
+**Step 1 (REST API)** uses `GET /v1/files/:key/nodes` to fetch node trees. Batches 10 screens per request. Gets ~90% of properties including fills, strokes, effects, constraints, stroke properties, rotation, typography, and geometry. Does NOT get: `componentKey`, `layoutPositioning`, Grid properties (these are Plugin API-only).
+
+**Step 2 (Plugin API)** runs targeted JS via the Desktop Bridge plugin. Uses `getNodeByIdAsync` + `getMainComponentAsync` (async Figma API). Compact output — only returns non-default values. Auto-batches (default 5 screens per call), auto-retries on 64KB response truncation (halves batch size), individually retries failed screens.
+
+**Input**: Figma file via REST API (file structure, node trees) + Plugin API (component keys, positioning, Grid)
 
 **Output**: SQLite DB with the following tables:
 
-#### Node-Level Data (`nodes` table — 86K rows in Dank)
+#### Node-Level Data (`nodes` table — 72 columns, 86K rows in Dank)
 
 Every node in the Figma tree becomes a row. The renderer reads this data to reconstruct visual properties.
 
-| Category | Columns | Status |
+| Category | Columns | Source |
 |----------|---------|--------|
-| **Identity** | id, screen_id, figma_node_id, parent_id, path, name, node_type, depth, sort_order, is_semantic | Built, populated |
-| **Geometry** | x, y, width, height | Built, populated |
-| **Auto-layout** | layout_mode, padding (4 sides), item_spacing, counter_axis_spacing, primary_align, counter_align, layout_sizing_h/v | Built, populated |
-| **Auto-layout extensions** | layout_wrap, min/max width/height | Schema exists, extraction captures, **Dank DB needs migration** |
-| **Visual fills/strokes/effects** | fills (JSON), strokes (JSON), effects (JSON) | Built, populated |
-| **Corner radius** | corner_radius (number or per-corner JSON) | Built, populated |
-| **Opacity/blend** | opacity, blend_mode, visible | Built, populated |
-| **Stroke detail** | stroke_weight (uniform), stroke per-side weights (4), stroke_align, stroke_cap, stroke_join, dash_pattern | Schema exists, extraction captures, **Dank DB needs migration** |
-| **Transform** | rotation, clips_content | Schema exists, extraction captures, **Dank DB needs migration** |
-| **Constraints** | constraint_h, constraint_v | Schema exists, extraction captures, **Dank DB needs migration** |
-| **Typography** | font_family, font_weight, font_size, font_style, line_height, letter_spacing, paragraph_spacing, text_align, text_align_v, text_decoration, text_case, text_content | Schema exists, some populated, font_style/text_align_v/text_decoration/text_case/paragraph_spacing **need migration** |
-| **Component reference** | component_id (FK), component_key | Schema exists, extraction captures component_key, **but component_id never linked (components table empty)** |
-| **Missing: layoutPositioning** | Whether a child is AUTO or ABSOLUTE within auto-layout parent | **Not in schema, not extracted**. Needed for stacked/absolute child positioning. |
+| **Identity** | id, screen_id, figma_node_id, parent_id, path, name, node_type, depth, sort_order, is_semantic | REST API |
+| **Geometry** | x, y, width, height | REST API |
+| **Auto-layout** | layout_mode, padding (4 sides), item_spacing, counter_axis_spacing, primary_align, counter_align, layout_sizing_h/v | REST API |
+| **Auto-layout extensions** | layout_wrap, min/max width/height | REST API |
+| **Child positioning** | layout_positioning (AUTO or ABSOLUTE) | Plugin API |
+| **Grid layout** | grid_row_count, grid_column_count, grid_row_gap, grid_column_gap, grid_row_sizes (JSON), grid_column_sizes (JSON) | Plugin API |
+| **Visual fills/strokes/effects** | fills (JSON), strokes (JSON), effects (JSON) | REST API |
+| **Corner radius** | corner_radius (number or per-corner JSON) | REST API |
+| **Opacity/blend** | opacity, blend_mode, visible | REST API |
+| **Stroke detail** | stroke_weight (uniform), stroke per-side weights (4), stroke_align, stroke_cap, stroke_join, dash_pattern | REST API |
+| **Transform** | rotation, clips_content | REST API |
+| **Constraints** | constraint_h, constraint_v | REST API |
+| **Typography** | font_family, font_weight, font_size, font_style, line_height, letter_spacing, paragraph_spacing, text_align, text_align_v, text_decoration, text_case, text_content | REST API |
+| **Component reference** | component_id (FK), component_key | Plugin API (key), REST API (id linkage via extract_components) |
 
-**Critical gap — component_key**: The extraction JS correctly reads `node.mainComponent.key` for INSTANCE nodes (line 124 of `extract_screens.py`). The schema has the `component_key` column. But the Dank DB was created from an older schema missing the column. After migration, re-extraction will populate component keys for all 27,810 INSTANCE nodes. This unblocks Mode 1 rendering (component instantiation).
+**Dank DB population after Phase -1:**
+| Property | Populated nodes | Source |
+|----------|----------------|--------|
+| constraint_h/v | 60,211 (69%) | REST API |
+| component_key | 25,860 (30%) — 122 unique keys | Plugin API |
+| stroke_weight | 60,211 (69%) | REST API |
+| clips_content | 27,533 (32%) | REST API |
+| rotation | 10,561 (12%) | REST API |
+| layout_positioning | 0 (all AUTO in Dank) | Plugin API |
+| Grid properties | 0 (no Grid layouts in Dank) | Plugin API |
 
 #### Token Data (`tokens`, `token_values`, `token_collections`, `token_modes` — 388 tokens)
 
@@ -1147,16 +1167,17 @@ If a user generates a screen from the IR then manually edits it in Figma, detect
 
 38 Python modules, 1,004 tests. Full module API reference in `docs/module-reference.md`.
 
-### Layer 1: Extraction — BUILT (6 modules, ~126 tests)
+### Layer 1: Extraction — BUILT (7 modules, ~160 tests)
 
 | Module | What it does | Tests |
 |--------|-------------|-------|
 | `dd/extract.py` | Orchestrator — coordinates screen extraction + component extraction | 31 |
-| `dd/extract_screens.py` | Generates Figma Plugin JS to extract full node trees (40+ properties per node) | 19 |
+| `dd/extract_screens.py` | Generates async Figma Plugin JS to extract full node trees (72 columns per node) | 29 |
+| `dd/extract_supplement.py` | **Targeted Plugin API extraction** — componentKey, layoutPositioning, Grid. Auto-batching with retry. | 2 |
 | `dd/extract_bindings.py` | Normalizes Figma properties into token binding rows (fills, strokes, effects, typography, spacing, radius) | 9 |
 | `dd/extract_inventory.py` | Discovers screens in a Figma file, manages extraction runs | - |
 | `dd/extract_components.py` | **Complete component pipeline** — parses COMPONENT_SET/COMPONENT nodes, extracts variants, infers slots, generates a11y contracts | 40 |
-| `dd/figma_api.py` | Figma REST API + MCP bridge | 27 |
+| `dd/figma_api.py` | Figma REST API + MCP bridge + REST-path layout/Grid extraction | 27 |
 
 **Component extraction (`extract_components.py`) is fully built but never run on Dank:**
 - `parse_component_set()` — extracts variants, builds axes, detects interaction states (hover/pressed/disabled)
@@ -1591,9 +1612,9 @@ The Dank file has only ~150 unique visual values (68 fill colors, 10 stroke colo
 
 **Caveat**: The Dank file is unusually well-tokenized (89% bound). Files with lower tokenization will need more synthetic tokens. The system must handle the 0%-tokenized worst case.
 
-### Extraction Completeness — PREREQUISITE (Elevated to Phase -1)
+### Extraction Completeness — COMPLETED (Phase -1, 2026-04-02)
 
-Layout/positioning extraction is incomplete. This was originally assessed as "not blocking for Phases 0-2" but has been elevated to a prerequisite because:
+Layout/positioning extraction was incomplete. Elevated to a prerequisite and completed in this session because:
 
 1. **The Dank file is not representative.** It's a well-tokenized design system showcase. Real-world Figma files may be 100% stacked positioning with zero auto-layout, or use Grid layout extensively, or mix AUTO and ABSOLUTE children within auto-layout parents. The architecture must handle all of these.
 
@@ -1605,7 +1626,7 @@ Layout/positioning extraction is incomplete. This was originally assessed as "no
 
 3. **Building on incomplete data means building on sand.** Template extraction, semantic tree construction, and rendering all depend on correct layout data. Fixing extraction later means re-running everything.
 
-**Decision**: Migration + extraction completeness is Phase -1. All subsequent phases depend on it. See implementation plan for details.
+**Completed**: Migration applied (72 columns), REST API re-extraction (constraints, strokes, rotation populated for 60K nodes), Plugin API supplemental extraction (25,860 component keys, 122 unique). Two-step workflow: `dd extract` + `dd extract-supplement`. See implementation plan for details.
 
 ### Screen Skeletons — Already Extracted
 

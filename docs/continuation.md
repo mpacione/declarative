@@ -2,93 +2,80 @@
 
 ## Quick Context
 
-Declarative Design is a CLI + agent system that extracts design tokens from Figma files, curates them, and pushes variables back. The full round-trip is proven working. T1–T4.2 are complete.
+Declarative Design is a bi-directional design compiler. Parses UI from any source into an abstract compositional IR, generates to any target with token-bound fidelity. T1-T4 complete (property pipeline). T5 in progress (composition layer).
 
-## Current State
+## Current State (2026-04-02)
 
-- **DB**: `Dank-EXP-02.declarative.db` — 388 total tokens, 182,871 bound, 22,611 intentionally_unbound, 50 unbound (36 gradients). Validation: 0 errors, 102 warnings (45 expected primitive orphans, 57 scaling mismatches).
-- **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Figma variables**: 374 across 8 collections. All variable IDs written back to DB.
-- **Alpha-baked colors**: FULLY COMPLETE. 21 alpha primitives in Figma. Alpha rebinds re-applied across all 3 property classes (fills, effects, strokes).
-- **Extended properties**: Schema expanded with 22 new columns (stroke, transform, constraints, layout, typography, component). Migration `002_extended_properties.sql` ready for prod.
-- **Tests**: 753 passing
-- **Tiers 1–3**: Complete. T4.0–T4.6 complete (arch repair through comprehensive property extraction).
+- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes (72 columns), 182,871 bindings, 388 tokens, 338 screens (204 app screens)
+- **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
+- **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
+- **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
+- **Tests**: 1,017 passing
+- **Branch**: `t5/architecture-vision`
 
-## What To Do Next (in order)
+## Architecture: Four-Layer Model
 
-### 1. Apply migration 002 to production DB
+See `docs/t5-four-layer-architecture.md` (1,640+ lines, fully steelmanned):
 
-```bash
-sqlite3 Dank-EXP-02.declarative.db < migrations/002_extended_properties.sql
+```
+Layer 1: EXTRACTION     Source → DB        "Record everything"
+Layer 2: ANALYSIS        DB → Abstractions  "Understand what's there"
+Layer 3: COMPOSITION     Abstractions → IR   "Describe what to build"
+Layer 4: RENDERING       IR + DB/Config → Output  "Build it concretely"
 ```
 
-Then re-extract to populate the new columns. Existing data is unaffected (new columns default NULL).
+Key decisions: thin IR (semantic intent only), synthetic tokens for un-tokenized values, renderer reads DB for visual detail, instance-first Figma rendering, default library fallback.
 
-### 2. Re-extract with extended properties
+## What To Do Next
 
-Re-run extraction on the Dank file to populate the 22 new columns (stroke, transform, constraints, layout, typography, component_key). Existing bindings and tokens are preserved.
+### Phase 0: FigmaPlatformContext (additive, zero risk)
+Build the renderer context — a data structure alongside the IR that carries visual properties for the Figma renderer. Entry point for the thin IR refactor.
 
-### 3. Tier 5 — Conjure
+See `.claude/plans/ethereal-skipping-bee.md` for the full 5-phase implementation plan.
 
-The main event. Compose new screens/components from the token vocabulary. See `docs/action-taxonomy.md` Tier 5 section. The extended properties (component_key, instance_overrides, full layout/constraint data) provide everything needed for programmatic screen generation.
+### Before Phase 0, consider:
+- Run `extract_components()` on Dank file to populate the 6 empty composition tables
+- This gives slot definitions, variant axes, and a11y contracts — useful for Phase 3 (semantic tree)
+
+## Extraction Workflow
+
+```bash
+# Step 1: REST API — fast, reliable, ~90% of properties
+python -m dd extract drxXOUOdYEBBQ09mrXJeYu --db Dank-EXP-02.declarative.db
+
+# Step 2: Plugin API — componentKey, layoutPositioning, Grid (requires Desktop Bridge)
+python -m dd extract-supplement --db Dank-EXP-02.declarative.db --port 9227
+
+# Migration (already applied to Dank DB, needed for new DBs from older schemas)
+# sqlite3 <db> < migrations/006_extraction_completeness.sql
+```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `dd/cli.py` | CLI entrypoint — all `python -m dd` commands |
-| `dd/push.py` | Push manifest generation (variable actions + rebind) |
-| `dd/export_figma_vars.py` | Variable payload generation + writeback |
-| `dd/export_rebind.py` | Compact rebind scripts |
-| `dd/drift.py` | DB-Figma drift detection and value comparison |
-| `dd/modes.py` | Dark mode / theme creation (OKLCH) |
-| `dd/curate.py` | All curation operations |
-| `dd/db.py` | `update_token_value()` — use this for all value mutations |
-| `dd/maintenance.py` | Retention policy (wired to CLI via `dd maintenance`) |
-| `dd/validate.py` | Validation checks including binding-token consistency |
-| `docs/action-taxonomy.md` | Full taxonomy of all curation/conjure actions |
-| `docs/tier-progress.md` | Progress tracker for each tier |
-| `docs/learnings.md` | Accumulated infrastructure insights |
-| `migrations/001_value_provenance.sql` | Value provenance schema (applied to prod) |
-| `migrations/002_extended_properties.sql` | **Must be run on production DB before re-extraction** |
-| `patches/figma-console-mcp-proxy-execute.patch` | PROXY_EXECUTE patch for large script execution |
-| `declarative-design/SKILL.md` | Agent protocol v0.4.0 |
-
-## Alpha-Baked Colors (Complete)
-
-Paint opacity is encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). 21 alpha primitives (`prim.gray.950.a5`, `prim.gray.50.a40`, etc.) live in Figma. The `restore_opacities` phase has been removed from the push manifest entirely. OKLCH inversion and high-contrast transforms preserve alpha suffix correctly.
-
-## PROXY_EXECUTE (For Future Large Script Runs)
-
-For scripts too large for `figma_execute` (>50K chars), use the PROXY_EXECUTE WebSocket bridge:
-
-1. Check port 9224 process is running the patched server: `lsof -i :9224`
-2. If server PID predates any patch changes, kill it and restart Claude Desktop
-3. Connect to `ws://127.0.0.1:9224`, wait for `SERVER_HELLO`, send `{"type":"PROXY_EXECUTE","id":"x","code":"...","timeout":30000}`
-4. Await `PROXY_EXECUTE_RESULT`
-
-See `patches/figma-console-mcp-proxy-execute.patch` and `docs/learnings.md` for full pattern.
-
-## Value Provenance Architecture (Complete)
-
-`token_values` has `source` (`'figma'|'derived'|'manual'|'imported'`), `sync_status`, `last_verified_at`. `token_value_history` is an append-only audit table. All value mutations go through `db.update_token_value()` (updates) or `db.insert_token_value()` (first writes). Both write history rows automatically.
-
-## Extended Properties (T4.6 — Complete)
-
-22 new columns on `nodes` table covering stroke, transform, constraints, layout extensions, typography extensions, and component key. `instance_overrides` table for component property tracking. Extraction (REST + Plugin API), normalization (4 new functions), clustering (stroke weight, paragraph spacing), and rebinding (visible + BOOLEAN type) all implemented. See `docs/learnings.md` "Extended Property Extraction".
+| `docs/t5-four-layer-architecture.md` | THE authoritative architecture spec |
+| `docs/module-reference.md` | Complete API reference for all 38 modules |
+| `docs/learnings.md` | Accumulated insights (extraction, pipeline, architecture) |
+| `.claude/plans/ethereal-skipping-bee.md` | Phase -1 through Phase 4 implementation plan |
+| `dd/extract_supplement.py` | Plugin API supplemental extraction (componentKey, layoutPositioning, Grid) |
+| `dd/ir.py` | IR generation (currently thick — Phase 2 will thin it) |
+| `dd/generate.py` | Figma renderer (currently reads IR visual — Phase 1 adds context path) |
+| `dd/extract_components.py` | Component discovery (built, not run on Dank — needed for Phase 3) |
 
 ## Environment
 
 ```bash
-source build/.venv/bin/activate
-export FIGMA_ACCESS_TOKEN="<your-figma-pat>"
+source .venv/bin/activate
 
 # Quick health check
 python -m dd status --db Dank-EXP-02.declarative.db
 
 # Run tests
 python -m pytest tests/ --tb=short
+
+# 1017 tests should pass
 ```
 
-Figma Desktop Bridge plugin must be running for MCP rebinding operations.
-PROXY_EXECUTE patch on figma-console-mcp WebSocket server enables direct script execution (see `patches/` directory).
+Figma Desktop Bridge plugin required for Plugin API extraction and Figma generation.
+PROXY_EXECUTE patch on figma-console-mcp WebSocket server enables large script execution.

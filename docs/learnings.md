@@ -4,6 +4,36 @@ Accumulated insights from building Declarative Design. Covers the token pipeline
 
 ---
 
+## Extraction Pipeline (T5 Phase -1)
+
+### Two-Path Extraction is Necessary
+
+**The lesson**: The Figma REST API and Plugin API return different property sets. `componentKey`, `layoutPositioning`, and Grid properties are Plugin API-only. A single extraction command can't get everything.
+
+**The solution**: Two-step workflow. Step 1 (`dd extract`) uses the REST API — fast, reliable, batches 10 screens per HTTP request, gets ~90% of properties. Step 2 (`dd extract-supplement`) uses the Plugin API via Desktop Bridge — targeted, compact, gets only the fields REST can't.
+
+**Why not Plugin API for everything?** The Plugin API requires Figma Desktop open with the bridge plugin active. It has a ~64KB response limit per call. It's slower (one WebSocket message per batch vs one HTTP request for 10 screens). The REST API is more reliable for bulk extraction.
+
+### Figma's Async API is Now Required
+
+**The lesson**: `figma.getNodeById` (sync) fails with "Cannot call with documentAccess: dynamic-page." Use `figma.getNodeByIdAsync` instead. Same for `node.mainComponent` → `node.getMainComponentAsync()`.
+
+**What happened**: The extraction JS used the sync API (which worked when originally written). Figma's newer dynamic-page document access model requires async. All `walk()` functions must be `async` with `await` on child traversal.
+
+### Response Truncation at 64KB
+
+**The lesson**: The PROXY_EXECUTE WebSocket truncates responses at ~64KB (65,536 chars). Large screens with many INSTANCE nodes (each contributing a 40-char component key) can exceed this.
+
+**The solution**: Auto-batching with truncation detection. Start at batch_size=5. If response is truncated (JSON parse error at char 65533), halve the batch size and retry. Fall back to batch_size=1 for individual screens. The `run_supplement()` orchestrator handles this automatically.
+
+### Screen Classification Matters
+
+**The lesson**: Not all "screens" are app screens. The Dank file has 117 icon definitions (20×20), 14 component definitions, and 3 design canvases mixed in with 204 real app screens. Extracting, classifying, and rendering icon definitions wastes time and produces meaningless results.
+
+**The solution**: `screen_type` column on screens table. Classified by dimensions: `app_screen` (≥350×≥700), `icon_def` (≤40×40), `design_canvas` (>2000 on any axis), `component_def` (everything else). Only `app_screen` enters the composition/rendering pipeline.
+
+---
+
 ## T5 Compositional Analysis
 
 ### IR Design: Visual Intent, Not Token Transport

@@ -4,29 +4,47 @@
 
 ---
 
-## Layer 1: Extraction (6 modules)
+## Layer 1: Extraction (7 modules)
+
+### Extraction Workflow
+Two-step process covering all Figma properties:
+```
+dd extract <figma-url>              # Step 1: REST API — fast, reliable, ~90% of properties
+dd extract-supplement --db <db>     # Step 2: Plugin API — componentKey, layoutPositioning, Grid
+```
 
 ### dd/extract.py — Extraction Orchestrator
-Coordinates screen extraction + component extraction + binding extraction. Entry point for the `dd extract` CLI command.
+Coordinates screen extraction + component extraction + binding extraction. Entry point for the `dd extract` CLI command. Uses the REST API path via `figma_api.py`.
 
 | Function | Purpose |
 |----------|---------|
 | `run_inventory(conn, file_key, file_name, frames)` | Discover screens in Figma file, create extraction run |
-| `process_screen(conn, run_id, screen, file_key)` | Extract one screen's node tree via Plugin API |
+| `process_screen(conn, run_id, screen, file_key)` | Extract one screen's node tree |
 | `complete_run(conn, run_id)` | Finalize extraction run |
 | `process_components(conn, file_id, component_data)` | Extract components via `extract_components` module |
 
-### dd/extract_screens.py — Screen Node Extraction
-Generates Figma Plugin JS to walk node trees and extract 40+ properties per node.
+### dd/extract_screens.py — Plugin API Screen Extraction (29 tests)
+Generates async Figma Plugin JS to walk node trees and extract 72 columns per node. Uses `getNodeByIdAsync` and `getMainComponentAsync` (Figma's async API).
 
 | Function | Purpose |
 |----------|---------|
-| `generate_extraction_script(screen_node_id)` | Generate JS that extracts full node tree |
+| `generate_extraction_script(screen_node_id)` | Generate async JS that extracts full node tree |
 | `parse_extraction_response(response)` | Normalize raw response, type-convert, handle JSON fields |
 | `compute_is_semantic(nodes)` | Tag nodes as semantic vs. structural noise |
 | `insert_nodes(conn, screen_id, nodes)` | Batch insert into `nodes` table with UPSERT |
 
-**Captures**: fills, strokes, effects (JSON), corner radius, opacity, blend mode, layout mode, padding (4 sides), item spacing, counter axis spacing, alignment, sizing modes, font properties (8 fields), text content, constraints, rotation, clips_content, component_key, component_figma_id. Total: 40+ columns.
+**Captures**: fills, strokes, effects (JSON), corner radius, opacity, blend mode, layout mode, padding (4 sides), item spacing, counter axis spacing, alignment, sizing modes, layout_positioning, Grid properties (6 fields), font properties (8 fields), text content, constraints, rotation, clips_content, component_key, component_figma_id. Total: 72 columns.
+
+### dd/extract_supplement.py — Supplemental Plugin API Extraction
+Targeted extraction for Plugin API-only fields: `componentKey`, `layoutPositioning`, and Grid properties. CLI: `dd extract-supplement`.
+
+| Function | Purpose |
+|----------|---------|
+| `generate_supplement_script(screen_node_ids)` | Generate compact JS for batch screen extraction (only non-default values) |
+| `apply_supplement(conn, supplement_data)` | Update nodes table with supplemental data from compact format |
+| `run_supplement(conn, execute_fn, batch_size, delay)` | **Orchestrator**: auto-batch, auto-retry on 64KB truncation, individual retry for failed screens |
+
+**Auto-batching**: Default 5 screens per call. On 64KB response truncation, halves batch size and retries. Falls back to individual screen extraction for persistent failures.
 
 ### dd/extract_bindings.py — Token Binding Extraction
 Normalizes Figma node properties into token binding rows and manages binding lifecycle.
