@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from dd.db import init_db
+from dd.db import init_db, run_migration, classify_screens
 from dd.extract_screens import (
     compute_is_semantic,
     generate_extraction_script,
@@ -491,5 +491,99 @@ def test_update_screen_status():
     row = cursor.fetchone()
     assert row[0] == "failed"
     assert row[1] == "Connection timeout"
+
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Migration + screen classification tests
+# ---------------------------------------------------------------------------
+
+def test_migration_adds_columns_to_old_schema():
+    """Simulate an old DB missing columns, run migration, verify columns added."""
+    conn = sqlite3.connect(":memory:")
+    # Create a minimal old-style nodes table
+    conn.execute("""
+        CREATE TABLE nodes (
+            id INTEGER PRIMARY KEY,
+            screen_id INTEGER,
+            figma_node_id TEXT,
+            name TEXT,
+            node_type TEXT,
+            depth INTEGER DEFAULT 0,
+            sort_order INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE screens (
+            id INTEGER PRIMARY KEY,
+            file_id INTEGER,
+            figma_node_id TEXT,
+            name TEXT,
+            width REAL,
+            height REAL
+        )
+    """)
+    conn.commit()
+
+    result = run_migration(conn, "migrations/006_extraction_completeness.sql")
+    assert result["added"] > 0
+    assert len(result["errors"]) == 0
+
+    # Verify key columns exist
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    assert "layout_positioning" in cols
+    assert "grid_row_count" in cols
+    assert "grid_column_count" in cols
+    assert "component_key" in cols
+    assert "constraint_h" in cols
+
+    # Verify screen_type column exists
+    scols = {r[1] for r in conn.execute("PRAGMA table_info(screens)").fetchall()}
+    assert "screen_type" in scols
+
+    conn.close()
+
+
+def test_migration_is_idempotent():
+    """Running migration twice should not error."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE nodes (id INTEGER PRIMARY KEY)")
+    conn.execute("CREATE TABLE screens (id INTEGER PRIMARY KEY, width REAL, height REAL)")
+    conn.commit()
+
+    result1 = run_migration(conn, "migrations/006_extraction_completeness.sql")
+    assert result1["added"] > 0
+
+    result2 = run_migration(conn, "migrations/006_extraction_completeness.sql")
+    assert result2["skipped"] > 0
+    assert len(result2["errors"]) == 0
+
+    conn.close()
+
+
+def test_classify_screens():
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's1', 'Phone', 428, 926)")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's2', 'Icon', 20, 20)")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's3', 'Canvas', 3881, 2622)")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's4', 'Input', 352, 77)")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, 's5', 'Tablet', 834, 1194)")
+    conn.commit()
+
+    result = classify_screens(conn)
+    assert result["app_screen"] == 2  # phone + tablet
+    assert result["icon_def"] == 1
+    assert result["design_canvas"] == 1
+    assert result["component_def"] == 1
+
+    # Verify individual assignments
+    row = conn.execute("SELECT screen_type FROM screens WHERE name = 'Phone'").fetchone()
+    assert row[0] == "app_screen"
+    row = conn.execute("SELECT screen_type FROM screens WHERE name = 'Icon'").fetchone()
+    assert row[0] == "icon_def"
+    row = conn.execute("SELECT screen_type FROM screens WHERE name = 'Canvas'").fetchone()
+    assert row[0] == "design_canvas"
 
     conn.close()

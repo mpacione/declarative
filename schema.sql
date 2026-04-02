@@ -275,6 +275,7 @@ CREATE TABLE screens (
     width           REAL NOT NULL,
     height          REAL NOT NULL,
     device_class    TEXT,                        -- iphone, ipad_11, ipad_13, web, component_sheet, unknown
+    screen_type     TEXT,                        -- app_screen, component_def, icon_def, design_canvas
     node_count      INTEGER,                    -- nodes in this screen (~204 observed)
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(file_id, figma_node_id)

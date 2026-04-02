@@ -196,3 +196,58 @@ def backup_db(source_path: str) -> str:
         old_backup.unlink()
 
     return str(backup_path)
+
+
+def run_migration(conn: sqlite3.Connection, migration_path: str) -> dict:
+    """Run a migration SQL file, skipping columns that already exist.
+
+    Each ALTER TABLE ADD COLUMN statement is executed individually.
+    'duplicate column name' errors are silently skipped (idempotent).
+
+    Returns dict with added, skipped, and error counts.
+    """
+    with open(migration_path, "r") as f:
+        sql = f.read()
+
+    added = 0
+    skipped = 0
+    errors = []
+
+    for line in sql.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("--"):
+            continue
+        try:
+            conn.execute(line)
+            added += 1
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                skipped += 1
+            elif "duplicate column" in str(e).lower():
+                skipped += 1
+            else:
+                errors.append(str(e))
+
+    conn.commit()
+    return {"added": added, "skipped": skipped, "errors": errors}
+
+
+def classify_screens(conn: sqlite3.Connection) -> dict:
+    """Classify screens by type based on dimensions.
+
+    Sets screen_type column: app_screen, component_def, icon_def, design_canvas.
+    """
+    conn.execute("""
+        UPDATE screens SET screen_type = CASE
+            WHEN width <= 40 AND height <= 40 THEN 'icon_def'
+            WHEN width > 2000 OR height > 2000 THEN 'design_canvas'
+            WHEN width >= 350 AND height >= 700 THEN 'app_screen'
+            ELSE 'component_def'
+        END
+    """)
+    conn.commit()
+
+    cursor = conn.execute("""
+        SELECT screen_type, COUNT(*) FROM screens GROUP BY screen_type ORDER BY COUNT(*) DESC
+    """)
+    return dict(cursor.fetchall())
