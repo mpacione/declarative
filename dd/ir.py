@@ -302,12 +302,10 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
     all_nodes = container_nodes + raw_rows
 
     tokens_cursor = conn.execute(
-        "SELECT DISTINCT t.name, tv.resolved_value "
+        "SELECT DISTINCT t.name, ntb.resolved_value "
         "FROM node_token_bindings ntb "
         "JOIN nodes n ON ntb.node_id = n.id "
         "JOIN tokens t ON ntb.token_id = t.id "
-        "JOIN token_values tv ON tv.token_id = t.id "
-        "JOIN token_modes tm ON tv.mode_id = tm.id AND tm.is_default = 1 "
         "WHERE n.screen_id = ? AND ntb.binding_status = 'bound'",
         (screen_id,),
     )
