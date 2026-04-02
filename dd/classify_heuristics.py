@@ -2,13 +2,15 @@
 
 Classifies unclassified nodes using position, layout, and text rules.
 Only processes nodes NOT already classified by formal matching.
+
+All rules are defined in dd/classify_rules.py.
 """
 
-import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
 from dd.catalog import get_catalog
+from dd.classify_rules import apply_heuristic_rules
 
 
 def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
@@ -31,7 +33,7 @@ def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
     inserts: List[Tuple] = []
 
     for node in unclassified:
-        result = _apply_rules(node, screen_width, screen_height, conn)
+        result = apply_heuristic_rules(node, screen_width, screen_height)
         if result is not None:
             canonical_type, confidence = result
             inserts.append((
@@ -83,136 +85,3 @@ def _get_unclassified_nodes(conn: sqlite3.Connection, screen_id: int) -> List[Di
 def _build_catalog_id_lookup(conn: sqlite3.Connection) -> Dict[str, Optional[int]]:
     catalog = get_catalog(conn)
     return {entry["canonical_name"]: entry["id"] for entry in catalog}
-
-
-def _apply_rules(
-    node: Dict[str, Any],
-    screen_width: float,
-    screen_height: float,
-    conn: sqlite3.Connection,
-) -> Optional[Tuple[str, float]]:
-    """Apply heuristic rules in priority order. Returns (type, confidence) or None."""
-    result = _rule_header(node, screen_width)
-    if result:
-        return result
-
-    result = _rule_bottom_nav(node, screen_width, screen_height)
-    if result:
-        return result
-
-    result = _rule_heading_text(node)
-    if result:
-        return result
-
-    result = _rule_body_text(node)
-    if result:
-        return result
-
-    result = _rule_generic_frame_container(node)
-    if result:
-        return result
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Individual heuristic rules
-# ---------------------------------------------------------------------------
-
-def _rule_header(node: Dict[str, Any], screen_width: float) -> Optional[Tuple[str, float]]:
-    """Full-width frame at top of screen with horizontal layout → header."""
-    if node["node_type"] != "FRAME":
-        return None
-    if node["depth"] != 1:
-        return None
-
-    y = node.get("y") or 0
-    width = node.get("width") or 0
-    height = node.get("height") or 0
-
-    is_top = y <= 60
-    is_full_width = width >= screen_width * 0.9
-    is_short = 30 <= height <= 80
-
-    if is_top and is_full_width and is_short:
-        return ("header", 0.85)
-
-    return None
-
-
-def _rule_bottom_nav(
-    node: Dict[str, Any], screen_width: float, screen_height: float
-) -> Optional[Tuple[str, float]]:
-    """Full-width frame at bottom of screen → bottom_nav."""
-    if node["node_type"] != "FRAME":
-        return None
-    if node["depth"] != 1:
-        return None
-
-    y = node.get("y") or 0
-    width = node.get("width") or 0
-    height = node.get("height") or 0
-
-    is_bottom = (y + height) >= screen_height * 0.9
-    is_full_width = width >= screen_width * 0.9
-    is_short = 40 <= height <= 100
-
-    if is_bottom and is_full_width and is_short:
-        return ("bottom_nav", 0.8)
-
-    return None
-
-
-def _rule_heading_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
-    """TEXT node with large font size → heading.
-
-    Font size >= 18 is sufficient. Heavy weight increases confidence
-    but is not required (many headings use regular weight at large sizes).
-    """
-    if node["node_type"] != "TEXT":
-        return None
-
-    font_size = node.get("font_size")
-    if font_size is None:
-        return None
-
-    if font_size >= 18:
-        font_weight = node.get("font_weight")
-        confidence = 0.9 if (font_weight and font_weight >= 600) else 0.8
-        return ("heading", confidence)
-
-    return None
-
-
-_GENERIC_FRAME_RE = re.compile(r"^(Frame|Group)\s*\d*$", re.IGNORECASE)
-
-
-def _rule_generic_frame_container(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
-    """Generic 'Frame N' or 'Group N' → container.
-
-    Unnamed structural frames that Figma auto-generates are layout
-    containers, not specific components.
-    """
-    if node["node_type"] not in ("FRAME", "GROUP"):
-        return None
-
-    name = node.get("name", "")
-    if not _GENERIC_FRAME_RE.match(name):
-        return None
-
-    return ("container", 0.7)
-
-
-def _rule_body_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
-    """TEXT node with standard font size → text."""
-    if node["node_type"] != "TEXT":
-        return None
-
-    font_size = node.get("font_size")
-    if font_size is None:
-        return None
-
-    if 8 <= font_size < 18:
-        return ("text", 0.85)
-
-    return None

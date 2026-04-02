@@ -7,77 +7,11 @@ Classifies nodes against the component_type_catalog using:
   Step 4: Vision cross-validation (deferred to Phase 1b)
 """
 
-import re
 import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dd.catalog import get_catalog
-
-
-# Patterns that indicate generic auto-named nodes (not real component names)
-_GENERIC_NAME_RE = re.compile(
-    r"^(Frame|Group|Rectangle|Vector|Ellipse|Boolean)\s*\d*$",
-    re.IGNORECASE,
-)
-
-# System chrome: OS-level UI that isn't part of the app's design
-_SYSTEM_CHROME_PREFIXES = (
-    "ios/", "ios/",  # lowercase and uppercase handled by case-insensitive check
-)
-_SYSTEM_CHROME_EXACT = frozenset({
-    "home indicator", "homeindicator", "safari - bottom",
-    "view mode", "_key", "_keycontainer",
-    "shift", "caps lock", "space", "delete", "enter", "emoji",
-    "dictation", ".?123", "?.", "!,", "tab",
-    "keyboard layout", "keyboard close",
-})
-# Single letters are keyboard keys
-_KEYBOARD_SINGLE_CHAR_RE = re.compile(r"^[a-z]$")
-# "Button N" without slash — Figma-level keyboard button, not app button
-_BUTTON_N_RE = re.compile(r"^Button\s+\d+$")
-
-
-def is_system_chrome(name: str) -> bool:
-    """Check if a node name represents OS-level system chrome."""
-    lowered = name.strip().lower()
-
-    if lowered.startswith("ios/"):
-        return True
-    if lowered in _SYSTEM_CHROME_EXACT:
-        return True
-    if _KEYBOARD_SINGLE_CHAR_RE.match(lowered):
-        return True
-    if lowered.startswith("keyboard "):
-        return True
-
-    return False
-
-
-def parse_component_name(name: str) -> List[str]:
-    """Extract candidate lookup keys from a node name, longest first.
-
-    For "button/large/translucent" returns:
-      ["button/large/translucent", "button/large", "button"]
-    For "Sidebar" returns: ["sidebar"]
-    For "Button 3" returns: ["button"]  (normalized)
-    For generic names like "Frame 359" returns: []
-    """
-    if _GENERIC_NAME_RE.match(name):
-        return []
-
-    # Normalize "Button N" pattern → "button"
-    if _BUTTON_N_RE.match(name):
-        return ["button"]
-
-    lowered = name.strip().lower()
-    if not lowered:
-        return []
-
-    parts = lowered.split("/")
-    candidates = []
-    for i in range(len(parts), 0, -1):
-        candidates.append("/".join(parts[:i]))
-    return candidates
+from dd.classify_rules import is_system_chrome, parse_component_name
 
 
 def build_alias_index(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:

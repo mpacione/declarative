@@ -6,7 +6,8 @@ import pytest
 
 from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.classify import build_alias_index, parse_component_name, is_system_chrome, classify_formal, link_parent_instances, run_classification
+from dd.classify import build_alias_index, classify_formal, link_parent_instances, run_classification
+from dd.classify_rules import parse_component_name, is_system_chrome
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_skeleton import extract_skeleton
 from dd.types import ClassificationSource

@@ -10,7 +10,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dd.catalog import get_catalog
-from dd.classify import is_system_chrome, parse_component_name
+from dd.classify_rules import is_system_chrome, parse_component_name
 
 
 _DEFAULT_LLM_CONFIDENCE = 0.7
