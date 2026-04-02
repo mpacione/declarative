@@ -71,7 +71,7 @@ def _get_unclassified_nodes(conn: sqlite3.Connection, screen_id: int) -> List[Di
     cursor = conn.execute(
         "SELECT n.id, n.name, n.node_type, n.depth, n.x, n.y, n.width, n.height, "
         "n.layout_mode, n.font_family, n.font_weight, n.font_size, n.text_content, "
-        "n.parent_id "
+        "n.parent_id, n.fills, n.strokes, n.effects "
         "FROM nodes n "
         "LEFT JOIN screen_component_instances sci "
         "  ON sci.node_id = n.id AND sci.screen_id = n.screen_id "

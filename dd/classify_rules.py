@@ -180,17 +180,30 @@ def rule_body_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
     return None
 
 
+def _has_visual_properties(node: Dict[str, Any]) -> bool:
+    """Check if a node has visual properties (fills, strokes, effects)."""
+    for prop in ("fills", "strokes", "effects"):
+        raw = node.get(prop)
+        if raw and raw != "[]":
+            return True
+    return False
+
+
 def rule_generic_frame_container(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
-    """Generic 'Frame N' or 'Group N' → container.
+    """Generic 'Frame N' or 'Group N' → container or surface.
 
     Unnamed structural frames that Figma auto-generates are layout
-    containers, not specific components.
+    containers ONLY if they have no visual properties. Frames with
+    fills, strokes, or effects are visual elements (surfaces).
     """
     if node["node_type"] not in ("FRAME", "GROUP"):
         return None
 
     name = node.get("name", "")
     if not is_generic_name(name):
+        return None
+
+    if _has_visual_properties(node):
         return None
 
     return ("container", 0.7)

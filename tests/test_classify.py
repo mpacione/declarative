@@ -1,5 +1,6 @@
 """Tests for component classification (T5 Phase 1a)."""
 
+import json
 import sqlite3
 
 import pytest
@@ -512,6 +513,22 @@ class TestStructuralHeuristics:
         row = cursor.fetchone()
         assert row is not None
         assert row[0] == "container"
+
+    def test_generic_frame_with_fills_not_classified_as_container(self, db: sqlite3.Connection):
+        fills_json = json.dumps([{"type": "SOLID", "color": {"r": 0.9, "g": 0.9, "b": 0.9, "a": 1.0}}])
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, layout_mode, fills) "
+            "VALUES (22, 1, 'gfv', 'Frame 99', 'FRAME', 2, 5, 0, 300, 200, 100, 'VERTICAL', ?)",
+            (fills_json,),
+        )
+        db.commit()
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 22"
+        )
+        row = cursor.fetchone()
+        assert row is None
 
     def test_skips_already_classified(self, db: sqlite3.Connection):
         # Pre-classify node 10 formally
