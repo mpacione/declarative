@@ -231,6 +231,8 @@ class TestGenerateFigmaScript:
         }})
         script, _ = generate_figma_script(spec)
         assert "effects = [{" in script
+        assert "DROP_SHADOW" in script
+        assert "blendMode" in script
 
     def test_corner_radius_from_visual(self):
         spec = _make_spec({"screen-1": {

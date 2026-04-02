@@ -418,7 +418,7 @@ def _emit_effects(
             if resolved and isinstance(resolved, str) and resolved.startswith("#"):
                 rgb = hex_to_figma_rgb(resolved)
                 effect_objs.append(
-                    f'{{type: "{figma_type}", visible: true, '
+                    f'{{type: "{figma_type}", visible: true, blendMode: "NORMAL", '
                     f'color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:1}}, '
                     f'offset: {{x:{offset["x"]},y:{offset["y"]}}}, '
                     f'radius: {blur}, spread: {spread}}}'
@@ -429,7 +429,7 @@ def _emit_effects(
         elif effect_type in ("layer-blur", "background-blur"):
             radius = effect.get("radius", 0)
             figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
-            effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
+            effect_objs.append(f'{{type: "{figma_type}", visible: true, blendMode: "NORMAL", radius: {radius}}}')
 
     lines: List[str] = []
     if effect_objs:
