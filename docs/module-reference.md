@@ -212,7 +212,7 @@ Transforms classified screen data + token bindings into CompositionSpec.
 | `normalize_effects(raw_json, bindings)` | Normalize Figma effects JSON to IR effect array |
 | `normalize_corner_radius(raw_value)` | Normalize to number or per-corner dict |
 
-**Current state**: IR is too thick — carries visual properties (fills, strokes, effects) that should be in DB/renderer. Phase 0 complete: `_node_id_map` + `query_screen_visuals` give the renderer direct DB access. Phase 1 will wire the generator to use this path. Semantic tree construction (200→20 elements) and slot filling not yet implemented.
+**Current state**: IR is thin — no visual section. Visual data is read from DB by the generator via `query_screen_visuals` + `build_visual_from_db`. Semantic tree construction (200→20 elements) and slot filling not yet implemented.
 
 ---
 

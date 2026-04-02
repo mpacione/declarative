@@ -4,10 +4,8 @@ Takes a CompositionSpec JSON and produces:
   Phase A: A figma_execute script that creates frames/text with auto-layout
   Phase B: Rebind scripts that bind Figma variables to created nodes
 
-Visual data sources:
-  - IR path (current): reads element["visual"] from the spec
-  - DB path (Phase 1): reads raw visual data from query_screen_visuals(),
-    normalizes it, and feeds it to the same _emit_visual pipeline
+Visual data source: DB path via query_screen_visuals() → build_visual_from_db()
+  → _emit_visual pipeline. The IR does not carry visual data (thin IR).
 """
 
 import re
@@ -244,7 +242,7 @@ def generate_figma_script(
             raw_visual = db_visuals.get(node_id, {}) if node_id else {}
             visual = build_visual_from_db(raw_visual)
         else:
-            visual = element.get("visual", {})
+            visual = {}
         visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
         lines.extend(visual_lines)
         all_token_refs.extend(visual_refs)

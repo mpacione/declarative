@@ -10,7 +10,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
 - **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
 - **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
-- **Tests**: 1,058 passing
+- **Tests**: 1,054 passing
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model
@@ -24,12 +24,12 @@ Layer 3: COMPOSITION     Abstractions → IR   "Describe what to build"
 Layer 4: RENDERING       IR + DB/Config → Output  "Build it concretely"
 ```
 
-Key decisions: thin IR (semantic intent only), renderer reads DB directly for visual detail (no intermediary context object), instance-first Figma rendering, default library fallback. Synthetic tokens deferred to composition layer (not needed for rendering).
+Key decisions: thin IR (semantic intent only, no visual section — Phase 2 complete), renderer reads DB directly for visual detail, instance-first Figma rendering, default library fallback. Synthetic tokens deferred to composition layer (not needed for rendering).
 
 ## What To Do Next
 
-### Phase 2: Remove IR visual section (thin IR)
-The generator now reads visual data from the DB (Phase 1 complete). The IR's `visual` section is redundant — Phase 2 removes it, making the IR truly thin. The `_build_visual` call in `map_node_to_element` gets removed, and the generator relies solely on the DB path via `db_visuals`.
+### Phase 3: Semantic tree construction
+The IR currently has ~116 elements per screen (one per classified node). The target is ~15-25 semantic elements. This requires slot filling (children mapped to named slots), system chrome exclusion, and absorption of unclassified intermediate frames. Prerequisite: run `extract_components()` on Dank to populate slot definitions.
 
 ### Before Phase 1, consider:
 - Run `extract_components()` on Dank file to populate the 6 empty composition tables

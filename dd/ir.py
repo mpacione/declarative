@@ -269,10 +269,6 @@ def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
     if layout:
         element["layout"] = layout
 
-    visual = _build_visual(node, bindings)
-    if visual:
-        element["visual"] = visual
-
     style = _build_style(node, binding_index)
     if style:
         element["style"] = style
@@ -354,42 +350,8 @@ def _build_sizing(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return sizing if sizing else None
 
 
-def _build_visual(node: Dict[str, Any], bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Build visual section from raw Figma JSON columns + token bindings.
-
-    Normalizes fills, strokes, effects into platform-agnostic arrays.
-    Token refs are inlined where bindings exist, literal values otherwise.
-    """
-    visual: Dict[str, Any] = {}
-
-    fills = normalize_fills(node.get("fills"), bindings)
-    if fills:
-        visual["fills"] = fills
-
-    strokes = normalize_strokes(node.get("strokes"), bindings, node)
-    if strokes:
-        visual["strokes"] = strokes
-
-    effects = normalize_effects(node.get("effects"), bindings)
-    if effects:
-        visual["effects"] = effects
-
-    radius = normalize_corner_radius(node.get("corner_radius"))
-    if radius is not None:
-        visual["cornerRadius"] = radius
-
-    opacity = node.get("opacity")
-    if opacity is not None and opacity < 1.0:
-        visual["opacity"] = opacity
-
-    return visual
-
-
 def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[str, Any]:
-    """Build style section — typography bindings only.
-
-    Visual properties (fills, strokes, effects, radius, opacity) are in visual.
-    """
+    """Build style section — typography bindings only."""
     style: Dict[str, Any] = {}
 
     for binding in node.get("bindings", []):

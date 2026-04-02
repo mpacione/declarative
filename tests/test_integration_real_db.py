@@ -14,7 +14,6 @@ import sqlite3
 import pytest
 
 from dd.ir import (
-    generate_ir,
     query_screen_for_ir,
     query_screen_visuals,
     build_composition_spec,
@@ -23,7 +22,6 @@ from dd.ir import (
     normalize_effects,
 )
 from dd.generate import (
-    generate_figma_script,
     generate_screen,
     build_visual_from_db,
 )
@@ -72,50 +70,6 @@ class TestEndToEndGeneration:
     def test_generated_script_has_token_refs(self, dank_db, screen_id):
         result = generate_screen(dank_db, screen_id=screen_id)
         assert len(result["token_refs"]) > 5, "Expected token refs for variable rebinding"
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
-class TestDualPathParityAllDevices:
-    """IR visual path and DB visual path produce identical output across devices."""
-
-    @pytest.mark.parametrize("screen_id", [PHONE_SCREEN, TABLET_P_SCREEN, TABLET_L_SCREEN])
-    def test_parity_per_device_class(self, dank_db, screen_id):
-        ir_result = generate_ir(dank_db, screen_id=screen_id)
-        spec = ir_result["spec"]
-        visuals = query_screen_visuals(dank_db, screen_id=screen_id)
-
-        ir_script, ir_refs = generate_figma_script(spec, db_visuals=None)
-        db_script, db_refs = generate_figma_script(spec, db_visuals=visuals)
-
-        assert ir_script == db_script, f"Parity failed on screen {screen_id}"
-        assert ir_refs == db_refs, f"Token ref parity failed on screen {screen_id}"
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
-class TestBroadParitySweep:
-    """Parity across a large sample of app screens."""
-
-    @pytest.mark.timeout(60)
-    def test_parity_across_10_app_screens(self, dank_db):
-        screens = [row[0] for row in dank_db.execute(
-            "SELECT id FROM screens WHERE screen_type = 'app_screen' ORDER BY id LIMIT 10"
-        ).fetchall()]
-
-        failures = []
-        for screen_id in screens:
-            ir_result = generate_ir(dank_db, screen_id=screen_id)
-            spec = ir_result["spec"]
-            visuals = query_screen_visuals(dank_db, screen_id=screen_id)
-
-            ir_script, _ = generate_figma_script(spec, db_visuals=None)
-            db_script, _ = generate_figma_script(spec, db_visuals=visuals)
-
-            if ir_script != db_script:
-                failures.append(screen_id)
-
-        assert failures == [], f"Parity failed on screens: {failures}"
 
 
 @pytest.mark.integration
