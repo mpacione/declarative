@@ -480,6 +480,38 @@ class TestStructuralHeuristics:
         assert row is not None
         assert row[0] == "text"
 
+    def test_classifies_heading_without_font_weight(self, db: sqlite3.Connection):
+        # Add a TEXT node with large font but no font_weight
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, font_size, text_content) "
+            "VALUES (20, 1, 'tw', 'Title', 'TEXT', 2, 3, 16, 80, 396, 28, 22, 'Welcome')"
+        )
+        db.commit()
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 20"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "heading"
+
+    def test_classifies_generic_frame_as_container(self, db: sqlite3.Connection):
+        # Add a generic "Frame N" node
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, layout_mode) "
+            "VALUES (21, 1, 'gf', 'Frame 42', 'FRAME', 2, 4, 0, 200, 428, 300, 'VERTICAL')"
+        )
+        db.commit()
+        classify_heuristics(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 21"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "container"
+
     def test_skips_already_classified(self, db: sqlite3.Connection):
         # Pre-classify node 10 formally
         db.execute(

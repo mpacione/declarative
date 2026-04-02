@@ -4,6 +4,7 @@ Classifies unclassified nodes using position, layout, and text rules.
 Only processes nodes NOT already classified by formal matching.
 """
 
+import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -107,6 +108,10 @@ def _apply_rules(
     if result:
         return result
 
+    result = _rule_generic_frame_container(node)
+    if result:
+        return result
+
     return None
 
 
@@ -159,20 +164,43 @@ def _rule_bottom_nav(
 
 
 def _rule_heading_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
-    """TEXT node with large font size and heavy weight → heading."""
+    """TEXT node with large font size → heading.
+
+    Font size >= 18 is sufficient. Heavy weight increases confidence
+    but is not required (many headings use regular weight at large sizes).
+    """
     if node["node_type"] != "TEXT":
         return None
 
     font_size = node.get("font_size")
-    font_weight = node.get("font_weight")
-
     if font_size is None:
         return None
 
-    if font_size >= 18 and (font_weight is not None and font_weight >= 600):
-        return ("heading", 0.9)
+    if font_size >= 18:
+        font_weight = node.get("font_weight")
+        confidence = 0.9 if (font_weight and font_weight >= 600) else 0.8
+        return ("heading", confidence)
 
     return None
+
+
+_GENERIC_FRAME_RE = re.compile(r"^(Frame|Group)\s*\d*$", re.IGNORECASE)
+
+
+def _rule_generic_frame_container(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
+    """Generic 'Frame N' or 'Group N' → container.
+
+    Unnamed structural frames that Figma auto-generates are layout
+    containers, not specific components.
+    """
+    if node["node_type"] not in ("FRAME", "GROUP"):
+        return None
+
+    name = node.get("name", "")
+    if not _GENERIC_FRAME_RE.match(name):
+        return None
+
+    return ("container", 0.7)
 
 
 def _rule_body_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
