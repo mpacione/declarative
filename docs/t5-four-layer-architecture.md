@@ -518,6 +518,362 @@ Figma file
 
 ---
 
+## Deep Dive: How Renderers Work
+
+### Component Template Schema
+
+A component template captures HOW a catalog type is physically built on a specific platform. For Figma, this means the frame structure, auto-layout config, visual defaults, and slot-to-position mapping.
+
+```
+ComponentTemplate
+  catalogType: string                      // "header", "button", "card"
+  variant: string | null                   // "primary", "with-search", null for default
+
+  // Source reference (how we found this template)
+  source: {
+    componentKey: string | null            // Figma component key for importComponentByKeyAsync
+    representativeNodeId: number | null    // DB node ID of the canonical instance
+    instanceCount: number                  // how many instances informed this template
+  }
+
+  // Frame structure (the physical Figma tree)
+  structure: {
+    layoutMode: "HORIZONTAL" | "VERTICAL" | "NONE"
+    sizing: { width: number, height: number }        // default dimensions
+    padding: { top, right, bottom, left }             // from auto-layout
+    itemSpacing: number | null
+    primaryAxisAlignment: string | null
+    counterAxisAlignment: string | null
+    cornerRadius: number | null
+  }
+
+  // Visual defaults (applied when no source node or token exists)
+  visual: {
+    fills: [{ type: "SOLID", color: "#FFFFFF", opacity: 1.0 }]
+    strokes: [...]
+    effects: [{ type: "BACKGROUND_BLUR", radius: 15.0 }]
+    opacity: number
+  }
+
+  // Slot-to-position mapping (which child index = which slot)
+  slots: {
+    "leading":  { childIndex: 0, defaultWidth: 130, defaultHeight: 64 }
+    "title":    { childIndex: 1, defaultWidth: 182, defaultHeight: 64 }
+    "trailing": { childIndex: 2, defaultWidth: 130, defaultHeight: 64 }
+  }
+```
+
+Templates are extracted by Layer 2 (Analysis) from classified instances. When multiple instances of the same type exist (e.g., 338 headers across 338 screens), the template captures the MOST COMMON structure — the mode, not the mean. Variants are captured as separate templates.
+
+### The Two Figma Generation Modes
+
+The Figma renderer operates in two fundamentally different modes depending on whether a component key is available:
+
+**Mode 1: Component Instantiation (high fidelity)**
+When the template has a `componentKey` (the source was a formal Figma component):
+1. Call `figma.importComponentByKeyAsync(key)` → get the master component
+2. Create an instance → inherits the full frame structure, auto-layout, visual properties
+3. Set overrides from IR props: text content, icon swaps, variant selection, visibility toggles
+4. Bind token variables via `setBoundVariable` for tokenized properties
+5. The instance looks exactly like the designer's original because it IS the original component
+
+This is the preferred path. It produces pixel-perfect output because it uses the designer's actual components. Most INSTANCE nodes in a well-structured Figma file will have component keys.
+
+**Mode 2: Template Construction (lower fidelity, but works without component library)**
+When no `componentKey` exists (informal components, or pre-seeded defaults):
+1. Create a frame: `figma.createFrame()`
+2. Apply structure from template: `layoutMode`, padding, sizing, alignment
+3. Apply visual defaults from template: fills, strokes, effects, radius
+4. Create child frames for each slot, sized per template slot definitions
+5. Recursively render child IR elements into their slot positions
+6. Bind token variables where IR style has token refs
+7. Read unbound visual properties from DB (if source exists) or leave template defaults
+
+This mode produces functional but potentially less polished output. It's used for:
+- Generating from prompt (no source Figma file for new elements)
+- Informal components that aren't formal Figma components
+- Pre-seeded default libraries
+
+### Figma Renderer Algorithm (detailed)
+
+```
+function renderToFigma(spec: CompositionSpec, config: FigmaRendererConfig):
+
+  nodeMap = {}  // IR element ID → created Figma node ID
+
+  // Phase A: Create all elements (BFS from root)
+  for each element in BFS(spec.root, spec.elements):
+    template = config.componentMap[element.type]
+
+    if template and template.source.componentKey:
+      // MODE 1: Instantiate real component
+      masterComponent = await figma.importComponentByKeyAsync(template.source.componentKey)
+      node = masterComponent.createInstance()
+
+      // Apply variant selection from IR props
+      if element.props.variant and template.variants:
+        applyVariantProperties(node, element.props.variant, template.variants)
+
+      // Set text/boolean overrides from IR props
+      for prop in element.props:
+        setComponentProperty(node, prop.name, prop.value)
+
+    else:
+      // MODE 2: Construct from template
+      node = figma.createFrame()
+      applyTemplateStructure(node, template.structure)
+      applyTemplateVisuals(node, template.visual)
+
+    // Name the node for debugging/mapping
+    node.name = element.id
+
+    // Parent it
+    if element has parent in nodeMap:
+      parentNode = figma.getNodeById(nodeMap[parent.id])
+      parentNode.appendChild(node)
+
+    nodeMap[element.id] = node.id
+
+  // Phase B: Apply token bindings
+  for each element in spec.elements:
+    node = figma.getNodeById(nodeMap[element.id])
+
+    for each (property, tokenRef) in element.style:
+      tokenName = extractTokenName(tokenRef)   // "{color.primary}" → "color.primary"
+      variableId = config.tokenResolver.variableIds[tokenName]
+
+      if variableId:
+        variable = figma.variables.getVariableById(variableId)
+        bindVariable(node, property, variable)  // setBoundVariable / setBoundVariableForPaint
+
+    // For unbound visual properties: read from DB
+    if config.dbConnection and element has source node:
+      sourceNode = queryNodeVisuals(config.dbConnection, element.sourceNodeId)
+      applyUnboundVisuals(node, sourceNode)
+
+  // Phase C: Slot filling (for Mode 2 nodes)
+  for each element with slots in spec.elements:
+    if element was Mode 2 (template construction):
+      for each (slotName, childIds) in element.slots:
+        slotPosition = template.slots[slotName]
+        for childId in childIds:
+          childNode = figma.getNodeById(nodeMap[childId])
+          // Reparent child into the slot's position
+          insertChildAtSlot(parentNode, childNode, slotPosition)
+
+  return nodeMap  // for future reference / rebinding
+```
+
+### Semantic Tree Construction Algorithm
+
+This is how Layer 3 transforms 200 classified Figma nodes into ~20 semantic IR elements.
+
+**Input**: Classified nodes from DB (each has canonical_type, parent_id, bindings), slot definitions from catalog.
+
+**Output**: Flat element map with ~15-25 elements, each with filled slots.
+
+```
+Algorithm: buildSemanticTree(classifiedNodes, slotDefinitions)
+
+  // Step 1: Build the Figma parent-child tree
+  // Use actual parent_id (Figma layer tree), NOT classification parent_instance_id
+  figmaTree = buildTree(classifiedNodes, using: node.parent_id)
+
+  // Step 2: Identify "component roots" — classified nodes that represent
+  // complete components (not internal parts of a parent component)
+  //
+  // A node is a component root if:
+  //   - It has no classified ancestor, OR
+  //   - Its nearest classified ancestor's slot definitions accept this type
+  //
+  // Example: An icon inside a header is NOT a root — it fills the header's
+  // leading slot. A header inside a screen IS a root — it's a top-level
+  // component of the screen.
+
+  componentRoots = []
+  for node in classifiedNodes:
+    nearestClassifiedAncestor = walkUpTree(node, until: classified)
+
+    if nearestClassifiedAncestor is None:
+      componentRoots.append(node)  // top-level component
+    elif nodeTypeMatchesAnySlot(node.type, nearestClassifiedAncestor.type, slotDefinitions):
+      // This node fills a slot of its ancestor — it's a slot fill, not a root
+      assignToSlot(nearestClassifiedAncestor, node, slotDefinitions)
+    else:
+      componentRoots.append(node)  // doesn't fit any slot — treat as root
+
+  // Step 3: Filter system chrome
+  // Status bars, home indicators, Safari chrome, etc. are device framing,
+  // not app design. Identified by is_system_chrome() heuristic.
+  componentRoots = [n for n in componentRoots if not isSystemChrome(n)]
+
+  // Step 4: Absorb unclassified intermediate frames
+  // Figma trees often have "Frame 359" structural wrappers between
+  // components. These are Figma implementation details.
+  // They DON'T become IR elements — their layout properties are absorbed
+  // into the parent component's template.
+  //
+  // Example: Header → Frame "Left" → icon/back
+  // The "Left" frame is absorbed. The icon goes into Header.leading slot.
+
+  // Step 5: Build IR elements
+  for each componentRoot:
+    element = {
+      type: componentRoot.canonical_type,
+      slots: assignedSlots[componentRoot],     // from Step 2
+      props: extractProps(componentRoot),       // text content, icon name, variant
+      layout: extractSemanticLayout(componentRoot),  // direction, gap, sizing
+      style: extractTokenRefs(componentRoot),   // token refs only
+    }
+    elements[generateElementId(element.type)] = element
+
+  // Step 6: Wire parent-children at the IR level
+  // Component roots that share a Figma parent become siblings in the IR
+  // Grouped under a screen root element
+  screenRoot = { type: "screen", children: [root element IDs] }
+
+  return CompositionSpec(root: screenRoot.id, elements: allElements)
+```
+
+**Key insight**: The algorithm walks the Figma tree (parent_id) to determine spatial containment, but uses classification (canonical_type) to determine semantic role. Unclassified nodes are absorbed as structural glue. Classified nodes either become component roots or fill slots of their classified ancestors.
+
+### Token Resolution Flow
+
+The full chain from token reference in the IR to platform-specific output:
+
+```
+IR element: { style: { backgroundColor: "{color.surface.primary}" } }
+                                    │
+                                    ▼
+                    Renderer extracts token name
+                    "color.surface.primary"
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                     │                     │
+         Figma Renderer       React Renderer       SwiftUI Renderer
+              │                     │                     │
+              ▼                     ▼                     ▼
+    config.tokenResolver     config.tokenResolver     config.tokenResolver
+    format: figma-variable   format: css-var          format: swift-asset
+              │                     │                     │
+              ▼                     ▼                     ▼
+    variableIds lookup       mapping lookup           mapping lookup
+    "VariableID:123:456"     "var(--color-surface-    "Color(\"surface
+              │                primary)"               Primary\")"
+              ▼                     │                     │
+    figma.variables              │                     │
+      .getVariableById()         │                     │
+              │                     │                     │
+              ▼                     ▼                     ▼
+    setBoundVariableForPaint  emit in JSX style       emit as modifier
+    (node, variable)          attribute                .background(Color(...))
+```
+
+**When no token binding exists** (the property isn't in IR style):
+```
+IR element: { style: {} }    // no backgroundColor token ref
+                │
+                ▼
+    Renderer checks: is there a source node in DB?
+                │
+         ┌──────┴──────┐
+         YES            NO
+         │              │
+         ▼              ▼
+    Read from DB     Read from template
+    node.fills →     template.visual.fills →
+    literal color    default color
+         │              │
+         ▼              ▼
+    Apply directly   Apply as default
+    (no variable     (no variable
+     binding)         binding)
+```
+
+### Asset and Icon Resolution
+
+Icons and images are catalog types (`icon`, `image`) with platform-agnostic references in the IR. Each platform resolves them differently.
+
+**In the IR:**
+```json
+{
+  "type": "icon",
+  "props": {
+    "icon": "back",           // canonical name from vocabulary
+    "size": "medium"          // semantic size, not pixels
+  }
+}
+```
+
+**Figma resolution:**
+- Analysis extracts: `icon/back` component → component key `abc123`
+- Renderer: `importComponentByKeyAsync("abc123")` → creates instance
+- The icon's vector paths come from the component instance, not the IR
+- If no component key: create an empty placeholder frame (icon content can't be reconstructed from the IR alone)
+
+**React resolution:**
+- Config maps: `"back"` → `{ import: "lucide-react", component: "ArrowLeft" }`
+- Renderer: `import { ArrowLeft } from "lucide-react"` → `<ArrowLeft size={20} />`
+
+**SwiftUI resolution:**
+- Config maps: `"back"` → `Image(systemName: "chevron.left")`
+- Uses SF Symbols system
+
+**Image elements:**
+```json
+{
+  "type": "image",
+  "props": {
+    "src": "hero-banner",     // asset key
+    "alt": "Welcome banner"
+  }
+}
+```
+Asset keys are resolved via an asset manifest (per project):
+- Figma: image hash → fill with image paint
+- React: `"/images/hero-banner.jpg"`
+- SwiftUI: `Image("heroBanner")` from asset catalog
+
+**Key constraint**: Vector paths and raster image data are NOT in the IR. They're platform-specific binary assets. The IR carries only the semantic reference (icon name, asset key). The renderer resolves to the actual asset via the config or asset manifest.
+
+### Element-to-Node Mapping
+
+After the renderer creates Figma nodes from IR elements, the system needs a persistent mapping for:
+- **Token rebinding**: Phase B needs to find the created nodes to bind variables
+- **Future editing**: If the user asks "change the header," the system needs to find which Figma node is the header
+- **Incremental updates**: Modifying one IR element should update only the corresponding Figma node
+
+**The mapping is maintained as:**
+```
+nodeMap: { IR element ID → Figma node ID }
+
+Example:
+  "header-1"    → "5507:28"
+  "button-1"    → "5507:26"
+  "icon-1"      → "5507:32"
+```
+
+**Storage**: The `nodeMap` is returned by the renderer after execution. For persistence, it can be:
+- Stored in `figma.root.setPluginData("nodeMap", JSON.stringify(map))` for same-session access
+- Written to a new DB table (`ir_element_node_map`) for cross-session persistence
+- Embedded in the Figma node names (element IDs are already used as node names)
+
+**For Mode 1 (component instantiation)**: The node ID comes from the created instance.
+**For Mode 2 (template construction)**: The node ID comes from the created frame.
+
+**Slot children**: The mapping includes ALL IR elements, including those that fill slots. An icon inside a header's leading slot has its own entry: `"icon-1" → "5507:35"`.
+
+**Rebinding uses the mapping:**
+```
+for each (elementId, property, tokenName) in tokenRefs:
+  figmaNodeId = nodeMap[elementId]
+  variableId = config.tokenResolver.variableIds[tokenName]
+  node = figma.getNodeById(figmaNodeId)
+  bindVariable(node, property, variable)
+```
+
+---
+
 ## The RendererConfig Lifecycle
 
 ### Where Configs Come From
