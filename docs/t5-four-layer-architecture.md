@@ -1468,24 +1468,69 @@ VERIFY:
 
 ---
 
-## Remaining Open Questions
+## Resolved: Previously Open Questions (Steelmanning Round 2, 2026-04-02)
 
-### 1. Component Variants in Templates
-A Button has variants (primary, secondary, ghost, destructive). Does each variant get its own template, or is it one template with variant-driven overrides? The IR says `{props: {variant: "primary"}}` — how does the renderer select the right visual?
+### 1. Component Variants in Templates — RESOLVED
+**Decision**: Templates carry multiple variants, each with own frame structure and visual defaults. Variant detection via two methods:
 
-**Likely answer**: For instance-path rendering, Figma component variants handle this automatically (set the variant property on the instance). For frame-path rendering, the template needs per-variant visual defaults.
+**Name parsing** (primary, covers Dank file): Component names like `button/large/translucent` are split on `/` — first segment is base type, remaining are variant axis values. Dank file uses this exclusively (3,677 `button/large/translucent`, 2,537 `button/small/translucent`, etc.). The existing `parse_variant_properties()` handles `key=value` syntax; we also need `/`-delimited parsing.
 
-### 2. Informal Component Recognition
-Recurring frame arrangements that aren't formal Figma components — how does the analysis layer detect and template them? Structural similarity clustering across screens? This is template extraction's hardest problem.
+**Visual clustering** (fallback for files without naming conventions): Group instances by canonical type → extract structural fingerprint (child count, child types, layout mode, visual properties) → cluster by similarity → each cluster is a variant.
 
-### 3. Multi-File Design Systems
-Consumer file uses components from a separate library file. Component keys reference the library. Does the system need to extract both files? Can it resolve cross-file references?
+**Template model**:
+```
+ComponentTemplate
+  catalog_type: "button"
+  variants: {
+    "large/translucent": { frameStructure, visualDefaults, componentKey? },
+    "small/solid": { frameStructure, visualDefaults, componentKey? },
+    ...
+  }
+  default_variant: "large/translucent"  // most common
+```
 
-### 4. Missing DB Columns
-`constraints` (horizontal/vertical) and `layoutPositioning` (AUTO/ABSOLUTE) are extracted in JS but not stored. Schema migration needed before the Figma renderer can handle absolute positioning.
+**Instance path**: Figma handles variants natively (set variant property on instance).
+**Frame path**: Renderer looks up `variants[variant_name]` for the right template.
 
-### 5. Default Library Design
-The default template library needs to be designed and built. What visual style? Minimal/generic? Based on a specific design system (Material, iOS)? How is it maintained and versioned?
+### 2. Informal Component Recognition — RESOLVED
+**Decision**: Full structural clustering for the 1,950 non-container classified FRAMEs.
+
+**Algorithm**:
+1. Group classified FRAMEs by canonical type (e.g., all 174 cards, all 949 buttons)
+2. Extract structural fingerprint per instance: `(child_count, child_types_ordered, layout_mode, has_fills, has_strokes)`
+3. Cluster by fingerprint similarity (exact match for structure, delta-E for visual properties)
+4. Each structural cluster = a variant of that component type
+5. Extract template from the most common instance in each cluster
+6. Naming: from name parsing (`button/large/translucent`) or structural clustering (`card.cluster_1`)
+
+**Reuses existing infrastructure**: delta-E clustering for colors, extended to component-level structural fingerprints.
+
+### 3. Multi-File Design Systems — RESOLVED
+**Decision**: Multi-file works via component keys. No need to extract the library file separately.
+
+**Data flow**: INSTANCE nodes have `mainComponent.key` in Figma → extraction JS captures as `component_key` → DB stores it → `importComponentByKeyAsync(key)` works for published library components automatically (Figma resolves cross-file references via keys).
+
+**Prerequisite**: Schema migration to add `component_key` column to Dank DB (it's in the full schema, just missing from the older Dank DB). Then re-extract to populate.
+
+**Key finding**: All 27,810 INSTANCE nodes currently have `component_id = None`. The extraction JS DOES capture `component_key` and `component_figma_id`, but the Dank DB lacks the columns. This is a migration gap, not a code gap.
+
+### 4. Missing DB Columns — RESOLVED
+**Decision**: Schema migration is a prerequisite for implementation. 24 columns missing from Dank DB:
+
+**Critical for four-layer architecture**:
+- `component_key` — instance-first rendering (importComponentByKeyAsync)
+- `constraint_h`, `constraint_v` — absolute/stacked positioning
+- `stroke_weight`, `stroke_align` — stroke rendering
+- `clips_content` — overflow behavior
+
+**Also needed**: `font_style`, `text_case`, `text_decoration`, `text_align_v`, `layout_wrap`, `min/max_width/height`, `rotation`, `dash_pattern`, `paragraph_spacing`, `stroke_cap/join`, per-side stroke weights.
+
+**The extraction JS already captures all 24 fields**. This is purely a DB schema gap. Add columns via `ALTER TABLE`, then re-extract affected screens.
+
+### 5. Default Library Design — RESOLVED
+**Decision**: Modern neutral aesthetic. Clean, Inter font, neutral palette, proper spacing. Looks good out of the box — not a wireframe, not a branded design system. Think shadcn/ui defaults.
+
+**Implementation**: Create a reference Figma file with clean implementations of all ~48 catalog types → extract templates → ship as the system's default library. This is a design+engineering effort done once the template extraction pipeline is built.
 
 ---
 
