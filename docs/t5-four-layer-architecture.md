@@ -1279,34 +1279,213 @@ These are the `tokenResolver` for React/HTML renderers. The CSS export produces 
 
 ---
 
-## Open Questions for Steelmanning
+## Resolved Decisions (from Steelmanning, 2026-04-02)
 
-### 1. Fidelity Loss in Compression
-The Figma→IR path compresses 200 nodes to ~20 elements. When generating a NEW screen from that vocabulary, the output won't be pixel-identical to the source. Is "looks like it belongs to the same design system" sufficient? What visual deviations are acceptable vs. not?
+### 1. Un-tokenized Visual Values — Synthetic Tokens
+**Challenge**: Real Figma files have many un-tokenized values (hardcoded colors, one-off shadows). The thin IR only carries token refs. These values would be lost.
 
-### 2. Component Variants
-A Button has multiple variants (primary, secondary, ghost, destructive). The IR says `{type: "button", props: {variant: "primary"}}`. The template extraction needs to capture per-variant structure. How does the renderer select the right variant template? Does each variant get its own template, or is it one template with variant-driven property overrides?
+**Decision**: The analysis layer creates **synthetic tokens** for ALL visual values, not just Figma-variable-bound ones. Synthetic tokens are internal — they exist in the DB for rendering but are never exported to Figma variables or CSS.
 
-### 3. Informal vs Formal Components
-Some UI patterns in Figma aren't formal components — they're recurring frame arrangements without a master component. A "card" might be 5 informal frames that always appear together. The analysis layer needs to recognize these patterns and create templates for them, even without a component key. How is structural similarity detected and clustered?
+**Implementation**:
+- New tier: `synthetic` in `tokens.tier` (alongside `extracted`, `curated`, `aliased`)
+- Naming convention: `_` prefix (e.g., `_syn.color.surface.1`) — DTCG-non-compliant, so never confused with real tokens
+- Invisible to curation/export (those filter by `curated`/`aliased`)
+- The IR's `tokens` dictionary carries resolved values for both real and synthetic tokens — the renderer has one code path (resolve ref → get value)
+- **Promotable**: Users can promote synthetic → extracted → curated if they decide a value should be a real design token. This turns "un-tokenized value discovery" into a feature.
+- Token count stays manageable via clustering (86K nodes → ~200-300 unique visual values → ~50-80 synthetic tokens after delta-E grouping)
 
-### 4. Multi-File Design Systems
-Many Figma projects use a separate library file for component definitions. The renderer needs component keys from the library file, but the extracted DB is from the consumer file. How does the system connect these? Does the user need to extract both files?
+### 2. Semantic Sizing — Responsive Breakpoints
+**Challenge**: `sizing: { width: "fill" }` works, but real designs need different sizing at different viewports. A card is "fixed" on phone but "fill" on tablet.
 
-### 5. Performance at Scale
-Template extraction across 338 screens with 86K nodes will be computationally significant. Can analysis be incremental (analyze one screen at a time and merge results)? Can templates be cached and reused across sessions?
+**Decision**: The IR carries **responsive sizing hints per breakpoint class**. No raw pixel values.
 
-### 6. Missing DB Columns
-`constraints` (horizontal/vertical) and `layoutPositioning` (AUTO/ABSOLUTE) are extracted by the JS extraction code but not stored in the nodes table. The Figma renderer needs these for correct positioning of stacked/absolute children. Schema migration needed.
+```json
+"sizing": {
+  "width": { "default": "fixed", "tablet": "fill", "desktop": "fill" },
+  "height": "hug"
+}
+```
 
-### 7. Semantic Sizing Resolution
-The IR says `sizing: { width: "fill" }` but the renderer needs actual pixel values for Figma frame construction. Where does the resolution happen? Options: from the component template's dimensions, from the target viewport, or from the source node's dimensions in the DB.
+Templates carry default pixel dimensions for "fixed" elements. The renderer resolves breakpoint classes to platform-appropriate thresholds. Exact schema deferred to responsive implementation phase, but the decision is made: **the IR is responsive-aware, not single-viewport**.
 
-### 8. Error Recovery
-What does a renderer do when:
-- An IR element type has no mapping in the componentMap? → Create a generic container with the element's children.
-- An IR slot references a type not allowed by the slot definition? → Place it anyway with a warning.
-- A token ref doesn't resolve? → Renderer reads the literal from DB, or uses a hardcoded default.
+### 3. Semantic Tree Construction — Tractable
+**Challenge**: Can we collapse 200 Figma nodes to ~20 IR elements without losing structure?
+
+**Decision**: Yes. Analysis of screen 184 confirms clean boundaries:
+- Depth 0: screen frame → IR root (always)
+- Depth 1: system chrome (Safari bar, StatusBar, HomeIndicator) → filtered by `is_system_chrome()`
+- Depth 1-2: classified components (header, button, container) → IR elements
+- Depth 3+: vectors, ellipses, boolean operations (76 nodes) → absorbed into nearest classified ancestor (icon internals)
+- Unclassified intermediate frames → structural glue, absorbed into parent component
+
+Algorithm: walk Figma `parent_id` chain. If node A is classified and node B is classified and B is inside A's subtree, B becomes a slot fill of A. All unclassified nodes between them are A's implementation detail. 93.6% classification coverage is sufficient — the 6.4% are system chrome or leaf drawing primitives.
+
+### 4. RendererConfig — Conceptual Pattern, Not Shared Interface
+**Challenge**: Figma and React renderer configs have fundamentally different shapes. Is a shared interface useful?
+
+**Decision**: Conceptual pattern only. Each renderer defines its own config type. The documented pattern is: "for each catalog type, provide an implementation mapping." No shared base class or interface — that's premature abstraction. We can extract shared interfaces later if a real need emerges.
+
+### 5. Component Templates — Two Rendering Strategies
+**Challenge**: Not all components are importable Figma instances. Some are informal patterns without component keys.
+
+**Decision**: Templates carry TWO strategies:
+1. **Instance path** (preferred): If `componentKey` exists → `importComponentByKeyAsync(key)`, create instance, set overrides. Maintains design system integrity — generated instances update when master changes.
+2. **Frame path** (fallback): If no key or import fails → construct from `frameStructure` template. Raw frames with auto-layout and visual properties.
+
+Renderer always tries instance path first. Falls back to frame path automatically.
+
+### 6. Missing Component Types — Default Library Fallback
+**Challenge**: IR requests a type (e.g., "date-picker") that doesn't exist in the user's Figma file.
+
+**Decision**: Resolution chain:
+1. **Project template** (from user's file) — highest fidelity
+2. **Default library template** (shipped with system) — generic but functional
+3. **Should never reach "missing"** — IR is constrained to catalog types, and the default library covers all ~48 types
+
+The default library is a one-time design effort: a reference Figma file with clean implementations of all catalog types, extracted into templates and shipped with the system.
+
+### 7. extract_components.py — Complementary to Template Extraction
+**Challenge**: The existing `extract_components.py` parses component DEFINITIONS (master components). Template extraction needs component USAGE (how instances look in context).
+
+**Decision**: Both are needed, in sequence:
+1. Run `extract_components()` on Dank file → populates `components`, `component_slots`, `component_variants` tables
+2. Use slot definitions FROM those tables to guide template extraction
+3. Template extraction is NEW code that analyzes classified instances + slot definitions to build renderer config entries
+
+The existing module gives us catalog-level infrastructure. Template extraction gives us project-level instances.
+
+### 8. DB Staleness — Existing Infrastructure Handles It
+**Challenge**: The DB is a point-in-time snapshot. The Figma file keeps changing.
+
+**Decision**: Acceptable — existing infrastructure mitigates:
+- `dd/drift.py` detects value drift between DB and Figma
+- `screen_extraction_status` tracks extraction timestamps
+- Incremental re-extraction for changed screens
+- Pattern: extract → detect drift → re-extract stale → generate
+
+Generation quality depends on extraction freshness. The spec documents this as an operational concern, not an architectural one.
+
+### 9. Instance-First Figma Rendering
+**Challenge**: Should the renderer prefer Figma component instances or constructed frames?
+
+**Decision**: Always prefer instances via `importComponentByKeyAsync`. Fall back to frame construction only when import fails. Instances maintain component linkage — when the designer updates the master, all generated instances update automatically. This preserves design system integrity.
+
+### 10. Token Resolution for Figma Renderer
+**Challenge**: The IR says `style: { backgroundColor: "{color.surface.primary}" }`. But many Figma values aren't tokenized. How does the renderer get the value?
+
+**Decision**: Modified Option C from discussion. The IR always uses token refs (both real AND synthetic). The renderer resolves from the IR's token dictionary. For un-tokenized values, synthetic tokens were created during analysis (Decision #1), so the token dictionary has entries for everything. If a token ref has no entry (edge case), the renderer reads the literal value from the DB's `node_token_bindings.resolved_value`.
+
+---
+
+## Integration Checkpoints
+
+Each implementation phase ends with an integration test against the real Dank DB (338 screens, 86K nodes, 182K bindings). These are not unit tests — they verify the system produces correct results on real data.
+
+### Phase 0 Checkpoint: FigmaPlatformContext
+```
+INPUT:  Dank DB, screen 184
+TEST:   build_figma_context(conn, screen_id=184) produces context
+VERIFY:
+  - Context has visual data for nodes with fills/strokes/effects
+  - Context element IDs match IR element IDs (same node → same ID)
+  - Context token dict has 73 entries (matches IR token count)
+  - All 35 fill-bearing nodes have visual.fills in context
+```
+
+### Phase 1 Checkpoint: Dual-Read Generator Equivalence
+```
+INPUT:  Dank DB, screen 184
+TEST:   Generate Figma script two ways:
+        (a) Current path: generator reads IR visual section
+        (b) New path: generator reads context visual data
+VERIFY:
+  - Scripts (a) and (b) produce identical Figma JS
+  - Execute script (b) via PROXY_EXECUTE → screenshot matches script (a) output
+  - Token refs collected are identical in both paths
+```
+
+### Phase 2 Checkpoint: Thin IR Invariants
+```
+INPUT:  Dank DB, screen 184
+TEST:   generate_ir(conn, screen_id=184) produces thin IR
+VERIFY:
+  - No element has a "visual" key
+  - No element.style value is a literal hex color (all are "{token.ref}" strings)
+  - Synthetic tokens exist in tokens table with tier='synthetic'
+  - Token dictionary has entries for ALL visual values (real + synthetic)
+  - Generator with context produces same Figma output as pre-thinning
+```
+
+### Phase 3a Checkpoint: Component Extraction + Slot Definitions
+```
+INPUT:  Dank DB (after running extract_components)
+TEST:   Composition tables populated
+VERIFY:
+  - components table has entries (was 0, now > 0)
+  - component_slots has slot definitions for key types (header, button, card)
+  - component_variants has variants for component sets
+  - variant_dimension_values cross-product populated
+  - component_a11y has accessibility contracts
+```
+
+### Phase 3b Checkpoint: Semantic Tree Construction
+```
+INPUT:  Dank DB, screen 184
+TEST:   build_composition_spec produces semantic IR
+VERIFY:
+  - Element count: 15-25 (was 116)
+  - Header element has filled slots (leading, title, trailing)
+  - System chrome excluded (no status-bar, home-indicator, safari-bar elements)
+  - Unclassified vectors/rectangles not present as IR elements
+  - All classified components reachable from root
+  - Generate from semantic IR → execute in Figma → screenshot shows correct composition
+```
+
+### Phase 4 Checkpoint: Template Extraction + Rendering
+```
+INPUT:  Dank DB, all 338 screens
+TEST:   Extract templates, generate NEW screen from prompt
+VERIFY:
+  - Templates exist for each catalog type found in Dank (header, button, card, etc.)
+  - Header template has componentKey (from nav/top-nav master component)
+  - Template frame structure matches actual Figma layout (auto-layout, padding, sizing)
+  - Generate "settings page with toggle sections" from prompt
+  - Render using extracted templates
+  - Execute in Figma → screenshot shows plausible settings screen in Dank's visual style
+```
+
+### End-to-End Checkpoint: Full Round-Trip
+```
+INPUT:  Dank DB screen 184 (original) + prompt "make a similar screen with different sections"
+TEST:   Full loop: extract → analyze → compose → render
+VERIFY:
+  - Generated screen uses the same component types as screen 184
+  - Visual style matches (same colors, fonts, spacing — from tokens)
+  - Component instances link to real master components (not raw frames)
+  - Token variables are bound (not just literal values)
+  - Side-by-side with original: "looks like it belongs to the same app"
+```
+
+---
+
+## Remaining Open Questions
+
+### 1. Component Variants in Templates
+A Button has variants (primary, secondary, ghost, destructive). Does each variant get its own template, or is it one template with variant-driven overrides? The IR says `{props: {variant: "primary"}}` — how does the renderer select the right visual?
+
+**Likely answer**: For instance-path rendering, Figma component variants handle this automatically (set the variant property on the instance). For frame-path rendering, the template needs per-variant visual defaults.
+
+### 2. Informal Component Recognition
+Recurring frame arrangements that aren't formal Figma components — how does the analysis layer detect and template them? Structural similarity clustering across screens? This is template extraction's hardest problem.
+
+### 3. Multi-File Design Systems
+Consumer file uses components from a separate library file. Component keys reference the library. Does the system need to extract both files? Can it resolve cross-file references?
+
+### 4. Missing DB Columns
+`constraints` (horizontal/vertical) and `layoutPositioning` (AUTO/ABSOLUTE) are extracted in JS but not stored. Schema migration needed before the Figma renderer can handle absolute positioning.
+
+### 5. Default Library Design
+The default template library needs to be designed and built. What visual style? Minimal/generic? Based on a specific design system (Material, iOS)? How is it maintained and versioned?
 
 ---
 
