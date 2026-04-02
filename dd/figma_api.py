@@ -242,6 +242,11 @@ def _add_corner_radius(node: dict, api_node: dict) -> None:
 
 
 def _add_layout_properties(node: dict, api_node: dict) -> None:
+    # layoutPositioning is on the CHILD, not the parent — capture regardless of parent's layoutMode
+    lp = api_node.get("layoutPositioning")
+    if lp:
+        node["layout_positioning"] = lp
+
     layout_mode = api_node.get("layoutMode")
     if not layout_mode or layout_mode == "NONE":
         return
@@ -270,6 +275,23 @@ def _add_layout_properties(node: dict, api_node: dict) -> None:
         value = api_node.get(api_key)
         if value is not None:
             node[db_key] = value
+
+    # Grid layout properties
+    if layout_mode == "GRID":
+        grid_map = {
+            "gridRowCount": "grid_row_count",
+            "gridColumnCount": "grid_column_count",
+            "gridRowGap": "grid_row_gap",
+            "gridColumnGap": "grid_column_gap",
+        }
+        for api_key, db_key in grid_map.items():
+            value = api_node.get(api_key)
+            if value is not None:
+                node[db_key] = value
+        for api_key, db_key in [("gridRowSizes", "grid_row_sizes"), ("gridColumnSizes", "grid_column_sizes")]:
+            value = api_node.get(api_key)
+            if value is not None:
+                node[db_key] = json.dumps(value)
 
 
 def _add_typography_properties(node: dict, api_node: dict) -> None:
