@@ -6,12 +6,131 @@ import sqlite3
 import pytest
 
 from dd.db import init_db
-from dd.ir import map_node_to_element, query_screen_for_ir, build_composition_spec, generate_ir
+from dd.ir import (
+    map_node_to_element, query_screen_for_ir, build_composition_spec, generate_ir,
+    normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius,
+)
 from dd.catalog import seed_catalog
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Element mapping tests
+# Normalization function tests
+# ---------------------------------------------------------------------------
+
+SOLID_FILL_JSON = json.dumps([{
+    "type": "SOLID", "color": {"r": 0.0353, "g": 0.0353, "b": 0.0431, "a": 1.0},
+    "opacity": 1.0, "blendMode": "NORMAL",
+}])
+
+GRADIENT_FILL_JSON = json.dumps([{
+    "type": "GRADIENT_LINEAR", "opacity": 1.0, "blendMode": "NORMAL",
+    "gradientHandlePositions": [{"x": 0, "y": 0.5}, {"x": 1, "y": 0.5}, {"x": 0, "y": 0}],
+    "gradientStops": [
+        {"color": {"r": 0.643, "g": 0.957, "b": 0.255, "a": 1.0}, "position": 0.0},
+        {"color": {"r": 0.145, "g": 0.827, "b": 0.4, "a": 1.0}, "position": 1.0},
+    ],
+}])
+
+INVISIBLE_FILL_JSON = json.dumps([{
+    "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+    "visible": False, "blendMode": "NORMAL",
+}])
+
+STROKE_JSON = json.dumps([{
+    "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+    "blendMode": "NORMAL",
+}])
+
+SHADOW_JSON = json.dumps([{
+    "type": "DROP_SHADOW", "visible": True,
+    "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.25},
+    "offset": {"x": 0.0, "y": 4.0}, "radius": 8.0, "spread": 0.0,
+    "blendMode": "NORMAL",
+}])
+
+
+class TestNormalizeFills:
+    def test_solid_fill(self):
+        fills = normalize_fills(SOLID_FILL_JSON, [])
+        assert len(fills) == 1
+        assert fills[0]["type"] == "solid"
+        assert fills[0]["color"].startswith("#")
+
+    def test_gradient_fill(self):
+        fills = normalize_fills(GRADIENT_FILL_JSON, [])
+        assert len(fills) == 1
+        assert fills[0]["type"] == "gradient-linear"
+        assert len(fills[0]["stops"]) == 2
+        assert "handlePositions" in fills[0]
+
+    def test_invisible_fill_skipped(self):
+        fills = normalize_fills(INVISIBLE_FILL_JSON, [])
+        assert len(fills) == 0
+
+    def test_token_bound_fill(self):
+        bindings = [{"property": "fill.0.color", "token_name": "color.surface.ink", "resolved_value": "#09090B"}]
+        fills = normalize_fills(SOLID_FILL_JSON, bindings)
+        assert fills[0]["color"] == "{color.surface.ink}"
+
+    def test_empty_input(self):
+        assert normalize_fills(None, []) == []
+        assert normalize_fills("[]", []) == []
+
+    def test_paint_opacity(self):
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+            "opacity": 0.5, "blendMode": "NORMAL",
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert fills[0]["opacity"] == 0.5
+
+
+class TestNormalizeStrokes:
+    def test_solid_stroke(self):
+        strokes = normalize_strokes(STROKE_JSON, [], {"stroke_weight": 2})
+        assert len(strokes) == 1
+        assert strokes[0]["type"] == "solid"
+        assert strokes[0]["color"].startswith("#")
+        assert strokes[0]["width"] == 2
+
+    def test_empty_input(self):
+        assert normalize_strokes(None, [], {}) == []
+
+    def test_token_bound_stroke(self):
+        bindings = [{"property": "stroke.0.color", "token_name": "color.border", "resolved_value": "#000"}]
+        strokes = normalize_strokes(STROKE_JSON, bindings, {"stroke_weight": 1})
+        assert strokes[0]["color"] == "{color.border}"
+
+
+class TestNormalizeEffects:
+    def test_drop_shadow(self):
+        effects = normalize_effects(SHADOW_JSON, [])
+        assert len(effects) == 1
+        assert effects[0]["type"] == "drop-shadow"
+        assert effects[0]["blur"] == 8.0
+        assert effects[0]["offset"]["y"] == 4.0
+        assert effects[0]["color"].startswith("#")
+
+    def test_empty_input(self):
+        assert normalize_effects(None, []) == []
+
+
+class TestNormalizeCornerRadius:
+    def test_uniform_number(self):
+        assert normalize_corner_radius(8.0) == 8.0
+
+    def test_zero_returns_none(self):
+        assert normalize_corner_radius(0) is None
+
+    def test_none_returns_none(self):
+        assert normalize_corner_radius(None) is None
+
+    def test_json_string_number(self):
+        assert normalize_corner_radius("8") == 8.0
+
+
+# ---------------------------------------------------------------------------
+# Element mapping tests
 # ---------------------------------------------------------------------------
 
 class TestMapNodeToElement:

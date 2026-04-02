@@ -1,11 +1,208 @@
 """CompositionSpec IR generation (T5 Phase 2).
 
 Transforms classified screen data + token bindings into a platform-agnostic
-intermediate representation (flat element map with token references).
+intermediate representation. The IR is a normalized visual intent layer —
+every element carries its complete visual description with token refs as
+inline annotations where they exist, literal values where they don't.
 """
 
+import json
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+from dd.color import rgba_to_hex
+
+
+# ---------------------------------------------------------------------------
+# Visual property normalization (Figma JSON → IR format)
+# ---------------------------------------------------------------------------
+
+_GRADIENT_TYPE_MAP = {
+    "GRADIENT_LINEAR": "gradient-linear",
+    "GRADIENT_RADIAL": "gradient-radial",
+    "GRADIENT_ANGULAR": "gradient-angular",
+    "GRADIENT_DIAMOND": "gradient-diamond",
+}
+
+
+def _figma_color_to_hex(color: Dict[str, float], paint_opacity: float = 1.0) -> str:
+    r, g, b = color.get("r", 0), color.get("g", 0), color.get("b", 0)
+    a = color.get("a", 1.0) * paint_opacity
+    return rgba_to_hex(r, g, b, a)
+
+
+def normalize_fills(
+    raw_json: str | None, bindings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Normalize Figma fills JSON to IR fill array.
+
+    Handles SOLID and GRADIENT_* types. Skips invisible fills.
+    Token bindings overlay as "{token.name}" where they exist.
+    """
+    if not raw_json or raw_json == "[]":
+        return []
+
+    try:
+        fills = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    binding_map = {b["property"]: b.get("token_name") for b in bindings if b.get("token_name")}
+    result = []
+
+    for i, fill in enumerate(fills):
+        if fill.get("visible") is False:
+            continue
+
+        fill_type = fill.get("type", "")
+        paint_opacity = fill.get("opacity", 1.0)
+
+        if fill_type == "SOLID":
+            color = fill.get("color", {})
+            hex_val = _figma_color_to_hex(color, 1.0)
+            token = binding_map.get(f"fill.{i}.color")
+            entry: Dict[str, Any] = {
+                "type": "solid",
+                "color": f"{{{token}}}" if token else hex_val,
+            }
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+            result.append(entry)
+
+        elif fill_type in _GRADIENT_TYPE_MAP:
+            stops = []
+            for j, stop in enumerate(fill.get("gradientStops", [])):
+                stop_color = stop.get("color", {})
+                stop_hex = _figma_color_to_hex(stop_color, 1.0)
+                stop_token = binding_map.get(f"fill.{i}.gradient.stop.{j}.color")
+                stops.append({
+                    "color": f"{{{stop_token}}}" if stop_token else stop_hex,
+                    "position": stop.get("position", 0.0),
+                })
+            entry = {
+                "type": _GRADIENT_TYPE_MAP[fill_type],
+                "stops": stops,
+            }
+            handle_positions = fill.get("gradientHandlePositions")
+            if handle_positions:
+                entry["handlePositions"] = handle_positions
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+            result.append(entry)
+
+    return result
+
+
+def normalize_strokes(
+    raw_json: str | None, bindings: List[Dict[str, Any]], node: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Normalize Figma strokes JSON to IR stroke array."""
+    if not raw_json or raw_json == "[]":
+        return []
+
+    try:
+        strokes = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    binding_map = {b["property"]: b.get("token_name") for b in bindings if b.get("token_name")}
+    result = []
+
+    for i, stroke in enumerate(strokes):
+        if stroke.get("visible") is False:
+            continue
+        if stroke.get("type") != "SOLID":
+            continue
+
+        color = stroke.get("color", {})
+        hex_val = _figma_color_to_hex(color, 1.0)
+        token = binding_map.get(f"stroke.{i}.color")
+
+        entry: Dict[str, Any] = {
+            "type": "solid",
+            "color": f"{{{token}}}" if token else hex_val,
+            "width": node.get("stroke_weight") or 1,
+        }
+        align = node.get("stroke_align")
+        if align:
+            entry["align"] = align.lower()
+        result.append(entry)
+
+    return result
+
+
+def normalize_effects(
+    raw_json: str | None, bindings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Normalize Figma effects JSON to IR effect array."""
+    if not raw_json or raw_json == "[]":
+        return []
+
+    try:
+        effects = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    binding_map = {b["property"]: b.get("token_name") for b in bindings if b.get("token_name")}
+    result = []
+
+    for i, effect in enumerate(effects):
+        if effect.get("visible") is False:
+            continue
+
+        effect_type = effect.get("type", "")
+
+        if effect_type in ("DROP_SHADOW", "INNER_SHADOW"):
+            color = effect.get("color", {})
+            hex_val = _figma_color_to_hex(color, 1.0)
+            token = binding_map.get(f"effect.{i}.color")
+            offset = effect.get("offset", {})
+            result.append({
+                "type": "drop-shadow" if effect_type == "DROP_SHADOW" else "inner-shadow",
+                "color": f"{{{token}}}" if token else hex_val,
+                "offset": {"x": offset.get("x", 0), "y": offset.get("y", 0)},
+                "blur": effect.get("radius", 0),
+                "spread": effect.get("spread", 0),
+            })
+
+        elif effect_type in ("LAYER_BLUR", "BACKGROUND_BLUR"):
+            result.append({
+                "type": "layer-blur" if effect_type == "LAYER_BLUR" else "background-blur",
+                "radius": effect.get("radius", 0),
+            })
+
+    return result
+
+
+def normalize_corner_radius(
+    raw_value: Union[str, int, float, None],
+) -> Union[float, Dict[str, float], None]:
+    """Normalize corner radius to number or per-corner dict."""
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, str):
+        try:
+            parsed = json.loads(raw_value)
+        except (json.JSONDecodeError, ValueError):
+            try:
+                parsed = float(raw_value)
+            except ValueError:
+                return None
+        raw_value = parsed
+
+    if isinstance(raw_value, (int, float)):
+        return float(raw_value) if raw_value > 0 else None
+
+    if isinstance(raw_value, dict):
+        result = {}
+        for key in ("tl", "tr", "bl", "br"):
+            val = raw_value.get(key, 0)
+            if val > 0:
+                result[key] = float(val)
+        return result if result else None
+
+    return None
 
 
 # Property mapping: Figma binding property → IR style key
