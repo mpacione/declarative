@@ -1591,13 +1591,21 @@ The Dank file has only ~150 unique visual values (68 fill colors, 10 stroke colo
 
 **Caveat**: The Dank file is unusually well-tokenized (89% bound). Files with lower tokenization will need more synthetic tokens. The system must handle the 0%-tokenized worst case.
 
-### layoutPositioning (AUTO vs ABSOLUTE) — Add but Not Blocking
+### Extraction Completeness — PREREQUISITE (Elevated to Phase -1)
 
-`layoutPositioning` determines whether a child in an auto-layout parent participates in flow (AUTO) or floats freely (ABSOLUTE). It's not extracted or stored.
+Layout/positioning extraction is incomplete. This was originally assessed as "not blocking for Phases 0-2" but has been elevated to a prerequisite because:
 
-Investigation: 64% of HORIZONTAL parents have children with overlapping x-ranges. Some of this is genuine ABSOLUTE positioning (icon overlaid on text), some is just compact button layouts.
+1. **The Dank file is not representative.** It's a well-tokenized design system showcase. Real-world Figma files may be 100% stacked positioning with zero auto-layout, or use Grid layout extensively, or mix AUTO and ABSOLUTE children within auto-layout parents. The architecture must handle all of these.
 
-**Decision**: Add to extraction JS and schema as a prerequisite. Not blocking for Phases 0-2 (instance-first rendering handles positioning automatically). Required for Phase 3+ (frame-path template construction needs to know flow vs absolute).
+2. **31 columns are missing or unextracted.** 24 exist in schema.sql but not in the Dank DB (migration needed). 7 are not in the extraction JS at all (new code needed). The critical ones for layout:
+   - `layoutPositioning` (AUTO vs ABSOLUTE) — not extracted at all
+   - `constraint_h`, `constraint_v` — extracted but not stored in Dank
+   - `component_key` — extracted but not stored in Dank
+   - Grid properties (row/column counts, gaps, sizes) — not extracted at all
+
+3. **Building on incomplete data means building on sand.** Template extraction, semantic tree construction, and rendering all depend on correct layout data. Fixing extraction later means re-running everything.
+
+**Decision**: Migration + extraction completeness is Phase -1. All subsequent phases depend on it. See implementation plan for details.
 
 ### Screen Skeletons — Already Extracted
 
