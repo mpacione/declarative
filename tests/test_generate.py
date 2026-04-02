@@ -195,27 +195,55 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert 'layoutSizingHorizontal = "FILL"' in script
 
-    def test_background_color(self):
+    def test_solid_fill_from_visual(self):
         spec = _make_spec({"screen-1": {
             "type": "screen",
-            "style": {"backgroundColor": "#FF0000"},
+            "visual": {"fills": [{"type": "solid", "color": "#FF0000"}]},
         }})
         script, _ = generate_figma_script(spec)
         assert "fills = [{" in script
         assert '"SOLID"' in script
 
-    def test_border_radius(self):
+    def test_token_bound_fill_from_visual(self):
+        spec = _make_spec(
+            elements={"screen-1": {
+                "type": "screen",
+                "visual": {"fills": [{"type": "solid", "color": "{color.primary}"}]},
+            }},
+            tokens={"color.primary": "#FF0000"},
+        )
+        script, refs = generate_figma_script(spec)
+        assert "fills = [{" in script
+        assert any(r[2] == "color.primary" for r in refs)
+
+    def test_stroke_from_visual(self):
         spec = _make_spec({"screen-1": {
             "type": "screen",
-            "style": {"borderRadius": 8},
+            "visual": {"strokes": [{"type": "solid", "color": "#000000", "width": 1}]},
+        }})
+        script, _ = generate_figma_script(spec)
+        assert "strokes = [{" in script
+
+    def test_drop_shadow_from_visual(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "visual": {"effects": [{"type": "drop-shadow", "color": "#00000040", "offset": {"x": 0, "y": 4}, "blur": 8, "spread": 0}]},
+        }})
+        script, _ = generate_figma_script(spec)
+        assert "effects = [{" in script
+
+    def test_corner_radius_from_visual(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "visual": {"cornerRadius": 8.0},
         }})
         script, _ = generate_figma_script(spec)
         assert "cornerRadius = 8" in script
 
-    def test_opacity(self):
+    def test_opacity_from_visual(self):
         spec = _make_spec({"screen-1": {
             "type": "screen",
-            "style": {"opacity": 0.5},
+            "visual": {"opacity": 0.5},
         }})
         script, _ = generate_figma_script(spec)
         assert "opacity = 0.5" in script
@@ -265,10 +293,10 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert "figma.currentPage.appendChild" in script
 
-    def test_token_ref_collected(self):
+    def test_token_ref_collected_from_visual_fill(self):
         spec = _make_spec(
             elements={
-                "screen-1": {"type": "screen", "style": {"backgroundColor": "{color.primary}"}},
+                "screen-1": {"type": "screen", "visual": {"fills": [{"type": "solid", "color": "{color.primary}"}]}},
             },
             tokens={"color.primary": "#FF0000"},
         )

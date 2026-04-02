@@ -211,11 +211,12 @@ def generate_figma_script(
         lines.extend(layout_lines)
         all_token_refs.extend(layout_refs)
 
-        style = element.get("style", {})
-        style_lines, style_refs = _emit_style(var, eid, style, tokens, is_text)
-        lines.extend(style_lines)
-        all_token_refs.extend(style_refs)
+        visual = element.get("visual", {})
+        visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
+        lines.extend(visual_lines)
+        all_token_refs.extend(visual_refs)
 
+        style = element.get("style", {})
         if is_text:
             _emit_text_props(var, element, style, tokens, lines)
 
@@ -320,36 +321,138 @@ def _emit_layout(
     return (lines, refs)
 
 
-def _emit_style(
-    var: str, eid: str, style: Dict[str, Any], tokens: Dict[str, Any], is_text: bool,
+def _emit_visual(
+    var: str, eid: str, visual: Dict[str, Any], tokens: Dict[str, Any],
 ) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    """Emit Figma JS for visual properties (fills, strokes, effects, radius, opacity)."""
     lines: List[str] = []
     refs: List[Tuple[str, str, str]] = []
 
-    bg = style.get("backgroundColor")
-    if bg is not None:
-        resolved, token_name = resolve_style_value(bg, tokens)
+    fills = visual.get("fills", [])
+    if fills:
+        fill_lines, fill_refs = _emit_fills(var, eid, fills, tokens)
+        lines.extend(fill_lines)
+        refs.extend(fill_refs)
+
+    strokes = visual.get("strokes", [])
+    if strokes:
+        stroke_lines, stroke_refs = _emit_strokes(var, eid, strokes, tokens)
+        lines.extend(stroke_lines)
+        refs.extend(stroke_refs)
+
+    effects = visual.get("effects", [])
+    if effects:
+        effect_lines, effect_refs = _emit_effects(var, eid, effects, tokens)
+        lines.extend(effect_lines)
+        refs.extend(effect_refs)
+
+    radius = visual.get("cornerRadius")
+    if radius is not None:
+        if isinstance(radius, (int, float)):
+            lines.append(f"{var}.cornerRadius = {int(radius)};")
+
+    opacity = visual.get("opacity")
+    if opacity is not None:
+        lines.append(f"{var}.opacity = {opacity};")
+
+    return (lines, refs)
+
+
+def _emit_fills(
+    var: str, eid: str, fills: List[Dict[str, Any]], tokens: Dict[str, Any],
+) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    """Emit Figma fills array from IR normalized fills."""
+    paints: List[str] = []
+    refs: List[Tuple[str, str, str]] = []
+
+    for i, fill in enumerate(fills):
+        fill_type = fill.get("type", "")
+
+        if fill_type == "solid":
+            color_val = fill.get("color", "")
+            resolved, token_name = resolve_style_value(color_val, tokens)
+            if resolved and isinstance(resolved, str) and resolved.startswith("#"):
+                rgb = hex_to_figma_rgb(resolved)
+                paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
+                opacity = fill.get("opacity")
+                if opacity is not None and opacity < 1.0:
+                    paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}, opacity: {opacity}}}'
+                paints.append(paint)
+            if token_name:
+                refs.append((eid, f"fill.{i}.color", token_name))
+
+    if paints:
+        paints_str = ", ".join(paints)
+        return ([f"{var}.fills = [{paints_str}];"], refs)
+
+    return ([], refs)
+
+
+def _emit_strokes(
+    var: str, eid: str, strokes: List[Dict[str, Any]], tokens: Dict[str, Any],
+) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    """Emit Figma strokes array from IR normalized strokes."""
+    paints: List[str] = []
+    refs: List[Tuple[str, str, str]] = []
+
+    for i, stroke in enumerate(strokes):
+        if stroke.get("type") != "solid":
+            continue
+        color_val = stroke.get("color", "")
+        resolved, token_name = resolve_style_value(color_val, tokens)
         if resolved and isinstance(resolved, str) and resolved.startswith("#"):
             rgb = hex_to_figma_rgb(resolved)
-            lines.append(f'{var}.fills = [{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}];')
+            paints.append(f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}')
         if token_name:
-            refs.append((eid, "fill.0.color", token_name))
+            refs.append((eid, f"stroke.{i}.color", token_name))
 
-    radius = style.get("borderRadius")
-    if radius is not None:
-        resolved, token_name = resolve_style_value(radius, tokens)
-        if resolved is not None:
-            lines.append(f"{var}.cornerRadius = {resolved};")
-        if token_name:
-            refs.append((eid, "cornerRadius", token_name))
+    lines: List[str] = []
+    if paints:
+        lines.append(f'{var}.strokes = [{", ".join(paints)}];')
+    width = strokes[0].get("width") if strokes else None
+    if width is not None:
+        lines.append(f"{var}.strokeWeight = {width};")
 
-    opacity = style.get("opacity")
-    if opacity is not None:
-        resolved, token_name = resolve_style_value(opacity, tokens)
-        if resolved is not None:
-            lines.append(f"{var}.opacity = {resolved};")
-        if token_name:
-            refs.append((eid, "opacity", token_name))
+    return (lines, refs)
+
+
+def _emit_effects(
+    var: str, eid: str, effects: List[Dict[str, Any]], tokens: Dict[str, Any],
+) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    """Emit Figma effects array from IR normalized effects."""
+    effect_objs: List[str] = []
+    refs: List[Tuple[str, str, str]] = []
+
+    for i, effect in enumerate(effects):
+        effect_type = effect.get("type", "")
+
+        if effect_type in ("drop-shadow", "inner-shadow"):
+            color_val = effect.get("color", "")
+            resolved, token_name = resolve_style_value(color_val, tokens)
+            offset = effect.get("offset", {"x": 0, "y": 0})
+            blur = effect.get("blur", 0)
+            spread = effect.get("spread", 0)
+            figma_type = "DROP_SHADOW" if effect_type == "drop-shadow" else "INNER_SHADOW"
+
+            if resolved and isinstance(resolved, str) and resolved.startswith("#"):
+                rgb = hex_to_figma_rgb(resolved)
+                effect_objs.append(
+                    f'{{type: "{figma_type}", visible: true, '
+                    f'color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:1}}, '
+                    f'offset: {{x:{offset["x"]},y:{offset["y"]}}}, '
+                    f'radius: {blur}, spread: {spread}}}'
+                )
+            if token_name:
+                refs.append((eid, f"effect.{i}.color", token_name))
+
+        elif effect_type in ("layer-blur", "background-blur"):
+            radius = effect.get("radius", 0)
+            figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
+            effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
+
+    lines: List[str] = []
+    if effect_objs:
+        lines.append(f'{var}.effects = [{", ".join(effect_objs)}];')
 
     return (lines, refs)
 
