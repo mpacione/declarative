@@ -49,11 +49,10 @@ Extraction calls the Figma REST API directly — no MCP tools, no agent in the l
 git clone https://github.com/mpacione/declarative.git
 cd declarative
 
-# Creates venv, installs deps (coloraide, pytest, etc.)
-bash build/init.sh
-
-# Activate the venv
-source build/.venv/bin/activate
+# Create venv + install deps
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
 # Verify
 pytest tests/ -v --tb=short
@@ -134,7 +133,7 @@ Open the project in Claude Code. The skill file teaches Claude the full workflow
 ### 2. Python REPL (for scripting)
 
 ```bash
-source build/.venv/bin/activate
+source .venv/bin/activate
 python3
 ```
 
@@ -212,6 +211,9 @@ The database has **50+ views** pre-built for common queries. See `schema.sql` fo
 | Detect drift | Yes | `figma_get_variables` MCP |
 | Add dark mode | No | DB only (OKLCH inversion) |
 | Query tokens, components, screens | No | DB only |
+| Classify screen components (T5) | No (+ optional LLM) | `python -m dd classify` |
+| Generate IR (T5) | No | `python -m dd generate-ir` |
+| Vision cross-validation (T5) | Yes (Figma + LLM) | `--vision` flag on classify |
 
 ## Architecture
 
@@ -346,15 +348,15 @@ device class   per node        hex, px         axes, slots      spacing
 ## Running Tests
 
 ```bash
-source build/.venv/bin/activate
+source .venv/bin/activate
 
-# All 505 tests
+# All tests
 pytest tests/ -v
 
 # By level
-pytest tests/ -m unit           # ~414 fast unit tests
-pytest tests/ -m integration    # ~63 cross-module tests
-pytest tests/ -m e2e            # ~28 full pipeline tests
+pytest tests/ -m unit
+pytest tests/ -m integration
+pytest tests/ -m e2e
 
 # With coverage
 pytest tests/ -v --cov=dd --cov-report=term
@@ -367,7 +369,7 @@ declarative/
 ├── dd/                              # Python library (the pipeline)
 │   ├── config.py                    # Constants, paths, limits
 │   ├── db.py                        # SQLite connection + schema init
-│   ├── types.py                     # Enums (DeviceClass, Tier, SyncStatus, ...)
+│   ├── types.py                     # Enums (DeviceClass, Tier, ComponentCategory, ...)
 │   ├── color.py                     # RGBA/hex/OKLCH color math
 │   ├── normalize.py                 # Figma props → binding rows
 │   ├── paths.py                     # Materialized path computation
@@ -391,23 +393,65 @@ declarative/
 │   ├── validate.py                  # Pre-export gate (7 checks)
 │   ├── status.py                    # Progress + readiness reporting
 │   ├── modes.py                     # Dark mode, compact mode, themes
-│   ├── drift.py                     # DB ↔ Figma sync detection
+│   ├── drift.py                     # DB ↔ Figma sync detection (library-only)
 │   │
 │   ├── export_figma_vars.py         # Figma variable payloads (batched)
 │   ├── export_rebind.py             # JS scripts to bind nodes → variables
 │   ├── export_css.py                # CSS custom properties
 │   ├── export_tailwind.py           # Tailwind theme config
-│   └── export_dtcg.py              # W3C DTCG tokens.json
+│   ├── export_dtcg.py              # W3C DTCG tokens.json
+│   │
+│   ├── catalog.py                   # T5: 48 canonical component types + seeding
+│   ├── classify.py                  # T5: classification orchestrator + formal matching
+│   ├── classify_rules.py            # T5: ALL classification rules (single source of truth)
+│   ├── classify_heuristics.py       # T5: structural heuristic classification
+│   ├── classify_llm.py              # T5: LLM classification via Claude Haiku
+│   ├── classify_vision.py           # T5: vision cross-validation (screenshot + re-classify)
+│   ├── classify_skeleton.py         # T5: screen skeleton notation extraction
+│   └── ir.py                        # T5: CompositionSpec IR generation
 │
-├── tests/                           # 538 tests
-├── schema.sql                       # SQLite schema + 50 views
+├── tests/                           # 922 tests
+├── docs/                            # T5 research + architecture docs
+├── docs/archive/                    # Historical specs (superseded)
+├── migrations/                      # Schema evolution (001-005)
+├── schema.sql                       # SQLite schema + views
 ├── declarative-design/SKILL.md      # Companion Claude Code skill
-│
-├── Architecture.md                  # Why these choices
-├── Technical Design Spec.md         # How it all works (41KB)
-├── User Requirements Spec.md        # Use cases UC-1 through UC-6
+├── .env                             # API keys (gitignored)
 └── pyproject.toml                   # Python 3.11+, deps
 ```
+
+## T5: Compositional Analysis (Experimental)
+
+T5 adds compositional understanding — classifying what components ARE, not just what they look like. This enables IR generation and future code/design generation.
+
+### CLI Commands
+
+```bash
+# Seed the universal component type catalog (48 types)
+python -m dd seed-catalog --db my-app.declarative.db
+
+# Classify all screen components (formal + heuristic + optional LLM)
+python -m dd classify --db my-app.declarative.db
+python -m dd classify --db my-app.declarative.db --llm          # + LLM fallback
+python -m dd classify --db my-app.declarative.db --llm --vision  # + vision cross-validation
+
+# Generate CompositionSpec IR for a screen
+python -m dd generate-ir --db my-app.declarative.db --screen 42
+python -m dd generate-ir --db my-app.declarative.db --screen all
+```
+
+### Classification Cascade
+
+1. **Formal matching** — INSTANCE/FRAME names matched against 48 canonical types + aliases (confidence: 1.0)
+2. **Structural heuristics** — position, font size, layout rules (confidence: 0.7-0.9)
+3. **LLM fallback** — Claude Haiku for ambiguous nodes (confidence: 0.7-0.9, requires `ANTHROPIC_API_KEY`)
+4. **Vision cross-validation** — screenshot + re-classify to flag disagreements (requires `FIGMA_ACCESS_TOKEN`)
+
+All classification rules live in `dd/classify_rules.py` — single file to audit and tune.
+
+### Current Accuracy
+
+Tested on the Dank file (338 screens, 86,761 nodes): **93.6% adjusted coverage** (47,292 classified of 50,517 classifiable nodes).
 
 ## Key Design Decisions
 

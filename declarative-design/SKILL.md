@@ -295,28 +295,57 @@ Spacing, Radius, Opacity already have 1:1 value:token mappings — they are effe
 
 Paint opacity is encoded directly in color variable values as 8-digit hex (`#RRGGBBAA`). Colors with opacity < 1 produce distinct primitives (e.g., `prim.gray.950.a5` for 5% opacity). This eliminates the need for separate opacity restoration after variable operations. OKLCH transforms and color clustering handle the alpha suffix transparently.
 
-## Conjure (Tier 5 — Future)
+## T5: Compositional Analysis
 
-Composing new screens from prompts using the token/component vocabulary in the DB. The agent queries components, tokens, and screen patterns from the DB, then uses Figma MCP tools to compose the screen using real tokens — no hardcoded values.
+Classifies what components ARE (not just properties) and generates a platform-agnostic IR.
+
+### CLI Commands
+
+```bash
+# Seed catalog (48 canonical UI types)
+python -m dd seed-catalog [--db PATH]
+
+# Classify components (formal + heuristic + optional LLM/vision)
+python -m dd classify [--db PATH] [--llm] [--vision]
+
+# Generate CompositionSpec IR
+python -m dd generate-ir [--db PATH] --screen SCREEN_ID|all
+```
+
+### Classification Rules
+
+All rules live in `dd/classify_rules.py` — single file to audit:
+- Name patterns (generic Frame/Group detection, Button N normalization)
+- System chrome exclusion (iOS status bars, keyboard keys)
+- Structural heuristics (header by position, text by font size, container by name)
+- Rule application order
+
+### Query Patterns
 
 ```sql
--- Get available components
-SELECT * FROM v_component_catalog ORDER BY category, name;
+-- Component catalog (48 canonical types)
+SELECT canonical_name, category, behavioral_description
+FROM component_type_catalog ORDER BY category, canonical_name;
 
--- Get semantic color tokens with resolved primitive values
-SELECT t.name, t2.name as primitive, tv.resolved_value
-FROM tokens t
-JOIN tokens t2 ON t.alias_of = t2.id
-JOIN token_values tv ON tv.token_id = t2.id
-JOIN token_modes tm ON tv.mode_id = tm.id
-WHERE tm.name = 'Default' AND t.tier = 'aliased'
-ORDER BY t.name;
+-- Classification results for a screen
+SELECT sci.canonical_type, sci.confidence, sci.classification_source, n.name
+FROM screen_component_instances sci
+JOIN nodes n ON sci.node_id = n.id
+WHERE sci.screen_id = ? ORDER BY n.sort_order;
 
--- Get tokens for a specific mode
-SELECT t.name, tv.resolved_value
-FROM tokens t
-JOIN token_values tv ON t.id = tv.token_id
-JOIN token_modes tm ON tv.mode_id = tm.id
-WHERE tm.name = 'Default' AND t.tier IN ('curated', 'aliased')
-ORDER BY t.type, t.name;
+-- Screen skeleton
+SELECT skeleton_notation, skeleton_type FROM screen_skeletons WHERE screen_id = ?;
+
+-- Classification accuracy summary
+SELECT classification_source, COUNT(*), ROUND(AVG(confidence), 2)
+FROM screen_component_instances GROUP BY classification_source;
+
+-- Flagged for review (vision disagreements)
+SELECT sci.*, n.name FROM screen_component_instances sci
+JOIN nodes n ON sci.node_id = n.id
+WHERE sci.flagged_for_review = 1;
 ```
+
+### Conjure (Future)
+
+Composing new screens from prompts using the token/component vocabulary + IR.
