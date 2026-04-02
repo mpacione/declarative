@@ -3,11 +3,18 @@
 Takes a CompositionSpec JSON and produces:
   Phase A: A figma_execute script that creates frames/text with auto-layout
   Phase B: Rebind scripts that bind Figma variables to created nodes
+
+Visual data sources:
+  - IR path (current): reads element["visual"] from the spec
+  - DB path (Phase 1): reads raw visual data from query_screen_visuals(),
+    normalizes it, and feeds it to the same _emit_visual pipeline
 """
 
 import re
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
+
+from dd.ir import normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius
 
 
 # Text element types that use figma.createText()
@@ -116,6 +123,43 @@ def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# DB → normalized visual (Phase 1: renderer reads DB instead of IR)
+# ---------------------------------------------------------------------------
+
+def build_visual_from_db(node_visual: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize raw DB visual data to the format _emit_visual expects.
+
+    Takes a dict from query_screen_visuals() (raw Figma JSON strings +
+    scalar columns + bindings list) and produces the same normalized
+    visual dict that the IR's _build_visual() produces.
+    """
+    bindings = node_visual.get("bindings", [])
+    visual: Dict[str, Any] = {}
+
+    fills = normalize_fills(node_visual.get("fills"), bindings)
+    if fills:
+        visual["fills"] = fills
+
+    strokes = normalize_strokes(node_visual.get("strokes"), bindings, node_visual)
+    if strokes:
+        visual["strokes"] = strokes
+
+    effects = normalize_effects(node_visual.get("effects"), bindings)
+    if effects:
+        visual["effects"] = effects
+
+    radius = normalize_corner_radius(node_visual.get("corner_radius"))
+    if radius is not None:
+        visual["cornerRadius"] = radius
+
+    opacity = node_visual.get("opacity")
+    if opacity is not None and opacity < 1.0:
+        visual["opacity"] = opacity
+
+    return visual
+
+
+# ---------------------------------------------------------------------------
 # JS helpers
 # ---------------------------------------------------------------------------
 
@@ -150,6 +194,7 @@ _ALIGNMENT_MAP = {
 
 def generate_figma_script(
     spec: Dict[str, Any],
+    db_visuals: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Tuple[str, List[Tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
 
@@ -194,7 +239,12 @@ def generate_figma_script(
         lines.extend(layout_lines)
         all_token_refs.extend(layout_refs)
 
-        visual = element.get("visual", {})
+        if db_visuals is not None:
+            node_id = spec.get("_node_id_map", {}).get(eid)
+            raw_visual = db_visuals.get(node_id, {}) if node_id else {}
+            visual = build_visual_from_db(raw_visual)
+        else:
+            visual = element.get("visual", {})
         visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
         lines.extend(visual_lines)
         all_token_refs.extend(visual_refs)
@@ -480,12 +530,13 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
       token_refs: list of (element_id, property, token_name) for rebinding
       element_count: number of elements in the spec
     """
-    from dd.ir import generate_ir
+    from dd.ir import generate_ir, query_screen_visuals
 
     ir_result = generate_ir(conn, screen_id)
     spec = ir_result["spec"]
+    visuals = query_screen_visuals(conn, screen_id)
 
-    script, token_refs = generate_figma_script(spec)
+    script, token_refs = generate_figma_script(spec, db_visuals=visuals)
 
     return {
         "structure_script": script,

@@ -10,7 +10,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
 - **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
 - **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
-- **Tests**: 1,036 passing
+- **Tests**: 1,058 passing
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model
@@ -28,8 +28,8 @@ Key decisions: thin IR (semantic intent only), renderer reads DB directly for vi
 
 ## What To Do Next
 
-### Phase 1: Wire generator to read visual data from DB
-The generator (`dd/generate.py`) currently reads visual data from the IR's `visual` section. Phase 1 wires it to read from the DB using `query_screen_visuals()` + `_node_id_map` instead. Dual-read: verify both paths produce identical Figma JS before removing the IR path.
+### Phase 2: Remove IR visual section (thin IR)
+The generator now reads visual data from the DB (Phase 1 complete). The IR's `visual` section is redundant — Phase 2 removes it, making the IR truly thin. The `_build_visual` call in `map_node_to_element` gets removed, and the generator relies solely on the DB path via `db_visuals`.
 
 ### Before Phase 1, consider:
 - Run `extract_components()` on Dank file to populate the 6 empty composition tables
@@ -57,10 +57,11 @@ python -m dd extract-supplement --db Dank-EXP-02.declarative.db --port 9227
 | `docs/learnings.md` | Accumulated insights (extraction, pipeline, architecture) |
 | `.claude/plans/dynamic-watching-rose.md` | Phase 0 implementation plan (completed) |
 | `dd/ir.py` | IR generation + `query_screen_visuals()` + `_node_id_map` (Phase 0 additions) |
-| `dd/generate.py` | Figma renderer (currently reads IR visual — Phase 1 switches to DB) |
+| `dd/generate.py` | Figma renderer (now reads DB visual via `build_visual_from_db` + `db_visuals` param) |
 | `dd/extract_supplement.py` | Plugin API supplemental extraction (componentKey, layoutPositioning, Grid) |
 | `dd/extract_components.py` | Component discovery (built, not run on Dank — needed for Phase 3) |
 | `tests/test_phase0_integration.py` | Integration tests against real Dank DB for Phase 0 |
+| `tests/test_phase1_integration.py` | Parity tests: IR vs DB visual paths on real Dank DB |
 
 ## Environment
 

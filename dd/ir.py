@@ -121,7 +121,7 @@ def normalize_strokes(
         entry: Dict[str, Any] = {
             "type": "solid",
             "color": f"{{{token}}}" if token else hex_val,
-            "width": node.get("stroke_weight") or 1,
+            "width": int(node.get("stroke_weight") or 1),
         }
         align = node.get("stroke_align")
         if align:

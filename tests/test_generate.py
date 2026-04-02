@@ -13,6 +13,7 @@ from dd.generate import (
     collect_fonts,
     generate_figma_script,
     generate_screen,
+    build_visual_from_db,
 )
 from dd.catalog import seed_catalog
 
@@ -401,6 +402,102 @@ class TestGenerateFigmaScript:
 
 
 # ---------------------------------------------------------------------------
+# DB-path script generation (Phase 1)
+# ---------------------------------------------------------------------------
+
+class TestGenerateFigmaScriptFromDB:
+    """Verify generate_figma_script with db_visuals reads visual data from DB."""
+
+    def test_fills_from_db_visuals(self):
+        spec = _make_spec({"screen-1": {"type": "screen"}})
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "fills": json.dumps([{"type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "fills = [{" in script
+        assert '"SOLID"' in script
+
+    def test_strokes_from_db_visuals(self):
+        spec = _make_spec({"screen-1": {"type": "screen"}})
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "strokes": json.dumps([{"type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}}]),
+                "stroke_weight": 2,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "strokes = [{" in script
+        assert "strokeWeight = 2" in script
+
+    def test_effects_from_db_visuals(self):
+        spec = _make_spec({"screen-1": {"type": "screen"}})
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "effects": json.dumps([{"type": "BACKGROUND_BLUR", "visible": True, "radius": 15.0}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "effects = [{" in script
+        assert "BACKGROUND_BLUR" in script
+
+    def test_token_ref_collected_from_db_path(self):
+        spec = _make_spec(
+            elements={"screen-1": {"type": "screen"}},
+            tokens={"color.primary": "#FF0000"},
+        )
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "fills": json.dumps([{"type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}}]),
+                "bindings": [{"property": "fill.0.color", "token_name": "color.primary", "resolved_value": "#FF0000"}],
+            },
+        }
+        script, refs = generate_figma_script(spec, db_visuals=db_visuals)
+        assert any(r[2] == "color.primary" for r in refs)
+
+    def test_ignores_ir_visual_when_db_visuals_provided(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "visual": {"fills": [{"type": "solid", "color": "#00FF00"}]},
+        }})
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "fills": json.dumps([{"type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Should use DB red (#FF0000), not IR green (#00FF00)
+        rgb = hex_to_figma_rgb("#FF0000")
+        assert f"r:{rgb['r']}" in script
+
+    def test_falls_back_to_empty_when_node_not_in_visuals(self):
+        spec = _make_spec({"screen-1": {"type": "screen"}})
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {}  # node 10 not present
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "fills" not in script.lower() or "fills = []" not in script
+
+    def test_none_db_visuals_uses_ir_path(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "visual": {"fills": [{"type": "solid", "color": "#00FF00"}]},
+        }})
+        script, _ = generate_figma_script(spec, db_visuals=None)
+        rgb = hex_to_figma_rgb("#00FF00")
+        assert f"r:{rgb['r']}" in script
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -486,6 +583,189 @@ class TestGenerateCLI:
 
         from dd.cli import main
         main(["generate", "--db", db_path, "--screen", "1"])
+
+
+# ---------------------------------------------------------------------------
+# Parity: IR path vs DB path (Phase 1)
+# ---------------------------------------------------------------------------
+
+class TestDualPathParity:
+    """Verify IR visual path and DB visual path produce identical Figma JS."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Settings', 428, 926)"
+        )
+        conn.execute("INSERT INTO token_collections (id, file_id, name) VALUES (1, 1, 'Colors')")
+        conn.execute("INSERT INTO token_modes (id, collection_id, name, is_default) VALUES (1, 1, 'Default', 1)")
+        conn.execute("INSERT INTO tokens (id, collection_id, name, type) VALUES (1, 1, 'color.surface.primary', 'color')")
+        conn.execute("INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (1, 1, '#FAFAFA', '#FAFAFA')")
+
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0},
+            "opacity": 1.0,
+        }])
+        strokes_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+        }])
+
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, layout_mode, fills, strokes, stroke_weight, corner_radius, opacity) "
+            "VALUES (10, 1, 'h1', 'nav/top-nav', 'INSTANCE', 1, 0, "
+            "0, 0, 428, 56, 'HORIZONTAL', ?, ?, 1, '8', 0.9)",
+            (fills_json, strokes_json),
+        )
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, font_size, font_weight) "
+            "VALUES (11, 1, 't1', 'Title', 'TEXT', 2, 0, 16, 70, 396, 28, 24, 700)"
+        )
+
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (1, 10, 'header', 1.0, 'formal')"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (1, 11, 'heading', 0.9, 'heuristic')"
+        )
+        conn.execute(
+            "INSERT INTO node_token_bindings (id, node_id, property, token_id, raw_value, resolved_value, binding_status) "
+            "VALUES (1, 10, 'fill.0.color', 1, '#FAFAFA', '#FAFAFA', 'bound')"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_ir_and_db_paths_produce_identical_script(self, db):
+        from dd.ir import generate_ir, query_screen_visuals
+
+        ir_result = generate_ir(db, screen_id=1)
+        spec = ir_result["spec"]
+
+        ir_script, ir_refs = generate_figma_script(spec, db_visuals=None)
+
+        visuals = query_screen_visuals(db, screen_id=1)
+        db_script, db_refs = generate_figma_script(spec, db_visuals=visuals)
+
+        assert ir_script == db_script
+        assert ir_refs == db_refs
+
+    def test_token_refs_match_between_paths(self, db):
+        from dd.ir import generate_ir, query_screen_visuals
+
+        ir_result = generate_ir(db, screen_id=1)
+        spec = ir_result["spec"]
+
+        _, ir_refs = generate_figma_script(spec, db_visuals=None)
+        visuals = query_screen_visuals(db, screen_id=1)
+        _, db_refs = generate_figma_script(spec, db_visuals=visuals)
+
+        ir_token_names = {r[2] for r in ir_refs}
+        db_token_names = {r[2] for r in db_refs}
+        assert ir_token_names == db_token_names
+
+
+# ---------------------------------------------------------------------------
+# build_visual_from_db tests
+# ---------------------------------------------------------------------------
+
+SOLID_FILL_JSON = json.dumps([{
+    "type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+    "opacity": 1.0,
+}])
+
+STROKE_JSON = json.dumps([{
+    "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+}])
+
+EFFECT_JSON = json.dumps([{
+    "type": "DROP_SHADOW", "visible": True,
+    "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.25},
+    "offset": {"x": 0.0, "y": 4.0}, "radius": 8.0, "spread": 0.0,
+}])
+
+
+class TestBuildVisualFromDB:
+    """Verify build_visual_from_db normalizes raw DB data to _emit_visual format."""
+
+    def test_normalizes_fills(self):
+        raw = {"fills": SOLID_FILL_JSON, "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert "fills" in visual
+        assert visual["fills"][0]["type"] == "solid"
+        assert visual["fills"][0]["color"] == "#FF0000"
+
+    def test_normalizes_strokes(self):
+        raw = {"strokes": STROKE_JSON, "stroke_weight": 2, "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert "strokes" in visual
+        assert visual["strokes"][0]["type"] == "solid"
+        assert visual["strokes"][0]["width"] == 2
+
+    def test_normalizes_effects(self):
+        raw = {"effects": EFFECT_JSON, "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert "effects" in visual
+        assert visual["effects"][0]["type"] == "drop-shadow"
+        assert visual["effects"][0]["blur"] == 8.0
+
+    def test_normalizes_corner_radius(self):
+        raw = {"corner_radius": "12", "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert visual["cornerRadius"] == 12.0
+
+    def test_normalizes_opacity(self):
+        raw = {"opacity": 0.5, "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert visual["opacity"] == 0.5
+
+    def test_omits_full_opacity(self):
+        raw = {"opacity": 1.0, "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert "opacity" not in visual
+
+    def test_token_bound_fill(self):
+        raw = {
+            "fills": SOLID_FILL_JSON,
+            "bindings": [{"property": "fill.0.color", "token_name": "color.primary", "resolved_value": "#FF0000"}],
+        }
+        visual = build_visual_from_db(raw)
+        assert visual["fills"][0]["color"] == "{color.primary}"
+
+    def test_empty_input(self):
+        visual = build_visual_from_db({})
+        assert visual == {}
+
+    def test_matches_ir_visual_output(self):
+        """The DB path should produce identical output to the IR path."""
+        from dd.ir import _build_visual
+
+        bindings = [{"property": "fill.0.color", "token_name": "color.primary", "resolved_value": "#FF0000"}]
+        node = {
+            "fills": SOLID_FILL_JSON,
+            "strokes": STROKE_JSON,
+            "effects": EFFECT_JSON,
+            "corner_radius": "8",
+            "opacity": 0.9,
+            "stroke_weight": 2,
+            "bindings": bindings,
+        }
+
+        ir_visual = _build_visual(node, bindings)
+        db_visual = build_visual_from_db(node)
+
+        assert ir_visual == db_visual
 
 
 # ---------------------------------------------------------------------------

@@ -218,13 +218,14 @@ Transforms classified screen data + token bindings into CompositionSpec.
 
 ## Layer 4: Rendering (6 modules)
 
-### dd/generate.py — Figma Generation (51 tests)
-Generates Figma Plugin API JavaScript from CompositionSpec.
+### dd/generate.py — Figma Generation (69 tests)
+Generates Figma Plugin API JavaScript from CompositionSpec. Supports dual visual data paths: IR visual section (legacy) or DB visual data via `db_visuals` parameter (Phase 1).
 
 | Function | Purpose |
 |----------|---------|
-| `generate_figma_script(spec)` | Walk IR, emit JS for frame/text creation, layout, visual properties |
-| `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → generate_figma_script |
+| `generate_figma_script(spec, db_visuals=None)` | Walk IR, emit JS. When `db_visuals` provided, reads visual data from DB instead of IR. |
+| `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script (uses DB path) |
+| `build_visual_from_db(node_visual)` | Normalize raw DB visual data to the format `_emit_visual` expects |
 | `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing, alignment |
 | `_emit_visual(var, eid, visual, tokens)` | Emit fills, strokes, effects, cornerRadius, opacity |
 | `_emit_fills(var, eid, fills, tokens)` | Emit Figma paint array from IR fills |
