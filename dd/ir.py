@@ -444,7 +444,7 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
         "n.layout_mode, n.padding_top, n.padding_right, n.padding_bottom, n.padding_left, "
         "n.item_spacing, n.counter_axis_spacing, "
         "n.layout_sizing_h, n.layout_sizing_v, n.primary_align, n.counter_align, "
-        "n.text_content, n.corner_radius, n.opacity, n.fills, "
+        "n.text_content, n.corner_radius, n.opacity, n.fills, n.strokes, n.effects, "
         "n.font_family, n.font_weight, n.font_size, "
         "n.parent_id, "
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "

@@ -493,6 +493,16 @@ class TestQueryScreenForIR:
         assert result["width"] == 428
         assert result["height"] == 926
 
+    def test_fetches_strokes_and_effects_columns(self, db: sqlite3.Connection):
+        strokes_json = json.dumps([{"type": "SOLID", "color": {"r": 0, "g": 0, "b": 0, "a": 1}}])
+        effects_json = json.dumps([{"type": "DROP_SHADOW", "visible": True, "color": {"r": 0, "g": 0, "b": 0, "a": 0.25}, "offset": {"x": 0, "y": 4}, "radius": 8, "spread": 0}])
+        db.execute("UPDATE nodes SET strokes = ?, effects = ? WHERE id = 10", (strokes_json, effects_json))
+        db.commit()
+        result = query_screen_for_ir(db, screen_id=1)
+        header_node = next(n for n in result["nodes"] if n["node_id"] == 10)
+        assert header_node["strokes"] == strokes_json
+        assert header_node["effects"] == effects_json
+
 
 class TestBuildCompositionSpec:
     """Verify build_composition_spec() assembles a complete IR."""
@@ -548,6 +558,17 @@ class TestBuildCompositionSpec:
         spec = build_composition_spec(data)
         for eid in spec["elements"]:
             assert isinstance(eid, str)
+
+    def test_visual_section_populated_from_fills(self, db: sqlite3.Connection):
+        fills_json = json.dumps([{"type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0}}])
+        db.execute("UPDATE nodes SET fills = ? WHERE id = 10", (fills_json,))
+        db.commit()
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        assert "visual" in header
+        assert len(header["visual"]["fills"]) == 1
+        assert header["visual"]["fills"][0]["type"] == "solid"
 
     def test_serializable_to_json(self, db: sqlite3.Connection):
         data = query_screen_for_ir(db, screen_id=1)
