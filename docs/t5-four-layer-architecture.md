@@ -24,41 +24,208 @@ Each layer has a single responsibility. Data flows up through Layers 1-2 (concre
 ## Layer 1: Extraction
 
 ### Purpose
-Parse a source artifact and store every recoverable detail in a structured store. Extraction is exhaustive and platform-specific. It captures MORE than the IR will ever need, because the renderer will reach back into this data later.
+Parse a source artifact and store every recoverable detail in a structured store. Extraction is exhaustive and platform-specific. It captures MORE than the IR will ever need, because the renderer will reach back into this data later. The renderer reads from this data to fill in visual details the thin IR deliberately omits.
 
-### Figma Extraction (BUILT — T1-T4)
-- **Input**: Figma file via REST API + Plugin API
-- **Output**: SQLite DB with:
-  - `nodes` — 86K rows, 40+ columns: position, dimensions, layout mode, padding, spacing, sizing modes, fills (JSON), strokes (JSON), effects (JSON), corner radius, opacity, blend mode, font properties, text content, parent_id, component references
-  - `node_token_bindings` — 182K rows: which node properties are bound to which design tokens
-  - `tokens` / `token_values` / `token_collections` / `token_modes` — 388 tokens across 8 collections with multi-mode values
-  - `components` — Formal Figma component definitions (master components, variants, keys)
-  - `screens` — 338 screens with dimensions and device class
-  - **Missing columns (need migration)**: `constraints` (horizontal/vertical), `layoutPositioning` (AUTO/ABSOLUTE). Extraction JS captures these but the schema doesn't store them yet.
+### Figma Extraction
+
+**Status**: Core extraction built (T1-T4). Schema has 40+ columns on `nodes` table. Extraction JS captures most properties. Significant gaps in component-level data.
+
+**Input**: Figma file via REST API (file structure, image exports) + Plugin API (node properties, variable bindings)
+
+**Output**: SQLite DB with the following tables:
+
+#### Node-Level Data (`nodes` table — 86K rows in Dank)
+
+Every node in the Figma tree becomes a row. The renderer reads this data to reconstruct visual properties.
+
+| Category | Columns | Status |
+|----------|---------|--------|
+| **Identity** | id, screen_id, figma_node_id, parent_id, path, name, node_type, depth, sort_order, is_semantic | Built, populated |
+| **Geometry** | x, y, width, height | Built, populated |
+| **Auto-layout** | layout_mode, padding (4 sides), item_spacing, counter_axis_spacing, primary_align, counter_align, layout_sizing_h/v | Built, populated |
+| **Auto-layout extensions** | layout_wrap, min/max width/height | Schema exists, extraction captures, **Dank DB needs migration** |
+| **Visual fills/strokes/effects** | fills (JSON), strokes (JSON), effects (JSON) | Built, populated |
+| **Corner radius** | corner_radius (number or per-corner JSON) | Built, populated |
+| **Opacity/blend** | opacity, blend_mode, visible | Built, populated |
+| **Stroke detail** | stroke_weight (uniform), stroke per-side weights (4), stroke_align, stroke_cap, stroke_join, dash_pattern | Schema exists, extraction captures, **Dank DB needs migration** |
+| **Transform** | rotation, clips_content | Schema exists, extraction captures, **Dank DB needs migration** |
+| **Constraints** | constraint_h, constraint_v | Schema exists, extraction captures, **Dank DB needs migration** |
+| **Typography** | font_family, font_weight, font_size, font_style, line_height, letter_spacing, paragraph_spacing, text_align, text_align_v, text_decoration, text_case, text_content | Schema exists, some populated, font_style/text_align_v/text_decoration/text_case/paragraph_spacing **need migration** |
+| **Component reference** | component_id (FK), component_key | Schema exists, extraction captures component_key, **but component_id never linked (components table empty)** |
+| **Missing: layoutPositioning** | Whether a child is AUTO or ABSOLUTE within auto-layout parent | **Not in schema, not extracted**. Needed for stacked/absolute child positioning. |
+
+**Critical gap — component_key**: The extraction JS correctly reads `node.mainComponent.key` for INSTANCE nodes (line 124 of `extract_screens.py`). The schema has the `component_key` column. But the Dank DB was created from an older schema missing the column. After migration, re-extraction will populate component keys for all 27,810 INSTANCE nodes. This unblocks Mode 1 rendering (component instantiation).
+
+#### Token Data (`tokens`, `token_values`, `token_collections`, `token_modes` — 388 tokens)
+
+Design tokens extracted from Figma's variable collections. Multi-mode support (Light, Dark, High Contrast).
+
+| Table | What | Status |
+|-------|------|--------|
+| `token_collections` | Variable collections (Colors, Spacing, Typography, etc.) | Built, populated |
+| `token_modes` | Modes per collection (Default, Dark, etc.) | Built, populated |
+| `tokens` | Individual variables (name, type, collection, tier) | Built, populated |
+| `token_values` | Per-mode resolved values, provenance tracking | Built, populated |
+
+#### Binding Data (`node_token_bindings` — 182K rows)
+
+Maps which node properties are bound to which tokens. This is what the IR's `style` section draws from (token refs only), and what the Figma renderer uses for Phase B variable rebinding.
+
+| Column | What |
+|--------|------|
+| node_id | Which node |
+| property | Which property (fill.0.color, fontSize, padding.top, etc.) |
+| token_id | Which token it's bound to |
+| raw_value | The raw value before resolution |
+| resolved_value | The resolved value (following aliases) |
+| binding_status | bound, unbound, overridden |
+
+#### Component Data (EMPTY — needs population)
+
+The schema defines rich component tables but none are populated:
+
+| Table | Purpose | Status |
+|-------|---------|--------|
+| `components` | Master component definitions (name, figma_node_id, description, variant_properties) | **0 rows**. Extraction doesn't populate this — needs a component discovery pass. |
+| `component_variants` | Individual variants of each component | **0 rows** |
+| `variant_axes` | Variant dimensions (Size, State, Type) | **0 rows** |
+| `variant_dimension_values` | Per-variant axis values (hover, large, solid) | **0 rows** |
+| `component_slots` | Named insertion points per component | **0 rows**. Slots need to be defined for all 48 catalog types. |
+| `component_a11y` | Accessibility contracts per component | **0 rows** |
+| `component_responsive` | Responsive behavior per component | **0 rows** |
+| `patterns` | Reusable composition recipes (screen-level patterns) | **0 rows** |
+
+**What needs to happen**: A new extraction phase that discovers master components from the Figma file, enumerates their variants, and populates these tables. For INSTANCE nodes, this means:
+1. Find all unique `mainComponent` references across all INSTANCE nodes
+2. For each master component: extract its name, key, description, variant axes, and property definitions
+3. Store in `components` + `variant_axes` + `variant_dimension_values`
+4. Link INSTANCE nodes to their components via `component_id` and `component_key`
+
+This data feeds both template extraction (Layer 2) and Mode 1 rendering (Layer 4).
+
+#### Screen Data (`screens` — 338 rows)
+
+One row per top-level frame in the Figma file (pages with multiple screens).
+
+#### What Figma Extraction Does NOT Need to Capture
+
+- Vector path data (SVG paths, boolean operations) — too low-level for the IR, and icons are rendered by instantiating Figma components
+- Image raster data — referenced by hash/URL, not stored in DB
+- Prototype connections — interaction data, deferred to v2
+- Plugin data — third-party plugin state, not relevant
+- Comments — Figma comments/annotations, separate concern
 
 ### React Extraction (NOT BUILT)
-- **Input**: React codebase (file system)
-- **Output**: Store with:
-  - Component definitions: name, file path, exported props (from TypeScript types), default values
-  - Component usage: which components are used in which files, with what props
-  - Import graph: which components import which other components
-  - Token usage: which CSS variables / Tailwind classes / theme values are referenced
-  - JSX structure: the component tree per page/route
+
+**Input**: React/TypeScript codebase (file system access)
+
+**Output**: Store (SQLite or in-memory) with:
+
+#### Component Definitions
+For each exported React component found in the codebase:
+
+| Field | Source | Example |
+|-------|--------|---------|
+| name | Export name | `Header`, `Button`, `ToggleRow` |
+| file_path | File location | `src/components/ui/header.tsx` |
+| catalog_type | Mapped from name/props (heuristic + user config) | `"header"` |
+| props | TypeScript interface extraction | `[{name: "title", type: "string", required: true}, {name: "variant", type: "primary\|ghost", default: "primary"}]` |
+| slots | Children/render prop analysis | `[{name: "leading", prop: "leftContent", type: "ReactNode"}]` |
+| imports | What it imports | `["@radix-ui/react-slot", "./button"]` |
+| library | Which library it belongs to | `"shadcn"`, `"custom"`, `"mui"` |
+
+**How components are discovered:**
+1. Scan for `.tsx`/`.jsx` files with exported functions/classes
+2. Parse TypeScript types for prop interfaces (using ts-morph or AST)
+3. Identify slots from `children` props, render props, and `ReactNode` typed props
+4. Match component names to catalog types using name heuristics + configurable overrides
+
+#### Component Usage (per page/route)
+For each page component (identified by router configuration or file conventions like `app/page.tsx`):
+
+| Field | Source | Example |
+|-------|--------|---------|
+| page_path | Route or file path | `/settings`, `app/settings/page.tsx` |
+| component_tree | JSX nesting structure | `Header > [Button, SearchInput]`, `Section > [ToggleRow, ToggleRow]` |
+| prop_values | Prop values passed in JSX | `title="Settings"`, `variant="primary"` |
+| layout_hints | CSS flex/grid usage | `flex flex-col gap-4` → `direction: vertical, gap: 16` |
+
+#### Token Usage
+| Field | Source | Example |
+|-------|--------|---------|
+| token_name | CSS variable or Tailwind class | `--color-surface-primary`, `bg-surface-primary` |
+| usage_locations | Where it's used | `header.tsx:12`, `button.tsx:34` |
+| resolved_value | From tailwind.config or CSS | `#FAFAFA` |
+
+**Extraction approach**: AST parsing via TypeScript compiler API or babel. NOT regex — components have complex nesting, generics, and conditional rendering. Libraries like `ts-morph` provide programmatic access to TypeScript's type system.
+
+**Key difference from Figma extraction**: React extraction gives us EXPLICIT component structure (names, props, types) but NO visual properties (no fills, no pixel dimensions, no colors unless in CSS). The IR from React will have rich type/slot/prop data but sparse style data.
 
 ### Screenshot Extraction (NOT BUILT)
-- **Input**: Screenshot image(s)
-- **Output**: Store with:
-  - Detected UI elements: bounding boxes, recognized component types, text content (OCR)
-  - Color samples: extracted from regions
-  - Layout relationships: spatial arrangement, alignment patterns, spacing
-  - Confidence scores per detection
 
-### Prompt Extraction
-- **Input**: Natural language description ("I need a settings page with toggle sections")
-- **Output**: Parsed intent — screen type, requested components, constraints. No traditional extraction step; the prompt IS the composition intent. The system uses analysis from an EXISTING project (if available) to inform rendering.
+**Input**: One or more screenshot images (PNG/JPG) of UI screens
 
-### Key Principle
-Extraction is greedy. Capture everything the source provides. The analysis and rendering layers decide what matters. Extraction never filters or interprets — it records.
+**Output**: Store with detected elements and spatial relationships
+
+#### Element Detection
+For each detected UI element:
+
+| Field | Source | Example |
+|-------|--------|---------|
+| catalog_type | Vision model classification | `"button"`, `"header"`, `"card"` |
+| confidence | Model confidence score | `0.92` |
+| bounding_box | Pixel coordinates | `{x: 16, y: 738, width: 396, height: 48}` |
+| text_content | OCR extraction | `"Settings"` |
+| visual_samples | Color sampling from region | `{background: "#FFFFFF", text: "#000000", border: "#E0E0E0"}` |
+
+#### Layout Inference
+Spatial analysis to determine relationships:
+
+| Field | How Derived | Example |
+|-------|-------------|---------|
+| parent_child | Containment detection (box A inside box B) | `header contains [icon, text, button]` |
+| sibling_group | Aligned elements with consistent spacing | `[card, card, card]` at y=200, y=400, y=600 |
+| layout_direction | Alignment axis of sibling groups | `"vertical"` (cards stacked) |
+| spacing_estimate | Gap between siblings | `~16px` |
+
+#### What Screenshot Extraction CANNOT Provide
+- Internal component structure (what's inside a card vs. what IS the card)
+- Token references (colors are sampled, not bound to variables)
+- Font specifics (OCR can detect text but not font family/weight reliably)
+- Component variants (can't distinguish "primary" from "secondary" button without seeing both)
+- Interactive state (hover, pressed, disabled look similar in screenshots)
+
+**Extraction approach**: Vision model pipeline. Options:
+1. **OmniParser v2** — open-source UI element detection, good bounding boxes
+2. **Custom YOLO model** — trained on UI datasets (Roboflow has 61 UI element classes)
+3. **Claude Vision** — send screenshot, ask for structured component detection with bounding boxes
+4. **Hybrid**: YOLO for detection + Claude for classification and OCR
+
+**Key difference**: Screenshot extraction is the lowest-fidelity path. It produces approximate structure with confidence scores. The IR from screenshots will be sparser than from Figma or React. Useful for "recreate this in my design system" workflows where exact reproduction isn't the goal.
+
+### Prompt Input (No Extraction)
+
+**Input**: Natural language description ("I need a settings page with toggle sections")
+
+A prompt doesn't require traditional extraction. The prompt IS the composition intent — it feeds directly into Layer 3 (Composition). However, the system needs a project CONTEXT to render into:
+
+- **Existing Figma file**: The project's DB provides tokens, component vocabulary, and templates for rendering
+- **Existing React codebase**: The project's component library provides the RendererConfig
+- **No existing project**: The system uses pre-seeded default templates and a default token vocabulary
+
+The prompt is parsed into structured intent (screen type, requested components, constraints) by Layer 3's composition logic, not by a Layer 1 extractor.
+
+### Extraction Architecture Principles
+
+1. **Greedy**: Capture everything the source provides. The analysis and rendering layers decide what matters. Extraction never filters or interprets — it records.
+
+2. **Exhaustive over efficient**: It's better to extract a property you might not use than to need it later and not have it. Re-extraction is expensive (requires Figma API calls or re-parsing).
+
+3. **Idempotent**: Re-running extraction on the same source produces the same DB state. Supports incremental updates (extract only changed screens).
+
+4. **Schema-complete before extraction**: All columns must exist in the schema before extraction runs. The Dank DB's 26 missing columns demonstrate what happens when schema and extraction code diverge.
+
+5. **Component discovery is separate from node extraction**: Node-level extraction captures properties per-node. Component discovery identifies master components, their variants, and their property definitions. These are different passes with different Figma API calls.
 
 ---
 
