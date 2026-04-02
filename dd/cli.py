@@ -305,6 +305,27 @@ def _run_seed_catalog(db_path: str) -> None:
     print(f"Seeded {count} component types into catalog.")
 
 
+def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.generate import generate_screen
+
+    conn = get_connection(db_path)
+    result = generate_screen(conn, screen_id)
+    conn.close()
+
+    if dry_run:
+        print(f"Screen {screen_id}:")
+        print(f"  Elements:   {result['element_count']}")
+        print(f"  Tokens:     {result['token_count']}")
+        print(f"  Token refs: {len(result['token_refs'])}")
+        print(f"  Script:     {len(result['structure_script'])} chars")
+    else:
+        print(result["structure_script"])
+
+
 def _run_generate_ir(db_path: str, screen_arg: str) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -593,6 +614,11 @@ def main(argv: Optional[list] = None) -> None:
     ir_parser.add_argument("--db", help="Database path")
     ir_parser.add_argument("--screen", required=True, help="Screen ID or 'all'")
 
+    gen_parser = subparsers.add_parser("generate", help="Generate Figma creation script from IR")
+    gen_parser.add_argument("--db", help="Database path")
+    gen_parser.add_argument("--screen", required=True, help="Screen ID")
+    gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -646,6 +672,9 @@ def main(argv: Optional[list] = None) -> None:
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
         _run_generate_ir(db_path, args.screen)
+    elif args.command == "generate":
+        db_path = detect_db_path(args.db)
+        _run_generate(db_path, int(args.screen), dry_run=args.dry_run)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)
