@@ -166,7 +166,9 @@ def generate_figma_script(
 
     lines: List[str] = []
 
-    for family, style in fonts:
+    # Always load Inter Regular — Figma's default font for createText()
+    all_fonts = [("Inter", "Regular")] + [f for f in fonts if f != ("Inter", "Regular")]
+    for family, style in all_fonts:
         lines.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
 
     lines.append("const M = {};")
@@ -429,7 +431,7 @@ def _emit_effects(
         elif effect_type in ("layer-blur", "background-blur"):
             radius = effect.get("radius", 0)
             figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
-            effect_objs.append(f'{{type: "{figma_type}", visible: true, blendMode: "NORMAL", radius: {radius}}}')
+            effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
 
     lines: List[str] = []
     if effect_objs:
