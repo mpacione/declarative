@@ -2,7 +2,7 @@
 
 > **Declarative Design is a bi-directional design compiler.** It parses UI from any source into an abstract compositional IR, then generates to any target with token-bound fidelity. This document specifies the four-layer architecture that makes that possible.
 
-Status: DRAFT — for analysis, critique, and steelmanning. Not yet implemented.
+Status: DRAFT v2 — enriched with resolved architectural decisions (2026-04-02).
 
 ---
 
@@ -16,6 +16,8 @@ Layer 4: RENDERING       IR + DB/Config → Output   "Build it concretely"
 ```
 
 Each layer has a single responsibility. Data flows up through Layers 1-2 (concrete → abstract) and down through Layers 3-4 (abstract → concrete). The IR at Layer 3 is the narrowest point — pure semantic intent with no platform-specific detail.
+
+**The critical loop**: Analysis reads the DB to build abstractions (concrete → abstract). The IR uses those abstractions to compose (abstract intent). The renderer dereferences back to the source data to build (abstract → concrete). The DB is the ground truth through the entire loop.
 
 ---
 
@@ -32,6 +34,7 @@ Parse a source artifact and store every recoverable detail in a structured store
   - `tokens` / `token_values` / `token_collections` / `token_modes` — 388 tokens across 8 collections with multi-mode values
   - `components` — Formal Figma component definitions (master components, variants, keys)
   - `screens` — 338 screens with dimensions and device class
+  - **Missing columns (need migration)**: `constraints` (horizontal/vertical), `layoutPositioning` (AUTO/ABSOLUTE). Extraction JS captures these but the schema doesn't store them yet.
 
 ### React Extraction (NOT BUILT)
 - **Input**: React codebase (file system)
@@ -50,12 +53,9 @@ Parse a source artifact and store every recoverable detail in a structured store
   - Layout relationships: spatial arrangement, alignment patterns, spacing
   - Confidence scores per detection
 
-### Prompt Extraction (NOT BUILT — may not need a traditional extraction step)
+### Prompt Extraction
 - **Input**: Natural language description ("I need a settings page with toggle sections")
-- **Output**: Parsed intent:
-  - Screen type: settings
-  - Requested components: toggle sections (implies toggle rows, section headings)
-  - Constraints: none specified → use defaults from taste model
+- **Output**: Parsed intent — screen type, requested components, constraints. No traditional extraction step; the prompt IS the composition intent. The system uses analysis from an EXISTING project (if available) to inform rendering.
 
 ### Key Principle
 Extraction is greedy. Capture everything the source provides. The analysis and rendering layers decide what matters. Extraction never filters or interprets — it records.
@@ -67,7 +67,7 @@ Extraction is greedy. Capture everything the source provides. The analysis and r
 ### Purpose
 Read the extracted data and build abstractions at increasing levels. Analysis transforms raw platform-specific data into the vocabulary that the IR composes with. Each abstraction references back to the source data it was derived from.
 
-### Three Levels of Abstraction
+### Two Levels of Abstraction
 
 #### Level A: Component Vocabulary
 "What components exist in this project, and how are they built?"
@@ -75,17 +75,17 @@ Read the extracted data and build abstractions at increasing levels. Analysis tr
 - **Input**: Extracted node tree + classifications
 - **Output**: For each of the ~50 catalog types found in this project:
   - Which nodes are instances of this type (from classification: 93.6% coverage on Dank)
-  - The canonical Figma structure: frame arrangement, auto-layout config, child positions
+  - The canonical Figma structure: frame arrangement, auto-layout config, child positions — this is the **component template**
   - Visual defaults: typical fills, strokes, effects, radius for this type
-  - Slot definitions: named insertion points (leading, title, trailing for a Header)
+  - Slot definitions: named insertion points (leading, title, trailing for a Header) — defined for all 48 catalog types
   - Figma component key: if this maps to a formal master component
   - Variants: the different visual/behavioral variants of this type (e.g., Button: primary, secondary, ghost, destructive)
 
-- **Example**: "Header in this project = nav/top-nav (component key abc123). Horizontal auto-layout, 428px wide, 111px tall, 3 slots: Left (130px, icon+label), Center (182px, nav items), Right (130px, action buttons). White background, background blur effect. 338 instances across all screens, 2 variants (with/without search)."
+- **Example**: "Header in this project = nav/top-nav (component key abc123). Horizontal auto-layout, 3 slots: Left (icon+label), Center (nav items), Right (action buttons). White background, background blur effect. 338 instances across all screens, 2 variants (with/without search)."
 
-- **References back to DB**: Every component vocabulary entry points to specific node IDs, property values, and token bindings.
+- **References back to DB**: Every component vocabulary entry points to specific node IDs, property values, and token bindings. The renderer uses these references to retrieve actual visual properties at render time.
 
-#### Level B: Pattern Language
+#### Level B: Screen Patterns
 "What screen-level patterns exist in this project?"
 
 - **Input**: Component vocabulary + classified screens + skeleton notation
@@ -95,21 +95,14 @@ Read the extracted data and build abstractions at increasing levels. Analysis tr
   - Composition rules: what components commonly appear together, in what ratios
   - Spacing/rhythm conventions: typical gap sizes, padding patterns, content density
 
-- **Example**: "Settings screen pattern (found in 12 screens): stack(header, scroll(section-group(2-4, toggle-rows + nav-rows)), bottom-nav). Average 3.2 sections per screen. Sections use 16px gap between items, 24px gap between sections."
+- **Example**: "Settings screen pattern (found in 12 screens): stack(header, scroll(section-group(2-4, toggle-rows + nav-rows)), bottom-nav). Average 3.2 sections per screen."
 
 - **References back to vocabulary**: Every pattern references catalog types from Level A.
-
-#### Level C: Taste Model (FUTURE)
-"What makes the good examples good?"
-
-- **Input**: Curated corpus + pattern analysis
-- **Output**: Quality-weighted distributions for Pattern Language decisions
-- Not required for the core loop to work. The system functions with just Levels A and B.
 
 ### Per-Source Analysis
 
 #### From Figma
-All three levels can be derived. The DB has enough information for component vocabulary (classification), pattern language (skeleton extraction + screen clustering), and eventually taste model.
+Both levels can be derived. The DB has enough information for component vocabulary (classification + template extraction) and screen patterns (skeleton extraction + screen clustering).
 
 #### From React
 - Level A: Map React component names to catalog types (heuristic + user config). Extract prop interfaces as slot/prop definitions.
@@ -140,46 +133,80 @@ Express design intent as an abstract, platform-agnostic composition. The IR is t
 CompositionSpec
   version: string
   root: element ID
-  tokens: { token.name → resolved value }  // for this project
+  tokens: { token.name → resolved value }       // for this project
   elements: {
     element-id: {
-      type: string                          // from catalog (~50 types)
-      children: [element IDs]               // ordered child elements
-      slots: { slot-name → [element IDs] }  // named insertion points
-      props: {                              // component-specific
-        text: string                        // text content
-        icon: string                        // icon name (canonical)
-        variant: string                     // visual variant
-        checked: boolean                    // state
-        ...                                 // per catalog type
+      type: string                               // from catalog (~50 types)
+      children: [element IDs]                    // ordered child elements
+      slots: { slot-name → [element IDs] }       // named insertion points
+      props: {                                   // component-specific
+        text: string                             // text content
+        icon: string                             // icon name (canonical)
+        variant: string                          // visual variant
+        checked: boolean                         // state
+        ...                                      // per catalog type
       }
-      layout: {                             // abstract flexbox (universal)
+      layout: {                                  // abstract flexbox (universal)
         direction: "horizontal" | "vertical" | "stacked"
-        gap: number | "{token.ref}"
-        padding: { top, right, bottom, left }
-        sizing: { width, height }           // "fill" | "hug" | number
+        gap: "{token.ref}" | "none"              // semantic, not pixels
+        padding: { top, right, bottom, left }    // token refs or semantic
+        sizing: {
+          width: "fill" | "hug" | "fixed"        // SEMANTIC, not pixels
+          height: "fill" | "hug" | "fixed"       // renderer resolves to actual dimensions
+        }
         mainAxisAlignment: string
         crossAxisAlignment: string
       }
-      style: {                              // token references ONLY
+      style: {                                   // token references ONLY
         backgroundColor: "{color.surface.primary}"
         textColor: "{color.text.primary}"
         borderColor: "{color.border.default}"
-        ...                                 // values are ALWAYS token refs
+        ...
+        // ONLY properties with token bindings appear here.
+        // Unbound visual properties are NOT in the IR — the
+        // renderer reads them from the DB or templates.
       }
-      on: { event → action }               // interaction intent
-      visible: condition                    // conditional rendering
-      $platform: { ... }                   // escape hatch (rare)
+      on: {                                      // basic interaction intent (v1)
+        tap: { action: "navigate", target: "/settings" }
+        toggle: { binds: "notifications.enabled" }
+      }
+      visible: condition                         // conditional rendering
+      $platform: { ... }                         // escape hatch (rare)
     }
   }
 ```
+
+### Resolved Decisions
+
+#### Layout uses semantic sizing, not pixel values
+The IR says `sizing: { width: "fill" }` not `sizing: { width: 428 }`. Pixel dimensions are platform-specific (428px is a phone screen in Figma, meaningless in responsive web). The renderer resolves semantic sizing to actual dimensions using the component template, the target viewport, or the source DB.
+
+`direction: "stacked"` means children are overlaid/absolutely positioned. The IR doesn't carry x/y coordinates — the renderer determines positioning from the component template or source data.
+
+#### Style contains token references only — renderer fills in unbound values
+The IR style section is sparse. It ONLY contains properties that have token bindings:
+```
+// Node with token-bound background but unbound border:
+style: { backgroundColor: "{color.surface.primary}" }
+// borderColor is NOT here — no token binding for it
+```
+The renderer sees the token ref and resolves it. For properties NOT in the IR style section (unbound/literal values), the renderer reads the source DB directly, or uses template defaults if no source exists. This keeps the IR thin while ensuring complete visual output.
+
+**Important**: Many Figma files have zero tokenized styles. The IR style section may be completely empty. The renderer still produces correct visual output by reading all values from the DB/templates.
+
+#### Interaction intent is included at a basic level (v1)
+The IR carries simple interaction semantics: "this is tappable," "this navigates to X," "this toggles Y." Complex interactions (swipe-to-delete, long-press, drag-and-drop) are deferred to `$platform` hints or future IR extensions.
+
+#### The 48 catalog types are the right abstraction level
+Types like `toggle-row`, `card`, `header`, `button` are concrete enough for renderers to map to specific implementations but abstract enough to translate across platforms. A `toggle-row` becomes a Switch inside a flex row in React, a Toggle with label in SwiftUI, and a specific frame structure in Figma.
 
 ### What the IR Does NOT Carry
 
 | Excluded | Why | Where it lives instead |
 |----------|-----|----------------------|
-| Fill arrays, stroke objects, effects | Figma-specific rendering detail | DB nodes table, used by Figma renderer |
-| Literal hex colors (#FF0000) | Platform-specific value | DB token_values, resolved by renderer per-platform |
+| Fill arrays, stroke objects, effects | Platform-specific rendering detail | DB nodes table or component template |
+| Literal hex colors (#FF0000) | Not universal — renderer resolves per platform | DB token_values or node properties |
+| Pixel dimensions (428px, 16px) | Viewport-dependent, not semantic | DB nodes table or component template |
 | Font family/weight/size literals | May differ per platform | DB nodes table or renderer config |
 | Corner radius, opacity values | Visual detail, not intent | DB nodes table or component template |
 | Figma frame structure, auto-layout config | How to build, not what to build | Component templates in renderer config |
@@ -195,12 +222,14 @@ CompositionSpec
 2. Semantic tree construction groups classified nodes into component-level elements
 3. Slot filling maps children to named slots based on position and type
 4. Token references are inlined where bindings exist
-5. Result: ~15-25 elements per screen, each a semantic component
+5. Unclassified intermediate frames are absorbed — they're Figma implementation details
+6. System chrome (status bar, home indicator) is excluded — device framing, not app design
+7. Result: ~15-25 elements per screen, each a semantic component
 
 #### From a Prompt (generating a new screen)
 1. Parse intent: "homepage with cards" → screen type + requested components
-2. Pattern Language selects a skeleton: header + hero + card-grid + footer
-3. Elaboration fills slots: header gets logo + nav items, card-grid gets 6 cards with image/title/subtitle
+2. Select screen pattern from Level B vocabulary (or compose from Level A components)
+3. Fill slots: header gets logo + nav items, card-grid gets 6 cards with image/title/subtitle
 4. Token references added from project's token vocabulary
 5. Result: same ~15-25 element structure, but composed rather than parsed
 
@@ -219,8 +248,7 @@ CompositionSpec
 5. Result: same IR structure, but lower confidence and fewer details
 
 ### The IR Is Valid at Any Completeness
-
-All fields are optional. A prompt-generated IR might have types and slots but no token references. A screenshot-derived IR might have types and text but no layout details. A Figma-parsed IR will be the most complete. Renderers apply sensible defaults for missing fields.
+All fields are optional. A prompt-generated IR might have types and slots but no token references. A screenshot-derived IR might have types and text but no layout details. A Figma-parsed IR will be the most complete. Renderers apply sensible defaults for missing fields — the component template provides the base, the IR provides overrides.
 
 ### Key Principle
 The IR expresses what the designer MEANT, not how any platform implements it. "A Header with a back button and title" is intent. "A 428px wide frame with HORIZONTAL auto-layout, 15px padding, background blur, and three child frames" is Figma implementation. The IR carries the former. The renderer produces the latter.
@@ -260,7 +288,7 @@ RendererConfig
 
 #### Figma Renderer
 
-**Config source**: Extracted from the DB by the analysis layer.
+**Config source**: Extracted from the DB by the analysis layer (Level A component templates). For new projects: pre-seeded default Figma component libraries shipped with the system.
 
 ```
 FigmaRendererConfig
@@ -269,7 +297,8 @@ FigmaRendererConfig
       componentKey: "abc123"              // for importComponentByKeyAsync
       frameStructure: { ... }             // auto-layout, padding, sizing
       visualDefaults: { fills, strokes, effects, radius }
-      slotPositions: { leading: 0, title: 1, trailing: 2 }  // child indices
+      slotPositions: { leading: 0, title: 1, trailing: 2 }
+      variants: { "with-search": {...}, "without-search": {...} }
     }
     ...
   }
@@ -277,21 +306,21 @@ FigmaRendererConfig
     format: "figma-variable"
     variableIds: { "color.surface.primary" → "VariableID:123:456" }
   }
-  dbConnection: sqlite3.Connection        // for reading node-level detail
+  dbConnection: sqlite3.Connection        // for reading unbound literal values
 ```
 
 **Rendering process**:
 1. Walk IR elements in tree order
 2. For each element, look up its type in componentMap
-3. If componentKey exists → `importComponentByKeyAsync(key)`, create instance, set overrides
+3. If componentKey exists → `importComponentByKeyAsync(key)`, create instance, set overrides from IR props
 4. If no componentKey → create frame structure from frameStructure template
 5. Fill slots: insert child elements at slotPositions
-6. Apply token references: resolve via tokenResolver, bind Figma variables
-7. Apply layout: set auto-layout mode, padding, sizing from IR layout section
-8. For properties not in IR (visual detail): read from DB if source node exists, or use visualDefaults from template
+6. Apply token references from IR style → resolve via tokenResolver, bind Figma variables
+7. For visual properties NOT in IR style (unbound): read from DB if source node exists, or use visualDefaults from template
+8. Apply layout from template (direction, padding, sizing resolved to actual pixel values)
 
-**When source exists** (Figma→Figma, editing existing screens): renderer reads specific node visual properties from DB.
-**When no source exists** (Prompt→Figma, generating new screens): renderer uses component templates extracted from the user's existing file, or falls back to pre-seeded default templates.
+**When source exists** (Figma→Figma, editing existing screens): renderer reads specific node visual properties from DB for unbound values.
+**When no source exists** (Prompt→Figma, generating new screens): renderer uses component templates. Visual properties come entirely from template visualDefaults + token bindings.
 
 #### React Renderer
 
@@ -330,7 +359,7 @@ ReactRendererConfig
 6. Map token refs via tokenResolver to CSS variables
 7. Emit JSX + imports
 
-**No DB needed.** React rendering is fully determined by the IR + config. The config is static (shipped preset or one-time extraction from codebase).
+**No DB needed.** React rendering is fully determined by the IR + config. The React component library already encapsulates visual implementation — the renderer just maps catalog types to library components and wires props.
 
 #### SwiftUI Renderer
 
@@ -386,148 +415,106 @@ The renderer is mechanical. Given an IR element type and a config mapping, the o
 ```
 Figma file
   → L1: Extract → DB (86K nodes, 182K bindings, 388 tokens)
-  → L2: Analyze → Component vocabulary (48 types classified)
+  → L2: Analyze → Component vocabulary (48 types classified, templates extracted)
                  → Screen patterns (settings, chat, dashboard, ...)
-                 → Component templates (how each type is built in Figma)
-  → L3: User says "new settings page" → Pattern Language composes IR
-         IR: { screen → [header, scroll([section, section, section]), bottom-nav] }
-  → L4: Figma renderer reads IR
-         Looks up "header" in componentMap → finds nav/top-nav (key abc123)
-         importComponentByKeyAsync → creates instance
-         Fills slots from IR → sets title, leading icon, trailing actions
-         Resolves token refs → binds Figma variables
-         Repeats for each element
+  → L3: User says "new settings page"
+         → Select "settings" screen pattern
+         → Compose IR: screen → [header, scroll([section, section, section]), bottom-nav]
+         → Token refs from project vocabulary where bindings exist
+  → L4: Figma renderer reads IR + FigmaRendererConfig
+         → "header" → finds nav/top-nav (key abc123) → importComponentByKeyAsync
+         → Fills slots from IR → sets title, leading icon, trailing actions
+         → Resolves token refs → binds Figma variables
+         → Unbound visual properties → reads from template visualDefaults
   → Output: New Figma screen that looks like it belongs to the existing file
 ```
-
-**L1 already built.** L2 partially built (classification done, templates not yet). L3 IR structure exists but too thick. L4 generator exists but reads from IR visual section instead of DB/templates.
 
 ### Prompt → IR → Figma (generate from natural language)
 
 ```
 "Build me a dashboard with a sidebar and card grid"
   → L1: No extraction. But user must have a project context:
-         EITHER an existing Figma file (→ use its DB for L2 and L4)
-         OR a pre-seeded design system (→ use default templates)
-  → L2: Analysis already done on project's existing file (or defaults loaded)
-         Component vocabulary and templates available for rendering
-  → L3: Pattern Language interprets prompt
-         Selects "dashboard" archetype from pattern library
-         Composes: sidebar(nav-items) + main(header + card-grid(6, card(image, title, metric)))
-         Emits IR with token refs from project's token vocabulary
+         EITHER an existing Figma file (→ use its analysis for L2 and its DB/templates for L4)
+         OR select a pre-seeded default design system
+  → L2: Analysis already done (from existing file or defaults loaded)
+  → L3: Interpret prompt → compose IR
+         → sidebar(nav-items) + main(header + card-grid(6, card(image, title, metric)))
+         → Token refs from project's token vocabulary
   → L4: Figma renderer reads IR + templates
-         Builds each component using project's templates
-         No source nodes in DB for this screen (it's new)
-         Falls back to templates for visual properties
+         → No source nodes in DB for this screen (it's new)
+         → All visual properties from template visualDefaults + token bindings
   → Output: New Figma screen in the user's design language
 ```
-
-**Requires**: Pattern Language (L3, not built), templates (L2, not built), pre-seeded defaults for new projects.
 
 ### Figma → IR → React (design to code)
 
 ```
 Figma file
-  → L1: Extract → DB (already done)
+  → L1: Extract → DB
   → L2: Analyze → Component vocabulary (classify screen's nodes)
-                 → Map each catalog type to target React library
   → L3: Build IR from classified screen
-         header-1 with slots: { leading: [icon-1], title: "Settings", trailing: [button-1] }
-         scroll-1 with children: [section-1, section-2]
-         Each element carries token refs from bindings
+         → Semantic tree: header-1 with slots, sections with children
+         → Token refs from bindings
   → L4: React renderer reads IR + ReactRendererConfig(shadcn)
-         "header" → import { Header } from "@/components/ui/header"
-         Maps IR slots to React props/children
-         Token refs → CSS variables: "{color.surface.primary}" → "var(--color-surface-primary)"
-         Emits JSX + imports + token CSS file
-  → Output: React components with proper imports, props, and token-bound styling
+         → "header" → import { Header } from "@/components/ui/header"
+         → Maps IR slots to React props/children
+         → Token refs → CSS variables
+         → Unbound values → reads from DB, emits as literal CSS
+  → Output: React components with imports, props, and token-bound styling
 ```
-
-**Requires**: React renderer config (shipped presets for shadcn/MUI/Radix), token export to CSS variables (partially built in T4).
 
 ### React → IR → Figma (code to design)
 
 ```
 React codebase
-  → L1: Extract → Parse AST
-         Identify component files, exported props, usage sites
-         Map imports to component names
-         Extract JSX trees per page/route
+  → L1: Extract → Parse AST → store component tree, props, imports
   → L2: Analyze → Map React components to catalog types
-         <Header /> → "header", <Button variant="ghost" /> → "button" (variant: ghost)
-         Extract prop values as IR props
-         Identify layout from flex/grid CSS
+         → <Header /> → "header", <Button variant="ghost" /> → "button"
   → L3: Build IR from parsed component tree
-         Same IR structure as Figma-sourced or prompt-sourced
   → L4: Figma renderer reads IR + FigmaRendererConfig
-         Needs component templates — where from?
-         OPTION A: User has existing Figma file → use its templates
-         OPTION B: No Figma file → use pre-seeded default templates
-         Builds Figma frames from templates, fills slots, binds tokens
-  → Output: Figma file that represents the React app's UI
+         → Component templates from user's existing Figma file OR pre-seeded defaults
+         → Builds Figma frames from templates, fills slots, binds tokens
+  → Output: Figma file representing the React app's UI
 ```
-
-**Key tension**: Where do the Figma templates come from when there's no existing Figma file? This is the "cold start" problem. Pre-seeded default templates are the answer, but they'll produce generic-looking output until the user customizes.
 
 ### Screenshot → IR → Figma (reverse engineering)
 
 ```
 Screenshot image
-  → L1: Extract → Vision analysis
-         Detect component bounding boxes + types (header, card, button, ...)
-         OCR text content
-         Sample colors from regions
-         Estimate spacing/alignment
-  → L2: Analyze → Map detections to catalog types
-         Lower confidence than Figma or React parsing
-         No internal structure — each detection is a leaf
-         Layout inferred from spatial relationships
-  → L3: Build IR from detections
-         Sparser IR — types and text, less slot detail, approximate layout
-         Token refs: create new tokens from sampled colors, or match to existing project tokens
+  → L1: Extract → Vision analysis (detect components, OCR, color sampling)
+  → L2: Analyze → Map detections to catalog types (lower confidence)
+  → L3: Build IR from detections (sparser — types and text, approximate layout)
   → L4: Figma renderer reads IR + templates
-         Builds from templates (no source DB for this screenshot)
-         Applies sampled colors / estimated dimensions
-  → Output: Figma approximation of the screenshot — a starting point, not exact
+         → Builds from templates (no source DB)
+         → Applies sampled colors / estimated dimensions
+  → Output: Figma approximation — a starting point, not exact reproduction
 ```
-
-**Lowest fidelity path.** Useful for "make something like this" or "recreate this competitor's screen in our design system." The output needs human refinement.
 
 ### Prompt → IR → React (generate code from description)
 
 ```
 "Build me a settings page with toggle sections"
   → L1: No extraction needed
-  → L2: Use project's existing analysis (if React codebase exists)
-         OR use default component vocabulary
-  → L3: Pattern Language composes IR
-         Same as Prompt → Figma, but token refs may target CSS variables
-  → L4: React renderer reads IR + ReactRendererConfig
-         Maps to shadcn/MUI/Radix components
-         Token refs → CSS variables or Tailwind classes
-         Emits complete page component with imports
+  → L2: Use project's existing analysis (if codebase exists) OR defaults
+  → L3: Compose IR from intent
+  → L4: React renderer reads IR + ReactRendererConfig(shadcn)
+         → Maps to library components, emits JSX + imports
   → Output: React component file(s) ready to use
 ```
-
-**Cleanest code generation path.** React libraries already encapsulate component implementations, so the renderer is a straightforward mapping.
 
 ### Figma → IR → SwiftUI (design to native mobile code)
 
 ```
 Figma file
-  → L1: Extract → DB (same as always)
-  → L2: Analyze → Component vocabulary (same classification)
-  → L3: Build IR from classified screen (same as Figma→React)
+  → L1: Extract → DB
+  → L2: Analyze → Component vocabulary
+  → L3: Build IR from classified screen
   → L4: SwiftUI renderer reads IR + SwiftUIRendererConfig
-         "header" → NavigationStack + .toolbar
-         "button" → Button(role:) with label
-         "toggle-row" → Toggle with label/subtitle
-         Token refs → Color("tokenName") from asset catalog
-         Layout: HStack/VStack/ZStack from IR direction
-  → Output: SwiftUI View files with proper modifiers and asset references
+         → "header" → NavigationStack + .toolbar
+         → Token refs → Color("tokenName") from asset catalog
+         → Layout: HStack/VStack/ZStack from IR direction
+  → Output: SwiftUI View files with modifiers and asset references
 ```
-
-**Requires**: SwiftUI renderer config (framework mappings, mostly static). Token export to Xcode asset catalogs.
 
 ---
 
@@ -537,7 +524,7 @@ Figma file
 
 | Config Type | Source | When Created | Persistence |
 |------------|--------|--------------|-------------|
-| Figma (existing project) | Extracted from DB by analysis | After classification + template extraction | Stored in DB or cached file |
+| Figma (existing project) | Extracted from DB by analysis (L2) | After classification + template extraction | Stored in DB or cached file |
 | Figma (new project) | Pre-seeded default library | Shipped with system | Static, versioned |
 | Figma (user's design system) | Imported from published Figma library | User-initiated | Stored in project config |
 | React + shadcn | Shipped preset | Built into system | Static, versioned |
@@ -558,66 +545,136 @@ A project's Figma RendererConfig evolves:
 
 ## The DB's Role
 
-The DB is NOT a universal system component. It is the **Figma parser's working storage** — the output of Layer 1 for Figma inputs specifically. Other parsers (React AST, screenshot vision) have their own storage formats.
+The DB is the **Figma parser's working storage** — the output of Layer 1 for Figma inputs specifically. Other parsers (React AST, screenshot vision) have their own storage formats.
 
-However, the DB serves double duty for the Figma renderer:
-- **Analysis reads it** to build component vocabulary and extract templates
-- **The Figma renderer reads it** to get visual properties when reconstructing elements from an existing file
+The DB serves double duty in Figma workflows:
+- **Layer 2 (Analysis) reads it** to build component vocabulary and extract templates
+- **Layer 4 (Figma Renderer) reads it** to get unbound visual properties when reconstructing elements
 
-This dual role is specific to the Figma→Figma path. For Prompt→Figma, the renderer reads templates (extracted from DB earlier) but not the DB directly. For Figma→React, the DB is read by analysis but the React renderer never touches it.
+This dual role is specific to Figma paths. For Prompt→Figma, the renderer reads templates (extracted from DB earlier) but not the DB directly for new elements. For Figma→React, the DB is read by analysis and by the React renderer for unbound literal values — but the React renderer could also read them from the templates.
 
 ### DB Tables and Their Layer
 
-| Table | Layer 1 (Extraction) | Layer 2 (Analysis) | Layer 4 (Figma Rendering) |
+| Table | Layer 1 (Extraction) | Layer 2 (Analysis) | Layer 4 (Rendering) |
 |-------|---------------------|-------------------|--------------------------|
-| `nodes` | Written | Read for classification | Read for visual properties |
+| `nodes` | Written | Read for classification | Read for unbound visual properties |
 | `node_token_bindings` | Written | Read for token mapping | Read for variable rebinding |
-| `tokens` / `token_values` | Written | Read for vocabulary | Read for value resolution |
+| `tokens` / `token_values` | Written | Read for vocabulary | Read for token resolution |
 | `screens` | Written | Read for pattern analysis | Read for screen dimensions |
 | `components` | Written | Read for formal matching | Read for component keys |
 | `screen_component_instances` | — | Written by classification | Read for element→node mapping |
 | `component_type_catalog` | — | Written (seeded) | Read for type validation |
-| Component templates (NEW) | — | Written by template extraction | Read for frame structure |
+| Component templates (NEW) | — | Written by template extraction | Read for frame structure + visual defaults |
+
+---
+
+## Slot Definitions
+
+Slots are named insertion points within a component. They define WHERE children go and WHAT types of children are allowed. Slots are defined for ALL 48 catalog types in the `component_type_catalog`.
+
+### Examples
+
+```
+Header:
+  slots:
+    leading:   { allowed: [icon, button, image], quantity: "single" }
+    title:     { allowed: [text, heading], quantity: "single" }
+    trailing:  { allowed: [icon, button, image], quantity: "multiple" }
+
+Card:
+  slots:
+    media:    { allowed: [image, video], quantity: "single" }
+    content:  { allowed: [text, heading, badge], quantity: "multiple" }
+    actions:  { allowed: [button, icon_button], quantity: "multiple" }
+
+ToggleRow:
+  slots:
+    label:    { allowed: [text], quantity: "single" }
+    subtitle: { allowed: [text], quantity: "single" }
+    control:  { allowed: [toggle, checkbox], quantity: "single" }
+```
+
+### How Slots Work in the Loop
+
+- **Layer 2 (Analysis)**: Classification identifies nodes. Semantic tree construction assigns classified children to their parent's named slots based on position, type match, and the Figma parent_id tree.
+- **Layer 3 (IR)**: The element carries `slots: { leading: ["icon-1"], title: ["heading-1"] }`. Each slot value is a list of element IDs.
+- **Layer 4 (Rendering)**: The renderer's component template knows the slot→position mapping. "Leading slot content goes in child index 0 of the frame."
+
+---
+
+## Future Extensions
+
+The following capabilities are part of the broader vision but are NOT required for the core four-layer loop to function. They can be designed and integrated later without changing the fundamental architecture.
+
+### Taste Model
+Quality-weighted distributions derived from a curated corpus. Informs composition choices (Layer 3) — e.g., "Settings screens in high-quality apps tend to use 3 sections with 4-6 rows each." Would be built as a separate pipeline (corpus → analysis → taste model) and shipped as a versioned package (~1-2MB). The four-layer architecture doesn't depend on it.
+
+### Autonomous Exploration (Pattern Language Meta-Process)
+An orchestration layer that uses the four-layer architecture iteratively: compose multiple IR variants, render each, critique via vision model, prune weak options, present top 2-3 to user. This sits ABOVE the four layers as an agent loop, not inside them. Each iteration is a full L3→L4 pass.
+
+### Decision Tree
+Records exploration history as first-class data — which compositions were tried, which were selected, which were rejected and why. Enables non-destructive design exploration and user steering ("go back to option B but with the spacing from option A"). Would be a new schema alongside the IR, not part of it.
+
+### Bidirectional Sync
+If a user generates a screen from the IR then manually edits it in Figma, detecting what changed and updating the IR. Requires maintaining a mapping from IR elements to generated Figma nodes. A hard problem — essentially incremental re-parsing.
 
 ---
 
 ## Open Questions for Steelmanning
 
-### 1. Layout in the IR
-The IR layout section carries pixel values for sizing (`width: 428, height: 926`). Are pixel dimensions "platform-specific detail" that should live in the renderer config? Or are they universal intent ("this screen is phone-sized")?
+### 1. Fidelity Loss in Compression
+The Figma→IR path compresses 200 nodes to ~20 elements. When generating a NEW screen from that vocabulary, the output won't be pixel-identical to the source. Is "looks like it belongs to the same design system" sufficient? What visual deviations are acceptable vs. not?
 
-**Argument for keeping in IR**: Sizing is intent. "This card is 300px wide" is a design decision, not a platform implementation detail. Every platform needs to know the intended dimensions.
+### 2. Component Variants
+A Button has multiple variants (primary, secondary, ghost, destructive). The IR says `{type: "button", props: {variant: "primary"}}`. The template extraction needs to capture per-variant structure. How does the renderer select the right variant template? Does each variant get its own template, or is it one template with variant-driven property overrides?
 
-**Argument for removing**: Pixel values only make sense in the context of a specific viewport. "300px" means different things on mobile vs desktop. Maybe the IR should say `sizing: { width: "medium" }` and let the renderer resolve that per-platform.
+### 3. Informal vs Formal Components
+Some UI patterns in Figma aren't formal components — they're recurring frame arrangements without a master component. A "card" might be 5 informal frames that always appear together. The analysis layer needs to recognize these patterns and create templates for them, even without a component key. How is structural similarity detected and clustered?
 
-### 2. Token References Without Values
-The IR carries `style: { backgroundColor: "{color.surface.primary}" }` but what if the target project doesn't have that token? What if the user is generating into a NEW project with no tokens yet?
+### 4. Multi-File Design Systems
+Many Figma projects use a separate library file for component definitions. The renderer needs component keys from the library file, but the extracted DB is from the consumer file. How does the system connect these? Does the user need to extract both files?
 
-Options:
-- IR also carries resolved literal values as fallback (but then it's not thin)
-- Token vocabulary is a prerequisite — you must have a design system before generating
-- Renderer has hardcoded defaults for standard token names
-
-### 3. Cold Start Problem
-For Prompt→Figma with no existing file, and React→Figma with no Figma file, where do component templates come from? Pre-seeded defaults work but produce generic output. Is that acceptable? Or must the user always start from an existing design system?
-
-### 4. Slot Definition Completeness
-The catalog has 48 types with 0 slot definitions. For semantic tree construction to work (Layer 3), we need to know what slots each type has. This is a significant research/design effort. Can we start with a subset (the 10 most common types in the Dank file) and expand incrementally?
-
-### 5. Fidelity Loss in Compression
-The Figma→IR path compresses 200 nodes to 20 elements. When generating a NEW screen from that vocabulary, the output won't be pixel-identical to the source. How much fidelity loss is acceptable? Is "looks like it belongs to the same design system" sufficient?
-
-### 6. Component Variants
-A Button in the Dank file has multiple variants (primary, secondary, ghost, destructive). The IR says `{type: "button", props: {variant: "primary"}}`. The Figma renderer needs to know which specific frame structure corresponds to the "primary" variant. The template extraction needs to capture per-variant structure, not just per-type.
-
-### 7. Informal vs Formal Components
-Some UI patterns in Figma aren't formal components — they're just recurring frame arrangements. A "card" might be 5 informal frames that always appear together but aren't a Figma component. The analysis layer needs to recognize these patterns and create templates for them, even without a component key.
-
-### 8. Multi-File Design Systems
-Many Figma projects use a separate library file for component definitions. The renderer needs component keys from the library file, but the extracted DB is from the consumer file. How does the system connect these?
-
-### 9. Bidirectional Sync
-If a user generates a screen from the IR, then manually edits it in Figma, can the system detect what changed and update the IR? This is the "round-trip editing" problem. The generated screen would need to maintain a mapping from IR elements to Figma nodes.
-
-### 10. Performance at Scale
+### 5. Performance at Scale
 Template extraction across 338 screens with 86K nodes will be computationally significant. Can analysis be incremental (analyze one screen at a time and merge results)? Can templates be cached and reused across sessions?
+
+### 6. Missing DB Columns
+`constraints` (horizontal/vertical) and `layoutPositioning` (AUTO/ABSOLUTE) are extracted by the JS extraction code but not stored in the nodes table. The Figma renderer needs these for correct positioning of stacked/absolute children. Schema migration needed.
+
+### 7. Semantic Sizing Resolution
+The IR says `sizing: { width: "fill" }` but the renderer needs actual pixel values for Figma frame construction. Where does the resolution happen? Options: from the component template's dimensions, from the target viewport, or from the source node's dimensions in the DB.
+
+### 8. Error Recovery
+What does a renderer do when:
+- An IR element type has no mapping in the componentMap? → Create a generic container with the element's children.
+- An IR slot references a type not allowed by the slot definition? → Place it anyway with a warning.
+- A token ref doesn't resolve? → Renderer reads the literal from DB, or uses a hardcoded default.
+
+---
+
+## Relationship to Existing Research
+
+This architecture aligns with the consensus from surveyed systems (Mitosis, Yoga, json-render, A2UI, SDUI):
+
+1. **Flat element map, not nested tree** — children by ID reference
+2. **Typed components from a declared catalog** — constrains output space
+3. **Separated concerns** — structure, layout, style, behavior, data as independent layers
+4. **Platform-specific renderers, not platform-specific specs** — the IR is universal
+5. **Platform hints escape hatch** — `$platform` for the ~10% that doesn't translate
+
+No existing system combines: design tool input + design tool output + bidirectionality + token bindings + layout abstraction. This combination is genuinely unoccupied territory.
+
+---
+
+## Glossary
+
+| Term | Definition |
+|------|-----------|
+| **IR** | Intermediate Representation — the abstract composition. Flat element map with types, slots, token refs, layout intent. |
+| **CompositionSpec** | The concrete JSON format of an IR instance. |
+| **RendererConfig** | Per-platform, per-project configuration telling a renderer how to build each catalog type. |
+| **Component Template** | A RendererConfig entry for one catalog type on one platform — the physical implementation. |
+| **Catalog** | The ~48 canonical UI component types. Universal, versioned, shared across projects. |
+| **Slot** | A named insertion point in a component (e.g., Header.leading, Card.media). |
+| **Token Reference** | A string like `"{color.surface.primary}"` in the IR that the renderer resolves per-platform. |
+| **Component Vocabulary** | Layer 2 output — what components exist in THIS project and how they're built. |
+| **Screen Pattern** | Layer 2 output — recognized screen archetypes (settings, dashboard, chat, etc.). |
