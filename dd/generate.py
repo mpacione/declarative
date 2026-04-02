@@ -142,25 +142,6 @@ _ALIGNMENT_MAP = {
     "stretch": "STRETCH", "space-between": "SPACE_BETWEEN",
 }
 
-_IR_STYLE_TO_REBIND = {
-    "backgroundColor": "fill.0.color",
-    "borderColor": "stroke.0.color",
-    "borderRadius": "cornerRadius",
-    "opacity": "opacity",
-    "fontSize": "fontSize",
-    "fontFamily": "fontFamily",
-    "fontWeight": "fontWeight",
-    "lineHeight": "lineHeight",
-    "letterSpacing": "letterSpacing",
-}
-
-_IR_LAYOUT_TO_REBIND = {
-    "gap": "itemSpacing",
-    "padding.top": "padding.top",
-    "padding.right": "padding.right",
-    "padding.bottom": "padding.bottom",
-    "padding.left": "padding.left",
-}
 
 
 # ---------------------------------------------------------------------------
