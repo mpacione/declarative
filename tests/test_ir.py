@@ -9,6 +9,7 @@ from dd.db import init_db
 from dd.ir import (
     map_node_to_element, query_screen_for_ir, build_composition_spec, generate_ir,
     normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius,
+    query_screen_visuals,
 )
 from dd.catalog import seed_catalog
 
@@ -578,6 +579,34 @@ class TestBuildCompositionSpec:
         parsed = json.loads(json_str)
         assert parsed["version"] == spec["version"]
 
+    def test_node_id_map_present(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        assert "_node_id_map" in spec
+
+    def test_node_id_map_maps_element_ids_to_node_ids(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        # Every element (except the synthetic screen root) should have a node_id entry
+        for eid in spec["elements"]:
+            if eid == spec["root"]:
+                continue
+            assert eid in node_id_map, f"Element {eid} missing from _node_id_map"
+            assert isinstance(node_id_map[eid], int), f"Node ID for {eid} should be int"
+
+    def test_node_id_map_values_are_real_node_ids(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        # Node IDs from the seed data: 10 (header), 11 (icon), 12 (heading)
+        node_ids_in_map = set(node_id_map.values())
+        assert 10 in node_ids_in_map  # header node
+        assert 11 in node_ids_in_map  # icon node
+        assert 12 in node_ids_in_map  # heading node
+
 
 # ---------------------------------------------------------------------------
 # Step 4: generate_ir wrapper + CLI
@@ -744,3 +773,139 @@ def _make_node(
         "height": 48,
         "bindings": bindings or [],
     }
+
+
+# ---------------------------------------------------------------------------
+# query_screen_visuals tests
+# ---------------------------------------------------------------------------
+
+def _seed_visual_screen(db: sqlite3.Connection) -> None:
+    """Insert screen data with rich visual properties for query_screen_visuals tests."""
+    seed_catalog(db)
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'Settings', 428, 926)"
+    )
+
+    fills_json = json.dumps([{
+        "type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0},
+        "opacity": 1.0,
+    }])
+    strokes_json = json.dumps([{
+        "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+    }])
+    effects_json = json.dumps([{
+        "type": "BACKGROUND_BLUR", "visible": True, "radius": 15.0,
+    }])
+
+    db.execute(
+        "INSERT INTO nodes "
+        "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height, fills, strokes, effects, corner_radius, opacity, "
+        "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
+        "component_key, rotation, constraint_h, constraint_v, "
+        "font_family, font_weight, font_size, font_style, line_height, "
+        "letter_spacing, text_align, text_content) "
+        "VALUES (10, 1, 'h1', 'nav/top-nav', 'INSTANCE', 1, 0, "
+        "0, 0, 428, 56, ?, ?, ?, '8', 0.95, "
+        "2.0, 'INSIDE', 'NORMAL', 1, 0, "
+        "'abc123', 0.0, 'MIN', 'MIN', "
+        "NULL, NULL, NULL, NULL, NULL, "
+        "NULL, NULL, NULL)",
+        (fills_json, strokes_json, effects_json),
+    )
+    db.execute(
+        "INSERT INTO nodes "
+        "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+        "x, y, width, height, "
+        "font_family, font_weight, font_size, font_style, line_height, "
+        "letter_spacing, text_align, text_content) "
+        "VALUES (11, 1, 't1', 'Section Title', 'TEXT', 2, 1, "
+        "16, 80, 396, 28, "
+        "'Inter', 700, 24, 'Bold', '32', "
+        "'0.5', 'LEFT', 'Settings')",
+    )
+
+    # Token + binding
+    db.execute("INSERT INTO token_collections (id, file_id, name) VALUES (1, 1, 'Colors')")
+    db.execute("INSERT INTO token_modes (id, collection_id, name, is_default) VALUES (1, 1, 'Default', 1)")
+    db.execute("INSERT INTO tokens (id, collection_id, name, type) VALUES (1, 1, 'color.surface.primary', 'color')")
+    db.execute("INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (1, 1, '#FAFAFA', '#FAFAFA')")
+    db.execute(
+        "INSERT INTO node_token_bindings (id, node_id, property, token_id, raw_value, resolved_value, binding_status) "
+        "VALUES (1, 10, 'fill.0.color', 1, '#FAFAFA', '#FAFAFA', 'bound')"
+    )
+
+    db.commit()
+
+
+class TestQueryScreenVisuals:
+    """Verify query_screen_visuals() fetches visual properties for all nodes in a screen."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_visual_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_returns_dict_keyed_by_node_id(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        assert isinstance(result, dict)
+        assert 10 in result
+        assert 11 in result
+
+    def test_includes_fills_strokes_effects(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_10 = result[10]
+        assert node_10["fills"] is not None
+        assert node_10["strokes"] is not None
+        assert node_10["effects"] is not None
+
+    def test_includes_extended_visual_columns(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_10 = result[10]
+        assert node_10["stroke_weight"] == 2.0
+        assert node_10["stroke_align"] == "INSIDE"
+        assert node_10["blend_mode"] == "NORMAL"
+        assert node_10["corner_radius"] == "8"
+        assert node_10["opacity"] == 0.95
+        assert node_10["visible"] == 1
+        assert node_10["clips_content"] == 0
+        assert node_10["rotation"] == 0.0
+        assert node_10["constraint_h"] == "MIN"
+        assert node_10["constraint_v"] == "MIN"
+
+    def test_includes_component_key(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[10]["component_key"] == "abc123"
+
+    def test_includes_typography(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_11 = result[11]
+        assert node_11["font_family"] == "Inter"
+        assert node_11["font_weight"] == 700
+        assert node_11["font_size"] == 24
+        assert node_11["font_style"] == "Bold"
+        assert node_11["line_height"] == "32"
+        assert node_11["letter_spacing"] == "0.5"
+        assert node_11["text_align"] == "LEFT"
+        assert node_11["text_content"] == "Settings"
+
+    def test_includes_bindings(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_10 = result[10]
+        assert "bindings" in node_10
+        assert len(node_10["bindings"]) == 1
+        assert node_10["bindings"][0]["property"] == "fill.0.color"
+        assert node_10["bindings"][0]["token_name"] == "color.surface.primary"
+
+    def test_empty_screen_returns_empty_dict(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=999)
+        assert result == {}
+
+    def test_node_without_bindings_has_empty_list(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_11 = result[11]
+        assert node_11["bindings"] == []

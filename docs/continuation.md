@@ -10,7 +10,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
 - **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
 - **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
-- **Tests**: 1,017 passing
+- **Tests**: 1,036 passing
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model
@@ -24,16 +24,14 @@ Layer 3: COMPOSITION     Abstractions → IR   "Describe what to build"
 Layer 4: RENDERING       IR + DB/Config → Output  "Build it concretely"
 ```
 
-Key decisions: thin IR (semantic intent only), synthetic tokens for un-tokenized values, renderer reads DB for visual detail, instance-first Figma rendering, default library fallback.
+Key decisions: thin IR (semantic intent only), renderer reads DB directly for visual detail (no intermediary context object), instance-first Figma rendering, default library fallback. Synthetic tokens deferred to composition layer (not needed for rendering).
 
 ## What To Do Next
 
-### Phase 0: FigmaPlatformContext (additive, zero risk)
-Build the renderer context — a data structure alongside the IR that carries visual properties for the Figma renderer. Entry point for the thin IR refactor.
+### Phase 1: Wire generator to read visual data from DB
+The generator (`dd/generate.py`) currently reads visual data from the IR's `visual` section. Phase 1 wires it to read from the DB using `query_screen_visuals()` + `_node_id_map` instead. Dual-read: verify both paths produce identical Figma JS before removing the IR path.
 
-See `.claude/plans/ethereal-skipping-bee.md` for the full 5-phase implementation plan.
-
-### Before Phase 0, consider:
+### Before Phase 1, consider:
 - Run `extract_components()` on Dank file to populate the 6 empty composition tables
 - This gives slot definitions, variant axes, and a11y contracts — useful for Phase 3 (semantic tree)
 
@@ -57,11 +55,12 @@ python -m dd extract-supplement --db Dank-EXP-02.declarative.db --port 9227
 | `docs/t5-four-layer-architecture.md` | THE authoritative architecture spec |
 | `docs/module-reference.md` | Complete API reference for all 38 modules |
 | `docs/learnings.md` | Accumulated insights (extraction, pipeline, architecture) |
-| `.claude/plans/ethereal-skipping-bee.md` | Phase -1 through Phase 4 implementation plan |
+| `.claude/plans/dynamic-watching-rose.md` | Phase 0 implementation plan (completed) |
+| `dd/ir.py` | IR generation + `query_screen_visuals()` + `_node_id_map` (Phase 0 additions) |
+| `dd/generate.py` | Figma renderer (currently reads IR visual — Phase 1 switches to DB) |
 | `dd/extract_supplement.py` | Plugin API supplemental extraction (componentKey, layoutPositioning, Grid) |
-| `dd/ir.py` | IR generation (currently thick — Phase 2 will thin it) |
-| `dd/generate.py` | Figma renderer (currently reads IR visual — Phase 1 adds context path) |
 | `dd/extract_components.py` | Component discovery (built, not run on Dank — needed for Phase 3) |
+| `tests/test_phase0_integration.py` | Integration tests against real Dank DB for Phase 0 |
 
 ## Environment
 

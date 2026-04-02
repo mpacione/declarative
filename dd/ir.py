@@ -425,6 +425,59 @@ def _build_props(node: Dict[str, Any]) -> Dict[str, Any]:
 # Query layer
 # ---------------------------------------------------------------------------
 
+def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> Dict[int, Dict[str, Any]]:
+    """Fetch visual properties for all nodes in a screen.
+
+    Returns dict keyed by node_id with fills, strokes, effects,
+    corner_radius, opacity, stroke_weight, stroke_align, blend_mode,
+    component_key, typography, constraints, and token bindings.
+
+    This is the renderer's DB access path — it provides all the visual
+    data needed to render a screen without reading the IR's visual section.
+    """
+    cursor = conn.execute(
+        "SELECT id, fills, strokes, effects, corner_radius, opacity, "
+        "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
+        "component_key, rotation, constraint_h, constraint_v, "
+        "font_family, font_weight, font_size, font_style, line_height, "
+        "letter_spacing, text_align, text_content "
+        "FROM nodes WHERE screen_id = ?",
+        (screen_id,),
+    )
+    columns = [desc[0] for desc in cursor.description]
+    rows = cursor.fetchall()
+
+    if not rows:
+        return {}
+
+    node_ids = [row[0] for row in rows]
+    result: Dict[int, Dict[str, Any]] = {}
+    for row in rows:
+        node_dict = dict(zip(columns, row))
+        node_id = node_dict.pop("id")
+        node_dict["bindings"] = []
+        result[node_id] = node_dict
+
+    placeholders = ",".join("?" for _ in node_ids)
+    bindings_cursor = conn.execute(
+        f"SELECT ntb.node_id, ntb.property, t.name as token_name, ntb.resolved_value "
+        f"FROM node_token_bindings ntb "
+        f"LEFT JOIN tokens t ON ntb.token_id = t.id "
+        f"WHERE ntb.node_id IN ({placeholders}) AND ntb.binding_status = 'bound'",
+        node_ids,
+    )
+    for row in bindings_cursor.fetchall():
+        node_id = row[0]
+        if node_id in result:
+            result[node_id]["bindings"].append({
+                "property": row[1],
+                "token_name": row[2],
+                "resolved_value": row[3],
+            })
+
+    return result
+
+
 def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
     """Fetch all classified nodes, bindings, and tokens for a screen.
 
@@ -544,7 +597,7 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     nodes = data.get("nodes", [])
     if not nodes:
-        return {"version": "1.0", "root": "", "elements": {}, "tokens": {}}
+        return {"version": "1.0", "root": "", "elements": {}, "tokens": {}, "_node_id_map": {}}
 
     type_counters: Dict[str, int] = {}
     node_id_to_element_id: Dict[int, str] = {}
@@ -608,11 +661,14 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
         "children": root_ids,
     }
 
+    element_id_to_node_id = {eid: nid for nid, eid in node_id_to_element_id.items()}
+
     return {
         "version": "1.0",
         "root": root_id,
         "elements": elements,
         "tokens": data.get("tokens", {}),
+        "_node_id_map": element_id_to_node_id,
     }
 
 

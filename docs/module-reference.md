@@ -204,14 +204,15 @@ Transforms classified screen data + token bindings into CompositionSpec.
 |----------|---------|
 | `generate_ir(conn, screen_id)` | Main entry: query → build spec → serialize |
 | `query_screen_for_ir(conn, screen_id)` | Fetch classified nodes, bindings, tokens from DB |
-| `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers |
+| `query_screen_visuals(conn, screen_id)` | Fetch ALL visual properties for all nodes in a screen, keyed by node_id. Renderer's DB access path. |
+| `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers. Returns `_node_id_map` (element_id → node_id). |
 | `map_node_to_element(node)` | Convert classified node to IR element (type, layout, visual, style, props) |
 | `normalize_fills(raw_json, bindings)` | Normalize Figma fills JSON to IR fill array |
 | `normalize_strokes(raw_json, bindings, node)` | Normalize Figma strokes JSON to IR stroke array |
 | `normalize_effects(raw_json, bindings)` | Normalize Figma effects JSON to IR effect array |
 | `normalize_corner_radius(raw_value)` | Normalize to number or per-corner dict |
 
-**Current state**: IR is too thick — carries visual properties (fills, strokes, effects) that should be in DB/renderer. Semantic tree construction (200→20 elements) not implemented. Slot filling not implemented. These are the key items for the thin IR refactor.
+**Current state**: IR is too thick — carries visual properties (fills, strokes, effects) that should be in DB/renderer. Phase 0 complete: `_node_id_map` + `query_screen_visuals` give the renderer direct DB access. Phase 1 will wire the generator to use this path. Semantic tree construction (200→20 elements) and slot filling not yet implemented.
 
 ---
 
