@@ -68,11 +68,15 @@ def font_weight_to_style(weight: Any) -> str:
     """Convert numeric font weight to Figma style name.
 
     700 → "Bold", 400 → "Regular", 600 → "Semi Bold" (note the space).
+    Handles int, float, and numeric strings like "500".
     """
     if weight is None:
         return "Regular"
     if isinstance(weight, str):
-        return weight
+        try:
+            weight = int(float(weight))
+        except (ValueError, TypeError):
+            return weight
     return _WEIGHT_TO_STYLE.get(int(weight), "Regular")
 
 
@@ -80,6 +84,8 @@ def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
     """Collect unique (family, style) pairs from text elements in the spec."""
     seen = set()
     result = []
+
+    tokens = spec.get("tokens", {})
 
     for element in spec.get("elements", {}).values():
         etype = element.get("type", "")
@@ -91,7 +97,14 @@ def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
         weight = style.get("fontWeight")
 
         if isinstance(family, str) and family.startswith("{"):
-            family = "Inter"
+            resolved_family, _ = resolve_style_value(family, tokens)
+            family = resolved_family if resolved_family and isinstance(resolved_family, str) else "Inter"
+
+        family = _normalize_font_family(family)
+
+        if isinstance(weight, str) and weight.startswith("{"):
+            resolved_weight, _ = resolve_style_value(weight, tokens)
+            weight = resolved_weight
 
         figma_style = font_weight_to_style(weight)
         key = (family, figma_style)
@@ -108,6 +121,16 @@ def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
 
 def _escape_js(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _normalize_font_family(family: str) -> str:
+    """Normalize font family names for Figma compatibility.
+
+    Figma uses "Inter" not "Inter Variable" for the variable font.
+    """
+    if family == "Inter Variable":
+        return "Inter"
+    return family
 
 
 _DIRECTION_MAP = {"horizontal": "HORIZONTAL", "vertical": "VERTICAL"}
@@ -161,12 +184,11 @@ def generate_figma_script(
     all_token_refs: List[Tuple[str, str, str]] = []
 
     lines: List[str] = []
-    lines.append("(async () => {")
 
     for family, style in fonts:
-        lines.append(f'  await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
+        lines.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
 
-    lines.append("  const M = {};")
+    lines.append("const M = {};")
     lines.append("")
 
     var_map: Dict[str, str] = {}
@@ -178,11 +200,11 @@ def generate_figma_script(
         is_text = etype in _TEXT_TYPES
 
         if is_text:
-            lines.append(f"  const {var} = figma.createText();")
+            lines.append(f"const {var} = figma.createText();")
         else:
-            lines.append(f"  const {var} = figma.createFrame();")
+            lines.append(f"const {var} = figma.createFrame();")
 
-        lines.append(f'  {var}.name = "{_escape_js(eid)}";')
+        lines.append(f'{var}.name = "{_escape_js(eid)}";')
 
         layout = element.get("layout", {})
         layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
@@ -195,20 +217,19 @@ def generate_figma_script(
         all_token_refs.extend(style_refs)
 
         if is_text:
-            _emit_text_props(var, element, style, lines)
+            _emit_text_props(var, element, style, tokens, lines)
 
         if parent_eid is not None and parent_eid in var_map:
             parent_var = var_map[parent_eid]
-            lines.append(f"  {parent_var}.appendChild({var});")
+            lines.append(f"{parent_var}.appendChild({var});")
 
-        lines.append(f'  M["{_escape_js(eid)}"] = {var}.id;')
+        lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
         lines.append("")
 
     if root_id in var_map:
-        lines.append(f"  figma.currentPage.appendChild({var_map[root_id]});")
+        lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
 
-    lines.append("  return M;")
-    lines.append("})();")
+    lines.append("return M;")
 
     return ("\n".join(lines), all_token_refs)
 
@@ -245,13 +266,13 @@ def _emit_layout(
     direction = layout.get("direction", "")
     figma_dir = _DIRECTION_MAP.get(direction)
     if figma_dir:
-        lines.append(f'  {var}.layoutMode = "{figma_dir}";')
+        lines.append(f'{var}.layoutMode = "{figma_dir}";')
 
     gap_val = layout.get("gap")
     if gap_val is not None:
         resolved, token_name = resolve_style_value(gap_val, tokens)
         if resolved is not None:
-            lines.append(f"  {var}.itemSpacing = {resolved};")
+            lines.append(f"{var}.itemSpacing = {resolved};")
         if token_name:
             refs.append((eid, "itemSpacing", token_name))
 
@@ -262,7 +283,7 @@ def _emit_layout(
             resolved, token_name = resolve_style_value(val, tokens)
             figma_prop = f"padding{side.capitalize()}"
             if resolved is not None:
-                lines.append(f"  {var}.{figma_prop} = {resolved};")
+                lines.append(f"{var}.{figma_prop} = {resolved};")
             if token_name:
                 refs.append((eid, f"padding.{side}", token_name))
 
@@ -274,24 +295,24 @@ def _emit_layout(
         if isinstance(val, str):
             mapped = _SIZING_MAP.get(val)
             if mapped:
-                lines.append(f'  {var}.layoutSizing{figma_axis} = "{mapped}";')
+                lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
         elif isinstance(val, (int, float)):
             pass  # handled by resize below
 
     w = sizing.get("width")
     h = sizing.get("height")
     if isinstance(w, (int, float)) and isinstance(h, (int, float)):
-        lines.append(f"  {var}.resize({int(w)}, {int(h)});")
+        lines.append(f"{var}.resize({int(w)}, {int(h)});")
 
     main_align = layout.get("mainAxisAlignment")
     if main_align:
         mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
-        lines.append(f'  {var}.primaryAxisAlignItems = "{mapped}";')
+        lines.append(f'{var}.primaryAxisAlignItems = "{mapped}";')
 
     cross_align = layout.get("crossAxisAlignment")
     if cross_align:
         mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
-        lines.append(f'  {var}.counterAxisAlignItems = "{mapped}";')
+        lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
 
     return (lines, refs)
 
@@ -307,7 +328,7 @@ def _emit_style(
         resolved, token_name = resolve_style_value(bg, tokens)
         if resolved and isinstance(resolved, str) and resolved.startswith("#"):
             rgb = hex_to_figma_rgb(resolved)
-            lines.append(f'  {var}.fills = [{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}];')
+            lines.append(f'{var}.fills = [{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}];')
         if token_name:
             refs.append((eid, "fill.0.color", token_name))
 
@@ -315,7 +336,7 @@ def _emit_style(
     if radius is not None:
         resolved, token_name = resolve_style_value(radius, tokens)
         if resolved is not None:
-            lines.append(f"  {var}.cornerRadius = {resolved};")
+            lines.append(f"{var}.cornerRadius = {resolved};")
         if token_name:
             refs.append((eid, "cornerRadius", token_name))
 
@@ -323,7 +344,7 @@ def _emit_style(
     if opacity is not None:
         resolved, token_name = resolve_style_value(opacity, tokens)
         if resolved is not None:
-            lines.append(f"  {var}.opacity = {resolved};")
+            lines.append(f"{var}.opacity = {resolved};")
         if token_name:
             refs.append((eid, "opacity", token_name))
 
@@ -331,25 +352,31 @@ def _emit_style(
 
 
 def _emit_text_props(
-    var: str, element: Dict[str, Any], style: Dict[str, Any], lines: List[str],
+    var: str, element: Dict[str, Any], style: Dict[str, Any],
+    tokens: Dict[str, Any], lines: List[str],
 ) -> None:
     family = style.get("fontFamily", "Inter")
     if isinstance(family, str) and family.startswith("{"):
-        family = "Inter"
+        resolved, _ = resolve_style_value(family, tokens)
+        family = resolved if resolved and isinstance(resolved, str) else "Inter"
+    family = _normalize_font_family(family)
     weight = style.get("fontWeight")
+    if isinstance(weight, str) and weight.startswith("{"):
+        resolved, _ = resolve_style_value(weight, tokens)
+        weight = resolved
     figma_style = font_weight_to_style(weight)
-    lines.append(f'  {var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
+    lines.append(f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
 
     font_size = style.get("fontSize")
     if font_size is not None:
         if isinstance(font_size, str) and font_size.startswith("{"):
             pass  # token ref, skip direct set
         else:
-            lines.append(f"  {var}.fontSize = {font_size};")
+            lines.append(f"{var}.fontSize = {font_size};")
 
     text = element.get("props", {}).get("text", "")
     if text:
-        lines.append(f'  {var}.characters = "{_escape_js(text)}";')
+        lines.append(f'{var}.characters = "{_escape_js(text)}";')
 
 
 # ---------------------------------------------------------------------------

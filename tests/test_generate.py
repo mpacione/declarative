@@ -128,15 +128,15 @@ class TestCollectFonts:
 class TestGenerateFigmaScript:
     """Verify full Figma script generation from CompositionSpec."""
 
-    def test_async_iife_shape(self):
+    def test_script_shape(self):
         spec = _make_spec({"screen-1": {
             "type": "screen",
             "layout": {"direction": "vertical", "sizing": {"width": 428, "height": 926}},
         }})
         script, refs = generate_figma_script(spec)
-        assert script.startswith("(async () => {")
-        assert script.rstrip().endswith("})();")
+        assert "const M = {};" in script
         assert "return M;" in script
+        assert "(async" not in script
 
     def test_creates_frame(self):
         spec = _make_spec({"screen-1": {
@@ -374,10 +374,10 @@ class TestGenerateScreen:
         assert "token_refs" in result
         assert isinstance(result["structure_script"], str)
 
-    def test_script_is_valid_iife(self, db: sqlite3.Connection):
+    def test_script_has_return(self, db: sqlite3.Connection):
         result = generate_screen(db, screen_id=1)
-        assert result["structure_script"].startswith("(async () => {")
         assert "return M;" in result["structure_script"]
+        assert "figma.createFrame()" in result["structure_script"]
 
     def test_has_element_count(self, db: sqlite3.Connection):
         result = generate_screen(db, screen_id=1)
