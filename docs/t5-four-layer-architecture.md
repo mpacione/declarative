@@ -1145,74 +1145,137 @@ If a user generates a screen from the IR then manually edits it in Figma, detect
 
 ## What's Already Built (Capability Inventory)
 
-Before planning new work, here's what exists across the 38 Python modules and 1,004 tests:
+38 Python modules, 1,004 tests. Full module API reference in `docs/module-reference.md`.
 
-### Layer 1: Extraction — BUILT
+### Layer 1: Extraction — BUILT (6 modules, ~126 tests)
+
 | Module | What it does | Tests |
 |--------|-------------|-------|
 | `dd/extract.py` | Orchestrator — coordinates screen extraction + component extraction | 31 |
 | `dd/extract_screens.py` | Generates Figma Plugin JS to extract full node trees (40+ properties per node) | 19 |
-| `dd/extract_bindings.py` | Extracts node→token property bindings from Figma variable data | 9 |
+| `dd/extract_bindings.py` | Normalizes Figma properties into token binding rows (fills, strokes, effects, typography, spacing, radius) | 9 |
 | `dd/extract_inventory.py` | Discovers screens in a Figma file, manages extraction runs | - |
-| `dd/extract_components.py` | **Parses component sets, extracts variants, infers slots, writes a11y contracts** | 40 |
+| `dd/extract_components.py` | **Complete component pipeline** — parses COMPONENT_SET/COMPONENT nodes, extracts variants, infers slots, generates a11y contracts | 40 |
 | `dd/figma_api.py` | Figma REST API + MCP bridge | 27 |
 
-**Key finding**: `extract_components.py` is a fully built module with slot inference (`infer_slots`), variant parsing (`parse_variant_properties`), category detection (`infer_category`), a11y contract generation (`infer_a11y`), and database insertion for all composition tables. The `components`, `component_slots`, `component_variants`, `variant_axes`, `variant_dimension_values`, and `component_a11y` tables are empty in the Dank DB not because the code doesn't exist, but because the extraction pipeline for the Dank file was run before this module was integrated, or the component data wasn't fetched from Figma MCP.
+**Component extraction (`extract_components.py`) is fully built but never run on Dank:**
+- `parse_component_set()` — extracts variants, builds axes, detects interaction states (hover/pressed/disabled)
+- `infer_slots()` — identifies slot children, filters structural noise (background, divider, spacer), assigns types (text/icon/component/image)
+- `infer_a11y()` — generates accessibility contracts per component (role, required label, touch target, ARIA properties)
+- `insert_component/variants/axes/slots/a11y()` — populates ALL composition tables
+- `populate_variant_dimension_values()` — cross-product table enabling queries like "all hover variants across all buttons"
+- **All 6 composition tables are EMPTY** in Dank DB because this module hasn't been run. Running it would populate: `components`, `component_variants`, `variant_axes`, `variant_dimension_values`, `component_slots`, `component_a11y`.
 
-### Layer 2: Analysis — PARTIALLY BUILT
+**Normalization (`dd/normalize.py`, 34 tests)** — converts Figma properties to hierarchical binding rows:
+- `normalize_fill()` — SOLID → `fill.N.color`, GRADIENT → `fill.N.gradient` + stop colors
+- `normalize_stroke()` — SOLID → `stroke.N.color`
+- `normalize_effect()` — SHADOW → `.color/.radius/.offsetX/.offsetY/.spread`, BLUR → `.radius`
+- `normalize_typography()` — fontSize, fontFamily, fontWeight, lineHeight, letterSpacing
+- `normalize_spacing()` — padding (4 sides), itemSpacing, counterAxisSpacing
+- `normalize_radius()` — cornerRadius (uniform) or per-corner
+- `normalize_stroke_weight()` — uniform or per-side
+- `normalize_paragraph_spacing()`, `normalize_font_style()`
+
+### Layer 2: Analysis — PARTIALLY BUILT (11 modules, ~260 tests)
+
+**Classification (7 modules, ~150 tests)**:
 | Module | What it does | Tests |
 |--------|-------------|-------|
-| `dd/catalog.py` | 48 canonical component types with behavioral descriptions, aliases, recognition heuristics | 50 |
+| `dd/catalog.py` | 48 canonical types with behavioral descriptions, aliases, recognition heuristics | 50 |
 | `dd/classify.py` | Orchestrator — formal matching (name → alias index), parent linkage | 64 |
-| `dd/classify_rules.py` | ALL classification heuristic rules (single file) | (included in classify tests) |
-| `dd/classify_heuristics.py` | Applies heuristic rules to unclassified nodes | (included in classify tests) |
+| `dd/classify_rules.py` | ALL heuristic rules (single file): header, bottom-nav, heading, body-text, generic-frame-container | - |
+| `dd/classify_heuristics.py` | Applies rules to unclassified nodes, fetches fills/strokes/effects for visual property check | - |
 | `dd/classify_llm.py` | Claude Haiku for ambiguous nodes (prompt builder + response parser) | 14 |
 | `dd/classify_vision.py` | Screenshot-based cross-validation with retry/backoff | 8 |
-| `dd/classify_skeleton.py` | Screen-level skeleton notation (`stack(header, scroll(content), bottom-nav)`) | (included in classify tests) |
+| `dd/classify_skeleton.py` | Screen-level skeleton notation | - |
 
-**Classification pipeline**: Formal (55%) → Heuristic (37%) → LLM (7%) = 93.6% adjusted coverage on Dank.
+**Classification pipeline**: Formal (55%) → Heuristic (37%) → LLM (7%) = **93.6% adjusted coverage on Dank** (47,292 of 50,517 classifiable nodes).
 
-**What's missing for Layer 2**: Component template extraction (analyzing classified instances to build templates), screen pattern recognition (clustering screens into archetypes).
+**Token analysis (4 modules, ~110 tests)**:
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/cluster.py` + `dd/cluster_*.py` | Token clustering by perceptual similarity (5 type-specific modules) | 38+ |
+| `dd/curate.py` | Agent-driven curation: rename, merge, split, alias, accept, reject | 31 |
+| `dd/modes.py` | **OKLCH-based mode derivation** — dark, compact, high-contrast modes | 22 |
+| `dd/drift.py` | **Value drift detection** — DB vs Figma sync state | 28 |
 
-### Layer 3: Composition — PARTIALLY BUILT
+**Color clustering algorithm** (`cluster_colors.py`):
+1. Query unbound color bindings grouped by resolved hex value
+2. Group by OKLCH delta-E perceptual similarity (threshold 2.0 = just-noticeable difference)
+3. Different alpha values NEVER cluster (e.g., `#000000` and `#00000020` are separate tokens)
+4. Most-used color becomes group representative
+5. Confidence per binding: `max(0.8, 1.0 - delta_e / 10)`
+
+**OKLCH mode derivation** (`modes.py`):
+- `create_dark_mode()`: Copy default values → invert lightness (`L' = 1.0 - L`), clamp chroma (`min(C, 0.4)`)
+- `create_compact_mode()`: Scale all dimensions by factor (default 0.875 = 12.5% reduction)
+- `create_high_contrast_mode()`: Light colors brighter (`L * 1.2 + 0.1`), dark colors darker (`L * 0.6`), chroma boosted
+- `create_theme()`: Apply transform across ALL collections in a file
+- **Color space**: OKLCH via coloraide library with full manual fallback (sRGB → Linear RGB → XYZ D65 → OKLAB → OKLCH)
+
+**Drift detection** (`drift.py`):
+- `detect_drift()`: Parse Figma variables response → compare with DB → update sync statuses → generate report
+- **Type-aware normalization**: Handles JSON dimension objects (`{"value":24,"unit":"PIXELS"}` → `24`), Figma float32 noise (`10.000000149` → `10`), hex format differences
+- **Sync states**: pending → synced / drifted / code_only / figma_only
+
+**What's missing for Layer 2**: Component template extraction (how each type is physically built), screen pattern recognition (clustering screens into archetypes like "settings", "dashboard", "chat").
+
+### Layer 3: Composition — PARTIALLY BUILT (1 module, 64 tests)
+
 | Module | What it does | Tests |
 |--------|-------------|-------|
 | `dd/ir.py` | IR generation — `map_node_to_element`, `build_composition_spec`, normalization functions | 64 |
 
-**What's built**: Flat element map generation from classified nodes, token ref inlining, container injection, visual property normalization (fills, strokes, effects, corner radius).
+**What's built**: Flat element map from classified nodes, token ref inlining, container injection for unclassified parent frames, visual property normalization (fills, strokes, effects, corner radius via `normalize_fills/strokes/effects/corner_radius`).
 
-**What needs to change**: IR is currently too thick (carries visual data). Semantic tree construction (200→20 elements) not implemented. Slot filling not implemented.
+**What needs to change**: IR is currently too thick (carries visual data that should be in DB/renderer). Semantic tree construction (200→20 elements) not implemented. Slot filling not implemented. The IR should carry only type + children/slots + props + layout + token refs.
 
-### Layer 4: Rendering — PARTIALLY BUILT
+### Layer 4: Rendering — SUBSTANTIALLY BUILT (7 modules, ~288 tests)
+
+**Figma generation (1 module, 51 tests)**:
 | Module | What it does | Tests |
 |--------|-------------|-------|
-| `dd/generate.py` | Figma Plugin JS generation from CompositionSpec | 51 |
+| `dd/generate.py` | Figma Plugin JS generation from CompositionSpec (BFS walk, layout + visual + text emission) | 51 |
+
+**Token export — code renderers' token resolution (3 modules, ~46 tests)**:
+| Module | What it does | Tests |
+|--------|-------------|-------|
 | `dd/export_css.py` | Token export to CSS custom properties | 46 |
-| `dd/export_tailwind.py` | Token export to Tailwind config | (included in export tests) |
-| `dd/export_dtcg.py` | Token export to DTCG format | (included in export tests) |
-| `dd/export_figma_vars.py` | Push tokens to Figma as variables | 50 |
-| `dd/export_rebind.py` | Generate rebind scripts (bind Figma nodes to variables) | 55 |
-| `dd/push.py` | Orchestrate full push cycle (variables + rebind) | 36 |
+| `dd/export_tailwind.py` | Token export to Tailwind config | (incl.) |
+| `dd/export_dtcg.py` | Token export to W3C DTCG format | (incl.) |
 
-**What's built**: Token export to CSS/Tailwind/DTCG (code renderers' token resolution is partially solved). Figma variable push and rebind (182K bindings across 193 scripts). Figma frame generation from IR.
+These are the `tokenResolver` for React/HTML renderers. The CSS export produces `--color-surface-primary: #FAFAFA` — exactly what a React renderer needs for `var(--color-surface-primary)`. **The code-side token resolution is substantially solved.**
 
-**What needs to change**: Generator currently reads visual data from IR instead of DB/templates. No React/SwiftUI code generators yet. No RendererConfig abstraction.
-
-### Supporting Infrastructure
+**Figma variable push + rebind (3 modules, ~141 tests)**:
 | Module | What it does | Tests |
 |--------|-------------|-------|
-| `dd/color.py` | Color conversions (hex↔RGB↔OKLCH), alpha handling | 28 |
-| `dd/cluster.py` + `dd/cluster_*.py` | Token clustering (colors, spacing, typography, misc) | 38+ |
-| `dd/curate.py` | Agent-driven token curation (rename, merge, split, alias) | 31 |
-| `dd/modes.py` | OKLCH-based dark mode derivation | 22 |
-| `dd/drift.py` | Detect value drift between DB and Figma | 28 |
-| `dd/validate.py` | 8 validation checks + binding consistency | 20 |
-| `dd/normalize.py` | Value normalization for binding comparisons | 34 |
-| `dd/db.py` | Schema init, connection management | - |
-| `dd/cli.py` | CLI commands (extract, cluster, validate, export, push, classify, generate-ir) | 19 |
+| `dd/export_figma_vars.py` | Push tokens to Figma as variables (batched at 100 per MCP call) | 50 |
+| `dd/export_rebind.py` | Generate compact rebind scripts (182K bindings, 950 per script, ~191 scripts) | 55 |
+| `dd/push.py` | Orchestrate full push cycle (variables → rebind), incremental sync with drift detection | 36 |
+
+**This is the Figma renderer's variable binding infrastructure — fully operational:**
+- **Variable push**: 388 tokens → Figma variables across 8 collections, batched at 100 per `figma_setup_design_tokens` call. Supports first push (all CREATE) and incremental sync (CREATE/UPDATE/DELETE based on drift detection).
+- **Rebind**: 182K node properties → bound to Figma variables. Compact pipe-delimited encoding (`nodeId|propertyCode|variableIdSuffix`) achieves 60% size reduction. Property shortcodes: `f0` (fill.0.color), `fs` (fontSize), `pt` (padding.top), `cr` (cornerRadius), etc.
+- **Writeback**: After Figma creates variables, IDs are written back to DB (`tokens.figma_variable_id`, `token_collections.figma_id`, `token_modes.figma_mode_id`).
+- **Execution**: Scripts run via `figma_execute` MCP (50K char limit) or PROXY_EXECUTE WebSocket (no limit). Inter-script delay: 200ms. Total time: ~108 seconds for 191 scripts.
+- **Error handling**: Failed bindings stored in `figma.root.pluginData('rebind_errors')` for debugging. Scripts are idempotent (safe to re-run).
+
+**What needs to change**: Generator currently reads visual data from IR instead of DB/templates. No React/SwiftUI code generators yet. No RendererConfig abstraction. But the token resolution (CSS/Tailwind export) and variable binding (push/rebind) infrastructure is proven at scale.
+
+### Supporting Infrastructure (4 modules, ~86 tests)
+
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/color.py` | Color conversions: hex↔RGBA↔OKLCH, delta-E distance, lightness inversion | 28 |
+| `dd/validate.py` | 8 validation checks (mode completeness, DTCG compliance, binding consistency, etc.) | 20 |
+| `dd/status.py` | Dashboard data: token counts by tier, binding coverage, sync status summary | 18 |
+| `dd/db.py` / `dd/cli.py` / `dd/config.py` / `dd/types.py` | Schema init, CLI commands, configuration, constants | 19 |
 
 ### Schema Status
-The `schema.sql` defines ALL needed tables including the full extended properties on `nodes` (40+ columns) and all composition tables (`components`, `component_slots`, `component_variants`, etc.). The Dank DB was created from an older schema and needs a migration to add the 26 missing columns. New databases created with `init_db()` will have the full schema.
+`schema.sql` defines ALL needed tables:
+- **Populated in Dank DB**: `nodes` (86K, but missing 26 extended columns), `node_token_bindings` (182K), `tokens` (388), `token_values`, `token_collections`, `token_modes`, `screens` (338), `screen_component_instances` (47K)
+- **Empty in Dank DB (schema exists, code exists, just needs to be run)**: `components`, `component_variants`, `variant_axes`, `variant_dimension_values`, `component_slots`, `component_a11y`, `component_responsive`, `patterns`
+- **Missing from Dank DB (needs migration)**: 26 columns on `nodes` table that exist in schema.sql but not in the older Dank DB
 
 ---
 
