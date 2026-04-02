@@ -24,7 +24,7 @@ Each layer has a single responsibility. Data flows up through Layers 1-2 (concre
 ## Layer 1: Extraction
 
 ### Purpose
-Parse a source artifact and store every recoverable detail in a structured store. Extraction is exhaustive and platform-specific. It captures MORE than the IR will ever need, because the renderer will reach back into this data later. The renderer reads from this data to fill in visual details the thin IR deliberately omits.
+Parse a source artifact and store every recoverable detail in a structured store. Extraction is exhaustive and platform-specific. It captures MORE than the IR will ever need, because: (a) the analysis layer creates synthetic tokens from raw visual values, and (b) the renderer may fall back to the DB for edge cases where a value has no token entry. The primary rendering path is: resolve token refs (real + synthetic) from the IR's token dictionary.
 
 ### Figma Extraction
 
@@ -1545,6 +1545,71 @@ This architecture aligns with the consensus from surveyed systems (Mitosis, Yoga
 5. **Platform hints escape hatch** — `$platform` for the ~10% that doesn't translate
 
 No existing system combines: design tool input + design tool output + bidirectionality + token bindings + layout abstraction. This combination is genuinely unoccupied territory.
+
+---
+
+## Deep Sweep Findings (2026-04-02)
+
+Systematic audit of the codebase, real Dank DB data, and prior art. All HIGH severity items resolved.
+
+### Screen Classification (Prerequisite for Layer 2-4)
+
+The 338 "screens" in the Dank DB are NOT all app screens:
+
+| Category | Count | Dimensions | Use in pipeline |
+|----------|-------|-----------|----------------|
+| Phone screens | 69 | 428x926 | App screens — full pipeline |
+| Tablet portrait | 68 | 834x1194, 834x955 | App screens — full pipeline |
+| Tablet landscape | 67 | 1536x1152 | App screens — full pipeline |
+| Icon definitions | 117 | 20x20, 40x40 | Component definitions — Layer 1 only |
+| Component definitions | 14 | Various small | Component definitions — Layer 1 only |
+| Design canvases | 3 | 3257x1385, 3881x2622, 3226x2322 | Design exploration — exclude from pipeline |
+
+**Action**: Filter screens before Layer 2 analysis. Only phone/tablet screens (204 total) should enter the classification → IR → rendering pipeline. Icon/component definition screens are Layer 1 data (for component discovery via `extract_components.py`). Design canvases are excluded entirely.
+
+### Token-Bound Unclassified Nodes — NOT a Problem
+
+36,477 nodes have token bindings but are not classified. Investigation showed:
+- **86.1% (31,402)**: Internal nodes of classified components (icon vector paths, button internal frames). Every one has a classified ancestor within 3 levels. These are absorbed during semantic tree construction.
+- **13.9% (5,075)**: Nodes on non-app artboards (design canvases, marketing exports). Excluded by screen filtering.
+
+**No template binding changes needed.** Instance-path rendering handles internal bindings automatically. Frame-path templates inherit from the source structure.
+
+### Classification Coverage — Better Than Reported
+
+The "93.6% classification" was on classifiable nodes. On real app screens, the breakdown is:
+- **0 genuinely missed INSTANCE nodes** on app screens. All 3,304 unclassified INSTANCEs are either:
+  - 1,281 on non-app artboards (design canvases with 0 classifications)
+  - 2,023 system chrome on app screens (`_Key`, `_KeyContainer`, `iOS/StatusBar`, `Safari - Bottom`, `ios/alpha-keyboard`, `HomeIndicator`)
+- **System chrome is correctly excluded** by `is_system_chrome()` — not a classification failure.
+
+**The classification pipeline works correctly on app screens.**
+
+### Synthetic Token Volume — Minimal for Well-Tokenized Files
+
+The Dank file has only ~150 unique visual values (68 fill colors, 10 stroke colors, 4 effect colors, 34 font sizes, 34 radii). After delta-E clustering, synthetic tokens would number ~50-80. Combined with 388 real tokens, the total is manageable (~450-470).
+
+**Caveat**: The Dank file is unusually well-tokenized (89% bound). Files with lower tokenization will need more synthetic tokens. The system must handle the 0%-tokenized worst case.
+
+### layoutPositioning (AUTO vs ABSOLUTE) — Add but Not Blocking
+
+`layoutPositioning` determines whether a child in an auto-layout parent participates in flow (AUTO) or floats freely (ABSOLUTE). It's not extracted or stored.
+
+Investigation: 64% of HORIZONTAL parents have children with overlapping x-ranges. Some of this is genuine ABSOLUTE positioning (icon overlaid on text), some is just compact button layouts.
+
+**Decision**: Add to extraction JS and schema as a prerequisite. Not blocking for Phases 0-2 (instance-first rendering handles positioning automatically). Required for Phase 3+ (frame-path template construction needs to know flow vs absolute).
+
+### Screen Skeletons — Already Extracted
+
+335 screen skeletons exist in `screen_skeletons` table (columns: id, screen_id, skeleton_notation, skeleton_type, zone_map, created_at). Example: `stack(scroll(content), content)`. These are Layer 2 data usable for screen pattern recognition.
+
+### Spec Clarification: Token Dictionary vs DB Read
+
+The primary rendering path is: **renderer resolves ALL visual values from the IR's token dictionary** (which contains both real and synthetic token entries). The DB is a fallback for edge cases where a value has no token entry. This was resolved in steelmanning decision #10 but the Layer 1 description said "renderer reads from DB" — the primary path is the token dictionary, not direct DB reads.
+
+### No Prior Art
+
+Web research confirmed: no existing system does bidirectional compilation through a universal IR with token binding at the property level. Builder.io does component mapping (not compilation). story.to.design does code→Figma (one direction). Figma MCP servers do one-shot translation (no IR). The closest analog is Mitosis (compiler architecture) but it's web-framework-only.
 
 ---
 
