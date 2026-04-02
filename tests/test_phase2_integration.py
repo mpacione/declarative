@@ -20,6 +20,7 @@ DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)
 PHONE_SCREEN = 184
 TABLET_P_SCREEN = 150
 TABLET_L_SCREEN = 118
+STROKE_HEAVY_SCREEN = 298  # iPad Pro 12.9" - 64: 15 visible strokes on classified nodes
 
 
 @pytest.fixture
@@ -96,9 +97,14 @@ class TestGenerationStillWorks:
         assert "fills = [{" in script, f"Screen {screen_id}: no fills in generated script"
         assert '"SOLID"' in script
 
-    def test_only_visible_strokes_emitted(self, dank_db):
-        visuals = query_screen_visuals(dank_db, screen_id=PHONE_SCREEN)
-        data = query_screen_for_ir(dank_db, screen_id=PHONE_SCREEN)
+    def test_no_visible_strokes_on_phone_screen(self, dank_db):
+        result = generate_screen(dank_db, screen_id=PHONE_SCREEN)
+        script_stroke_count = result["structure_script"].count("strokes = [{")
+        assert script_stroke_count == 0, "Phone screen 184 has no visible strokes on classified nodes"
+
+    def test_visible_strokes_emitted_on_stroke_heavy_screen(self, dank_db):
+        visuals = query_screen_visuals(dank_db, screen_id=STROKE_HEAVY_SCREEN)
+        data = query_screen_for_ir(dank_db, screen_id=STROKE_HEAVY_SCREEN)
         spec = build_composition_spec(data)
         node_id_map = spec["_node_id_map"]
 
@@ -109,9 +115,10 @@ class TestGenerationStillWorks:
             )
         )
 
-        result = generate_screen(dank_db, screen_id=PHONE_SCREEN)
+        result = generate_screen(dank_db, screen_id=STROKE_HEAVY_SCREEN)
         script_stroke_count = result["structure_script"].count("strokes = [{")
 
+        assert classified_with_visible_strokes > 0, "Expected visible strokes on screen 298"
         assert script_stroke_count == classified_with_visible_strokes
 
     def test_generate_screen_has_effects_on_phone(self, dank_db):
