@@ -232,19 +232,26 @@ class TestMapNodeToElement:
         assert element["layout"]["sizing"]["width"] == "fill"
         assert element["layout"]["sizing"]["height"] == "hug"
 
-    def test_maps_token_binding_to_style_ref(self):
-        node = _make_node(bindings=[
-            {"property": "fill.0.color", "token_name": "color.surface.primary", "resolved_value": "#FAFAFA"},
-        ])
+    def test_maps_token_binding_to_visual_fill(self):
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0},
+        }])
+        node = _make_node(
+            fills=fills_json,
+            bindings=[
+                {"property": "fill.0.color", "token_name": "color.surface.primary", "resolved_value": "#FAFAFA"},
+            ],
+        )
         element = map_node_to_element(node)
-        assert element["style"]["backgroundColor"] == "{color.surface.primary}"
+        assert element["visual"]["fills"][0]["color"] == "{color.surface.primary}"
 
-    def test_maps_hardcoded_fill_to_raw_value(self):
-        node = _make_node(bindings=[
-            {"property": "fill.0.color", "token_name": None, "resolved_value": "#FF0000"},
-        ])
+    def test_maps_hardcoded_fill_from_raw_json(self):
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+        }])
+        node = _make_node(fills=fills_json)
         element = map_node_to_element(node)
-        assert element["style"]["backgroundColor"] == "#FF0000"
+        assert element["visual"]["fills"][0]["color"] == "#FF0000"
 
     def test_maps_font_size_token(self):
         node = _make_node(bindings=[
@@ -263,26 +270,125 @@ class TestMapNodeToElement:
         element = map_node_to_element(node)
         assert element["props"]["text"] == "Settings"
 
-    def test_maps_corner_radius(self):
+    def test_maps_corner_radius_to_visual(self):
         node = _make_node(corner_radius="8")
         element = map_node_to_element(node)
-        assert element["style"]["borderRadius"] == 8
+        assert element["visual"]["cornerRadius"] == 8.0
 
-    def test_maps_opacity(self):
+    def test_maps_opacity_to_visual(self):
         node = _make_node(opacity=0.5)
         element = map_node_to_element(node)
-        assert element["style"]["opacity"] == 0.5
+        assert element["visual"]["opacity"] == 0.5
 
-    def test_omits_full_opacity(self):
+    def test_omits_full_opacity_from_visual(self):
         node = _make_node(opacity=1.0)
         element = map_node_to_element(node)
-        assert "opacity" not in element.get("style", {})
+        visual = element.get("visual", {})
+        assert "opacity" not in visual
 
     def test_omits_empty_sections(self):
         node = _make_node(canonical_type="icon")
         element = map_node_to_element(node)
         assert "props" not in element or element["props"] == {}
         assert "children" not in element
+
+    # --- Visual model tests (Step 2: _build_style → _build_visual) ---
+
+    def test_solid_fill_in_visual_section(self):
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+            "opacity": 1.0,
+        }])
+        node = _make_node(fills=fills_json)
+        element = map_node_to_element(node)
+        assert "visual" in element
+        assert len(element["visual"]["fills"]) == 1
+        assert element["visual"]["fills"][0]["type"] == "solid"
+        assert element["visual"]["fills"][0]["color"] == "#FF0000"
+
+    def test_token_bound_fill_in_visual_section(self):
+        fills_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0},
+        }])
+        node = _make_node(
+            fills=fills_json,
+            bindings=[
+                {"property": "fill.0.color", "token_name": "color.surface.primary", "resolved_value": "#FAFAFA"},
+            ],
+        )
+        element = map_node_to_element(node)
+        assert element["visual"]["fills"][0]["color"] == "{color.surface.primary}"
+
+    def test_gradient_fill_in_visual_section(self):
+        fills_json = json.dumps([{
+            "type": "GRADIENT_LINEAR", "opacity": 1.0,
+            "gradientHandlePositions": [{"x": 0, "y": 0.5}, {"x": 1, "y": 0.5}],
+            "gradientStops": [
+                {"color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}, "position": 0.0},
+                {"color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}, "position": 1.0},
+            ],
+        }])
+        node = _make_node(fills=fills_json)
+        element = map_node_to_element(node)
+        assert element["visual"]["fills"][0]["type"] == "gradient-linear"
+        assert len(element["visual"]["fills"][0]["stops"]) == 2
+
+    def test_strokes_in_visual_section(self):
+        strokes_json = json.dumps([{
+            "type": "SOLID", "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0},
+        }])
+        node = _make_node(strokes=strokes_json)
+        element = map_node_to_element(node)
+        assert "visual" in element
+        assert len(element["visual"]["strokes"]) == 1
+        assert element["visual"]["strokes"][0]["type"] == "solid"
+        assert element["visual"]["strokes"][0]["color"] == "#000000"
+
+    def test_effects_in_visual_section(self):
+        effects_json = json.dumps([{
+            "type": "DROP_SHADOW", "visible": True,
+            "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.25},
+            "offset": {"x": 0.0, "y": 4.0}, "radius": 8.0, "spread": 0.0,
+        }])
+        node = _make_node(effects=effects_json)
+        element = map_node_to_element(node)
+        assert "visual" in element
+        assert len(element["visual"]["effects"]) == 1
+        assert element["visual"]["effects"][0]["type"] == "drop-shadow"
+        assert element["visual"]["effects"][0]["blur"] == 8.0
+
+    def test_corner_radius_in_visual_section(self):
+        node = _make_node(corner_radius="12")
+        element = map_node_to_element(node)
+        assert element["visual"]["cornerRadius"] == 12.0
+
+    def test_opacity_in_visual_section(self):
+        node = _make_node(opacity=0.5)
+        element = map_node_to_element(node)
+        assert element["visual"]["opacity"] == 0.5
+
+    def test_full_opacity_omitted_from_visual(self):
+        node = _make_node(opacity=1.0)
+        element = map_node_to_element(node)
+        visual = element.get("visual", {})
+        assert "opacity" not in visual
+
+    def test_no_visual_section_when_empty(self):
+        node = _make_node(fills=None, strokes=None, effects=None, corner_radius=None, opacity=1.0)
+        element = map_node_to_element(node)
+        assert "visual" not in element or element["visual"] == {}
+
+    def test_typography_stays_in_style(self):
+        node = _make_node(bindings=[
+            {"property": "fontSize", "token_name": "type.body.md.fontSize", "resolved_value": "16"},
+            {"property": "fontFamily", "token_name": "type.body.md.fontFamily", "resolved_value": "Inter"},
+        ])
+        element = map_node_to_element(node)
+        assert element["style"]["fontSize"] == "{type.body.md.fontSize}"
+        assert element["style"]["fontFamily"] == "{type.body.md.fontFamily}"
+        visual = element.get("visual", {})
+        assert "fontSize" not in visual
+        assert "fontFamily" not in visual
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +693,8 @@ def _make_node(
     corner_radius: str | None = None,
     opacity: float | None = 1.0,
     fills: str | None = None,
+    strokes: str | None = None,
+    effects: str | None = None,
     bindings: list | None = None,
 ) -> dict:
     return {
@@ -609,6 +717,8 @@ def _make_node(
         "corner_radius": corner_radius,
         "opacity": opacity,
         "fills": fills,
+        "strokes": strokes,
+        "effects": effects,
         "width": 428,
         "height": 48,
         "bindings": bindings or [],

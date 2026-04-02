@@ -205,23 +205,13 @@ def normalize_corner_radius(
     return None
 
 
-# Property mapping: Figma binding property → IR style key
-_BINDING_PROPERTY_MAP = {
-    "fill.0.color": "backgroundColor",
-    "fill.1.color": "backgroundColor2",
-    "stroke.0.color": "borderColor",
+# Typography binding properties → IR style key (visual props handled by _build_visual)
+_TYPOGRAPHY_BINDING_MAP = {
     "fontSize": "fontSize",
     "fontFamily": "fontFamily",
     "fontWeight": "fontWeight",
     "lineHeight": "lineHeight",
     "letterSpacing": "letterSpacing",
-    "cornerRadius": "borderRadius",
-    "padding.top": "paddingTop",
-    "padding.right": "paddingRight",
-    "padding.bottom": "paddingBottom",
-    "padding.left": "paddingLeft",
-    "itemSpacing": "gap",
-    "opacity": "opacity",
 }
 
 # Types where text_content maps to props.text
@@ -268,7 +258,8 @@ def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
     item_spacing, layout_sizing_h/v, text_content, corner_radius, opacity,
     and bindings (list of {property, token_name, resolved_value}).
     """
-    binding_index = _build_binding_index(node.get("bindings", []))
+    bindings = node.get("bindings", [])
+    binding_index = _build_binding_index(bindings)
 
     element: Dict[str, Any] = {
         "type": node["canonical_type"],
@@ -277,6 +268,10 @@ def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
     layout = _build_layout(node, binding_index)
     if layout:
         element["layout"] = layout
+
+    visual = _build_visual(node, bindings)
+    if visual:
+        element["visual"] = visual
 
     style = _build_style(node, binding_index)
     if style:
@@ -359,7 +354,42 @@ def _build_sizing(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return sizing if sizing else None
 
 
+def _build_visual(node: Dict[str, Any], bindings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build visual section from raw Figma JSON columns + token bindings.
+
+    Normalizes fills, strokes, effects into platform-agnostic arrays.
+    Token refs are inlined where bindings exist, literal values otherwise.
+    """
+    visual: Dict[str, Any] = {}
+
+    fills = normalize_fills(node.get("fills"), bindings)
+    if fills:
+        visual["fills"] = fills
+
+    strokes = normalize_strokes(node.get("strokes"), bindings, node)
+    if strokes:
+        visual["strokes"] = strokes
+
+    effects = normalize_effects(node.get("effects"), bindings)
+    if effects:
+        visual["effects"] = effects
+
+    radius = normalize_corner_radius(node.get("corner_radius"))
+    if radius is not None:
+        visual["cornerRadius"] = radius
+
+    opacity = node.get("opacity")
+    if opacity is not None and opacity < 1.0:
+        visual["opacity"] = opacity
+
+    return visual
+
+
 def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[str, Any]:
+    """Build style section — typography bindings only.
+
+    Visual properties (fills, strokes, effects, radius, opacity) are in visual.
+    """
     style: Dict[str, Any] = {}
 
     for binding in node.get("bindings", []):
@@ -367,11 +397,7 @@ def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[st
         token_name = binding.get("token_name")
         resolved = binding.get("resolved_value")
 
-        # Layout properties (padding, gap) are handled in _build_layout
-        if prop in _LAYOUT_BINDING_PROPERTIES:
-            continue
-
-        ir_key = _BINDING_PROPERTY_MAP.get(prop)
+        ir_key = _TYPOGRAPHY_BINDING_MAP.get(prop)
         if ir_key is None:
             continue
 
@@ -379,17 +405,6 @@ def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[st
             style[ir_key] = f"{{{token_name}}}"
         elif resolved:
             style[ir_key] = resolved
-
-    radius = node.get("corner_radius")
-    if radius and "borderRadius" not in style:
-        try:
-            style["borderRadius"] = int(float(radius))
-        except (ValueError, TypeError):
-            pass
-
-    opacity = node.get("opacity")
-    if opacity is not None and opacity < 1.0:
-        style["opacity"] = opacity
 
     return style
 
