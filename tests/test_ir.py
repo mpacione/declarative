@@ -83,6 +83,30 @@ class TestMapNodeToElement:
         element = map_node_to_element(node)
         assert "padding" not in element.get("layout", {})
 
+    def test_fixed_sizing_uses_pixel_values(self):
+        node = _make_node(layout_sizing_h="FIXED", layout_sizing_v="FIXED")
+        element = map_node_to_element(node)
+        sizing = element["layout"]["sizing"]
+        assert isinstance(sizing["width"], (int, float))
+        assert isinstance(sizing["height"], (int, float))
+        assert sizing["width"] == 428  # from _make_node default
+        assert sizing["height"] == 48
+
+    def test_null_sizing_uses_pixel_values(self):
+        node = _make_node(layout_mode=None, layout_sizing_h=None, layout_sizing_v=None)
+        element = map_node_to_element(node)
+        sizing = element["layout"]["sizing"]
+        assert isinstance(sizing["width"], (int, float))
+        assert isinstance(sizing["height"], (int, float))
+
+    def test_mixed_sizing_fill_and_fixed(self):
+        node = _make_node(layout_sizing_h="FILL", layout_sizing_v="FIXED")
+        element = map_node_to_element(node)
+        sizing = element["layout"]["sizing"]
+        assert sizing["width"] == "fill"
+        assert isinstance(sizing["height"], (int, float))
+        assert sizing["height"] == 48
+
     def test_maps_sizing(self):
         node = _make_node(layout_sizing_h="FILL", layout_sizing_v="HUG")
         element = map_node_to_element(node)

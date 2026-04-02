@@ -288,6 +288,7 @@ def _emit_layout(
                 refs.append((eid, f"padding.{side}", token_name))
 
     sizing = layout.get("sizing", {})
+    has_auto_layout = direction in ("horizontal", "vertical")
     for axis, figma_axis in [("width", "Horizontal"), ("height", "Vertical")]:
         val = sizing.get(axis)
         if val is None:
@@ -296,13 +297,15 @@ def _emit_layout(
             mapped = _SIZING_MAP.get(val)
             if mapped:
                 lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
-        elif isinstance(val, (int, float)):
-            pass  # handled by resize below
+        elif isinstance(val, (int, float)) and has_auto_layout:
+            lines.append(f'{var}.layoutSizing{figma_axis} = "FIXED";')
 
     w = sizing.get("width")
     h = sizing.get("height")
-    if isinstance(w, (int, float)) and isinstance(h, (int, float)):
-        lines.append(f"{var}.resize({int(w)}, {int(h)});")
+    rw = int(w) if isinstance(w, (int, float)) else None
+    rh = int(h) if isinstance(h, (int, float)) else None
+    if rw is not None or rh is not None:
+        lines.append(f"{var}.resize({rw or 1}, {rh or 1});")
 
     main_align = layout.get("mainAxisAlignment")
     if main_align:

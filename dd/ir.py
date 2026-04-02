@@ -138,14 +138,26 @@ def _build_padding(node: Dict[str, Any], binding_index: Dict[str, str]) -> Optio
 
 
 def _build_sizing(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Build sizing dict from node layout sizing modes + pixel dimensions.
+
+    FILL/HUG → store as string (parent/content determines size).
+    FIXED or NULL → store pixel value (explicit dimensions needed).
+    """
     sizing: Dict[str, Any] = {}
     h = node.get("layout_sizing_h")
     v = node.get("layout_sizing_v")
+    width = node.get("width")
+    height = node.get("height")
 
-    if h:
-        sizing["width"] = _SIZING_MAP.get(h, h.lower())
-    if v:
-        sizing["height"] = _SIZING_MAP.get(v, v.lower())
+    if h in ("FILL", "HUG"):
+        sizing["width"] = _SIZING_MAP[h]
+    elif width is not None:
+        sizing["width"] = width
+
+    if v in ("FILL", "HUG"):
+        sizing["height"] = _SIZING_MAP[v]
+    elif height is not None:
+        sizing["height"] = height
 
     return sizing if sizing else None
 

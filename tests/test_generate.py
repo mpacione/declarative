@@ -300,6 +300,67 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert "resize(428, 926)" in script
 
+    def test_resize_for_fixed_child(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["card-1"]},
+            "card-1": {"type": "card", "layout": {
+                "direction": "vertical", "sizing": {"width": 200, "height": 100},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(200, 100)" in script
+
+    def test_no_resize_for_fill_child(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["card-1"]},
+            "card-1": {"type": "card", "layout": {
+                "direction": "vertical", "sizing": {"width": "fill", "height": "hug"},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        # Should have layoutSizing but NOT resize
+        assert "FILL" in script
+        assert "HUG" in script
+        # Only the root might have resize, not the child
+        lines = script.split("\n")
+        card_lines = [l for l in lines if "card-1" in l or (lines.index(l) > 0 and "n1." in l)]
+        assert not any("resize" in l for l in card_lines)
+
+    def test_fixed_child_gets_fixed_sizing_mode(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["btn-1"]},
+            "btn-1": {"type": "button", "layout": {
+                "direction": "horizontal", "sizing": {"width": 200, "height": 48},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutSizingHorizontal = "FIXED"' in script
+        assert 'layoutSizingVertical = "FIXED"' in script
+        assert "resize(200, 48)" in script
+
+    def test_stacked_child_resize_no_layout_mode(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["icon-1"]},
+            "icon-1": {"type": "icon", "layout": {
+                "direction": "stacked", "sizing": {"width": 24, "height": 24},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(24, 24)" in script
+        # icon-1 should NOT have layoutMode
+        lines = script.split("\n")
+        icon_start = next(i for i, l in enumerate(lines) if "icon-1" in l)
+        icon_lines = []
+        for i in range(icon_start, len(lines)):
+            if lines[i].startswith("M[") and "icon-1" in lines[i]:
+                break
+            icon_lines.append(lines[i])
+        assert not any("layoutMode" in l for l in icon_lines)
+
     def test_escapes_text_quotes(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["t-1"]},
