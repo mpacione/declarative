@@ -1,8 +1,54 @@
 # Learnings Log
 
-Accumulated insights from building and testing the curation pipeline. These inform the design of `dd push` and the agent protocol.
+Accumulated insights from building Declarative Design. Covers the token pipeline (T1-T4) and compositional analysis (T5).
 
 ---
+
+## T5 Compositional Analysis
+
+### IR Design: Visual Intent, Not Token Transport
+
+**The lesson**: The IR must carry complete visual properties for every element. Token refs are annotations, not the primary data source. Many Figma files have zero tokenized values — the IR must work without any tokens.
+
+**What happened**: The round-trip proof (Phase 3) generated a Figma frame with correct hierarchy and layout but nearly invisible content. The IR only carried style properties when they had token bindings. Gradients, effects, unbound fills, and aliased token colors were all lost.
+
+**The fix**: `visual` section with normalized fills/strokes/effects arrays. Token refs inline where they exist (`"{color.surface.primary}"`), literal hex values where they don't. The raw Figma JSON stays in the DB — the IR normalizes it into a universal format.
+
+### Figma Frames Are Visual Elements
+
+**The lesson**: In Figma, a frame IS the visual element. "Frame 359" with a gradient fill and corner radius is a styled card, not a structural container.
+
+**What happened**: The classification rule `Frame N → container` was name-only. 64% of generic-named frames in the Dank file (3,158 of 4,807) have fills, strokes, or corner radius. They were all classified as empty containers, losing their visual properties.
+
+**The fix**: `rule_generic_frame_container()` must check for visual properties before classifying. Only truly empty frames (no fills, no strokes, no effects) are containers.
+
+### Component Instances Across Platforms
+
+**The lesson**: The IR stores canonical type + props. Each platform renderer resolves to native components independently. The IR doesn't carry Figma component keys.
+
+**Example**: `type: "icon"` with `canonical_name: "back"`. Figma renderer → `importComponentByKeyAsync(key)`. React → `<Icon name="arrow-left" />`. SwiftUI → `Image(systemName: "chevron.left")`.
+
+### figma_execute Async Model
+
+**The lesson**: Use top-level `await`, not `(async () => {...})()`. The MCP figma_execute tool provides its own async context. Wrapping in an IIFE prevents return values from being captured and created nodes get garbage collected.
+
+### Font Normalization
+
+**The lesson**: "Inter Variable" → "Inter" (Figma uses "Inter" for all weights). Numeric string weights like "500" must be parsed to int before mapping to style names. "Semi Bold" has a space (not "SemiBold").
+
+### Token Alias Resolution
+
+**The lesson**: Use `ntb.resolved_value` from node_token_bindings directly, not `token_values`. Aliased tokens (tier=aliased) don't have their own token_values rows — their values live on the target primitive token.
+
+### Classification Accuracy Strategy
+
+**The lesson**: Formal matching (name → alias index) gets 55% of nodes. Heuristics (position, font size, generic frame → container) get another 37%. LLM (Claude Haiku) gets the remaining 7% of ambiguous cases. Vision cross-validation is rate-limited by Figma's image API — use as spot-check, not batch.
+
+**Final accuracy**: 93.6% adjusted coverage (47,292 of 50,517 classifiable nodes).
+
+---
+
+## Figma Push
 
 ## Figma Push
 
