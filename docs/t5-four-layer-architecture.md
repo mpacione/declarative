@@ -1143,6 +1143,79 @@ If a user generates a screen from the IR then manually edits it in Figma, detect
 
 ---
 
+## What's Already Built (Capability Inventory)
+
+Before planning new work, here's what exists across the 38 Python modules and 1,004 tests:
+
+### Layer 1: Extraction — BUILT
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/extract.py` | Orchestrator — coordinates screen extraction + component extraction | 31 |
+| `dd/extract_screens.py` | Generates Figma Plugin JS to extract full node trees (40+ properties per node) | 19 |
+| `dd/extract_bindings.py` | Extracts node→token property bindings from Figma variable data | 9 |
+| `dd/extract_inventory.py` | Discovers screens in a Figma file, manages extraction runs | - |
+| `dd/extract_components.py` | **Parses component sets, extracts variants, infers slots, writes a11y contracts** | 40 |
+| `dd/figma_api.py` | Figma REST API + MCP bridge | 27 |
+
+**Key finding**: `extract_components.py` is a fully built module with slot inference (`infer_slots`), variant parsing (`parse_variant_properties`), category detection (`infer_category`), a11y contract generation (`infer_a11y`), and database insertion for all composition tables. The `components`, `component_slots`, `component_variants`, `variant_axes`, `variant_dimension_values`, and `component_a11y` tables are empty in the Dank DB not because the code doesn't exist, but because the extraction pipeline for the Dank file was run before this module was integrated, or the component data wasn't fetched from Figma MCP.
+
+### Layer 2: Analysis — PARTIALLY BUILT
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/catalog.py` | 48 canonical component types with behavioral descriptions, aliases, recognition heuristics | 50 |
+| `dd/classify.py` | Orchestrator — formal matching (name → alias index), parent linkage | 64 |
+| `dd/classify_rules.py` | ALL classification heuristic rules (single file) | (included in classify tests) |
+| `dd/classify_heuristics.py` | Applies heuristic rules to unclassified nodes | (included in classify tests) |
+| `dd/classify_llm.py` | Claude Haiku for ambiguous nodes (prompt builder + response parser) | 14 |
+| `dd/classify_vision.py` | Screenshot-based cross-validation with retry/backoff | 8 |
+| `dd/classify_skeleton.py` | Screen-level skeleton notation (`stack(header, scroll(content), bottom-nav)`) | (included in classify tests) |
+
+**Classification pipeline**: Formal (55%) → Heuristic (37%) → LLM (7%) = 93.6% adjusted coverage on Dank.
+
+**What's missing for Layer 2**: Component template extraction (analyzing classified instances to build templates), screen pattern recognition (clustering screens into archetypes).
+
+### Layer 3: Composition — PARTIALLY BUILT
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/ir.py` | IR generation — `map_node_to_element`, `build_composition_spec`, normalization functions | 64 |
+
+**What's built**: Flat element map generation from classified nodes, token ref inlining, container injection, visual property normalization (fills, strokes, effects, corner radius).
+
+**What needs to change**: IR is currently too thick (carries visual data). Semantic tree construction (200→20 elements) not implemented. Slot filling not implemented.
+
+### Layer 4: Rendering — PARTIALLY BUILT
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/generate.py` | Figma Plugin JS generation from CompositionSpec | 51 |
+| `dd/export_css.py` | Token export to CSS custom properties | 46 |
+| `dd/export_tailwind.py` | Token export to Tailwind config | (included in export tests) |
+| `dd/export_dtcg.py` | Token export to DTCG format | (included in export tests) |
+| `dd/export_figma_vars.py` | Push tokens to Figma as variables | 50 |
+| `dd/export_rebind.py` | Generate rebind scripts (bind Figma nodes to variables) | 55 |
+| `dd/push.py` | Orchestrate full push cycle (variables + rebind) | 36 |
+
+**What's built**: Token export to CSS/Tailwind/DTCG (code renderers' token resolution is partially solved). Figma variable push and rebind (182K bindings across 193 scripts). Figma frame generation from IR.
+
+**What needs to change**: Generator currently reads visual data from IR instead of DB/templates. No React/SwiftUI code generators yet. No RendererConfig abstraction.
+
+### Supporting Infrastructure
+| Module | What it does | Tests |
+|--------|-------------|-------|
+| `dd/color.py` | Color conversions (hex↔RGB↔OKLCH), alpha handling | 28 |
+| `dd/cluster.py` + `dd/cluster_*.py` | Token clustering (colors, spacing, typography, misc) | 38+ |
+| `dd/curate.py` | Agent-driven token curation (rename, merge, split, alias) | 31 |
+| `dd/modes.py` | OKLCH-based dark mode derivation | 22 |
+| `dd/drift.py` | Detect value drift between DB and Figma | 28 |
+| `dd/validate.py` | 8 validation checks + binding consistency | 20 |
+| `dd/normalize.py` | Value normalization for binding comparisons | 34 |
+| `dd/db.py` | Schema init, connection management | - |
+| `dd/cli.py` | CLI commands (extract, cluster, validate, export, push, classify, generate-ir) | 19 |
+
+### Schema Status
+The `schema.sql` defines ALL needed tables including the full extended properties on `nodes` (40+ columns) and all composition tables (`components`, `component_slots`, `component_variants`, etc.). The Dank DB was created from an older schema and needs a migration to add the 26 missing columns. New databases created with `init_db()` will have the full schema.
+
+---
+
 ## Open Questions for Steelmanning
 
 ### 1. Fidelity Loss in Compression
