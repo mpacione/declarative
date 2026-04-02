@@ -131,6 +131,115 @@ def test_parse_extraction_response_text_node():
     assert parsed[0]["text_content"] == "Hello World"
 
 
+def test_extraction_script_captures_layout_positioning():
+    script = generate_extraction_script("1:1")
+    assert "layoutPositioning" in script
+
+
+def test_extraction_script_captures_grid_properties():
+    script = generate_extraction_script("1:1")
+    assert "gridRowCount" in script
+    assert "gridColumnCount" in script
+
+
+def test_parse_layout_positioning():
+    response = [
+        {
+            "figma_node_id": "1:5",
+            "name": "Floating Badge",
+            "node_type": "FRAME",
+            "layout_positioning": "ABSOLUTE",
+        }
+    ]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["layout_positioning"] == "ABSOLUTE"
+
+
+def test_parse_grid_properties():
+    response = [
+        {
+            "figma_node_id": "1:6",
+            "name": "Grid Container",
+            "node_type": "FRAME",
+            "layout_mode": "GRID",
+            "grid_row_count": 3,
+            "grid_column_count": 4,
+            "grid_row_gap": 16.0,
+            "grid_column_gap": 12.0,
+            "grid_row_sizes": [{"type": "FIXED", "value": 100}, {"type": "FILL", "value": 1}],
+            "grid_column_sizes": [{"type": "FIXED", "value": 200}],
+        }
+    ]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["grid_row_count"] == 3
+    assert parsed[0]["grid_column_count"] == 4
+    assert parsed[0]["grid_row_gap"] == 16.0
+    assert parsed[0]["grid_column_gap"] == 12.0
+    assert isinstance(parsed[0]["grid_row_sizes"], str)
+    assert isinstance(parsed[0]["grid_column_sizes"], str)
+
+
+def test_insert_nodes_with_layout_positioning():
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:0', 'Screen', 375, 667)")
+
+    nodes = [
+        {
+            "figma_node_id": "1:7",
+            "name": "Absolute Child",
+            "node_type": "FRAME",
+            "parent_idx": None,
+            "depth": 0,
+            "sort_order": 0,
+            "is_semantic": 0,
+            "layout_positioning": "ABSOLUTE",
+        },
+    ]
+    node_ids = insert_nodes(conn, 1, nodes)
+    assert len(node_ids) == 1
+
+    row = conn.execute("SELECT layout_positioning FROM nodes WHERE id = ?", (node_ids[0],)).fetchone()
+    assert row[0] == "ABSOLUTE"
+
+
+def test_insert_nodes_with_grid_properties():
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:0', 'Screen', 375, 667)")
+
+    nodes = [
+        {
+            "figma_node_id": "1:8",
+            "name": "Grid Frame",
+            "node_type": "FRAME",
+            "parent_idx": None,
+            "depth": 0,
+            "sort_order": 0,
+            "is_semantic": 1,
+            "layout_mode": "GRID",
+            "grid_row_count": 2,
+            "grid_column_count": 3,
+            "grid_row_gap": 8.0,
+            "grid_column_gap": 8.0,
+            "grid_row_sizes": json.dumps([{"type": "FIXED", "value": 100}]),
+            "grid_column_sizes": json.dumps([{"type": "FILL", "value": 1}]),
+        },
+    ]
+    node_ids = insert_nodes(conn, 1, nodes)
+    assert len(node_ids) == 1
+
+    row = conn.execute(
+        "SELECT layout_mode, grid_row_count, grid_column_count, grid_row_gap, grid_column_gap FROM nodes WHERE id = ?",
+        (node_ids[0],),
+    ).fetchone()
+    assert row[0] == "GRID"
+    assert row[1] == 2
+    assert row[2] == 3
+    assert row[3] == 8.0
+    assert row[4] == 8.0
+
+
 def test_compute_is_semantic_text_node():
     nodes = [
         {"node_type": "TEXT", "name": "Label", "parent_idx": None}

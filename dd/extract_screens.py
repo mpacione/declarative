@@ -82,6 +82,9 @@ def generate_extraction_script(screen_node_id: str) -> str:
       entry.constraint_v = node.constraints?.vertical;
     }
 
+    // Child positioning within auto-layout parent
+    if ('layoutPositioning' in node) entry.layout_positioning = node.layoutPositioning;
+
     // Auto-layout
     if (node.layoutMode && node.layoutMode !== 'NONE') {
       entry.layout_mode = node.layoutMode;
@@ -100,6 +103,16 @@ def generate_extraction_script(screen_node_id: str) -> str:
       if ('maxWidth' in node) entry.max_width = node.maxWidth;
       if ('minHeight' in node) entry.min_height = node.minHeight;
       if ('maxHeight' in node) entry.max_height = node.maxHeight;
+
+      // Grid layout properties (layoutMode === 'GRID')
+      if (node.layoutMode === 'GRID') {
+        if ('gridRowCount' in node) entry.grid_row_count = node.gridRowCount;
+        if ('gridColumnCount' in node) entry.grid_column_count = node.gridColumnCount;
+        if ('gridRowGap' in node) entry.grid_row_gap = node.gridRowGap;
+        if ('gridColumnGap' in node) entry.grid_column_gap = node.gridColumnGap;
+        if ('gridRowSizes' in node) entry.grid_row_sizes = JSON.stringify(node.gridRowSizes);
+        if ('gridColumnSizes' in node) entry.grid_column_sizes = JSON.stringify(node.gridColumnSizes);
+      }
     }
 
     // Typography (TEXT nodes)
@@ -239,6 +252,10 @@ def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, 
             if field in node:
                 cleaned[field] = node[field]
 
+        # Child positioning within auto-layout parent
+        if "layout_positioning" in node:
+            cleaned["layout_positioning"] = node["layout_positioning"]
+
         # Auto-layout properties
         if "layout_mode" in node:
             cleaned["layout_mode"] = node["layout_mode"]
@@ -251,6 +268,21 @@ def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, 
                           "layout_wrap"]:
                 if field in node:
                     cleaned[field] = node[field]
+
+            # Grid layout properties
+            for field in ["grid_row_count", "grid_column_count"]:
+                if field in node and node[field] is not None:
+                    cleaned[field] = int(node[field])
+            for field in ["grid_row_gap", "grid_column_gap"]:
+                if field in node and node[field] is not None:
+                    cleaned[field] = float(node[field])
+            for field in ["grid_row_sizes", "grid_column_sizes"]:
+                if field in node:
+                    value = node[field]
+                    if isinstance(value, list):
+                        cleaned[field] = json.dumps(value)
+                    else:
+                        cleaned[field] = value
 
         # Typography properties
         if node.get("node_type") == "TEXT":
@@ -385,8 +417,12 @@ def insert_nodes(conn, screen_id: int, nodes: List[Dict[str, Any]]) -> List[int]
             "x", "y", "width", "height",
             "layout_mode", "padding_top", "padding_right", "padding_bottom", "padding_left",
             "item_spacing", "counter_axis_spacing", "primary_align", "counter_align",
+            "layout_positioning",
             "layout_sizing_h", "layout_sizing_v", "layout_wrap",
             "min_width", "max_width", "min_height", "max_height",
+            "grid_row_count", "grid_column_count",
+            "grid_row_gap", "grid_column_gap",
+            "grid_row_sizes", "grid_column_sizes",
             "fills", "strokes", "effects", "corner_radius",
             "opacity", "blend_mode", "visible",
             "stroke_weight", "stroke_top_weight", "stroke_right_weight",

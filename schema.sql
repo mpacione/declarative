@@ -346,12 +346,23 @@ CREATE TABLE nodes (
     constraint_h    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE
     constraint_v    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE
 
+    -- Child positioning within auto-layout parent
+    layout_positioning TEXT,                     -- AUTO (in flow) or ABSOLUTE (floating)
+
     -- Auto-layout extensions
     layout_wrap     TEXT,                        -- NO_WRAP, WRAP
     min_width       REAL,                        -- Min size constraint
     max_width       REAL,                        -- Max size constraint
     min_height      REAL,
     max_height      REAL,
+
+    -- Grid layout (layoutMode = 'GRID')
+    grid_row_count     INTEGER,                  -- Number of rows
+    grid_column_count  INTEGER,                  -- Number of columns
+    grid_row_gap       REAL,                     -- Gap between rows in px
+    grid_column_gap    REAL,                     -- Gap between columns in px
+    grid_row_sizes     TEXT,                     -- JSON array of GridTrackSize [{type:"FIXED",value:100},...]
+    grid_column_sizes  TEXT,                     -- JSON array of GridTrackSize [{type:"FILL",value:1},...]
 
     -- Typography (TEXT nodes only)
     font_family     TEXT,
