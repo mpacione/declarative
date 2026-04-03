@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from dd.catalog import seed_catalog
-from dd.compose import build_template_visuals, compose_screen, generate_from_prompt
+from dd.compose import build_template_visuals, collect_template_rebind_entries, compose_screen, generate_from_prompt
 from dd.db import init_db
 
 # ---------------------------------------------------------------------------
@@ -141,6 +141,96 @@ class TestBuildTemplateVisuals:
         nid = spec["_node_id_map"][eid]
         assert visuals[nid]["component_key"] is None
 
+    def test_extracts_bound_variables_from_fills(self):
+        templates = {
+            "button": [{
+                "fills": '[{"type":"SOLID","color":{"r":0,"g":0,"b":0,"a":1},'
+                         '"boundVariables":{"color":{"type":"VARIABLE_ALIAS","id":"VariableID:5438:33630"}}}]',
+                "strokes": None, "effects": None, "corner_radius": None,
+                "opacity": 1.0, "stroke_weight": None,
+            }],
+        }
+        spec = compose_screen([{"type": "button"}])
+        visuals = build_template_visuals(spec, templates)
+        button_eid = next(eid for eid, el in spec["elements"].items() if el["type"] == "button")
+        nid = spec["_node_id_map"][button_eid]
+        bindings = visuals[nid]["bindings"]
+        assert len(bindings) >= 1
+        assert bindings[0]["property"] == "fill.0.color"
+        assert bindings[0]["variable_id"] == "VariableID:5438:33630"
+
+    def test_extracts_bound_variables_from_strokes(self):
+        templates = {
+            "card": [{
+                "fills": None,
+                "strokes": '[{"type":"SOLID","color":{"r":0.5,"g":0.5,"b":0.5,"a":1},'
+                           '"boundVariables":{"color":{"type":"VARIABLE_ALIAS","id":"VariableID:111:222"}}}]',
+                "effects": None, "corner_radius": None,
+                "opacity": 1.0, "stroke_weight": None,
+            }],
+        }
+        spec = compose_screen([{"type": "card"}])
+        visuals = build_template_visuals(spec, templates)
+        card_eid = next(eid for eid, el in spec["elements"].items() if el["type"] == "card")
+        nid = spec["_node_id_map"][card_eid]
+        bindings = visuals[nid]["bindings"]
+        assert any(b["property"] == "stroke.0.color" for b in bindings)
+
+
+# ---------------------------------------------------------------------------
+# collect_template_rebind_entries tests
+# ---------------------------------------------------------------------------
+
+class TestCollectTemplateRebindEntries:
+    """Verify rebind entries are collected from template boundVariables."""
+
+    def test_collects_entries_from_fills(self):
+        templates = {
+            "button": [{
+                "fills": '[{"type":"SOLID","color":{"r":0,"g":0,"b":0,"a":1},'
+                         '"boundVariables":{"color":{"type":"VARIABLE_ALIAS","id":"VariableID:5438:33630"}}}]',
+                "strokes": None, "effects": None, "corner_radius": None,
+                "opacity": 1.0, "stroke_weight": None,
+            }],
+        }
+        spec = compose_screen([{"type": "button"}])
+        visuals = build_template_visuals(spec, templates)
+        entries = collect_template_rebind_entries(spec, visuals)
+        button_entries = [e for e in entries if e["element_id"].startswith("button")]
+        assert len(button_entries) >= 1
+        assert button_entries[0]["variable_id"] == "VariableID:5438:33630"
+
+    def test_empty_when_no_bound_variables(self):
+        templates = {
+            "card": [{
+                "fills": '[{"type":"SOLID","color":{"r":1,"g":1,"b":1,"a":1}}]',
+                "strokes": None, "effects": None, "corner_radius": None,
+                "opacity": 1.0, "stroke_weight": None,
+            }],
+        }
+        spec = compose_screen([{"type": "card"}])
+        visuals = build_template_visuals(spec, templates)
+        entries = collect_template_rebind_entries(spec, visuals)
+        card_entries = [e for e in entries if e["element_id"].startswith("card")]
+        assert len(card_entries) == 0
+
+    def test_entries_have_required_keys(self):
+        templates = {
+            "button": [{
+                "fills": '[{"type":"SOLID","color":{"r":0,"g":0,"b":0,"a":1},'
+                         '"boundVariables":{"color":{"type":"VARIABLE_ALIAS","id":"VariableID:1:2"}}}]',
+                "strokes": None, "effects": None, "corner_radius": None,
+                "opacity": 1.0, "stroke_weight": None,
+            }],
+        }
+        spec = compose_screen([{"type": "button"}])
+        visuals = build_template_visuals(spec, templates)
+        entries = collect_template_rebind_entries(spec, visuals)
+        for entry in entries:
+            assert "element_id" in entry
+            assert "property" in entry
+            assert "variable_id" in entry
+
 
 # ---------------------------------------------------------------------------
 # generate_from_prompt tests
@@ -209,3 +299,82 @@ class TestGenerateFromPrompt:
             ],
         )
         assert result["element_count"] >= 3  # screen + heading + button
+
+    def test_includes_template_rebind_entries(self, db):
+        result = generate_from_prompt(
+            db,
+            [{"type": "button", "props": {"text": "Save"}}],
+        )
+        assert "template_rebind_entries" in result
+        assert isinstance(result["template_rebind_entries"], list)
+
+
+# ---------------------------------------------------------------------------
+# Variant-aware template selection tests
+# ---------------------------------------------------------------------------
+
+class TestVariantAwareSelection:
+    """Verify compose_screen uses variant to select specific templates."""
+
+    def test_variant_passed_through_to_element(self):
+        spec = compose_screen([
+            {"type": "button", "variant": "button/large/translucent"},
+        ])
+        button = next(el for el in spec["elements"].values() if el["type"] == "button")
+        assert button["variant"] == "button/large/translucent"
+
+    def test_variant_selects_matching_template(self):
+        templates = {
+            "button": [
+                {"variant": "button/small/solid", "layout_mode": "HORIZONTAL",
+                 "width": 100, "height": 40, "instance_count": 500},
+                {"variant": "button/large/translucent", "layout_mode": "HORIZONTAL",
+                 "width": 152, "height": 52, "instance_count": 3606},
+            ],
+        }
+        spec = compose_screen(
+            [{"type": "button", "variant": "button/large/translucent"}],
+            templates=templates,
+        )
+        button = next(el for el in spec["elements"].values() if el["type"] == "button")
+        assert button["layout"]["sizing"]["width"] == 152
+
+    def test_sizing_mode_from_template(self):
+        templates = {
+            "card": [{
+                "layout_mode": "VERTICAL", "width": 428, "height": 194,
+                "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
+                "instance_count": 50,
+            }],
+        }
+        spec = compose_screen([{"type": "card"}], templates=templates)
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        assert card["layout"]["sizing"]["width"] == "hug"
+        assert card["layout"]["sizing"]["height"] == "hug"
+
+    def test_fixed_sizing_when_no_mode(self):
+        templates = {
+            "card": [{
+                "layout_mode": "VERTICAL", "width": 428, "height": 194,
+                "instance_count": 50,
+            }],
+        }
+        spec = compose_screen([{"type": "card"}], templates=templates)
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        assert card["layout"]["sizing"]["width"] == 428
+        assert card["layout"]["sizing"]["height"] == 194
+
+    def test_without_variant_uses_highest_count(self):
+        templates = {
+            "button": [
+                {"variant": "button/small/solid", "layout_mode": "HORIZONTAL",
+                 "width": 100, "height": 40, "instance_count": 500,
+                 "component_key": "key_small"},
+                {"variant": "button/large/translucent", "layout_mode": "HORIZONTAL",
+                 "width": 152, "height": 52, "instance_count": 3606,
+                 "component_key": "key_large"},
+            ],
+        }
+        spec = compose_screen([{"type": "button"}], templates=templates)
+        button = next(el for el in spec["elements"].values() if el["type"] == "button")
+        assert button["layout"]["sizing"]["width"] == 152

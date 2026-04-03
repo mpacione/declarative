@@ -191,14 +191,64 @@ _ALIGNMENT_MAP = {
 
 
 # ---------------------------------------------------------------------------
+# Composition children (Phase C: slot filling)
+# ---------------------------------------------------------------------------
+
+def _emit_composition_children(
+    parent_var: str,
+    parent_eid: str,
+    composition: list[dict[str, Any]],
+    lines: list[str],
+    var_counter: int,
+) -> int:
+    """Emit Mode 1 instances or Mode 2 frames for composition children.
+
+    For each child in the composition pattern, creates count_mode
+    instances (via getNodeByIdAsync for keyed) or frames (for keyless)
+    and appends them to the parent. Returns updated var_counter.
+
+    One level deep only — child instances inherit their own subtree.
+    """
+    for child_spec in composition:
+        count = child_spec.get("count_mode", 1)
+        figma_id = child_spec.get("component_figma_id")
+        comp_key = child_spec.get("component_key")
+        child_type = child_spec.get("child_type", "frame")
+
+        for _ in range(count):
+            var = f"_c{var_counter}"
+            var_counter += 1
+
+            if figma_id:
+                lines.append(
+                    f'const {var} = (await figma.getNodeByIdAsync("{_escape_js(figma_id)}")).createInstance();'
+                )
+            elif comp_key:
+                lines.append(
+                    f'const {var} = (await figma.importComponentByKeyAsync("{_escape_js(comp_key)}")).createInstance();'
+                )
+            else:
+                lines.append(f"const {var} = figma.createFrame();")
+
+            lines.append(f'{var}.name = "{_escape_js(child_type)}-child";')
+            lines.append(f"{parent_var}.appendChild({var});")
+
+    return var_counter
+
+
+# ---------------------------------------------------------------------------
 # Script generation
 # ---------------------------------------------------------------------------
 
 def generate_figma_script(
     spec: dict[str, Any],
     db_visuals: dict[int, dict[str, Any]] | None = None,
+    page_name: str | None = None,
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
+
+    When page_name is provided, creates a new Figma page with that name
+    and places the screen there instead of on the current page.
 
     Returns (js_string, token_refs) where token_refs is a list of
     (element_id, rebind_property, token_name) tuples for Phase B.
@@ -254,6 +304,15 @@ def generate_figma_script(
                     f'const {var} = (await figma.importComponentByKeyAsync("{_escape_js(component_key)}")).createInstance();'
                 )
             lines.append(f'{var}.name = "{_escape_js(eid)}";')
+
+            text_override = element.get("props", {}).get("text", "")
+            if text_override:
+                lines.append(
+                    f'{{ const _t = {var}.findOne(n => n.type === "TEXT"); '
+                    f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
+                    f'_t.characters = "{_escape_js(text_override)}"; }} }}'
+                )
+
             mode1_eids.add(eid)
         else:
             # Mode 2: create frame/text
@@ -263,6 +322,9 @@ def generate_figma_script(
                 lines.append(f"const {var} = figma.createFrame();")
 
             lines.append(f'{var}.name = "{_escape_js(eid)}";')
+
+            if is_text:
+                lines.append(f'{var}.textAutoResize = "WIDTH_AND_HEIGHT";')
 
             layout = element.get("layout", {})
             layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
@@ -283,15 +345,31 @@ def generate_figma_script(
             if is_text:
                 _emit_text_props(var, element, style, tokens, lines)
 
+            composition = element.get("_composition")
+            has_ir_children = bool(element.get("children"))
+            if composition and not is_text and not has_ir_children:
+                _emit_composition_children(var, eid, composition, lines, idx * 100)
+
         if parent_eid is not None and parent_eid in var_map and parent_eid not in mode1_eids:
             parent_var = var_map[parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
+            if is_text and eid not in mode1_eids:
+                lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
 
         lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
         lines.append("")
 
     if root_id in var_map:
-        lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
+        if page_name:
+            escaped_name = _escape_js(page_name)
+            lines.append(
+                f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
+            )
+            lines.append(f"if (!_page) {{ _page = figma.createPage(); _page.name = \"{escaped_name}\"; }}")
+            lines.append(f"_page.appendChild({var_map[root_id]});")
+            lines.append(f"await figma.setCurrentPageAsync(_page);")
+        else:
+            lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
 
     lines.append("return M;")
 

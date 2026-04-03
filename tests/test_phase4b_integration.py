@@ -56,8 +56,10 @@ class TestComposeWithRealTemplates:
         spec = compose_screen([{"type": "button"}], templates=templates)
         button = next(el for el in spec["elements"].values() if el["type"] == "button")
         assert "sizing" in button["layout"]
-        assert button["layout"]["sizing"]["width"] > 0
-        assert button["layout"]["sizing"]["height"] > 0
+        w = button["layout"]["sizing"]["width"]
+        h = button["layout"]["sizing"]["height"]
+        assert (isinstance(w, str) and w in ("hug", "fill", "fixed")) or (isinstance(w, (int, float)) and w > 0)
+        assert (isinstance(h, str) and h in ("hug", "fill", "fixed")) or (isinstance(h, (int, float)) and h > 0)
 
 
 @pytest.mark.integration

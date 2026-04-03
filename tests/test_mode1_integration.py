@@ -149,3 +149,23 @@ class TestMixedModeScreen:
         header_nid = spec["_node_id_map"][header_eid]
 
         assert visuals[header_nid].get("component_figma_id") is not None
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
+class TestMode1TextOverrides:
+    """Verify Mode 1 instances set text content from props."""
+
+    def test_button_text_override(self, dank_db):
+        result = generate_from_prompt(dank_db, [
+            {"type": "button", "props": {"text": "Save Changes"}},
+        ])
+        script = result["structure_script"]
+        assert "Save Changes" in script
+
+    def test_header_text_override(self, dank_db):
+        result = generate_from_prompt(dank_db, [
+            {"type": "header", "props": {"text": "Settings"}},
+        ])
+        script = result["structure_script"]
+        assert "Settings" in script

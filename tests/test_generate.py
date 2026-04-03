@@ -217,6 +217,15 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert "figma.createText()" in script
 
+    def test_text_nodes_use_auto_resize_and_fill(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["t-1"]},
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "textAutoResize" in script
+        assert 'layoutSizingHorizontal = "FILL"' in script
+
     def test_font_loading(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["t-1"]},
@@ -480,6 +489,65 @@ class TestGenerateFigmaScriptFromDB:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert '"icon-1"' not in script
 
+    def test_mode1_text_override(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button", "props": {"text": "Save Changes"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "Save Changes" in script
+        assert "findOne" in script
+        assert "loadFontAsync" in script
+
+    def test_mode1_no_text_override_when_no_props(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "findOne" not in script
+
+    def test_page_name_finds_or_creates_page(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals, page_name="Generated")
+        assert "figma.root.children.find" in script
+        assert "figma.createPage()" in script
+        assert '"Generated"' in script
+        assert "setCurrentPageAsync" in script
+        assert "figma.currentPage.appendChild" not in script
+
+    def test_no_page_name_uses_current_page(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "figma.currentPage.appendChild" in script
+        assert "figma.createPage()" not in script
+
     def test_mode2_still_creates_frame(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["card-1"]},
@@ -493,6 +561,91 @@ class TestGenerateFigmaScriptFromDB:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "figma.createFrame()" in script
         assert "importComponentByKeyAsync" not in script
+
+    def test_composition_children_emit_instances(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["toolbar-1"]},
+            "toolbar-1": {
+                "type": "container",
+                "_composition": [
+                    {"child_type": "button", "count_mode": 3,
+                     "component_key": None, "component_figma_id": "123:456", "frequency": 0.95},
+                ],
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "toolbar-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": None, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert script.count("getNodeByIdAsync") == 3
+        assert script.count("createInstance()") == 3
+        assert script.count("appendChild") >= 3
+
+    def test_composition_children_not_emitted_for_mode1(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {
+                "type": "header",
+                "_composition": [
+                    {"child_type": "container", "count_mode": 3,
+                     "component_key": None, "frequency": 0.9},
+                ],
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "789:012", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Mode 1 element should NOT emit composition children (inherited from master)
+        assert script.count("getNodeByIdAsync") == 1  # just the header itself
+
+    def test_composition_children_skipped_when_ir_has_children(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {
+                "type": "card",
+                "children": ["heading-1"],
+                "_composition": [
+                    {"child_type": "container", "count_mode": 2,
+                     "component_key": None, "frequency": 0.8},
+                ],
+            },
+            "heading-1": {"type": "heading", "props": {"text": "Title"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2, "heading-1": -3}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": None, "bindings": []},
+            -3: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "container-child" not in script
+        assert "Title" in script
+
+    def test_composition_keyless_children_create_frames(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {
+                "type": "card",
+                "_composition": [
+                    {"child_type": "container", "count_mode": 2,
+                     "component_key": None, "frequency": 0.8},
+                ],
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": None, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # card-1 is Mode 2 (no key), its 2 keyless children should create frames
+        frame_count = script.count("figma.createFrame()")
+        assert frame_count >= 3  # screen + card + 2 children (screen doesn't create frame directly)
 
 
 # ---------------------------------------------------------------------------

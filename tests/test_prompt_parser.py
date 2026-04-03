@@ -8,7 +8,7 @@ import pytest
 
 from dd.catalog import seed_catalog
 from dd.db import init_db
-from dd.prompt_parser import SYSTEM_PROMPT, extract_json, parse_prompt, prompt_to_figma
+from dd.prompt_parser import SYSTEM_PROMPT, build_project_vocabulary, extract_json, parse_prompt, prompt_to_figma
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -105,6 +105,18 @@ class TestParsePrompt:
         result = parse_prompt("something invalid", client, CATALOG_TYPES)
         assert result == []
 
+    def test_empty_prompt_returns_empty_list(self):
+        client = _mock_client(VALID_RESPONSE)
+        result = parse_prompt("", client, CATALOG_TYPES)
+        assert result == []
+        client.messages.create.assert_not_called()
+
+    def test_whitespace_prompt_returns_empty_list(self):
+        client = _mock_client(VALID_RESPONSE)
+        result = parse_prompt("   \n  ", client, CATALOG_TYPES)
+        assert result == []
+        client.messages.create.assert_not_called()
+
     def test_nested_children_preserved(self):
         client = _mock_client(VALID_RESPONSE)
         result = parse_prompt("settings page", client, CATALOG_TYPES)
@@ -168,6 +180,74 @@ class TestPromptToFigma:
         result = prompt_to_figma("settings page", db, client)
         assert "components" in result
         assert len(result["components"]) == 3
+
+    def test_empty_prompt_returns_empty_screen(self, db):
+        client = _mock_client(VALID_RESPONSE)
+        result = prompt_to_figma("", db, client)
+        assert result["components"] == []
+        assert result["element_count"] == 1  # just the root screen element
+        client.messages.create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# System prompt tests
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# build_project_vocabulary tests
+# ---------------------------------------------------------------------------
+
+class TestBuildProjectVocabulary:
+    """Verify project vocabulary extraction from templates."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, opacity, slots) "
+            "VALUES ('button', 'button/large/translucent', 'key_btn_lt', 3606, "
+            "'HORIZONTAL', 152, 52, 1.0, "
+            "'[{\"child_type\": \"icon\", \"count_mode\": 2, \"component_key\": \"key_icon\", \"frequency\": 0.95}]')"
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, opacity) "
+            "VALUES ('tabs', 'nav/tabs', 'key_tabs', 812, "
+            "'HORIZONTAL', 489, 44, 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, instance_count, "
+            "layout_mode, width, height, opacity) "
+            "VALUES ('card', NULL, 10, "
+            "'VERTICAL', 428, 194, 1.0)"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_returns_string(self, db):
+        result = build_project_vocabulary(db)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_includes_variant_names(self, db):
+        result = build_project_vocabulary(db)
+        assert "button/large/translucent" in result
+
+    def test_includes_instance_counts(self, db):
+        result = build_project_vocabulary(db)
+        assert "3606" in result
+
+    def test_excludes_low_count_templates(self, db):
+        result = build_project_vocabulary(db, min_instances=100)
+        assert "card" not in result
+        assert "button/large/translucent" in result
 
 
 # ---------------------------------------------------------------------------

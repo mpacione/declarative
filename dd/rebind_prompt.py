@@ -60,6 +60,32 @@ def build_rebind_entries(
     return entries
 
 
+def build_template_rebind_entries(
+    template_entries: list[dict[str, str]],
+    figma_node_map: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Build rebind entries from template boundVariable data + Figma node map.
+
+    Takes:
+    - template_entries: [{element_id, property, variable_id}, ...] from
+      collect_template_rebind_entries
+    - figma_node_map: {element_id → figma_node_id} from M dict after execution
+
+    Returns entries compatible with generate_rebind_script.
+    """
+    entries = []
+    for te in template_entries:
+        figma_node_id = figma_node_map.get(te["element_id"])
+        if not figma_node_id:
+            continue
+        entries.append({
+            "node_id": figma_node_id,
+            "property": te["property"],
+            "variable_id": te["variable_id"],
+        })
+    return entries
+
+
 def generate_rebind_script(entries: list[dict[str, Any]]) -> str:
     """Generate a compact rebind script from entries.
 

@@ -14,6 +14,57 @@ from dd.compose import generate_from_prompt as _generate_from_prompt
 from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
 
 _MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_MIN_INSTANCES = 50
+
+
+def build_project_vocabulary(
+    conn: sqlite3.Connection,
+    min_instances: int = _DEFAULT_MIN_INSTANCES,
+) -> str:
+    """Build a project vocabulary block from component templates.
+
+    Queries templates with instance_count >= min_instances, groups by
+    catalog_type, and formats as text for LLM system prompt injection.
+    Includes variant names, component keys, and instance counts.
+    """
+    rows = conn.execute(
+        "SELECT catalog_type, variant, component_key, instance_count "
+        "FROM component_templates "
+        "WHERE instance_count >= ? "
+        "ORDER BY catalog_type, instance_count DESC",
+        (min_instances,),
+    ).fetchall()
+
+    if not rows:
+        return ""
+
+    from collections import defaultdict
+    by_type: dict[str, list] = defaultdict(list)
+    for r in rows:
+        by_type[r[0]].append({
+            "variant": r[1],
+            "component_key": r[2],
+            "instance_count": r[3],
+        })
+
+    lines = ["This project has these specific component variants (use exact variant names when composing):"]
+    for cat_type in sorted(by_type.keys()):
+        variants = by_type[cat_type]
+        variant_strs = []
+        for v in variants:
+            name = v["variant"] or "default"
+            count = v["instance_count"]
+            key_str = f", key={v['component_key']}" if v["component_key"] else ""
+            variant_strs.append(f"{name} ({count} instances{key_str})")
+        lines.append(f"  {cat_type}: {', '.join(variant_strs)}")
+
+    lines.append("")
+    lines.append(
+        "When outputting components, include a \"variant\" field with the exact variant name "
+        "from above when a specific variant applies."
+    )
+
+    return "\n".join(lines)
 
 SYSTEM_PROMPT = """You are a UI composition assistant. Given a natural language description of a screen, produce a JSON array of components.
 
@@ -84,7 +135,11 @@ def parse_prompt(
     """Parse a natural language prompt into a component list using Claude.
 
     Returns a list of component dicts suitable for compose_screen().
+    Returns empty list for empty/whitespace-only prompts.
     """
+    if not prompt or not prompt.strip():
+        return []
+
     response = client.messages.create(
         model=_MODEL,
         max_tokens=2048,
@@ -99,12 +154,14 @@ def prompt_to_figma(
     prompt: str,
     conn: sqlite3.Connection,
     client: Any,
+    page_name: str | None = None,
 ) -> dict[str, Any]:
     """End-to-end: natural language prompt → Figma JS script.
 
     Enriches the LLM prompt with project-specific screen patterns
     extracted from the DB, then orchestrates:
     parse_prompt → generate_from_prompt (compose + render).
+    When page_name is provided, the script creates a new Figma page.
     """
     file_row = conn.execute("SELECT id FROM files LIMIT 1").fetchone()
     file_id = file_row[0] if file_row else None
@@ -114,11 +171,15 @@ def prompt_to_figma(
         archetypes = extract_screen_archetypes(conn, file_id)
         archetype_context = get_archetype_prompt_context(archetypes)
 
+    vocabulary_context = build_project_vocabulary(conn)
+
     system = SYSTEM_PROMPT
     if archetype_context:
         system = system + "\n\n" + archetype_context
+    if vocabulary_context:
+        system = system + "\n\n" + vocabulary_context
 
     components = parse_prompt(prompt, client, system_prompt=system)
-    result = _generate_from_prompt(conn, components)
+    result = _generate_from_prompt(conn, components, page_name=page_name)
     result["components"] = components
     return result

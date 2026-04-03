@@ -880,6 +880,14 @@ CREATE TABLE IF NOT EXISTS component_templates (
     effects                 TEXT,
     opacity                 REAL,
     slots                   TEXT,
+    layout_sizing_h         TEXT,
+    layout_sizing_v         TEXT,
+    clips_content           TEXT,
+    layout_wrap             TEXT,
+    min_width               REAL,
+    max_width               REAL,
+    min_height              REAL,
+    max_height              REAL,
     created_at              TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(catalog_type, variant)
 );
