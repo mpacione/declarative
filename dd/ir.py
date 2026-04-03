@@ -10,6 +10,7 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Union
 
+from dd.classify_rules import is_system_chrome
 from dd.color import rgba_to_hex
 
 
@@ -440,6 +441,152 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> Dict[int, 
     return result
 
 
+def query_slot_definitions(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]:
+    """Fetch slot definitions keyed by component name.
+
+    Returns dict mapping component name to list of slot dicts, each with
+    name, slot_type, is_required, sort_order. Used by build_semantic_tree
+    to assign children to named slots.
+    """
+    cursor = conn.execute(
+        "SELECT c.name as component_name, cs.name, cs.slot_type, cs.is_required, cs.sort_order "
+        "FROM component_slots cs "
+        "JOIN components c ON cs.component_id = c.id "
+        "ORDER BY c.name, cs.sort_order"
+    )
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for row in cursor.fetchall():
+        comp_name = row[0]
+        if comp_name not in result:
+            result[comp_name] = []
+        result[comp_name].append({
+            "name": row[1],
+            "slot_type": row[2],
+            "is_required": row[3],
+            "sort_order": row[4],
+        })
+    return result
+
+
+def filter_system_chrome(
+    spec: Dict[str, Any], node_names: Dict[int, str],
+) -> Dict[str, Any]:
+    """Remove system chrome elements from a CompositionSpec.
+
+    Takes a spec and a mapping of node_id → node name. Removes elements
+    whose source node name matches system chrome patterns (iOS/StatusBar,
+    HomeIndicator, Safari, keyboards, etc). Does not mutate the input.
+    """
+    node_id_map = spec.get("_node_id_map", {})
+    chrome_eids = set()
+
+    for eid, node_id in node_id_map.items():
+        name = node_names.get(node_id, "")
+        if is_system_chrome(name):
+            chrome_eids.add(eid)
+
+    if not chrome_eids:
+        return spec
+
+    new_elements = {}
+    for eid, element in spec["elements"].items():
+        if eid in chrome_eids:
+            continue
+        new_element = dict(element)
+        if "children" in new_element:
+            new_element["children"] = [
+                c for c in new_element["children"] if c not in chrome_eids
+            ]
+        new_elements[eid] = new_element
+
+    new_node_id_map = {
+        eid: nid for eid, nid in node_id_map.items() if eid not in chrome_eids
+    }
+
+    return {**spec, "elements": new_elements, "_node_id_map": new_node_id_map}
+
+
+def _assign_children_to_slots(
+    children_eids: List[str],
+    slot_defs: List[Dict[str, Any]],
+    node_id_map: Dict[str, int],
+    node_data: Dict[int, Dict[str, Any]],
+    parent_node_id: int,
+) -> Dict[str, List[str]]:
+    """Assign child element IDs to named slots by spatial position.
+
+    Divides the parent's width into N equal zones (one per slot) and
+    assigns each child to the zone its x-coordinate falls into.
+    """
+    parent_info = node_data.get(parent_node_id, {})
+    parent_width = parent_info.get("width", 0)
+    num_slots = len(slot_defs)
+
+    if num_slots == 0 or parent_width == 0:
+        return {}
+
+    zone_width = parent_width / num_slots
+    parent_x = parent_info.get("x", 0)
+
+    slots: Dict[str, List[str]] = {s["name"]: [] for s in slot_defs}
+    slot_names_ordered = [s["name"] for s in slot_defs]
+
+    for child_eid in children_eids:
+        child_node_id = node_id_map.get(child_eid)
+        if child_node_id is None:
+            continue
+        child_info = node_data.get(child_node_id, {})
+        child_x = child_info.get("x", 0)
+        child_width = child_info.get("width", 0)
+        relative_x = (child_x + child_width / 2) - parent_x
+        slot_index = min(int(relative_x / zone_width), num_slots - 1)
+        slot_index = max(slot_index, 0)
+        slots[slot_names_ordered[slot_index]].append(child_eid)
+
+    return slots
+
+
+def build_semantic_tree(
+    spec: Dict[str, Any],
+    slot_defs: Dict[str, List[Dict[str, Any]]],
+    node_data: Dict[int, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Collapse a flat CompositionSpec into a semantic tree with slots.
+
+    For each element whose component has slot definitions, assigns its
+    children to named slots by spatial position. Children are moved from
+    the `children` list to a `slots` dict. Elements without slot defs
+    keep their `children` list unchanged. Does not mutate the input.
+    """
+    node_id_map = spec.get("_node_id_map", {})
+    new_elements: Dict[str, Dict[str, Any]] = {}
+
+    component_name_by_eid: Dict[str, str] = {}
+    for eid, node_id in node_id_map.items():
+        info = node_data.get(node_id, {})
+        component_name_by_eid[eid] = info.get("name", "")
+
+    for eid, element in spec["elements"].items():
+        new_element = dict(element)
+        children = element.get("children", [])
+        comp_name = component_name_by_eid.get(eid, "")
+        defs = slot_defs.get(comp_name)
+
+        if defs and children:
+            parent_node_id = node_id_map.get(eid)
+            if parent_node_id is not None:
+                assigned = _assign_children_to_slots(
+                    children, defs, node_id_map, node_data, parent_node_id,
+                )
+                if assigned:
+                    new_element["slots"] = assigned
+                    del new_element["children"]
+
+        new_elements[eid] = new_element
+
+    return {**spec, "elements": new_elements}
+
+
 def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
     """Fetch all classified nodes, bindings, and tokens for a screen.
 
@@ -638,17 +785,44 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def generate_ir(
+    conn: sqlite3.Connection, screen_id: int, semantic: bool = False,
+) -> Dict[str, Any]:
     """Generate CompositionSpec IR for a single screen.
+
+    When semantic=True, collapses the flat element tree into a semantic
+    tree with named slots, filters system chrome, and produces ~15-25
+    elements instead of ~100+.
 
     Returns dict with 'spec' (the CompositionSpec dict) and 'json' (serialized).
     """
-    import json
+    import json as json_mod
     data = query_screen_for_ir(conn, screen_id)
     spec = build_composition_spec(data)
+
+    if semantic:
+        node_id_map = spec.get("_node_id_map", {})
+        node_names = {}
+        node_positions = {}
+        for eid, nid in node_id_map.items():
+            row = conn.execute(
+                "SELECT name, x, y, width, height FROM nodes WHERE id = ?", (nid,),
+            ).fetchone()
+            if row:
+                node_names[nid] = row[0]
+                node_positions[nid] = {
+                    "x": row[1], "y": row[2], "width": row[3], "height": row[4],
+                    "name": row[0],
+                }
+
+        spec = filter_system_chrome(spec, node_names)
+
+        slot_defs = query_slot_definitions(conn)
+        spec = build_semantic_tree(spec, slot_defs, node_positions)
+
     return {
         "spec": spec,
-        "json": json.dumps(spec, indent=2),
+        "json": json_mod.dumps(spec, indent=2),
         "element_count": len(spec.get("elements", {})),
         "token_count": len(spec.get("tokens", {})),
     }

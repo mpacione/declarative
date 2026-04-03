@@ -9,7 +9,8 @@ from dd.db import init_db
 from dd.ir import (
     map_node_to_element, query_screen_for_ir, build_composition_spec, generate_ir,
     normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius,
-    query_screen_visuals,
+    query_screen_visuals, query_slot_definitions, filter_system_chrome,
+    build_semantic_tree,
 )
 from dd.catalog import seed_catalog
 
@@ -601,6 +602,265 @@ class TestGenerateIRCLI:
 
         from dd.cli import main
         main(["generate-ir", "--db", db_path, "--screen", "1"])
+
+
+# ---------------------------------------------------------------------------
+# Semantic tree tests (Phase 3b)
+# ---------------------------------------------------------------------------
+
+def _seed_slots(db: sqlite3.Connection) -> None:
+    """Insert component + slot data for semantic tree tests."""
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+    db.execute(
+        "INSERT INTO components (id, file_id, name, figma_node_id) "
+        "VALUES (1, 1, 'nav/top-nav', '1835:155037')"
+    )
+    db.executemany(
+        "INSERT INTO component_slots (id, component_id, name, slot_type, is_required, sort_order) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (1, 1, "left", "any", 0, 0),
+            (2, 1, "center", "any", 0, 1),
+            (3, 1, "right", "any", 0, 2),
+        ],
+    )
+    db.commit()
+
+
+class TestQuerySlotDefinitions:
+    """Verify query_slot_definitions() returns slot defs keyed by component name."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        _seed_slots(conn)
+        yield conn
+        conn.close()
+
+    def test_returns_dict_keyed_by_component_name(self, db):
+        slot_defs = query_slot_definitions(db)
+        assert isinstance(slot_defs, dict)
+        assert "nav/top-nav" in slot_defs
+
+    def test_slot_defs_have_correct_shape(self, db):
+        slot_defs = query_slot_definitions(db)
+        nav_slots = slot_defs["nav/top-nav"]
+        assert len(nav_slots) == 3
+        slot_names = [s["name"] for s in nav_slots]
+        assert slot_names == ["left", "center", "right"]
+
+    def test_slot_defs_include_type_and_order(self, db):
+        slot_defs = query_slot_definitions(db)
+        left_slot = slot_defs["nav/top-nav"][0]
+        assert left_slot["name"] == "left"
+        assert left_slot["slot_type"] == "any"
+        assert left_slot["sort_order"] == 0
+
+    def test_empty_db_returns_empty_dict(self):
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        slot_defs = query_slot_definitions(conn)
+        assert slot_defs == {}
+        conn.close()
+
+
+class TestFilterSystemChrome:
+    """Verify filter_system_chrome removes chrome elements from spec."""
+
+    def test_removes_ios_status_bar(self):
+        spec = {
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["header-1", "container-1"]},
+                "header-1": {"type": "header"},
+                "container-1": {"type": "container"},
+            },
+            "_node_id_map": {"header-1": 10, "container-1": 20},
+        }
+        node_names = {10: "nav/top-nav", 20: "iOS/StatusBar"}
+        filtered = filter_system_chrome(spec, node_names)
+        assert "container-1" not in filtered["elements"]
+        assert "container-1" not in filtered["elements"]["screen-1"]["children"]
+
+    def test_removes_home_indicator(self):
+        spec = {
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["header-1", "icon-1"]},
+                "header-1": {"type": "header"},
+                "icon-1": {"type": "icon"},
+            },
+            "_node_id_map": {"header-1": 10, "icon-1": 20},
+        }
+        node_names = {10: "nav/top-nav", 20: "iOS/HomeIndicator"}
+        filtered = filter_system_chrome(spec, node_names)
+        assert "icon-1" not in filtered["elements"]
+
+    def test_preserves_non_chrome_elements(self):
+        spec = {
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["header-1", "button-1"]},
+                "header-1": {"type": "header"},
+                "button-1": {"type": "button"},
+            },
+            "_node_id_map": {"header-1": 10, "button-1": 20},
+        }
+        node_names = {10: "nav/top-nav", 20: "button/large/solid"}
+        filtered = filter_system_chrome(spec, node_names)
+        assert "header-1" in filtered["elements"]
+        assert "button-1" in filtered["elements"]
+
+    def test_removes_safari_bottom(self):
+        spec = {
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["container-1"]},
+                "container-1": {"type": "container"},
+            },
+            "_node_id_map": {"container-1": 20},
+        }
+        node_names = {20: "Safari - Bottom"}
+        filtered = filter_system_chrome(spec, node_names)
+        assert "container-1" not in filtered["elements"]
+
+    def test_does_not_mutate_input(self):
+        spec = {
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["container-1"]},
+                "container-1": {"type": "container"},
+            },
+            "_node_id_map": {"container-1": 20},
+        }
+        node_names = {20: "iOS/StatusBar"}
+        filtered = filter_system_chrome(spec, node_names)
+        assert "container-1" in spec["elements"]  # original unchanged
+
+
+class TestBuildSemanticTree:
+    """Verify build_semantic_tree collapses flat spec into semantic tree with slots."""
+
+    def _make_flat_spec(self):
+        """A flat spec with a header containing icon, heading, and tabs children."""
+        return {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"direction": "vertical"},
+                    "children": ["header-1", "button-1"],
+                },
+                "header-1": {
+                    "type": "header",
+                    "layout": {"direction": "horizontal"},
+                    "children": ["icon-1", "heading-1", "tabs-1"],
+                },
+                "icon-1": {"type": "icon", "props": {"icon": "back"}},
+                "heading-1": {"type": "heading", "props": {"text": "Settings"}},
+                "tabs-1": {"type": "tabs"},
+                "button-1": {"type": "button", "props": {"text": "Save"}},
+            },
+            "tokens": {"color.primary": "#FF0000"},
+            "_node_id_map": {
+                "header-1": 10,
+                "icon-1": 11,
+                "heading-1": 12,
+                "tabs-1": 13,
+                "button-1": 20,
+            },
+        }
+
+    def _make_slot_defs(self):
+        return {
+            "nav/top-nav": [
+                {"name": "left", "slot_type": "any", "sort_order": 0},
+                {"name": "center", "slot_type": "any", "sort_order": 1},
+                {"name": "right", "slot_type": "any", "sort_order": 2},
+            ],
+        }
+
+    def _make_node_positions(self):
+        """x/y/width for slot assignment by position."""
+        return {
+            10: {"x": 0, "y": 0, "width": 428, "height": 64, "name": "nav/top-nav"},
+            11: {"x": 8, "y": 8, "width": 24, "height": 24, "name": "icon/back"},
+            12: {"x": 140, "y": 8, "width": 180, "height": 28, "name": "Settings"},
+            13: {"x": 340, "y": 8, "width": 80, "height": 44, "name": "nav/tabs"},
+            20: {"x": 16, "y": 200, "width": 200, "height": 48, "name": "button/save"},
+        }
+
+    def test_collapses_children_into_slots(self):
+        spec = self._make_flat_spec()
+        slot_defs = self._make_slot_defs()
+        node_data = self._make_node_positions()
+
+        result = build_semantic_tree(spec, slot_defs, node_data)
+
+        header = result["elements"]["header-1"]
+        assert "slots" in header
+        assert "children" not in header
+
+    def test_header_has_three_named_slots(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        header = result["elements"]["header-1"]
+        assert "left" in header["slots"]
+        assert "center" in header["slots"]
+        assert "right" in header["slots"]
+
+    def test_icon_assigned_to_left_slot(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        header = result["elements"]["header-1"]
+        assert "icon-1" in header["slots"]["left"]
+
+    def test_heading_assigned_to_center_slot(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        header = result["elements"]["header-1"]
+        assert "heading-1" in header["slots"]["center"]
+
+    def test_tabs_assigned_to_right_slot(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        header = result["elements"]["header-1"]
+        assert "tabs-1" in header["slots"]["right"]
+
+    def test_slot_children_remain_in_elements(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        assert "icon-1" in result["elements"]
+        assert "heading-1" in result["elements"]
+        assert "tabs-1" in result["elements"]
+
+    def test_standalone_button_keeps_children_pattern(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+
+        screen = result["elements"]["screen-1"]
+        assert "button-1" in screen["children"]
+
+    def test_element_without_slot_defs_keeps_children(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, {}, self._make_node_positions())
+
+        header = result["elements"]["header-1"]
+        assert "children" in header
+        assert "slots" not in header
+
+    def test_does_not_mutate_input(self):
+        spec = self._make_flat_spec()
+        original_children = list(spec["elements"]["header-1"]["children"])
+        build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+        assert spec["elements"]["header-1"]["children"] == original_children
+
+    def test_preserves_node_id_map(self):
+        spec = self._make_flat_spec()
+        result = build_semantic_tree(spec, self._make_slot_defs(), self._make_node_positions())
+        assert result["_node_id_map"] == spec["_node_id_map"]
 
 
 # ---------------------------------------------------------------------------

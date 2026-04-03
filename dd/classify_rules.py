@@ -48,6 +48,8 @@ def is_system_chrome(name: str) -> bool:
 
     if lowered.startswith("ios/"):
         return True
+    if lowered.startswith("_statusbar"):
+        return True
     if lowered in SYSTEM_CHROME_EXACT:
         return True
     if KEYBOARD_SINGLE_CHAR_RE.match(lowered):

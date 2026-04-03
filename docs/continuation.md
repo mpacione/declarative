@@ -10,7 +10,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
 - **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
 - **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
-- **Tests**: 1,054 passing
+- **Tests**: 1,136 passing
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model
@@ -24,12 +24,12 @@ Layer 3: COMPOSITION     Abstractions → IR   "Describe what to build"
 Layer 4: RENDERING       IR + DB/Config → Output  "Build it concretely"
 ```
 
-Key decisions: thin IR (semantic intent only, no visual section — Phase 2 complete), renderer reads DB directly for visual detail, instance-first Figma rendering, default library fallback. Synthetic tokens deferred to composition layer (not needed for rendering).
+Key decisions: thin IR (no visual section), semantic tree (116→20 elements with named slots), renderer reads DB directly for visual detail, instance-first Figma rendering, default library fallback. Synthetic tokens deferred to composition layer.
 
 ## What To Do Next
 
-### Phase 3: Semantic tree construction
-The IR currently has ~116 elements per screen (one per classified node). The target is ~15-25 semantic elements. This requires slot filling (children mapped to named slots), system chrome exclusion, and absorption of unclassified intermediate frames. Prerequisite: run `extract_components()` on Dank to populate slot definitions.
+### Phase 4: Template extraction + prompt-generated rendering
+Extract component templates from classified instances (visual defaults, frame structure, slot positions). Use templates to render prompt-generated screens where no source DB row exists. This is the final phase before end-to-end prompt→screen.
 
 ### Before Phase 1, consider:
 - Run `extract_components()` on Dank file to populate the 6 empty composition tables
