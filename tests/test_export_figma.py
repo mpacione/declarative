@@ -1,27 +1,23 @@
 """Unit tests for export payload generation and rebind script generation."""
 
 import json
-import pytest
 import sqlite3
-from typing import Any, Dict, List
+from typing import Any
+
+import pytest
 
 from dd.config import MAX_BINDINGS_PER_SCRIPT, MAX_TOKENS_PER_CALL
 from dd.export_figma_vars import (
-    DTCG_TO_FIGMA_TYPE,
     dtcg_to_figma_path,
     figma_path_to_dtcg,
     generate_variable_payloads,
     generate_variable_payloads_checked,
-    get_mode_names_for_collection,
     get_sync_status_summary,
     map_token_type_to_figma,
-    parse_figma_variables_response,
     query_exportable_tokens,
     writeback_variable_ids,
-    writeback_variable_ids_from_response,
 )
 from dd.export_rebind import (
-    PROPERTY_HANDLERS,
     classify_property,
     generate_rebind_scripts,
     generate_single_script,
@@ -48,7 +44,7 @@ def _seed_with_figma_ids(db: sqlite3.Connection) -> sqlite3.Connection:
     return db
 
 
-def _make_mock_figma_response(token_names: List[str]) -> Dict[str, Any]:
+def _make_mock_figma_response(token_names: list[str]) -> dict[str, Any]:
     """Build a mock figma_get_variables response."""
     return {
         "collections": [
@@ -251,9 +247,7 @@ def test_payload_modes_match_collection(db):
     payloads = generate_variable_payloads(db, 1)
 
     for payload in payloads:
-        if payload["collectionName"] == "Colors":
-            assert payload["modes"] == ["Default"]
-        elif payload["collectionName"] == "Spacing":
+        if payload["collectionName"] == "Colors" or payload["collectionName"] == "Spacing":
             assert payload["modes"] == ["Default"]
 
 

@@ -5,18 +5,17 @@ import sqlite3
 
 import pytest
 
+from dd.catalog import seed_catalog
 from dd.db import init_db
 from dd.generate import (
-    hex_to_figma_rgb,
-    resolve_style_value,
-    font_weight_to_style,
+    build_visual_from_db,
     collect_fonts,
+    font_weight_to_style,
     generate_figma_script,
     generate_screen,
-    build_visual_from_db,
+    hex_to_figma_rgb,
+    resolve_style_value,
 )
-from dd.catalog import seed_catalog
-
 
 # ---------------------------------------------------------------------------
 # Step 1: Pure helpers

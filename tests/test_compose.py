@@ -1,15 +1,12 @@
 """Tests for prompt→IR composition (Phase 4b)."""
 
-import json
 import sqlite3
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.compose import compose_screen, build_template_visuals, generate_from_prompt
-from dd.generate import generate_figma_script
-
+from dd.compose import build_template_visuals, compose_screen, generate_from_prompt
+from dd.db import init_db
 
 # ---------------------------------------------------------------------------
 # compose_screen tests

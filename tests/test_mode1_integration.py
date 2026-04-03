@@ -10,8 +10,7 @@ import sqlite3
 
 import pytest
 
-from dd.compose import compose_screen, build_template_visuals, generate_from_prompt
-from dd.generate import generate_figma_script
+from dd.compose import build_template_visuals, compose_screen, generate_from_prompt
 from dd.templates import query_templates
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")

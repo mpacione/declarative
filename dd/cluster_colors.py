@@ -1,11 +1,8 @@
 """Color clustering for Phase 5 of token extraction."""
 
-import json
 import sqlite3
-from typing import Optional
 
 from dd.color import hex_to_oklch, hex_to_rgba, oklch_delta_e
-from dd.db import get_connection
 
 
 def query_color_census(conn: sqlite3.Connection, file_id: int) -> list[dict]:

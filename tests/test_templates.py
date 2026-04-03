@@ -1,12 +1,11 @@
 """Tests for component template extraction (Phase 4a)."""
 
-import json
 import sqlite3
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
+from dd.db import init_db
 from dd.templates import compute_mode_template, extract_templates, query_templates
 
 

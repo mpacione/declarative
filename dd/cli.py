@@ -13,27 +13,27 @@ Usage:
 import argparse
 import glob
 import json
-
 from pathlib import Path as _Path
+
 from dotenv import load_dotenv
+
 load_dotenv(_Path(__file__).resolve().parent.parent / ".env", override=True)
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 from dd.db import get_connection, init_db
+from dd.extract import complete_run, process_screen, run_inventory
 from dd.figma_api import (
     convert_node_tree,
     extract_top_level_frames,
     get_file_tree,
     get_screen_nodes,
 )
-from dd.extract import complete_run, process_screen, run_inventory
 
 
-def resolve_token(flag_value: Optional[str]) -> str:
+def resolve_token(flag_value: str | None) -> str:
     if flag_value:
         return flag_value
     env_token = os.environ.get("FIGMA_ACCESS_TOKEN")
@@ -46,8 +46,8 @@ def resolve_token(flag_value: Optional[str]) -> str:
 def run_extract(
     file_key: str,
     token: str,
-    page_id: Optional[str] = None,
-    db_path: Optional[str] = None,
+    page_id: str | None = None,
+    db_path: str | None = None,
 ) -> None:
     if db_path is None:
         db_path = f"{file_key}.declarative.db"
@@ -122,7 +122,7 @@ def run_extract(
     conn.close()
 
 
-def detect_db_path(explicit: Optional[str]) -> str:
+def detect_db_path(explicit: str | None) -> str:
     if explicit:
         return explicit
 
@@ -212,7 +212,7 @@ def run_validate(db_path: str) -> None:
     conn.close()
 
 
-def run_export(fmt: str, db_path: str, out: Optional[str] = None) -> None:
+def run_export(fmt: str, db_path: str, out: str | None = None) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
@@ -390,7 +390,7 @@ def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False)
     )
     conn.close()
 
-    print(f"Classification complete:")
+    print("Classification complete:")
     print(f"  Screens processed:     {result['screens_processed']}")
     print(f"  Formal classified:     {result['formal_classified']}")
     print(f"  Heuristic classified:  {result['heuristic_classified']}")
@@ -482,7 +482,7 @@ def _run_maintenance(db_path: str, args: argparse.Namespace) -> None:
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    from dd.maintenance import prune_extraction_runs, prune_export_validations
+    from dd.maintenance import prune_export_validations, prune_extraction_runs
 
     conn = get_connection(db_path)
     keep_last = args.keep_last
@@ -515,8 +515,8 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    from dd.extract_supplement import run_supplement
     from dd.db import classify_screens
+    from dd.extract_supplement import run_supplement
 
     conn = get_connection(db_path)
 
@@ -531,7 +531,7 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
         print(f"Would extract Plugin API fields for {screen_count} app screens")
         print(f"  Port: {args.port}")
         print(f"  Batch size: {args.batch_size}")
-        print(f"  Fields: componentKey, layoutPositioning, Grid properties")
+        print("  Fields: componentKey, layoutPositioning, Grid properties")
         conn.close()
         return
 
@@ -651,7 +651,7 @@ def _parse_figma_input(raw: str) -> str:
     return raw
 
 
-def main(argv: Optional[list] = None) -> None:
+def main(argv: list | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dd", description="Declarative Design CLI")
     subparsers = parser.add_subparsers(dest="command")
 

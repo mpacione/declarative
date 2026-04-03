@@ -2,18 +2,17 @@
 
 import json
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
 from dd.classify_llm import (
     build_classification_prompt,
-    parse_classification_response,
     classify_llm,
+    parse_classification_response,
 )
-
+from dd.db import init_db
 
 # ---------------------------------------------------------------------------
 # Step 2: Prompt builder tests

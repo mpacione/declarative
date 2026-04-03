@@ -1,9 +1,7 @@
 """Export design tokens to Tailwind CSS theme configuration."""
 
 import sqlite3
-from typing import Dict, List, Any
 from datetime import datetime
-
 
 TAILWIND_SECTION_MAP = {
     "color.surface": "colors",
@@ -162,7 +160,7 @@ def generate_tailwind_config(conn: sqlite3.Connection, file_id: int) -> str:
     tokens = cursor.fetchall()
 
     # Group tokens by Tailwind section
-    sections: Dict[str, Dict[str, str]] = {}
+    sections: dict[str, dict[str, str]] = {}
 
     for token in tokens:
         token_name = token["name"]
@@ -252,7 +250,7 @@ def generate_tailwind_config_dict(conn: sqlite3.Connection, file_id: int) -> dic
     tokens = cursor.fetchall()
 
     # Group tokens by Tailwind section
-    sections: Dict[str, Dict[str, str]] = {}
+    sections: dict[str, dict[str, str]] = {}
 
     for token in tokens:
         token_name = token["name"]
@@ -272,8 +270,7 @@ def generate_tailwind_config_dict(conn: sqlite3.Connection, file_id: int) -> dic
         sections[section][key] = value
 
     # Remove the "extend" section if it exists (it's just a fallback)
-    if "extend" in sections:
-        del sections["extend"]
+    sections.pop("extend", None)
 
     return sections
 

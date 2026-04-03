@@ -7,7 +7,8 @@ curation, validation, Figma payload generation, writeback, and rebind scripts.
 import json
 import math
 import sqlite3
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -23,8 +24,7 @@ from dd.export_figma_vars import (
 )
 from dd.export_rebind import generate_rebind_scripts, get_rebind_summary
 from dd.extract import run_extraction_pipeline
-from dd.validate import is_export_ready, run_validation
-
+from dd.validate import run_validation
 
 # Mock frame data for 3 screens
 MOCK_FRAMES = [
@@ -34,7 +34,7 @@ MOCK_FRAMES = [
 ]
 
 
-def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
+def _build_e2e_mock_data() -> tuple[list[dict], Callable[[str], list[dict]]]:
     """Build mock frames and extraction function for e2e testing.
 
     Returns comprehensive mock data covering all property types:
@@ -48,7 +48,7 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
     """
     frames = MOCK_FRAMES
 
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         """Mock extract function that returns rich node data."""
         if node_id == "1:1":
             # Home screen: dark background with text and card elements
@@ -331,7 +331,7 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
     return (frames, extract_fn)
 
 
-def _build_mock_figma_response_from_payloads(payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_mock_figma_response_from_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Build a mock figma_get_variables response from generated payloads.
 
     Creates a response that matches the structure expected by writeback,

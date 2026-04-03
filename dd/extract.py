@@ -2,7 +2,8 @@
 
 import sqlite3
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from dd.extract_bindings import create_bindings_for_screen
 from dd.extract_components import extract_components
@@ -26,10 +27,10 @@ def run_inventory(
     conn: sqlite3.Connection,
     file_key: str,
     file_name: str,
-    frames: List[Dict[str, Any]],
-    node_count: Optional[int] = None,
-    agent_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    frames: list[dict[str, Any]],
+    node_count: int | None = None,
+    agent_id: str | None = None,
+) -> dict[str, Any]:
     """
     Set up extraction run with file and screens.
 
@@ -89,8 +90,8 @@ def process_screen(
     run_id: int,
     screen_id: int,
     figma_node_id: str,
-    raw_response: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    raw_response: list[dict[str, Any]],
+) -> dict[str, Any]:
     """
     Process a single screen's extraction response.
 
@@ -163,7 +164,7 @@ def process_screen(
 
 def get_next_screen(
     conn: sqlite3.Connection, run_id: int
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Get the next screen to process.
 
@@ -193,7 +194,7 @@ def get_extraction_script(screen_figma_node_id: str) -> str:
     return generate_extraction_script(screen_figma_node_id)
 
 
-def complete_run(conn: sqlite3.Connection, run_id: int) -> Dict[str, Any]:
+def complete_run(conn: sqlite3.Connection, run_id: int) -> dict[str, Any]:
     """
     Complete an extraction run and update status.
 
@@ -266,7 +267,7 @@ def complete_run(conn: sqlite3.Connection, run_id: int) -> Dict[str, Any]:
     }
 
 
-def get_component_sheets(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def get_component_sheets(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """
     Get all component_sheet screens for a file.
 
@@ -404,7 +405,7 @@ def generate_component_extraction_script(screen_node_id: str) -> str:
     return script
 
 
-def parse_component_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def parse_component_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Parse and validate component extraction response from use_figma.
 
@@ -436,8 +437,8 @@ def parse_component_extraction_response(response: List[Dict[str, Any]]) -> List[
 def run_component_extraction(
     conn: sqlite3.Connection,
     file_id: int,
-    component_data: List[Dict[str, Any]]
-) -> Dict[str, Any]:
+    component_data: list[dict[str, Any]]
+) -> dict[str, Any]:
     """
     Process component data and insert into database.
 
@@ -548,12 +549,12 @@ def run_extraction_pipeline(
     conn: sqlite3.Connection,
     file_key: str,
     file_name: str,
-    frames: List[Dict[str, Any]],
-    extract_fn: Callable[[str], List[Dict[str, Any]]],
-    node_count: Optional[int] = None,
-    agent_id: Optional[str] = None,
-    component_extract_fn: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
-) -> Dict[str, Any]:
+    frames: list[dict[str, Any]],
+    extract_fn: Callable[[str], list[dict[str, Any]]],
+    node_count: int | None = None,
+    agent_id: str | None = None,
+    component_extract_fn: Callable[[str], list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     """
     Run the full extraction pipeline.
 
@@ -661,7 +662,7 @@ def run_extraction_pipeline(
                 except Exception as e:
                     print(f"  Failed to extract components from {sheet_name}: {e}")
 
-            print(f"\nComponent extraction complete:")
+            print("\nComponent extraction complete:")
             print(f"  Total components: {total_components}")
             print(f"  Total variants: {total_variants}")
             print(f"  Instances linked: {total_instances_linked}")

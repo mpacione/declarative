@@ -6,18 +6,15 @@ structures it, and writes to the database. It does not call MCP directly.
 
 import json
 import sqlite3
-from typing import Dict, List, Optional, FrozenSet, Any
-
-from dd.db import get_connection
-
+from typing import Any
 
 # Interaction state values that indicate interaction-related variant axes
-INTERACTION_STATE_VALUES: FrozenSet[str] = frozenset({
+INTERACTION_STATE_VALUES: frozenset[str] = frozenset({
     "default", "hover", "focus", "pressed", "disabled", "selected", "loading"
 })
 
 # Component category keywords for auto-categorization
-CATEGORY_KEYWORDS: Dict[str, List[str]] = {
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "button": ["button", "btn"],
     "input": ["input", "text field", "textfield", "search"],
     "nav": ["nav", "tab", "menu", "sidebar"],
@@ -29,12 +26,12 @@ CATEGORY_KEYWORDS: Dict[str, List[str]] = {
 }
 
 # Names/patterns that indicate non-slot children (structural noise)
-NON_SLOT_HEURISTICS: FrozenSet[str] = frozenset({
+NON_SLOT_HEURISTICS: frozenset[str] = frozenset({
     "background", "bg", "divider", "separator", "spacer", "line", "border", "overlay", "shadow"
 })
 
 # Map component categories to ARIA roles
-ROLE_MAP: Dict[str, str] = {
+ROLE_MAP: dict[str, str] = {
     "button": "button",
     "input": "textbox",
     "nav": "navigation",
@@ -46,10 +43,10 @@ ROLE_MAP: Dict[str, str] = {
 }
 
 # Categories that represent interactive components requiring touch targets
-INTERACTIVE_CATEGORIES: FrozenSet[str] = frozenset({"button", "input", "nav", "modal"})
+INTERACTIVE_CATEGORIES: frozenset[str] = frozenset({"button", "input", "nav", "modal"})
 
 
-def infer_category(name: str) -> Optional[str]:
+def infer_category(name: str) -> str | None:
     """
     Infer component category from its name using keyword matching.
 
@@ -74,7 +71,7 @@ def infer_category(name: str) -> Optional[str]:
     return None
 
 
-def infer_a11y(category: Optional[str], name: str) -> Dict[str, Any]:
+def infer_a11y(category: str | None, name: str) -> dict[str, Any]:
     """
     Infer accessibility properties for a component based on its category and name.
 
@@ -127,7 +124,7 @@ def infer_a11y(category: Optional[str], name: str) -> Dict[str, Any]:
     }
 
 
-def insert_a11y(conn: sqlite3.Connection, component_id: int, a11y_data: Dict[str, Any]) -> int:
+def insert_a11y(conn: sqlite3.Connection, component_id: int, a11y_data: dict[str, Any]) -> int:
     """
     Insert or update accessibility properties for a component.
 
@@ -174,7 +171,7 @@ def insert_a11y(conn: sqlite3.Connection, component_id: int, a11y_data: Dict[str
     return row[0] if row else cursor.lastrowid
 
 
-def parse_variant_properties(variant_name: str) -> Dict[str, str]:
+def parse_variant_properties(variant_name: str) -> dict[str, str]:
     """
     Parse a Figma variant name into property key-value pairs.
 
@@ -205,7 +202,7 @@ def parse_variant_properties(variant_name: str) -> Dict[str, str]:
     return properties
 
 
-def detect_interaction_axis(axis_name: str, axis_values: List[str]) -> bool:
+def detect_interaction_axis(axis_name: str, axis_values: list[str]) -> bool:
     """
     Detect if an axis represents interaction states.
 
@@ -233,7 +230,7 @@ def detect_interaction_axis(axis_name: str, axis_values: List[str]) -> bool:
     return lower_values.issubset(INTERACTION_STATE_VALUES)
 
 
-def infer_slot_type(child: Dict[str, Any]) -> str:
+def infer_slot_type(child: dict[str, Any]) -> str:
     """
     Infer the slot type based on a child node's properties.
 
@@ -269,7 +266,7 @@ def infer_slot_type(child: Dict[str, Any]) -> str:
     return "any"
 
 
-def infer_slots(children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def infer_slots(children: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Infer component slots from direct children of a component.
 
@@ -329,7 +326,7 @@ def infer_slots(children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return slots
 
 
-def insert_slots(conn: sqlite3.Connection, component_id: int, slots: List[Dict[str, Any]]) -> List[int]:
+def insert_slots(conn: sqlite3.Connection, component_id: int, slots: list[dict[str, Any]]) -> list[int]:
     """
     Insert or update component slots in the database.
 
@@ -379,7 +376,7 @@ def insert_slots(conn: sqlite3.Connection, component_id: int, slots: List[Dict[s
 
 def extract_slots_from_nodes(conn: sqlite3.Connection, component_id: int,
                            component_figma_node_id: str,
-                           children: Optional[List[Dict[str, Any]]] = None) -> List[int]:
+                           children: list[dict[str, Any]] | None = None) -> list[int]:
     """
     Extract and insert slots for a component from its children.
 
@@ -422,7 +419,7 @@ def extract_slots_from_nodes(conn: sqlite3.Connection, component_id: int,
     return []
 
 
-def parse_component_set(component_set_data: Dict[str, Any]) -> Dict[str, Any]:
+def parse_component_set(component_set_data: dict[str, Any]) -> dict[str, Any]:
     """
     Parse a COMPONENT_SET node from Figma.
 
@@ -512,7 +509,7 @@ def parse_component_set(component_set_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def parse_standalone_component(component_data: Dict[str, Any]) -> Dict[str, Any]:
+def parse_standalone_component(component_data: dict[str, Any]) -> dict[str, Any]:
     """
     Parse a standalone COMPONENT node (not part of a COMPONENT_SET).
 
@@ -544,7 +541,7 @@ def parse_standalone_component(component_data: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
-def insert_component(conn: sqlite3.Connection, file_id: int, component_data: Dict[str, Any]) -> int:
+def insert_component(conn: sqlite3.Connection, file_id: int, component_data: dict[str, Any]) -> int:
     """
     Insert or update a component in the database.
 
@@ -588,7 +585,7 @@ def insert_component(conn: sqlite3.Connection, file_id: int, component_data: Dic
     return component_id
 
 
-def insert_variants(conn: sqlite3.Connection, component_id: int, variants: List[Dict[str, Any]]) -> List[int]:
+def insert_variants(conn: sqlite3.Connection, component_id: int, variants: list[dict[str, Any]]) -> list[int]:
     """
     Insert or update variants for a component.
 
@@ -631,7 +628,7 @@ def insert_variants(conn: sqlite3.Connection, component_id: int, variants: List[
     return variant_ids
 
 
-def insert_variant_axes(conn: sqlite3.Connection, component_id: int, axes: List[Dict[str, Any]]) -> List[int]:
+def insert_variant_axes(conn: sqlite3.Connection, component_id: int, axes: list[dict[str, Any]]) -> list[int]:
     """
     Insert or update variant axes for a component.
 
@@ -751,7 +748,7 @@ def populate_variant_dimension_values(conn: sqlite3.Connection, component_id: in
     return count
 
 
-def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: List[Dict[str, Any]]) -> List[int]:
+def extract_components(conn: sqlite3.Connection, file_id: int, component_nodes: list[dict[str, Any]]) -> list[int]:
     """
     Process a list of component/component_set nodes from Figma.
 

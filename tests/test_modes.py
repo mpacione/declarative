@@ -1,20 +1,17 @@
 """Unit tests for mode creation functionality."""
 
-import json
 import pytest
-import sqlite3
 
 from dd.modes import (
-    create_mode,
-    copy_values_from_default,
-    apply_oklch_inversion,
     apply_high_contrast,
+    apply_oklch_inversion,
     apply_scale_factor,
+    copy_values_from_default,
     create_dark_mode,
-    create_compact_mode,
     create_high_contrast_mode,
+    create_mode,
     create_theme,
-    oklch_to_hex
+    oklch_to_hex,
 )
 from tests.fixtures import seed_post_curation
 

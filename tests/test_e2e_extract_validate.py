@@ -6,17 +6,17 @@ curation, and validation, verifying the final DB state is export-ready.
 
 import json
 import sqlite3
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
 from dd.cluster import run_clustering
-from dd.curate import accept_all, accept_token, rename_token
+from dd.curate import accept_all
 from dd.db import init_db
 from dd.extract import run_extraction_pipeline
 from dd.status import format_status_report, get_curation_progress, get_status_dict
 from dd.validate import is_export_ready, run_validation
-
 
 # Mock frame data for 3 screens
 MOCK_FRAMES = [
@@ -26,14 +26,14 @@ MOCK_FRAMES = [
 ]
 
 
-def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
+def _build_e2e_mock_data() -> tuple[list[dict], Callable[[str], list[dict]]]:
     """Build comprehensive mock data that exercises all pipeline stages.
 
     Returns:
         Tuple of (frames, extract_fn) where extract_fn returns node lists per screen.
     """
 
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         """Mock extract function that returns rich node data."""
         if node_id == "1:1":
             # Home screen: dark background with text and card elements

@@ -2,12 +2,8 @@
 
 import json
 import sqlite3
-from pathlib import Path
-from typing import Any, Dict, List
 
-import pytest
-
-from dd.db import init_db, run_migration, classify_screens
+from dd.db import classify_screens, init_db, run_migration
 from dd.extract_screens import (
     compute_is_semantic,
     generate_extraction_script,
@@ -508,7 +504,7 @@ def test_update_screen_status():
 # ---------------------------------------------------------------------------
 
 def test_run_supplement_with_mock_execute():
-    from dd.extract_supplement import run_supplement, apply_supplement
+    from dd.extract_supplement import run_supplement
 
     conn = init_db(":memory:")
     conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")

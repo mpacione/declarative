@@ -4,12 +4,13 @@ Tests verify the boundary between extraction output and clustering by running
 real clustering on real fixture extraction data and verifying the resulting DB state.
 """
 
-import sqlite3
-import pytest
 import re
+import sqlite3
 
+import pytest
+
+from dd.cluster import run_clustering
 from tests.fixtures import seed_post_extraction
-from dd.cluster import run_clustering, generate_summary, validate_no_orphan_tokens
 
 
 @pytest.fixture
@@ -19,7 +20,7 @@ def db():
     conn.row_factory = sqlite3.Row
 
     # Load schema
-    with open("schema.sql", "r") as f:
+    with open("schema.sql") as f:
         schema_sql = f.read()
     conn.executescript(schema_sql)
 

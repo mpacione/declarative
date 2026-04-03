@@ -5,6 +5,7 @@ the conversion functions must produce dicts matching parse_extraction_response()
 """
 
 import json
+
 import pytest
 
 from dd.figma_api import convert_node_tree, extract_top_level_frames

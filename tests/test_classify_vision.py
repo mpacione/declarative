@@ -6,10 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
 from dd.classify_vision import cross_validate_vision
-
+from dd.db import init_db
 
 # ---------------------------------------------------------------------------
 # Fixtures

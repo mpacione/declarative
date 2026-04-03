@@ -11,8 +11,8 @@ import sqlite3
 
 import pytest
 
-from dd.ir import generate_ir, query_slot_definitions, query_screen_visuals
 from dd.classify_rules import is_system_chrome
+from dd.ir import generate_ir, query_screen_visuals, query_slot_definitions
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")
 DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)

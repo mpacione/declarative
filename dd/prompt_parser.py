@@ -8,11 +8,10 @@ fast, cheap parsing.
 import json
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.compose import generate_from_prompt as _generate_from_prompt
 from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
-
 
 _MODEL = "claude-haiku-4-5-20251001"
 
@@ -52,7 +51,7 @@ Rules:
 - Output ONLY the JSON array, no explanation"""
 
 
-def extract_json(text: str) -> List[Dict[str, Any]]:
+def extract_json(text: str) -> list[dict[str, Any]]:
     """Extract a JSON array from LLM response text.
 
     Handles plain JSON, markdown code blocks, and text before/after JSON.
@@ -79,9 +78,9 @@ def extract_json(text: str) -> List[Dict[str, Any]]:
 def parse_prompt(
     prompt: str,
     client: Any,
-    catalog_types: Optional[List[str]] = None,
-    system_prompt: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    catalog_types: list[str] | None = None,
+    system_prompt: str | None = None,
+) -> list[dict[str, Any]]:
     """Parse a natural language prompt into a component list using Claude.
 
     Returns a list of component dicts suitable for compose_screen().
@@ -100,7 +99,7 @@ def prompt_to_figma(
     prompt: str,
     conn: sqlite3.Connection,
     client: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """End-to-end: natural language prompt → Figma JS script.
 
     Enriches the LLM prompt with project-specific screen patterns

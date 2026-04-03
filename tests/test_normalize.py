@@ -1,16 +1,17 @@
 """Unit tests for normalization utilities."""
 
 import json
-import pytest
-from dd.normalize import (
-    normalize_fill,
-    normalize_stroke,
-    normalize_effect,
-    normalize_typography,
-    normalize_spacing,
-    normalize_radius,
-)
 
+import pytest
+
+from dd.normalize import (
+    normalize_effect,
+    normalize_fill,
+    normalize_radius,
+    normalize_spacing,
+    normalize_stroke,
+    normalize_typography,
+)
 
 pytestmark = pytest.mark.unit
 pytest.mark.timeout(10)

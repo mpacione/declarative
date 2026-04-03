@@ -8,20 +8,20 @@ Classifies nodes against the component_type_catalog using:
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.catalog import get_catalog
 from dd.classify_rules import is_system_chrome, parse_component_name
 
 
-def build_alias_index(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
+def build_alias_index(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Build a lookup dict mapping prefixes and aliases to catalog entries.
 
     Returns dict where keys are lowercase names/aliases and values are
     dicts with catalog_type_id, canonical_name, and category.
     """
     catalog = get_catalog(conn)
-    index: Dict[str, Dict[str, Any]] = {}
+    index: dict[str, dict[str, Any]] = {}
 
     for entry in catalog:
         record = {
@@ -39,7 +39,7 @@ def build_alias_index(conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
     return index
 
 
-def classify_formal(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def classify_formal(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Step 1: Classify nodes by matching name prefixes to the catalog.
 
     Processes INSTANCE and FRAME nodes that aren't already classified.
@@ -98,7 +98,7 @@ def classify_formal(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
     return {"classified": len(inserts)}
 
 
-def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Set parent_instance_id for nested classified instances.
 
     For each classified instance, walks up the node tree via parent_id
@@ -111,7 +111,7 @@ def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> Dict[str,
         "WHERE sci.screen_id = ?",
         (screen_id,),
     )
-    instance_by_node: Dict[int, int] = {}
+    instance_by_node: dict[int, int] = {}
     for sci_id, node_id in cursor.fetchall():
         instance_by_node[node_id] = sci_id
 
@@ -120,7 +120,7 @@ def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> Dict[str,
         "SELECT id, parent_id FROM nodes WHERE screen_id = ?",
         (screen_id,),
     )
-    node_parent: Dict[int, Optional[int]] = {}
+    node_parent: dict[int, int | None] = {}
     for node_id, parent_id in cursor.fetchall():
         node_parent[node_id] = parent_id
 
@@ -153,9 +153,9 @@ def run_classification(
     conn: sqlite3.Connection,
     file_id: int,
     client: Any = None,
-    file_key: Optional[str] = None,
+    file_key: str | None = None,
     fetch_screenshot: Any = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Orchestrate the full classification cascade for all screens in a file.
 
     Runs: formal → heuristics → [LLM] → parent linkage → [vision] → skeleton.

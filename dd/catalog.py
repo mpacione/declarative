@@ -7,19 +7,19 @@ IR generation (Phase 2), and all downstream phases.
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 
 
 class CatalogEntry(TypedDict, total=False):
     canonical_name: str
-    aliases: Optional[List[str]]
+    aliases: list[str] | None
     category: str
     behavioral_description: str
-    prop_definitions: Optional[Dict[str, Any]]
-    slot_definitions: Optional[Dict[str, Any]]
+    prop_definitions: dict[str, Any] | None
+    slot_definitions: dict[str, Any] | None
     semantic_role: str
-    recognition_heuristics: Optional[Dict[str, Any]]
-    related_types: Optional[List[str]]
+    recognition_heuristics: dict[str, Any] | None
+    related_types: list[str] | None
 
 
 # ---------------------------------------------------------------------------
@@ -612,7 +612,7 @@ def _parse_json_field(value: str | None) -> list | dict | None:
     return json.loads(value)
 
 
-def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     for field in ("aliases", "prop_definitions", "slot_definitions",
                   "recognition_heuristics", "related_types"):
@@ -623,7 +623,7 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def get_catalog(
     conn: sqlite3.Connection,
     category: str | None = None,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Return catalog entries, optionally filtered by category.
 
     JSON columns are parsed into Python objects.
@@ -644,7 +644,7 @@ def get_catalog(
 def lookup_by_name(
     conn: sqlite3.Connection,
     name: str,
-) -> Dict[str, Any] | None:
+) -> dict[str, Any] | None:
     """Find a catalog entry by canonical name or alias (case-insensitive).
 
     Tries exact canonical_name match first, then scans aliases.

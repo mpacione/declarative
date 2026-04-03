@@ -1,7 +1,6 @@
 """Compute materialized paths and semantic flags for nodes in the tree."""
 
 import sqlite3
-from typing import Dict, List, Optional, Set, Tuple
 
 from dd.types import NON_SEMANTIC_PREFIXES, SEMANTIC_NODE_TYPES
 
@@ -32,7 +31,7 @@ def compute_paths(conn: sqlite3.Connection, screen_id: int) -> None:
     nodes = cursor.fetchall()
 
     # Build in-memory dict: node_id -> path
-    node_paths: Dict[int, str] = {}
+    node_paths: dict[int, str] = {}
 
     for node_id, parent_id, sort_order, depth in nodes:
         if parent_id is None:
@@ -79,8 +78,8 @@ def compute_is_semantic(conn: sqlite3.Connection, screen_id: int) -> None:
     nodes = cursor.fetchall()
 
     # Build tree structure and node info
-    node_info: Dict[int, Dict] = {}
-    children_map: Dict[int, List[int]] = {}
+    node_info: dict[int, dict] = {}
+    children_map: dict[int, list[int]] = {}
 
     for node_id, parent_id, name, node_type, layout_mode, depth in nodes:
         node_info[node_id] = {
@@ -99,13 +98,7 @@ def compute_is_semantic(conn: sqlite3.Connection, screen_id: int) -> None:
     # First pass: Apply rules 1-3 (forward pass)
     for node_id, info in node_info.items():
         # Rule 1: Semantic node types
-        if info['node_type'] in SEMANTIC_NODE_TYPES:
-            info['is_semantic'] = 1
-        # Rule 2: FRAME with layout_mode
-        elif info['node_type'] == 'FRAME' and info['layout_mode'] is not None:
-            info['is_semantic'] = 1
-        # Rule 3: Name doesn't start with default prefixes
-        elif not any(info['name'].startswith(prefix) for prefix in NON_SEMANTIC_PREFIXES):
+        if info['node_type'] in SEMANTIC_NODE_TYPES or (info['node_type'] == 'FRAME' and info['layout_mode'] is not None) or not any(info['name'].startswith(prefix) for prefix in NON_SEMANTIC_PREFIXES):
             info['is_semantic'] = 1
 
     # Second pass: Apply rule 4 (bottom-up)

@@ -1,15 +1,14 @@
 """Integration tests for radius and effect clustering."""
 
-import sqlite3
 import pytest
 
-from dd.db import init_db
 from dd.cluster_misc import (
-    cluster_radius,
     cluster_effects,
+    cluster_radius,
+    ensure_effects_collection,
     ensure_radius_collection,
-    ensure_effects_collection
 )
+from dd.db import init_db
 
 
 @pytest.fixture

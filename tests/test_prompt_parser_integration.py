@@ -4,7 +4,6 @@ Verifies the full natural language → Figma JS pipeline with real templates.
 Skips if Dank DB not present or ANTHROPIC_API_KEY not set.
 """
 
-import json
 import os
 import sqlite3
 
@@ -21,9 +20,8 @@ except Exception:
 
 HAS_API_KEY = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
-from dd.prompt_parser import parse_prompt, prompt_to_figma, extract_json
 from dd.compose import generate_from_prompt
-from dd.templates import query_templates
+from dd.prompt_parser import parse_prompt, prompt_to_figma
 
 
 @pytest.fixture

@@ -8,24 +8,28 @@ Verifies cross-format consistency and DTCG round-trip capability.
 import json
 import re
 import sqlite3
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
 from dd.cluster import run_clustering
 from dd.curate import accept_all
 from dd.db import init_db
-from dd.export_css import generate_css, export_css
-from dd.export_dtcg import generate_dtcg_json, generate_dtcg_dict, export_dtcg
+from dd.export_css import export_css, generate_css
+from dd.export_dtcg import export_dtcg, generate_dtcg_dict, generate_dtcg_json
 from dd.export_figma_vars import generate_variable_payloads
-from dd.export_tailwind import generate_tailwind_config, generate_tailwind_config_dict, export_tailwind
+from dd.export_rebind import generate_rebind_scripts, get_rebind_summary
+from dd.export_tailwind import (
+    export_tailwind,
+    generate_tailwind_config,
+)
 from dd.extract import run_extraction_pipeline
 from dd.status import format_status_report, get_status_dict
 from dd.validate import is_export_ready, run_validation
-from dd.export_rebind import generate_rebind_scripts, get_rebind_summary
 
 
-def _build_full_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
+def _build_full_e2e_mock_data() -> tuple[list[dict], Callable[[str], list[dict]]]:
     """Build mock data for comprehensive e2e testing of all export formats."""
     frames = [
         {"figma_node_id": "1:1", "name": "Home", "width": 428, "height": 926},
@@ -98,7 +102,7 @@ def _build_full_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]
 
     responses = {"1:1": home_nodes, "1:2": profile_nodes, "1:3": comp_nodes}
 
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         """Mock extract function returning diverse property types."""
         return responses.get(node_id, [])
 
@@ -139,14 +143,14 @@ def _count_dtcg_leaves(dtcg_dict: dict, path: str = "") -> int:
     return count
 
 
-def _extract_css_value(css_string: str, var_name: str) -> Optional[str]:
+def _extract_css_value(css_string: str, var_name: str) -> str | None:
     """Extract value for a specific CSS variable."""
     pattern = rf'{re.escape(var_name)}:\s*([^;]+);'
     match = re.search(pattern, css_string)
     return match.group(1).strip() if match else None
 
 
-def _navigate_dtcg_path(dtcg_dict: dict, path: str) -> Optional[dict]:
+def _navigate_dtcg_path(dtcg_dict: dict, path: str) -> dict | None:
     """Navigate nested dict by dot-path."""
     parts = path.split(".")
     current = dtcg_dict

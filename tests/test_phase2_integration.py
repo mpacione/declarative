@@ -5,14 +5,19 @@ still produces correct Figma JS by reading visual data from the DB.
 Auto-skips if the Dank DB file is not present.
 """
 
-import json
 import os
 import sqlite3
 
 import pytest
 
-from dd.ir import generate_ir, query_screen_visuals, query_screen_for_ir, build_composition_spec, normalize_strokes
-from dd.generate import generate_screen, generate_figma_script
+from dd.generate import generate_figma_script, generate_screen
+from dd.ir import (
+    build_composition_spec,
+    generate_ir,
+    normalize_strokes,
+    query_screen_for_ir,
+    query_screen_visuals,
+)
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")
 DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)

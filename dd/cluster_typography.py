@@ -1,7 +1,6 @@
 """Typography clustering for design token extraction."""
 
 import sqlite3
-from typing import Optional
 
 
 def query_type_census(conn: sqlite3.Connection, file_id: int) -> list[dict]:

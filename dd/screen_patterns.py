@@ -7,12 +7,12 @@ the LLM prompt with project-specific patterns.
 
 import sqlite3
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any
 
 
 def extract_screen_archetypes(
     conn: sqlite3.Connection, file_id: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Extract screen archetypes by clustering root component types.
 
     Groups app screens by their set of root-level classified component
@@ -47,7 +47,7 @@ def extract_screen_archetypes(
 
 
 def get_archetype_prompt_context(
-    archetypes: List[Dict[str, Any]],
+    archetypes: list[dict[str, Any]],
 ) -> str:
     """Generate LLM prompt context from extracted archetypes.
 

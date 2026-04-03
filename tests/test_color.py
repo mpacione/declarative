@@ -1,8 +1,14 @@
 """Unit tests for color utilities."""
 
 import pytest
-from dd.color import rgba_to_hex, hex_to_oklch, hex_to_rgba, oklch_delta_e, oklch_invert_lightness
 
+from dd.color import (
+    hex_to_oklch,
+    hex_to_rgba,
+    oklch_delta_e,
+    oklch_invert_lightness,
+    rgba_to_hex,
+)
 
 pytestmark = pytest.mark.unit
 pytest.mark.timeout(10)

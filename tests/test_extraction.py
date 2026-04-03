@@ -1,7 +1,5 @@
 """Unit tests for the extraction pipeline modules."""
 
-import json
-import sqlite3
 
 import pytest
 
@@ -14,7 +12,6 @@ from dd.extract import (
 )
 from dd.extract_bindings import (
     create_bindings_for_node,
-    create_bindings_for_screen,
     insert_bindings,
 )
 from dd.extract_inventory import (
@@ -32,6 +29,8 @@ from dd.extract_screens import (
 )
 from dd.paths import (
     compute_is_semantic as compute_is_semantic_db,
+)
+from dd.paths import (
     compute_paths,
     compute_paths_and_semantics,
 )

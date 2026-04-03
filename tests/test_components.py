@@ -1,35 +1,30 @@
 """Unit tests for component extraction module."""
 
 import json
+from typing import Any
+
 import pytest
-import sqlite3
-from typing import Dict, Any, List
 
 from dd.extract_components import (
-    INTERACTION_STATE_VALUES,
-    CATEGORY_KEYWORDS,
-    ROLE_MAP,
-    INTERACTIVE_CATEGORIES,
-    NON_SLOT_HEURISTICS,
-    infer_category,
-    parse_variant_properties,
     detect_interaction_axis,
-    parse_component_set,
-    parse_standalone_component,
-    insert_component,
-    insert_variants,
-    insert_variant_axes,
-    populate_variant_dimension_values,
+    extract_components,
+    infer_a11y,
+    infer_category,
     infer_slot_type,
     infer_slots,
-    insert_slots,
-    infer_a11y,
     insert_a11y,
-    extract_components,
+    insert_component,
+    insert_slots,
+    insert_variant_axes,
+    insert_variants,
+    parse_component_set,
+    parse_standalone_component,
+    parse_variant_properties,
+    populate_variant_dimension_values,
 )
 
 
-def _make_mock_component_set() -> Dict[str, Any]:
+def _make_mock_component_set() -> dict[str, Any]:
     """Create mock COMPONENT_SET data matching Figma structure."""
     return {
         "id": "500:1",
@@ -76,7 +71,7 @@ def _make_mock_component_set() -> Dict[str, Any]:
     }
 
 
-def _make_mock_standalone_component() -> Dict[str, Any]:
+def _make_mock_standalone_component() -> dict[str, Any]:
     """Create mock standalone COMPONENT data."""
     return {
         "id": "600:1",

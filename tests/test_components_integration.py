@@ -1,21 +1,20 @@
 """Integration tests for component + extraction pipeline."""
 
 import json
-import pytest
-import sqlite3
 import time
-from typing import Any, Dict, List
+from typing import Any
+
+import pytest
 
 from dd.extract import (
-    run_extraction_pipeline,
-    run_component_extraction,
     get_component_sheets,
+    run_extraction_pipeline,
 )
-from dd.extract_components import extract_components, populate_variant_dimension_values
+from dd.extract_components import extract_components
 from tests.fixtures import seed_post_extraction
 
 
-def _make_component_data() -> List[Dict[str, Any]]:
+def _make_component_data() -> list[dict[str, Any]]:
     """Create rich component data matching what use_figma would return."""
     return [
         {
@@ -67,7 +66,7 @@ def _make_component_data() -> List[Dict[str, Any]]:
     ]
 
 
-def _make_mock_frames() -> List[Dict[str, Any]]:
+def _make_mock_frames() -> list[dict[str, Any]]:
     """Create frame data for inventory setup."""
     return [
         {
@@ -96,7 +95,7 @@ def _make_mock_frames() -> List[Dict[str, Any]]:
 
 def _make_screen_extract_fn():
     """Create a mock extraction function for screens."""
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         # Return simple node data for screen extraction
         return [
             {
@@ -439,11 +438,11 @@ def test_orchestrator_chains_extraction_and_components(db):
     frames = _make_mock_frames()
 
     # Create mock extraction functions
-    def screen_extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def screen_extract_fn(node_id: str) -> list[dict[str, Any]]:
         # Return simple node data
         return _make_screen_extract_fn()(node_id)
 
-    def component_extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def component_extract_fn(node_id: str) -> list[dict[str, Any]]:
         # Return component data
         return _make_component_data()
 

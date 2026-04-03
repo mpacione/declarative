@@ -1,6 +1,7 @@
 """Tests for radius and effect clustering."""
 
 import sqlite3
+
 import pytest
 
 from dd.db import init_db

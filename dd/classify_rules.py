@@ -6,8 +6,7 @@ classification behavior.
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Name patterns
@@ -33,8 +32,6 @@ SYSTEM_CHROME_EXACT: frozenset[str] = frozenset({
     "shift", "caps lock", "space", "delete", "enter", "emoji",
     "dictation", ".?123", "?.", "!,", "tab",
     "keyboard layout", "keyboard close",
-    "shift", "tab", "caps lock", "delete", "space",
-    "keyboard close", "enter",
 })
 
 
@@ -69,7 +66,7 @@ def is_generic_name(name: str) -> bool:
     return bool(GENERIC_NAME_RE.match(name))
 
 
-def parse_component_name(name: str) -> List[str]:
+def parse_component_name(name: str) -> list[str]:
     """Extract candidate lookup keys from a node name, longest first.
 
     For "button/large/translucent" returns:
@@ -102,7 +99,7 @@ def parse_component_name(name: str) -> List[str]:
 # or None if it doesn't match. Rules are applied in priority order.
 # ═══════════════════════════════════════════════════════════════════════════
 
-def rule_header(node: Dict[str, Any], screen_width: float) -> Optional[Tuple[str, float]]:
+def rule_header(node: dict[str, Any], screen_width: float) -> tuple[str, float] | None:
     """Full-width frame at top of screen with horizontal layout → header."""
     if node["node_type"] != "FRAME":
         return None
@@ -124,8 +121,8 @@ def rule_header(node: Dict[str, Any], screen_width: float) -> Optional[Tuple[str
 
 
 def rule_bottom_nav(
-    node: Dict[str, Any], screen_width: float, screen_height: float,
-) -> Optional[Tuple[str, float]]:
+    node: dict[str, Any], screen_width: float, screen_height: float,
+) -> tuple[str, float] | None:
     """Full-width frame at bottom of screen → bottom_nav."""
     if node["node_type"] != "FRAME":
         return None
@@ -146,7 +143,7 @@ def rule_bottom_nav(
     return None
 
 
-def rule_heading_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
+def rule_heading_text(node: dict[str, Any]) -> tuple[str, float] | None:
     """TEXT node with large font size → heading.
 
     Font size >= 18 is sufficient. Heavy weight increases confidence
@@ -167,7 +164,7 @@ def rule_heading_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
     return None
 
 
-def rule_body_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
+def rule_body_text(node: dict[str, Any]) -> tuple[str, float] | None:
     """TEXT node with standard font size → text."""
     if node["node_type"] != "TEXT":
         return None
@@ -182,7 +179,7 @@ def rule_body_text(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
     return None
 
 
-def _has_visual_properties(node: Dict[str, Any]) -> bool:
+def _has_visual_properties(node: dict[str, Any]) -> bool:
     """Check if a node has visual properties (fills, strokes, effects)."""
     for prop in ("fills", "strokes", "effects"):
         raw = node.get(prop)
@@ -191,7 +188,7 @@ def _has_visual_properties(node: Dict[str, Any]) -> bool:
     return False
 
 
-def rule_generic_frame_container(node: Dict[str, Any]) -> Optional[Tuple[str, float]]:
+def rule_generic_frame_container(node: dict[str, Any]) -> tuple[str, float] | None:
     """Generic 'Frame N' or 'Group N' → container or surface.
 
     Unnamed structural frames that Figma auto-generates are layout
@@ -216,10 +213,10 @@ def rule_generic_frame_container(node: Dict[str, Any]) -> Optional[Tuple[str, fl
 # ═══════════════════════════════════════════════════════════════════════════
 
 def apply_heuristic_rules(
-    node: Dict[str, Any],
+    node: dict[str, Any],
     screen_width: float,
     screen_height: float,
-) -> Optional[Tuple[str, float]]:
+) -> tuple[str, float] | None:
     """Apply all heuristic rules in priority order.
 
     Returns (canonical_type, confidence) or None.

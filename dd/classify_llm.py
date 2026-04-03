@@ -7,19 +7,18 @@ couldn't resolve. Targets depth-1 named FRAMEs and remaining INSTANCEs.
 import json
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.catalog import get_catalog
 from dd.classify_rules import is_system_chrome, parse_component_name
-
 
 _DEFAULT_LLM_CONFIDENCE = 0.7
 _LLM_MODEL = "claude-haiku-4-5-20251001"
 
 
 def build_classification_prompt(
-    nodes: List[Dict[str, Any]],
-    catalog_types: List[str],
+    nodes: list[dict[str, Any]],
+    catalog_types: list[str],
 ) -> str:
     """Build a classification prompt for a batch of unclassified nodes.
 
@@ -55,7 +54,7 @@ Respond with a JSON array. Each entry must have "node_id", "type", and "confiden
 Example: [{{"node_id": 1, "type": "card", "confidence": 0.85}}]"""
 
 
-def parse_classification_response(response_text: str) -> List[Dict[str, Any]]:
+def parse_classification_response(response_text: str) -> list[dict[str, Any]]:
     """Parse LLM response into classification results.
 
     Handles raw JSON and JSON wrapped in markdown code blocks.
@@ -94,7 +93,7 @@ def classify_llm(
     conn: sqlite3.Connection,
     screen_id: int,
     client: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Classify unclassified nodes using LLM.
 
     Fetches unclassified FRAME/INSTANCE nodes at depth >= 1, builds a
@@ -149,7 +148,7 @@ def classify_llm(
 
 def _get_unclassified_for_llm(
     conn: sqlite3.Connection, screen_id: int
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch unclassified nodes suitable for LLM classification."""
     screen = conn.execute(
         "SELECT name, width, height FROM screens WHERE id = ?", (screen_id,)

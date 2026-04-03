@@ -1,12 +1,11 @@
 """Test clustering orchestrator."""
 
-import sqlite3
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from dd.cluster import run_clustering, generate_summary, validate_no_orphan_tokens
+from dd.cluster import generate_summary, run_clustering, validate_no_orphan_tokens
 
 
 @pytest.fixture

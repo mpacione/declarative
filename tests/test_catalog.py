@@ -6,10 +6,9 @@ import sqlite3
 
 import pytest
 
+from dd.catalog import CATALOG_ENTRIES, get_catalog, lookup_by_name, seed_catalog
 from dd.db import init_db
-from dd.types import ComponentCategory, VALID_CATEGORIES
-from dd.catalog import CATALOG_ENTRIES, seed_catalog, get_catalog, lookup_by_name
-
+from dd.types import VALID_CATEGORIES, ComponentCategory
 
 # ---------------------------------------------------------------------------
 # Step 1: Schema tests
@@ -124,7 +123,7 @@ class TestComponentCategory:
         assert len(VALID_CATEGORIES) == 6
 
     def test_valid_categories_matches_enum(self):
-        assert VALID_CATEGORIES == frozenset(c.value for c in ComponentCategory)
+        assert frozenset(c.value for c in ComponentCategory) == VALID_CATEGORIES
 
 
 # ---------------------------------------------------------------------------

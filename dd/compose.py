@@ -5,11 +5,10 @@ populates visual data from extracted templates, and generates Figma JS.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.generate import generate_figma_script
 from dd.templates import query_templates
-
 
 _DIRECTION_MAP = {
     "HORIZONTAL": "horizontal",
@@ -24,8 +23,8 @@ _SIZING_MAP = {
 
 
 def _pick_best_template(
-    tmpl_list: Optional[List[Dict[str, Any]]],
-) -> Optional[Dict[str, Any]]:
+    tmpl_list: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
     """Pick the best template from a list, preferring one with a component_key.
 
     Prefers the keyed template with the highest instance count (Mode 1).
@@ -40,27 +39,27 @@ def _pick_best_template(
 
 
 def compose_screen(
-    components: List[Dict[str, Any]],
-    templates: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-) -> Dict[str, Any]:
+    components: list[dict[str, Any]],
+    templates: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     """Build a CompositionSpec from a list of component descriptions.
 
     Each component is a dict with 'type' (required), 'props' (optional),
     and 'children' (optional, recursive). Templates provide layout
     defaults (dimensions, padding, direction) when available.
     """
-    type_counters: Dict[str, int] = {}
-    elements: Dict[str, Dict[str, Any]] = {}
+    type_counters: dict[str, int] = {}
+    elements: dict[str, dict[str, Any]] = {}
 
     def _allocate_id(comp_type: str) -> str:
         type_counters[comp_type] = type_counters.get(comp_type, 0) + 1
         return f"{comp_type}-{type_counters[comp_type]}"
 
-    def _build_element(comp: Dict[str, Any]) -> str:
+    def _build_element(comp: dict[str, Any]) -> str:
         comp_type = comp["type"]
         eid = _allocate_id(comp_type)
 
-        element: Dict[str, Any] = {"type": comp_type}
+        element: dict[str, Any] = {"type": comp_type}
 
         layout = _build_layout_from_template(comp_type, templates)
         if layout:
@@ -101,10 +100,10 @@ def compose_screen(
 
 def _build_layout_from_template(
     comp_type: str,
-    templates: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-) -> Dict[str, Any]:
+    templates: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     """Build layout dict from template defaults for a component type."""
-    layout: Dict[str, Any] = {}
+    layout: dict[str, Any] = {}
 
     if not templates or comp_type not in templates:
         layout["direction"] = "vertical"
@@ -120,7 +119,7 @@ def _build_layout_from_template(
 
     width = tmpl.get("width")
     height = tmpl.get("height")
-    sizing: Dict[str, Any] = {}
+    sizing: dict[str, Any] = {}
     if width is not None:
         sizing["width"] = width
     if height is not None:
@@ -132,7 +131,7 @@ def _build_layout_from_template(
     if gap and gap > 0:
         layout["gap"] = gap
 
-    padding: Dict[str, float] = {}
+    padding: dict[str, float] = {}
     for side in ("top", "right", "bottom", "left"):
         val = tmpl.get(f"padding_{side}")
         if val and val > 0:
@@ -144,17 +143,17 @@ def _build_layout_from_template(
 
 
 def build_template_visuals(
-    spec: Dict[str, Any],
-    templates: Dict[str, List[Dict[str, Any]]],
-) -> Dict[int, Dict[str, Any]]:
+    spec: dict[str, Any],
+    templates: dict[str, list[dict[str, Any]]],
+) -> dict[int, dict[str, Any]]:
     """Map spec elements to template visual data.
 
     Assigns synthetic negative node IDs to each element and builds a
     db_visuals-compatible dict from template visual defaults. Mutates
     spec to add _node_id_map.
     """
-    node_id_map: Dict[str, int] = {}
-    visuals: Dict[int, Dict[str, Any]] = {}
+    node_id_map: dict[str, int] = {}
+    visuals: dict[int, dict[str, Any]] = {}
 
     for idx, (eid, element) in enumerate(spec["elements"].items()):
         synthetic_nid = -(idx + 1)
@@ -182,8 +181,8 @@ def build_template_visuals(
 
 def generate_from_prompt(
     conn: sqlite3.Connection,
-    components: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    components: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Generate Figma JS from a component list using templates.
 
     Orchestrates: query_templates → compose_screen → build_template_visuals

@@ -1,8 +1,8 @@
 """Test fixtures and factory functions for database seeding."""
 
-import sqlite3
 import json
-from typing import Dict, List, Any
+import sqlite3
+from typing import Any
 
 
 def seed_post_extraction(db: sqlite3.Connection) -> sqlite3.Connection:
@@ -331,7 +331,7 @@ def seed_with_catalog(db: sqlite3.Connection) -> sqlite3.Connection:
     return db
 
 
-def make_mock_figma_response(screen_name: str, node_count: int = 10) -> List[Dict[str, Any]]:
+def make_mock_figma_response(screen_name: str, node_count: int = 10) -> list[dict[str, Any]]:
     """
     Generate mock Figma extraction response data.
     Returns a list of dicts matching the shape from use_figma screen extraction.

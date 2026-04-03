@@ -5,15 +5,22 @@ import sqlite3
 
 import pytest
 
+from dd.catalog import seed_catalog
 from dd.db import init_db
 from dd.ir import (
-    map_node_to_element, query_screen_for_ir, build_composition_spec, generate_ir,
-    normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius,
-    query_screen_visuals, query_slot_definitions, filter_system_chrome,
+    build_composition_spec,
     build_semantic_tree,
+    filter_system_chrome,
+    generate_ir,
+    map_node_to_element,
+    normalize_corner_radius,
+    normalize_effects,
+    normalize_fills,
+    normalize_strokes,
+    query_screen_for_ir,
+    query_screen_visuals,
+    query_slot_definitions,
 )
-from dd.catalog import seed_catalog
-
 
 # ---------------------------------------------------------------------------
 # Normalization function tests

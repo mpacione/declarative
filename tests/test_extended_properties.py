@@ -5,11 +5,9 @@ Phase 2: Extraction — verify new properties are captured
 Phase 3: Normalization — verify new normalize functions produce correct bindings
 """
 
-import json
 import sqlite3
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Phase 1: Schema — new columns on nodes table

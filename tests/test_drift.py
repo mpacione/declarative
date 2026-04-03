@@ -1,24 +1,24 @@
 """Unit tests for drift detection functionality."""
 
-import json
-import pytest
 import sqlite3
-from typing import Dict, List, Any
+from typing import Any
+
+import pytest
 
 from dd.drift import (
+    compare_token_values,
     detect_drift,
     detect_drift_readonly,
-    compare_token_values,
-    parse_figma_variables_for_drift,
     generate_drift_report,
+    normalize_value_for_comparison,
+    parse_figma_variables_for_drift,
     update_sync_statuses,
-    normalize_value_for_comparison
 )
 from tests.fixtures import seed_post_curation
 
 
 # Helper Functions
-def _build_mock_figma_response(tokens: List[Dict[str, Any]], modify: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _build_mock_figma_response(tokens: list[dict[str, Any]], modify: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a mock figma_get_variables response from a list of token dicts.
 
     Args:

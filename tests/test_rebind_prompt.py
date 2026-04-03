@@ -1,12 +1,11 @@
 """Tests for token rebinding on prompt-generated screens."""
 
-import json
 import sqlite3
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
+from dd.db import init_db
 from dd.rebind_prompt import build_rebind_entries, generate_rebind_script
 
 

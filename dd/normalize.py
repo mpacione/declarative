@@ -1,12 +1,12 @@
 """Value normalization functions for converting Figma properties to binding rows."""
 
 import json
-from typing import Dict, List, Any, Optional, Union
+from typing import Any
 
 from dd.color import rgba_to_hex
 
 
-def normalize_fill(fills: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def normalize_fill(fills: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize Figma fills to binding rows.
 
     Args:
@@ -73,7 +73,7 @@ def normalize_fill(fills: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_stroke(strokes: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def normalize_stroke(strokes: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize Figma strokes to binding rows.
 
     Args:
@@ -110,7 +110,7 @@ def normalize_stroke(strokes: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_effect(effects: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def normalize_effect(effects: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize Figma effects to binding rows.
 
     Args:
@@ -185,7 +185,7 @@ def normalize_effect(effects: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_typography(node: Dict[str, Any]) -> List[Dict[str, str]]:
+def normalize_typography(node: dict[str, Any]) -> list[dict[str, str]]:
     """Normalize Figma typography properties to binding rows.
 
     Args:
@@ -262,7 +262,7 @@ def normalize_typography(node: Dict[str, Any]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_spacing(node: Dict[str, Any]) -> List[Dict[str, str]]:
+def normalize_spacing(node: dict[str, Any]) -> list[dict[str, str]]:
     """Normalize Figma spacing properties to binding rows.
 
     Args:
@@ -311,7 +311,7 @@ def normalize_spacing(node: Dict[str, Any]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_radius(corner_radius: Optional[Union[float, int, str, Dict[str, Any]]]) -> List[Dict[str, str]]:
+def normalize_radius(corner_radius: float | int | str | dict[str, Any] | None) -> list[dict[str, str]]:
     """Normalize Figma corner radius to binding rows.
 
     Args:
@@ -361,7 +361,7 @@ def normalize_radius(corner_radius: Optional[Union[float, int, str, Dict[str, An
     return bindings
 
 
-def normalize_stroke_weight(node: Dict[str, Any]) -> List[Dict[str, str]]:
+def normalize_stroke_weight(node: dict[str, Any]) -> list[dict[str, str]]:
     """Normalize stroke weight to binding rows.
 
     Checks per-side weights first; falls back to uniform stroke_weight.
@@ -407,7 +407,7 @@ def normalize_stroke_weight(node: Dict[str, Any]) -> List[Dict[str, str]]:
     return bindings
 
 
-def normalize_paragraph_spacing(node: Dict[str, Any]) -> List[Dict[str, str]]:
+def normalize_paragraph_spacing(node: dict[str, Any]) -> list[dict[str, str]]:
     """Normalize paragraph spacing to a binding row.
 
     Args:
@@ -426,7 +426,7 @@ def normalize_paragraph_spacing(node: Dict[str, Any]) -> List[Dict[str, str]]:
     }]
 
 
-def normalize_font_style(node: Dict[str, Any]) -> List[Dict[str, str]]:
+def normalize_font_style(node: dict[str, Any]) -> list[dict[str, str]]:
     """Normalize font style to a binding row.
 
     Skips "Regular" since it's the implicit default.

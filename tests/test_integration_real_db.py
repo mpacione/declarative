@@ -7,23 +7,22 @@ Auto-skips if the Dank DB file is not present.
 Run with: python -m pytest tests/test_integration_real_db.py -v
 """
 
-import json
 import os
 import sqlite3
 
 import pytest
 
+from dd.generate import (
+    build_visual_from_db,
+    generate_screen,
+)
 from dd.ir import (
-    query_screen_for_ir,
-    query_screen_visuals,
     build_composition_spec,
+    normalize_effects,
     normalize_fills,
     normalize_strokes,
-    normalize_effects,
-)
-from dd.generate import (
-    generate_screen,
-    build_visual_from_db,
+    query_screen_for_ir,
+    query_screen_visuals,
 )
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")

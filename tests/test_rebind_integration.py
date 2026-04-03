@@ -10,7 +10,11 @@ import sqlite3
 import pytest
 
 from dd.compose import generate_from_prompt
-from dd.rebind_prompt import query_token_variables, build_rebind_entries, generate_rebind_script
+from dd.rebind_prompt import (
+    build_rebind_entries,
+    generate_rebind_script,
+    query_token_variables,
+)
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")
 DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)

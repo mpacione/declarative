@@ -22,9 +22,8 @@ class TestResolveToken:
             assert resolve_token(None) == "env_token"
 
     def test_missing_raises(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(SystemExit):
-                resolve_token(None)
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(SystemExit):
+            resolve_token(None)
 
 
 @pytest.mark.integration
@@ -147,10 +146,9 @@ class TestRunExtract:
 @pytest.mark.integration
 class TestRunCluster:
     def test_cluster_creates_tokens_from_seeded_db(self, tmp_path):
-        from dd.db import init_db
-        from dd.extract_bindings import create_bindings_for_screen
-        from tests.fixtures import seed_post_extraction
         from dd.cli import run_cluster
+        from dd.db import init_db
+        from tests.fixtures import seed_post_extraction
 
         db_path = str(tmp_path / "test.declarative.db")
         conn = init_db(db_path)
@@ -169,9 +167,9 @@ class TestRunCluster:
 @pytest.mark.integration
 class TestRunAcceptAll:
     def test_accept_all_changes_status_to_bound(self, tmp_path):
+        from dd.cli import run_accept_all, run_cluster
         from dd.db import init_db
         from tests.fixtures import seed_post_extraction
-        from dd.cli import run_cluster, run_accept_all
 
         db_path = str(tmp_path / "test.declarative.db")
         conn = init_db(db_path)
@@ -198,9 +196,9 @@ class TestRunAcceptAll:
 @pytest.mark.integration
 class TestRunValidate:
     def test_validate_reports_results(self, tmp_path, capsys):
+        from dd.cli import run_validate
         from dd.db import init_db
         from tests.fixtures import seed_post_extraction
-        from dd.cli import run_validate
 
         db_path = str(tmp_path / "test.declarative.db")
         conn = init_db(db_path)
@@ -216,9 +214,9 @@ class TestRunValidate:
 @pytest.mark.integration
 class TestRunExportWithFileId:
     def test_export_css_writes_file(self, tmp_path):
+        from dd.cli import run_accept_all, run_cluster, run_export
         from dd.db import init_db
         from tests.fixtures import seed_post_extraction
-        from dd.cli import run_cluster, run_accept_all, run_export
 
         db_path = str(tmp_path / "test.declarative.db")
         conn = init_db(db_path)
@@ -236,9 +234,9 @@ class TestRunExportWithFileId:
         assert "--" in content
 
     def test_export_dtcg_writes_valid_json(self, tmp_path):
+        from dd.cli import run_accept_all, run_cluster, run_export
         from dd.db import init_db
         from tests.fixtures import seed_post_extraction
-        from dd.cli import run_cluster, run_accept_all, run_export
 
         db_path = str(tmp_path / "test.declarative.db")
         conn = init_db(db_path)

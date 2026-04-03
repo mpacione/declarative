@@ -6,13 +6,13 @@ MCP calls directly.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.config import MAX_TOKENS_PER_CALL
 from dd.validate import is_export_ready
 
 # DTCG to Figma type mapping
-DTCG_TO_FIGMA_TYPE: Dict[str, str] = {
+DTCG_TO_FIGMA_TYPE: dict[str, str] = {
     "color": "COLOR",
     "dimension": "FLOAT",
     "fontFamily": "STRING",
@@ -78,7 +78,7 @@ def map_token_type_to_figma(token_type: str, token_name: str) -> str:
         return "FLOAT"
 
 
-def get_mode_names_for_collection(conn: sqlite3.Connection, collection_id: int) -> List[str]:
+def get_mode_names_for_collection(conn: sqlite3.Connection, collection_id: int) -> list[str]:
     """Get mode names for a collection, ordered with default first.
 
     Args:
@@ -102,7 +102,7 @@ def query_exportable_tokens(
     conn: sqlite3.Connection,
     file_id: int,
     include_existing: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Query tokens that are ready for Figma export.
 
     Finds curated and aliased tokens. By default only returns tokens without
@@ -175,7 +175,7 @@ def query_exportable_tokens(
     return tokens
 
 
-def generate_variable_payloads(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def generate_variable_payloads(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Generate Figma variable creation payloads.
 
     Groups tokens by collection and batches them into payloads of at most
@@ -195,7 +195,7 @@ def generate_variable_payloads(conn: sqlite3.Connection, file_id: int) -> List[D
         return []
 
     # Group tokens by collection
-    collections: Dict[str, List[Dict[str, Any]]] = {}
+    collections: dict[str, list[dict[str, Any]]] = {}
     for token in tokens:
         collection_name = token["collection_name"]
         if collection_name not in collections:
@@ -237,7 +237,7 @@ def generate_variable_payloads(conn: sqlite3.Connection, file_id: int) -> List[D
     return payloads
 
 
-def generate_variable_payloads_checked(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def generate_variable_payloads_checked(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Generate payloads with validation check.
 
     Wrapper that ensures validation has passed before generating payloads.
@@ -258,7 +258,7 @@ def generate_variable_payloads_checked(conn: sqlite3.Connection, file_id: int) -
     return generate_variable_payloads(conn, file_id)
 
 
-def parse_figma_variables_response(response: Any) -> List[Dict[str, Any]]:
+def parse_figma_variables_response(response: Any) -> list[dict[str, Any]]:
     """Parse Figma variables response into a flat list.
 
     Handles multiple response formats from figma_get_variables:
@@ -307,7 +307,7 @@ def parse_figma_variables_response(response: Any) -> List[Dict[str, Any]]:
 
 
 def writeback_variable_ids(conn: sqlite3.Connection, file_id: int,
-                          figma_variables: List[Dict[str, Any]]) -> Dict[str, int]:
+                          figma_variables: list[dict[str, Any]]) -> dict[str, int]:
     """Write back Figma variable IDs to the database.
 
     Updates tokens with their Figma variable IDs and marks them as synced.
@@ -410,7 +410,7 @@ def writeback_variable_ids(conn: sqlite3.Connection, file_id: int,
 
 
 def writeback_variable_ids_from_response(conn: sqlite3.Connection, file_id: int,
-                                        raw_response: Any) -> Dict[str, int]:
+                                        raw_response: Any) -> dict[str, int]:
     """Convenience wrapper for writeback_variable_ids.
 
     Parses the raw response and writes back the variable IDs.
@@ -427,7 +427,7 @@ def writeback_variable_ids_from_response(conn: sqlite3.Connection, file_id: int,
     return writeback_variable_ids(conn, file_id, parsed)
 
 
-def get_sync_status_summary(conn: sqlite3.Connection, file_id: int) -> Dict[str, int]:
+def get_sync_status_summary(conn: sqlite3.Connection, file_id: int) -> dict[str, int]:
     """Get summary of sync status for tokens in a file.
 
     Args:

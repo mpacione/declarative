@@ -1,16 +1,16 @@
 """Tests for status reporting functions."""
 
+
 import pytest
-import sqlite3
 
 from dd.db import init_db
 from dd.status import (
+    format_status_report,
     get_curation_progress,
+    get_export_readiness,
+    get_status_dict,
     get_token_coverage,
     get_unbound_summary,
-    get_export_readiness,
-    format_status_report,
-    get_status_dict,
 )
 
 

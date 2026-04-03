@@ -1,7 +1,5 @@
 """Integration test for drift detection with realistic Figma data."""
 
-import sqlite3
-import pytest
 
 from dd.drift import detect_drift, detect_drift_readonly
 from tests.fixtures import seed_post_curation

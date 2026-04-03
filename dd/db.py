@@ -1,9 +1,9 @@
 """Database interface for Declarative Design."""
 
-import sqlite3
 import shutil
-from pathlib import Path
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from dd import config
 
@@ -57,7 +57,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
 
     # Read and execute schema
     schema_path = config.SCHEMA_PATH
-    with open(schema_path, 'r') as f:
+    with open(schema_path) as f:
         schema_sql = f.read()
 
     conn.executescript(schema_sql)
@@ -206,7 +206,7 @@ def run_migration(conn: sqlite3.Connection, migration_path: str) -> dict:
 
     Returns dict with added, skipped, and error counts.
     """
-    with open(migration_path, "r") as f:
+    with open(migration_path) as f:
         sql = f.read()
 
     added = 0
@@ -221,9 +221,7 @@ def run_migration(conn: sqlite3.Connection, migration_path: str) -> dict:
             conn.execute(line)
             added += 1
         except sqlite3.OperationalError as e:
-            if "duplicate column name" in str(e):
-                skipped += 1
-            elif "duplicate column" in str(e).lower():
+            if "duplicate column name" in str(e) or "duplicate column" in str(e).lower():
                 skipped += 1
             else:
                 errors.append(str(e))

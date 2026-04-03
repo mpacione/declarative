@@ -18,10 +18,11 @@ or any other execution mechanism.
 import json
 import sqlite3
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 
-def generate_supplement_script(screen_node_ids: List[str]) -> str:
+def generate_supplement_script(screen_node_ids: list[str]) -> str:
     """Generate JS to collect Plugin API-only properties for multiple screens.
 
     Uses getNodeByIdAsync and walks the tree collecting only the fields
@@ -79,7 +80,7 @@ return result;
 '''
 
 
-def apply_supplement(conn: sqlite3.Connection, supplement_data: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
+def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[str, Any]]) -> dict[str, int]:
     """Apply supplemental data to the nodes table.
 
     Updates layout_positioning, component_key, and Grid properties from
@@ -137,11 +138,11 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: Dict[str, Dict[s
 
 def run_supplement(
     conn: sqlite3.Connection,
-    execute_fn: Callable[[str], Dict[str, Any]],
+    execute_fn: Callable[[str], dict[str, Any]],
     batch_size: int = 5,
     delay: float = 0.3,
     screen_type: str = "app_screen",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run supplemental extraction on all screens of the given type.
 
     Auto-batches screens, retries failed batches at batch_size=1,
@@ -174,7 +175,7 @@ def run_supplement(
     total_lp = 0
     total_grid = 0
     batches_run = 0
-    failed_screens: List[str] = []
+    failed_screens: list[str] = []
 
     i = 0
     while i < len(screen_ids):

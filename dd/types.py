@@ -1,7 +1,6 @@
 """Shared constants and type definitions for the DD pipeline."""
 
 import enum
-from typing import Dict, FrozenSet, List, Tuple
 
 
 class DeviceClass(str, enum.Enum):
@@ -85,7 +84,7 @@ class ComponentCategory(str, enum.Enum):
     CONTAINMENT_AND_OVERLAY = "containment_and_overlay"
 
 
-VALID_CATEGORIES: FrozenSet[str] = frozenset(c.value for c in ComponentCategory)
+VALID_CATEGORIES: frozenset[str] = frozenset(c.value for c in ComponentCategory)
 
 
 class ClassificationSource(str, enum.Enum):
@@ -98,14 +97,14 @@ class ClassificationSource(str, enum.Enum):
 
 
 # Device classification mapping
-DEVICE_DIMENSIONS: Dict[Tuple[int, int], DeviceClass] = {
+DEVICE_DIMENSIONS: dict[tuple[int, int], DeviceClass] = {
     (428, 926): DeviceClass.IPHONE,
     (834, 1194): DeviceClass.IPAD_11,
     (1536, 1152): DeviceClass.IPAD_13,
 }
 
 # Component sheet name heuristics (lowercase for case-insensitive comparison)
-COMPONENT_SHEET_KEYWORDS: List[str] = [
+COMPONENT_SHEET_KEYWORDS: list[str] = [
     "buttons",
     "controls",
     "components",
@@ -117,7 +116,7 @@ COMPONENT_SHEET_KEYWORDS: List[str] = [
 ]
 
 # Non-semantic node name prefixes (case-sensitive from Figma)
-NON_SEMANTIC_PREFIXES: Tuple[str, ...] = (
+NON_SEMANTIC_PREFIXES: tuple[str, ...] = (
     "Frame",
     "Group",
     "Rectangle",
@@ -125,7 +124,7 @@ NON_SEMANTIC_PREFIXES: Tuple[str, ...] = (
 )
 
 # Semantic node types (always semantic)
-SEMANTIC_NODE_TYPES: FrozenSet[str] = frozenset({"TEXT", "INSTANCE", "COMPONENT"})
+SEMANTIC_NODE_TYPES: frozenset[str] = frozenset({"TEXT", "INSTANCE", "COMPONENT"})
 
 # Property path patterns
 FILL_COLOR_PATTERN = "fill.{}.color"
@@ -133,19 +132,19 @@ STROKE_COLOR_PATTERN = "stroke.{}.color"
 EFFECT_FIELD_PATTERN = "effect.{}.{}"
 
 # Property groupings
-PADDING_PROPERTIES: Tuple[str, ...] = (
+PADDING_PROPERTIES: tuple[str, ...] = (
     "padding.top",
     "padding.right",
     "padding.bottom",
     "padding.left",
 )
 
-SPACING_PROPERTIES: Tuple[str, ...] = (
+SPACING_PROPERTIES: tuple[str, ...] = (
     "itemSpacing",
     "counterAxisSpacing",
 )
 
-TYPOGRAPHY_PROPERTIES: Tuple[str, ...] = (
+TYPOGRAPHY_PROPERTIES: tuple[str, ...] = (
     "fontSize",
     "fontFamily",
     "fontWeight",
@@ -153,7 +152,7 @@ TYPOGRAPHY_PROPERTIES: Tuple[str, ...] = (
     "letterSpacing",
 )
 
-DIMENSION_PROPERTIES: Tuple[str, ...] = (
+DIMENSION_PROPERTIES: tuple[str, ...] = (
     "cornerRadius",
     "opacity",
 )

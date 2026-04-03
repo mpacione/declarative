@@ -2,13 +2,12 @@
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pytest
 
-from dd.cluster import run_clustering, generate_summary, validate_no_orphan_tokens
+from dd.cluster import generate_summary, run_clustering, validate_no_orphan_tokens
 from dd.extract import run_extraction_pipeline
-
 
 # Mock frames for extraction (2 phone screens + 1 component sheet)
 MOCK_FRAMES = [
@@ -18,7 +17,7 @@ MOCK_FRAMES = [
 ]
 
 
-def _build_rich_mock_data() -> Tuple[List[Dict[str, Any]], callable]:
+def _build_rich_mock_data() -> tuple[list[dict[str, Any]], callable]:
     """Build rich mock data for extraction.
 
     Returns:
@@ -442,7 +441,7 @@ def _build_rich_mock_data() -> Tuple[List[Dict[str, Any]], callable]:
     mock_responses["1:3"] = component_nodes
 
     # Create extract_fn that returns appropriate response based on script
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         """Mock extract function that returns nodes for the requested screen."""
         return mock_responses.get(node_id, [])
 
@@ -817,7 +816,7 @@ def test_e2e_full_pipeline_summary(db: sqlite3.Connection):
     cursor.execute("SELECT COUNT(*) FROM node_token_bindings WHERE binding_status = 'unbound'")
     final_unbound = cursor.fetchone()[0]
 
-    print(f"\n=== E2E Test Summary ===")
+    print("\n=== E2E Test Summary ===")
     print(f"Tokens created: {final_token_count}")
     print(f"Bindings proposed: {final_proposed}")
     print(f"Bindings unbound: {final_unbound}")

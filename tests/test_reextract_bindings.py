@@ -8,8 +8,6 @@ updates resolved_value on bound bindings while preserving binding_status.
 import json
 import sqlite3
 
-import pytest
-
 
 def _seed_file_screen_node(conn: sqlite3.Connection, fills=None, strokes=None, effects=None):
     """Seed a file, screen, and node with given paint data. Return node DB id."""

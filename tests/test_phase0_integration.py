@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from dd.ir import query_screen_visuals, query_screen_for_ir, build_composition_spec
+from dd.ir import build_composition_spec, query_screen_for_ir, query_screen_visuals
 
 DANK_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Dank-EXP-02.declarative.db")
 DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)

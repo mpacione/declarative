@@ -1,16 +1,20 @@
 """Integration tests for curation-to-code-export pipeline."""
 
-import pytest
-import sqlite3
 import json
 import re
-from typing import Dict, Any, List, Set
+import sqlite3
 
-from tests.fixtures import seed_post_curation
-from dd.export_css import generate_css, export_css, token_name_to_css_var
-from dd.export_tailwind import generate_tailwind_config, generate_tailwind_config_dict, export_tailwind
-from dd.export_dtcg import generate_dtcg_json, generate_dtcg_dict, export_dtcg
+import pytest
+
 from dd.curate import create_alias
+from dd.export_css import export_css, generate_css, token_name_to_css_var
+from dd.export_dtcg import export_dtcg, generate_dtcg_dict, generate_dtcg_json
+from dd.export_tailwind import (
+    export_tailwind,
+    generate_tailwind_config,
+    generate_tailwind_config_dict,
+)
+from tests.fixtures import seed_post_curation
 
 
 @pytest.fixture
@@ -20,7 +24,7 @@ def db():
     conn.row_factory = sqlite3.Row
 
     # Load schema
-    with open("schema.sql", "r") as f:
+    with open("schema.sql") as f:
         conn.executescript(f.read())
 
     return conn

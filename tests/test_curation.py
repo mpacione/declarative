@@ -3,24 +3,23 @@
 import pytest
 
 from dd.curate import (
-    accept_token,
     accept_all,
-    rename_token,
-    merge_tokens,
-    split_token,
-    reject_token,
+    accept_token,
+    convert_to_alias,
     create_alias,
     create_collection,
-    convert_to_alias,
+    merge_tokens,
+    reject_token,
+    rename_token,
+    split_token,
 )
 from dd.status import (
-    get_curation_progress,
-    get_token_coverage,
     format_status_report,
+    get_curation_progress,
     get_status_dict,
+    get_token_coverage,
 )
 from tests.fixtures import seed_post_clustering, seed_post_curation
-
 
 # Curation operation tests
 

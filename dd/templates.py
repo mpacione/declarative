@@ -7,8 +7,7 @@ path via componentKey) and Mode 2 (frame construction from structure).
 
 import sqlite3
 from collections import Counter
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 _TEMPLATE_FIELDS = [
     "layout_mode", "width", "height",
@@ -18,7 +17,7 @@ _TEMPLATE_FIELDS = [
 ]
 
 
-def _mode_value(values: List[Any]) -> Any:
+def _mode_value(values: list[Any]) -> Any:
     """Return the most common value in a list (statistical mode)."""
     if not values:
         return None
@@ -29,7 +28,7 @@ def _mode_value(values: List[Any]) -> Any:
     return counter.most_common(1)[0][0]
 
 
-def compute_mode_template(instances: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_mode_template(instances: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute the mode (most common value) for each field across instances.
 
     Returns a template dict with structure + visual fields, instance_count,
@@ -38,7 +37,7 @@ def compute_mode_template(instances: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not instances:
         return {}
 
-    template: Dict[str, Any] = {"instance_count": len(instances)}
+    template: dict[str, Any] = {"instance_count": len(instances)}
 
     for field in _TEMPLATE_FIELDS:
         values = [inst.get(field) for inst in instances if field in inst]
@@ -89,7 +88,7 @@ def extract_templates(conn: sqlite3.Connection, file_id: int) -> int:
         unkeyed = [i for i in instances if not i.get("component_key")]
 
         if keyed:
-            groups: Dict[str, List[Dict]] = {}
+            groups: dict[str, list[dict]] = {}
             for inst in keyed:
                 key = inst["component_key"]
                 if key not in groups:
@@ -111,7 +110,7 @@ def extract_templates(conn: sqlite3.Connection, file_id: int) -> int:
     return template_count
 
 
-def query_templates(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]:
+def query_templates(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
     """Fetch all templates keyed by catalog_type.
 
     Returns dict mapping catalog_type to list of template dicts.
@@ -128,7 +127,7 @@ def query_templates(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]
         "ORDER BY ct.catalog_type, ct.variant"
     )
     columns = [desc[0] for desc in cursor.description]
-    result: Dict[str, List[Dict[str, Any]]] = {}
+    result: dict[str, list[dict[str, Any]]] = {}
 
     for row in cursor.fetchall():
         entry = dict(zip(columns, row))
@@ -142,7 +141,7 @@ def query_templates(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]
 
 def _query_instances(
     conn: sqlite3.Connection, file_id: int, catalog_type: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch all instances of a catalog type with structure + visual props."""
     cursor = conn.execute(
         "SELECT n.id as node_id, n.name, n.component_key, "
@@ -161,7 +160,7 @@ def _query_instances(
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
-def _variant_from_key(group: List[Dict[str, Any]]) -> str:
+def _variant_from_key(group: list[dict[str, Any]]) -> str:
     """Derive a variant name from the most common node name in a group."""
     names = [inst.get("name", "") for inst in group]
     if not names:
@@ -173,9 +172,9 @@ def _variant_from_key(group: List[Dict[str, Any]]) -> str:
 def _insert_template(
     conn: sqlite3.Connection,
     catalog_type: str,
-    variant: Optional[str],
-    component_key: Optional[str],
-    template: Dict[str, Any],
+    variant: str | None,
+    component_key: str | None,
+    template: dict[str, Any],
 ) -> None:
     """Insert or replace a template row."""
     conn.execute(

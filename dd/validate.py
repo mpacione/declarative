@@ -7,13 +7,13 @@ compliance, and quality issues. Blocks export if error-severity issues exist.
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 
 from dd.types import Severity
 
 
-def check_mode_completeness(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_mode_completeness(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check that every token has a value for every mode in its collection.
 
     Aliased tokens are skipped since they reference target token values.
@@ -48,7 +48,7 @@ def check_mode_completeness(conn: sqlite3.Connection, file_id: int) -> List[Dict
     return issues
 
 
-def check_name_dtcg_compliant(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_name_dtcg_compliant(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check that token names comply with DTCG naming pattern.
 
     Pattern: ^[a-z][a-zA-Z0-9]*(\\.[a-zA-Z0-9]+)*$
@@ -84,7 +84,7 @@ def check_name_dtcg_compliant(conn: sqlite3.Connection, file_id: int) -> List[Di
     return issues
 
 
-def check_orphan_tokens(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_orphan_tokens(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check for tokens with zero bindings (created but never assigned).
 
     Aliased tokens are skipped from this check.
@@ -117,7 +117,7 @@ def check_orphan_tokens(conn: sqlite3.Connection, file_id: int) -> List[Dict[str
     return issues
 
 
-def check_binding_coverage(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_binding_coverage(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Report binding coverage statistics.
 
     Args:
@@ -164,7 +164,7 @@ def check_binding_coverage(conn: sqlite3.Connection, file_id: int) -> List[Dict[
     }]
 
 
-def check_alias_targets_curated(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_alias_targets_curated(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check that every alias points to a curated token (not extracted).
 
     Args:
@@ -195,7 +195,7 @@ def check_alias_targets_curated(conn: sqlite3.Connection, file_id: int) -> List[
     return issues
 
 
-def check_name_uniqueness(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_name_uniqueness(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check for duplicate token names within a collection.
 
     The UNIQUE constraint should prevent this, but we check anyway for robustness.
@@ -229,7 +229,7 @@ def check_name_uniqueness(conn: sqlite3.Connection, file_id: int) -> List[Dict[s
     return issues
 
 
-def check_value_format(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_value_format(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Validate resolved_value format per token type.
 
     Type validations:
@@ -375,7 +375,7 @@ def detect_binding_mismatches(
     file_id: int,
     token_id: int | None = None,
     screen_id: int | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Detect bound bindings whose resolved_value doesn't match their token's value.
 
     Uses type-aware normalization to avoid false positives (e.g., '10' vs '10.0').
@@ -445,7 +445,7 @@ def unbind_mismatched(
     return len(mismatch_ids)
 
 
-def check_binding_token_consistency(conn: sqlite3.Connection, file_id: int) -> List[Dict[str, Any]]:
+def check_binding_token_consistency(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Validation check: flag bound bindings whose value doesn't match their token.
 
     Args:
@@ -460,7 +460,7 @@ def check_binding_token_consistency(conn: sqlite3.Connection, file_id: int) -> L
     if result["total"] == 0:
         return []
 
-    token_counts: Dict[str, int] = {}
+    token_counts: dict[str, int] = {}
     for m in result["mismatches"]:
         name = m["token_name"]
         token_counts[name] = token_counts.get(name, 0) + 1
@@ -479,7 +479,7 @@ def check_binding_token_consistency(conn: sqlite3.Connection, file_id: int) -> L
     return issues
 
 
-def run_validation(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
+def run_validation(conn: sqlite3.Connection, file_id: int) -> dict[str, Any]:
     """Run all validation checks and write results to database.
 
     Args:
@@ -496,7 +496,7 @@ def run_validation(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
         - issues: List of all validation issues
     """
     # Generate timestamp for this run
-    run_at = datetime.now(timezone.utc).isoformat()
+    run_at = datetime.now(UTC).isoformat()
 
     # Run all checks
     all_issues = []

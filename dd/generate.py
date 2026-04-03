@@ -10,10 +10,14 @@ Visual data source: DB path via query_screen_visuals() → build_visual_from_db(
 
 import re
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from dd.ir import normalize_fills, normalize_strokes, normalize_effects, normalize_corner_radius
-
+from dd.ir import (
+    normalize_corner_radius,
+    normalize_effects,
+    normalize_fills,
+    normalize_strokes,
+)
 
 # Text element types that use figma.createText()
 _TEXT_TYPES = frozenset({"text", "heading", "link"})
@@ -37,7 +41,7 @@ _WEIGHT_TO_STYLE = {
 # Pure helpers
 # ---------------------------------------------------------------------------
 
-def hex_to_figma_rgb(hex_str: str) -> Dict[str, float]:
+def hex_to_figma_rgb(hex_str: str) -> dict[str, float]:
     """Convert hex color string to Figma RGB dict {r, g, b} (0.0-1.0).
 
     Handles 6-digit (#FF0000) and 8-digit (#FF000080) hex. Alpha is dropped.
@@ -50,8 +54,8 @@ def hex_to_figma_rgb(hex_str: str) -> Dict[str, float]:
 
 
 def resolve_style_value(
-    value: Any, tokens: Dict[str, Any],
-) -> Tuple[Any, Optional[str]]:
+    value: Any, tokens: dict[str, Any],
+) -> tuple[Any, str | None]:
     """Resolve a style/layout value that may be a token reference.
 
     Token refs are strings wrapped in braces: "{color.surface.primary}".
@@ -85,7 +89,7 @@ def font_weight_to_style(weight: Any) -> str:
     return _WEIGHT_TO_STYLE.get(int(weight), "Regular")
 
 
-def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
+def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
     """Collect unique (family, style) pairs from text elements in the spec."""
     seen = set()
     result = []
@@ -124,7 +128,7 @@ def collect_fonts(spec: Dict[str, Any]) -> List[Tuple[str, str]]:
 # DB → normalized visual (Phase 1: renderer reads DB instead of IR)
 # ---------------------------------------------------------------------------
 
-def build_visual_from_db(node_visual: Dict[str, Any]) -> Dict[str, Any]:
+def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     """Normalize raw DB visual data to the format _emit_visual expects.
 
     Takes a dict from query_screen_visuals() (raw Figma JSON strings +
@@ -132,7 +136,7 @@ def build_visual_from_db(node_visual: Dict[str, Any]) -> Dict[str, Any]:
     visual dict that the IR's _build_visual() produces.
     """
     bindings = node_visual.get("bindings", [])
-    visual: Dict[str, Any] = {}
+    visual: dict[str, Any] = {}
 
     fills = normalize_fills(node_visual.get("fills"), bindings)
     if fills:
@@ -191,9 +195,9 @@ _ALIGNMENT_MAP = {
 # ---------------------------------------------------------------------------
 
 def generate_figma_script(
-    spec: Dict[str, Any],
-    db_visuals: Optional[Dict[int, Dict[str, Any]]] = None,
-) -> Tuple[str, List[Tuple[str, str, str]]]:
+    spec: dict[str, Any],
+    db_visuals: dict[int, dict[str, Any]] | None = None,
+) -> tuple[str, list[tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
 
     Returns (js_string, token_refs) where token_refs is a list of
@@ -205,9 +209,9 @@ def generate_figma_script(
 
     fonts = collect_fonts(spec)
     walk_order = _walk_elements(spec)
-    all_token_refs: List[Tuple[str, str, str]] = []
+    all_token_refs: list[tuple[str, str, str]] = []
 
-    lines: List[str] = []
+    lines: list[str] = []
 
     # Always load Inter Regular — Figma's default font for createText()
     all_fonts = [("Inter", "Regular")] + [f for f in fonts if f != ("Inter", "Regular")]
@@ -217,7 +221,7 @@ def generate_figma_script(
     lines.append("const M = {};")
     lines.append("")
 
-    var_map: Dict[str, str] = {}
+    var_map: dict[str, str] = {}
     mode1_eids: set = set()
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
@@ -294,7 +298,7 @@ def generate_figma_script(
     return ("\n".join(lines), all_token_refs)
 
 
-def _walk_elements(spec: Dict[str, Any]) -> List[Tuple[str, Dict, Optional[str]]]:
+def _walk_elements(spec: dict[str, Any]) -> list[tuple[str, dict, str | None]]:
     """BFS walk from root, returning (element_id, element, parent_id) tuples."""
     elements = spec.get("elements", {})
     root_id = spec.get("root", "")
@@ -318,10 +322,10 @@ def _walk_elements(spec: Dict[str, Any]) -> List[Tuple[str, Dict, Optional[str]]
 
 
 def _emit_layout(
-    var: str, eid: str, layout: Dict[str, Any], tokens: Dict[str, Any],
-) -> Tuple[List[str], List[Tuple[str, str, str]]]:
-    lines: List[str] = []
-    refs: List[Tuple[str, str, str]] = []
+    var: str, eid: str, layout: dict[str, Any], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    lines: list[str] = []
+    refs: list[tuple[str, str, str]] = []
 
     direction = layout.get("direction", "")
     figma_dir = _DIRECTION_MAP.get(direction)
@@ -381,11 +385,11 @@ def _emit_layout(
 
 
 def _emit_visual(
-    var: str, eid: str, visual: Dict[str, Any], tokens: Dict[str, Any],
-) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    var: str, eid: str, visual: dict[str, Any], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit Figma JS for visual properties (fills, strokes, effects, radius, opacity)."""
-    lines: List[str] = []
-    refs: List[Tuple[str, str, str]] = []
+    lines: list[str] = []
+    refs: list[tuple[str, str, str]] = []
 
     fills = visual.get("fills", [])
     if fills:
@@ -418,11 +422,11 @@ def _emit_visual(
 
 
 def _emit_fills(
-    var: str, eid: str, fills: List[Dict[str, Any]], tokens: Dict[str, Any],
-) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit Figma fills array from IR normalized fills."""
-    paints: List[str] = []
-    refs: List[Tuple[str, str, str]] = []
+    paints: list[str] = []
+    refs: list[tuple[str, str, str]] = []
 
     for i, fill in enumerate(fills):
         fill_type = fill.get("type", "")
@@ -448,11 +452,11 @@ def _emit_fills(
 
 
 def _emit_strokes(
-    var: str, eid: str, strokes: List[Dict[str, Any]], tokens: Dict[str, Any],
-) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    var: str, eid: str, strokes: list[dict[str, Any]], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit Figma strokes array from IR normalized strokes."""
-    paints: List[str] = []
-    refs: List[Tuple[str, str, str]] = []
+    paints: list[str] = []
+    refs: list[tuple[str, str, str]] = []
 
     for i, stroke in enumerate(strokes):
         if stroke.get("type") != "solid":
@@ -465,7 +469,7 @@ def _emit_strokes(
         if token_name:
             refs.append((eid, f"stroke.{i}.color", token_name))
 
-    lines: List[str] = []
+    lines: list[str] = []
     if paints:
         lines.append(f'{var}.strokes = [{", ".join(paints)}];')
     width = strokes[0].get("width") if strokes else None
@@ -476,11 +480,11 @@ def _emit_strokes(
 
 
 def _emit_effects(
-    var: str, eid: str, effects: List[Dict[str, Any]], tokens: Dict[str, Any],
-) -> Tuple[List[str], List[Tuple[str, str, str]]]:
+    var: str, eid: str, effects: list[dict[str, Any]], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit Figma effects array from IR normalized effects."""
-    effect_objs: List[str] = []
-    refs: List[Tuple[str, str, str]] = []
+    effect_objs: list[str] = []
+    refs: list[tuple[str, str, str]] = []
 
     for i, effect in enumerate(effects):
         effect_type = effect.get("type", "")
@@ -509,7 +513,7 @@ def _emit_effects(
             figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
             effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
 
-    lines: List[str] = []
+    lines: list[str] = []
     if effect_objs:
         lines.append(f'{var}.effects = [{", ".join(effect_objs)}];')
 
@@ -517,8 +521,8 @@ def _emit_effects(
 
 
 def _emit_text_props(
-    var: str, element: Dict[str, Any], style: Dict[str, Any],
-    tokens: Dict[str, Any], lines: List[str],
+    var: str, element: dict[str, Any], style: dict[str, Any],
+    tokens: dict[str, Any], lines: list[str],
 ) -> None:
     family = style.get("fontFamily", "Inter")
     if isinstance(family, str) and family.startswith("{"):
@@ -548,7 +552,7 @@ def _emit_text_props(
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_screen(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
     Returns dict with:

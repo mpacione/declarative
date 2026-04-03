@@ -1,8 +1,9 @@
 """Pytest configuration and shared fixtures."""
 
-import pytest
 import sqlite3
-from typing import Generator
+from collections.abc import Generator
+
+import pytest
 
 from dd import db as dd_db
 

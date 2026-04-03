@@ -1,19 +1,17 @@
 """Integration tests for clustering-to-curation pipeline."""
 
-import json
-import sqlite3
 import pytest
 
-from tests.fixtures import seed_post_clustering, seed_post_curation
 from dd.curate import (
-    accept_token,
     accept_all,
-    merge_tokens,
-    split_token,
-    reject_token,
+    accept_token,
     create_alias,
+    merge_tokens,
+    reject_token,
+    split_token,
 )
-from dd.validate import run_validation, is_export_ready
+from dd.validate import is_export_ready, run_validation
+from tests.fixtures import seed_post_clustering, seed_post_curation
 
 
 @pytest.mark.integration

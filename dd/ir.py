@@ -8,11 +8,10 @@ inline annotations where they exist, literal values where they don't.
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from dd.classify_rules import is_system_chrome
 from dd.color import rgba_to_hex
-
 
 # ---------------------------------------------------------------------------
 # Visual property normalization (Figma JSON → IR format)
@@ -26,15 +25,15 @@ _GRADIENT_TYPE_MAP = {
 }
 
 
-def _figma_color_to_hex(color: Dict[str, float], paint_opacity: float = 1.0) -> str:
+def _figma_color_to_hex(color: dict[str, float], paint_opacity: float = 1.0) -> str:
     r, g, b = color.get("r", 0), color.get("g", 0), color.get("b", 0)
     a = color.get("a", 1.0) * paint_opacity
     return rgba_to_hex(r, g, b, a)
 
 
 def normalize_fills(
-    raw_json: str | None, bindings: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    raw_json: str | None, bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Normalize Figma fills JSON to IR fill array.
 
     Handles SOLID and GRADIENT_* types. Skips invisible fills.
@@ -62,7 +61,7 @@ def normalize_fills(
             color = fill.get("color", {})
             hex_val = _figma_color_to_hex(color, 1.0)
             token = binding_map.get(f"fill.{i}.color")
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "type": "solid",
                 "color": f"{{{token}}}" if token else hex_val,
             }
@@ -95,8 +94,8 @@ def normalize_fills(
 
 
 def normalize_strokes(
-    raw_json: str | None, bindings: List[Dict[str, Any]], node: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+    raw_json: str | None, bindings: list[dict[str, Any]], node: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Normalize Figma strokes JSON to IR stroke array."""
     if not raw_json or raw_json == "[]":
         return []
@@ -119,7 +118,7 @@ def normalize_strokes(
         hex_val = _figma_color_to_hex(color, 1.0)
         token = binding_map.get(f"stroke.{i}.color")
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "type": "solid",
             "color": f"{{{token}}}" if token else hex_val,
             "width": int(node.get("stroke_weight") or 1),
@@ -133,8 +132,8 @@ def normalize_strokes(
 
 
 def normalize_effects(
-    raw_json: str | None, bindings: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    raw_json: str | None, bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Normalize Figma effects JSON to IR effect array."""
     if not raw_json or raw_json == "[]":
         return []
@@ -176,8 +175,8 @@ def normalize_effects(
 
 
 def normalize_corner_radius(
-    raw_value: Union[str, int, float, None],
-) -> Union[float, Dict[str, float], None]:
+    raw_value: str | int | float | None,
+) -> float | dict[str, float] | None:
     """Normalize corner radius to number or per-corner dict."""
     if raw_value is None:
         return None
@@ -232,13 +231,13 @@ _SIZING_MAP = {
 }
 
 
-def _build_binding_index(bindings: List[Dict[str, Any]]) -> Dict[str, str]:
+def _build_binding_index(bindings: list[dict[str, Any]]) -> dict[str, str]:
     """Build property → token ref string from bindings list.
 
     Returns dict mapping Figma property names to "{token.name}" strings
     for bindings that have a token_name set.
     """
-    index: Dict[str, str] = {}
+    index: dict[str, str] = {}
     for b in bindings:
         if b.get("token_name"):
             index[b["property"]] = f"{{{b['token_name']}}}"
@@ -252,7 +251,7 @@ _LAYOUT_BINDING_PROPERTIES = frozenset({
 })
 
 
-def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
+def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     """Convert a classified node dict to an IR element.
 
     Expects node dict with keys: canonical_type, layout_mode, padding_*,
@@ -262,7 +261,7 @@ def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
     bindings = node.get("bindings", [])
     binding_index = _build_binding_index(bindings)
 
-    element: Dict[str, Any] = {
+    element: dict[str, Any] = {
         "type": node["canonical_type"],
     }
 
@@ -281,8 +280,8 @@ def map_node_to_element(node: Dict[str, Any]) -> Dict[str, Any]:
     return element
 
 
-def _build_layout(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[str, Any]:
-    layout: Dict[str, Any] = {}
+def _build_layout(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any]:
+    layout: dict[str, Any] = {}
 
     direction = _DIRECTION_MAP.get(node.get("layout_mode") or "", "stacked")
     layout["direction"] = direction
@@ -313,8 +312,8 @@ def _build_layout(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[s
     return layout
 
 
-def _build_padding(node: Dict[str, Any], binding_index: Dict[str, str]) -> Optional[Dict[str, Any]]:
-    padding: Dict[str, Any] = {}
+def _build_padding(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any] | None:
+    padding: dict[str, Any] = {}
     for side in ("top", "right", "bottom", "left"):
         token = binding_index.get(f"padding.{side}")
         val = node.get(f"padding_{side}")
@@ -326,13 +325,13 @@ def _build_padding(node: Dict[str, Any], binding_index: Dict[str, str]) -> Optio
     return padding if padding else None
 
 
-def _build_sizing(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _build_sizing(node: dict[str, Any]) -> dict[str, Any] | None:
     """Build sizing dict from node layout sizing modes + pixel dimensions.
 
     FILL/HUG → store as string (parent/content determines size).
     FIXED or NULL → store pixel value (explicit dimensions needed).
     """
-    sizing: Dict[str, Any] = {}
+    sizing: dict[str, Any] = {}
     h = node.get("layout_sizing_h")
     v = node.get("layout_sizing_v")
     width = node.get("width")
@@ -351,9 +350,9 @@ def _build_sizing(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return sizing if sizing else None
 
 
-def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[str, Any]:
+def _build_style(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any]:
     """Build style section — typography bindings only."""
-    style: Dict[str, Any] = {}
+    style: dict[str, Any] = {}
 
     for binding in node.get("bindings", []):
         prop = binding["property"]
@@ -372,8 +371,8 @@ def _build_style(node: Dict[str, Any], binding_index: Dict[str, str]) -> Dict[st
     return style
 
 
-def _build_props(node: Dict[str, Any]) -> Dict[str, Any]:
-    props: Dict[str, Any] = {}
+def _build_props(node: dict[str, Any]) -> dict[str, Any]:
+    props: dict[str, Any] = {}
 
     canonical_type = node.get("canonical_type", "")
     text = node.get("text_content")
@@ -388,7 +387,7 @@ def _build_props(node: Dict[str, Any]) -> Dict[str, Any]:
 # Query layer
 # ---------------------------------------------------------------------------
 
-def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> Dict[int, Dict[str, Any]]:
+def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, dict[str, Any]]:
     """Fetch visual properties for all nodes in a screen.
 
     Returns dict keyed by node_id with fills, strokes, effects,
@@ -414,7 +413,7 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> Dict[int, 
         return {}
 
     node_ids = [row[0] for row in rows]
-    result: Dict[int, Dict[str, Any]] = {}
+    result: dict[int, dict[str, Any]] = {}
     for row in rows:
         node_dict = dict(zip(columns, row))
         node_id = node_dict.pop("id")
@@ -441,7 +440,7 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> Dict[int, 
     return result
 
 
-def query_slot_definitions(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]:
+def query_slot_definitions(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
     """Fetch slot definitions keyed by component name.
 
     Returns dict mapping component name to list of slot dicts, each with
@@ -454,7 +453,7 @@ def query_slot_definitions(conn: sqlite3.Connection) -> Dict[str, List[Dict[str,
         "JOIN components c ON cs.component_id = c.id "
         "ORDER BY c.name, cs.sort_order"
     )
-    result: Dict[str, List[Dict[str, Any]]] = {}
+    result: dict[str, list[dict[str, Any]]] = {}
     for row in cursor.fetchall():
         comp_name = row[0]
         if comp_name not in result:
@@ -469,8 +468,8 @@ def query_slot_definitions(conn: sqlite3.Connection) -> Dict[str, List[Dict[str,
 
 
 def filter_system_chrome(
-    spec: Dict[str, Any], node_names: Dict[int, str],
-) -> Dict[str, Any]:
+    spec: dict[str, Any], node_names: dict[int, str],
+) -> dict[str, Any]:
     """Remove system chrome elements from a CompositionSpec.
 
     Takes a spec and a mapping of node_id → node name. Removes elements
@@ -507,12 +506,12 @@ def filter_system_chrome(
 
 
 def _assign_children_to_slots(
-    children_eids: List[str],
-    slot_defs: List[Dict[str, Any]],
-    node_id_map: Dict[str, int],
-    node_data: Dict[int, Dict[str, Any]],
+    children_eids: list[str],
+    slot_defs: list[dict[str, Any]],
+    node_id_map: dict[str, int],
+    node_data: dict[int, dict[str, Any]],
     parent_node_id: int,
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """Assign child element IDs to named slots by spatial position.
 
     Divides the parent's width into N equal zones (one per slot) and
@@ -528,7 +527,7 @@ def _assign_children_to_slots(
     zone_width = parent_width / num_slots
     parent_x = parent_info.get("x", 0)
 
-    slots: Dict[str, List[str]] = {s["name"]: [] for s in slot_defs}
+    slots: dict[str, list[str]] = {s["name"]: [] for s in slot_defs}
     slot_names_ordered = [s["name"] for s in slot_defs]
 
     for child_eid in children_eids:
@@ -547,10 +546,10 @@ def _assign_children_to_slots(
 
 
 def build_semantic_tree(
-    spec: Dict[str, Any],
-    slot_defs: Dict[str, List[Dict[str, Any]]],
-    node_data: Dict[int, Dict[str, Any]],
-) -> Dict[str, Any]:
+    spec: dict[str, Any],
+    slot_defs: dict[str, list[dict[str, Any]]],
+    node_data: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
     """Collapse a flat CompositionSpec into a semantic tree with slots.
 
     For each element whose component has slot definitions, assigns its
@@ -559,9 +558,9 @@ def build_semantic_tree(
     keep their `children` list unchanged. Does not mutate the input.
     """
     node_id_map = spec.get("_node_id_map", {})
-    new_elements: Dict[str, Dict[str, Any]] = {}
+    new_elements: dict[str, dict[str, Any]] = {}
 
-    component_name_by_eid: Dict[str, str] = {}
+    component_name_by_eid: dict[str, str] = {}
     for eid, node_id in node_id_map.items():
         info = node_data.get(node_id, {})
         component_name_by_eid[eid] = info.get("name", "")
@@ -587,7 +586,7 @@ def build_semantic_tree(
     return {**spec, "elements": new_elements}
 
 
-def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Fetch all classified nodes, bindings, and tokens for a screen.
 
     Returns dict with screen metadata and a list of node dicts,
@@ -627,7 +626,7 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
         "WHERE n.screen_id = ? AND ntb.binding_status = 'bound'",
         (screen_id,),
     )
-    bindings_by_node: Dict[int, List[Dict[str, Any]]] = {}
+    bindings_by_node: dict[int, list[dict[str, Any]]] = {}
     for row in bindings_cursor.fetchall():
         node_id = row[0]
         if node_id not in bindings_by_node:
@@ -698,7 +697,7 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
 # Composition assembly
 # ---------------------------------------------------------------------------
 
-def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
+def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     """Assemble a CompositionSpec from query results.
 
     Builds the flat element map, assigns IDs, wires parent→children
@@ -708,10 +707,10 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
     if not nodes:
         return {"version": "1.0", "root": "", "elements": {}, "tokens": {}, "_node_id_map": {}}
 
-    type_counters: Dict[str, int] = {}
-    node_id_to_element_id: Dict[int, str] = {}
-    sci_id_to_element_id: Dict[int, str] = {}
-    elements: Dict[str, Dict[str, Any]] = {}
+    type_counters: dict[str, int] = {}
+    node_id_to_element_id: dict[int, str] = {}
+    sci_id_to_element_id: dict[int, str] = {}
+    elements: dict[str, dict[str, Any]] = {}
 
     for node in nodes:
         canonical = node["canonical_type"]
@@ -727,7 +726,7 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Wire children: use parent_instance_id (classified→classified) or
     # parent_id (classified→container) to build the tree
-    children_map: Dict[str, List[str]] = {}
+    children_map: dict[str, list[str]] = {}
     has_parent = set()
 
     for node in nodes:
@@ -787,7 +786,7 @@ def build_composition_spec(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def generate_ir(
     conn: sqlite3.Connection, screen_id: int, semantic: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Generate CompositionSpec IR for a single screen.
 
     When semantic=True, collapses the flat element tree into a semantic

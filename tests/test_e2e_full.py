@@ -8,7 +8,8 @@ and drift detection. This is the comprehensive regression gate for the entire pr
 import json
 import re
 import sqlite3
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -17,17 +18,16 @@ from dd.curate import accept_all
 from dd.db import init_db
 from dd.drift import detect_drift, generate_drift_report
 from dd.export_css import export_css, generate_css
-from dd.export_dtcg import export_dtcg, generate_dtcg_dict, generate_dtcg_json
+from dd.export_dtcg import export_dtcg, generate_dtcg_dict
 from dd.export_figma_vars import generate_variable_payloads
-from dd.export_rebind import generate_rebind_scripts
-from dd.export_tailwind import export_tailwind, generate_tailwind_config
+from dd.export_tailwind import export_tailwind
 from dd.extract import run_extraction_pipeline
 from dd.modes import create_dark_mode
 from dd.status import format_status_report, get_status_dict
 from dd.validate import is_export_ready, run_validation
 
 
-def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
+def _build_e2e_mock_data() -> tuple[list[dict], Callable[[str], list[dict]]]:
     """Build comprehensive mock data that exercises the full pipeline."""
     frames = [
         {"figma_node_id": "1:1", "name": "Home", "width": 428, "height": 926},
@@ -111,7 +111,7 @@ def _build_e2e_mock_data() -> Tuple[List[dict], Callable[[str], List[dict]]]:
 
     responses = {"1:1": home_nodes, "1:2": profile_nodes, "1:3": comp_nodes}
 
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         """Mock extract function returning diverse property types."""
         return responses.get(node_id, [])
 
@@ -234,7 +234,7 @@ def _count_css_vars_in_block(css: str, block_selector: str) -> int:
     return len(matches)
 
 
-def _navigate_dtcg_path(dtcg_dict: dict, path: str) -> Optional[dict]:
+def _navigate_dtcg_path(dtcg_dict: dict, path: str) -> dict | None:
     """Navigate nested DTCG dict by dot-path."""
     parts = path.split(".")
     current = dtcg_dict

@@ -6,13 +6,11 @@ All tests use real DB (in-memory SQLite) and real curation output from fixtures.
 
 import json
 import sqlite3
-from unittest.mock import MagicMock
 
 import pytest
 
 from dd.curate import create_alias
 from dd.export_figma_vars import (
-    dtcg_to_figma_path,
     generate_variable_payloads,
     generate_variable_payloads_checked,
     get_sync_status_summary,
@@ -30,7 +28,7 @@ def db():
     conn.row_factory = sqlite3.Row
 
     # Load schema
-    with open("schema.sql", "r") as f:
+    with open("schema.sql") as f:
         conn.executescript(f.read())
 
     return conn
@@ -121,7 +119,7 @@ def test_payload_batch_sizing(db):
         db.execute("""
             INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
             VALUES (?, 1, ?, ?)
-        """, (token_id, json.dumps({"r": 0.5, "g": 0.5, "b": 0.5, "a": 1}), f"#808080"))
+        """, (token_id, json.dumps({"r": 0.5, "g": 0.5, "b": 0.5, "a": 1}), "#808080"))
 
     db.commit()
 

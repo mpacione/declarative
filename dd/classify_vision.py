@@ -7,10 +7,10 @@ vision to detect disagreements between structural and visual classification.
 import base64
 import json
 import sqlite3
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from dd.catalog import get_catalog
-
 
 _VISION_MODEL = "claude-haiku-4-5-20251001"
 
@@ -22,7 +22,7 @@ def cross_validate_vision(
     client: Any,
     fetch_screenshot: Callable,
     confidence_threshold: float = 0.95,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Cross-validate classified instances using vision.
 
     For each classified instance with confidence < threshold, fetches a
@@ -81,8 +81,8 @@ def cross_validate_vision(
 def _fetch_screenshots_batch(
     fetch_fn: Callable,
     file_key: str,
-    node_ids: List[str],
-) -> Dict[str, bytes]:
+    node_ids: list[str],
+) -> dict[str, bytes]:
     """Fetch screenshots, auto-detecting single vs batch fetch function.
 
     Tries to call fetch_fn with a list of node_ids first. If it returns
@@ -110,7 +110,7 @@ def _get_instances_to_validate(
     conn: sqlite3.Connection,
     screen_id: int,
     confidence_threshold: float,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     cursor = conn.execute(
         "SELECT sci.id as sci_id, sci.canonical_type, sci.confidence, n.figma_node_id "
         "FROM screen_component_instances sci "
@@ -126,8 +126,8 @@ def _classify_with_vision(
     client: Any,
     screenshot: bytes,
     figma_node_id: str,
-    catalog_types: List[str],
-) -> Optional[str]:
+    catalog_types: list[str],
+) -> str | None:
     """Send a screenshot to the vision model for classification."""
     type_list = ", ".join(catalog_types) + ", container"
     b64_image = base64.b64encode(screenshot).decode("utf-8")

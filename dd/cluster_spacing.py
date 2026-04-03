@@ -8,9 +8,7 @@ This module implements Phase 5 spacing clustering:
 """
 
 import json
-import math
 import sqlite3
-from typing import Optional
 
 
 def query_spacing_census(conn: sqlite3.Connection, file_id: int) -> list[dict]:

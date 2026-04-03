@@ -1,50 +1,42 @@
 """Comprehensive unit tests for all clustering modules."""
 
-import json
-import pytest
 import sqlite3
-from datetime import datetime
 
-from dd.db import init_db
-from dd.color import hex_to_oklch, oklch_delta_e
+import pytest
+
+from dd.cluster import (
+    run_clustering,
+    validate_no_orphan_tokens,
+)
 from dd.cluster_colors import (
+    classify_color_role,
     cluster_colors,
+    ensure_collection_and_mode,
     group_by_delta_e,
     propose_color_name,
-    query_color_census,
-    classify_color_role,
-    ensure_collection_and_mode,
 )
-from dd.cluster_typography import (
-    cluster_typography,
-    group_type_scale,
-    propose_type_name,
-    query_type_census,
-    ensure_typography_collection,
+from dd.cluster_misc import (
+    cluster_effects,
+    cluster_radius,
+    ensure_effects_collection,
+    ensure_radius_collection,
+    propose_effect_name,
+    propose_radius_name,
 )
 from dd.cluster_spacing import (
     cluster_spacing,
     detect_scale_pattern,
-    propose_spacing_name,
-    query_spacing_census,
     ensure_spacing_collection,
+    propose_spacing_name,
 )
-from dd.cluster_misc import (
-    cluster_radius,
-    cluster_effects,
-    propose_radius_name,
-    propose_effect_name,
-    group_effects_by_composite,
-    query_radius_census,
-    query_effect_census,
-    ensure_radius_collection,
-    ensure_effects_collection,
+from dd.cluster_typography import (
+    cluster_typography,
+    ensure_typography_collection,
+    group_type_scale,
+    propose_type_name,
 )
-from dd.cluster import (
-    run_clustering,
-    generate_summary,
-    validate_no_orphan_tokens,
-)
+from dd.color import hex_to_oklch, oklch_delta_e
+from dd.db import init_db
 from tests.fixtures import seed_post_extraction
 
 
@@ -684,7 +676,10 @@ def test_letterspacing_nonzero_values_get_tokens(db):
     )
     db.commit()
 
-    from dd.cluster_typography import cluster_letter_spacing, ensure_typography_collection
+    from dd.cluster_typography import (
+        cluster_letter_spacing,
+        ensure_typography_collection,
+    )
     coll_id, mode_id = ensure_typography_collection(db, 1)
     result = cluster_letter_spacing(db, 1, coll_id, mode_id)
 

@@ -1,9 +1,6 @@
 """Tests for clustering of extended properties (stroke weight, paragraph spacing)."""
 
-import sqlite3
-import pytest
 
-from dd.db import init_db
 
 
 def _seed_file_screen_nodes(conn, node_count=10):

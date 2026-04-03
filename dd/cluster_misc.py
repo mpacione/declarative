@@ -8,7 +8,6 @@ This module implements Phase 5 radius and effect clustering:
 """
 
 import sqlite3
-from typing import Optional
 from collections import defaultdict
 
 from dd.color import hex_to_oklch, oklch_delta_e
@@ -119,7 +118,7 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
         unique_values[key].append(row['resolved_value'])
 
     # Sort by value, but keep 99999 (full radius) at the end
-    sorted_values = sorted([k for k in unique_values.keys() if k != 99999])
+    sorted_values = sorted([k for k in unique_values if k != 99999])
     if 99999 in unique_values:
         sorted_values.append(99999)
 

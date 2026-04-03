@@ -8,12 +8,12 @@ compact rebind scripts.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from dd.export_rebind import generate_compact_script
 
 
-def query_token_variables(conn: sqlite3.Connection) -> Dict[str, str]:
+def query_token_variables(conn: sqlite3.Connection) -> dict[str, str]:
     """Fetch token name → Figma variable ID mapping.
 
     Returns dict mapping token names to their figma_variable_id for
@@ -28,10 +28,10 @@ def query_token_variables(conn: sqlite3.Connection) -> Dict[str, str]:
 
 
 def build_rebind_entries(
-    token_refs: List[Tuple[str, str, str]],
-    figma_node_map: Dict[str, str],
-    token_variables: Dict[str, str],
-) -> List[Dict[str, Any]]:
+    token_refs: list[tuple[str, str, str]],
+    figma_node_map: dict[str, str],
+    token_variables: dict[str, str],
+) -> list[dict[str, Any]]:
     """Build rebind entries from token refs + Figma node map.
 
     Takes:
@@ -60,7 +60,7 @@ def build_rebind_entries(
     return entries
 
 
-def generate_rebind_script(entries: List[Dict[str, Any]]) -> str:
+def generate_rebind_script(entries: list[dict[str, Any]]) -> str:
     """Generate a compact rebind script from entries.
 
     Delegates to the existing compact script generator from export_rebind.

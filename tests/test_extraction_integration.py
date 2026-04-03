@@ -1,13 +1,16 @@
 """Integration tests for the extraction pipeline end-to-end."""
 
 import json
-import pytest
-import sqlite3
-from typing import Any, Dict, List
+from typing import Any
 
-from dd.extract import run_extraction_pipeline, run_inventory, process_screen, complete_run
-from dd.extract_inventory import create_extraction_run
-from dd.extract_screens import update_screen_status
+import pytest
+
+from dd.extract import (
+    complete_run,
+    process_screen,
+    run_extraction_pipeline,
+    run_inventory,
+)
 
 
 @pytest.mark.integration
@@ -424,7 +427,7 @@ def test_resume_after_failure(db):
     # Create an extract_fn that fails on screen 2
     call_count = {"count": 0}
 
-    def failing_extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def failing_extract_fn(node_id: str) -> list[dict[str, Any]]:
         call_count["count"] += 1
         if node_id == "100:2":  # Settings screen
             if call_count["count"] == 2:  # Fail on second call (settings)
@@ -843,7 +846,7 @@ def test_binding_values_match_nodes(db):
 
 # Helper functions
 
-def _build_mock_frames() -> List[Dict[str, Any]]:
+def _build_mock_frames() -> list[dict[str, Any]]:
     """Build a list of 3 mock frame dictionaries."""
     return [
         {
@@ -867,14 +870,14 @@ def _build_mock_frames() -> List[Dict[str, Any]]:
     ]
 
 
-def _build_mock_extract_fn(responses: Dict[str, List[Dict[str, Any]]]):
+def _build_mock_extract_fn(responses: dict[str, list[dict[str, Any]]]):
     """Build a mock extract function that returns predefined responses."""
-    def extract_fn(node_id: str) -> List[Dict[str, Any]]:
+    def extract_fn(node_id: str) -> list[dict[str, Any]]:
         return responses.get(node_id, [])
     return extract_fn
 
 
-def _build_home_screen_nodes() -> List[Dict[str, Any]]:
+def _build_home_screen_nodes() -> list[dict[str, Any]]:
     """Build mock nodes for the home screen."""
     return [
         # Root container
@@ -1066,7 +1069,7 @@ def _build_home_screen_nodes() -> List[Dict[str, Any]]:
     ]
 
 
-def _build_settings_screen_nodes() -> List[Dict[str, Any]]:
+def _build_settings_screen_nodes() -> list[dict[str, Any]]:
     """Build mock nodes for the settings screen."""
     return [
         # Root container
@@ -1220,7 +1223,7 @@ def _build_settings_screen_nodes() -> List[Dict[str, Any]]:
     ]
 
 
-def _build_component_sheet_nodes() -> List[Dict[str, Any]]:
+def _build_component_sheet_nodes() -> list[dict[str, Any]]:
     """Build mock nodes for the component sheet."""
     return [
         # Root container

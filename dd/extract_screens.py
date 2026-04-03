@@ -1,7 +1,7 @@
 """Screen extraction script generator for Figma node trees."""
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.config import USE_FIGMA_CODE_LIMIT
 from dd.types import NON_SEMANTIC_PREFIXES, SEMANTIC_NODE_TYPES
@@ -164,7 +164,7 @@ return await extractScreen("''' + screen_node_id + '''");'''
     return script
 
 
-def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Parse and normalize the raw response from use_figma.
 
@@ -324,7 +324,7 @@ def parse_extraction_response(response: List[Dict[str, Any]]) -> List[Dict[str, 
     return parsed
 
 
-def compute_is_semantic(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def compute_is_semantic(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Compute the is_semantic flag for each node based on TDS rules.
 
@@ -339,15 +339,7 @@ def compute_is_semantic(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         is_semantic = 0
 
         # Rule a: node_type in SEMANTIC_NODE_TYPES
-        if node.get("node_type") in SEMANTIC_NODE_TYPES:
-            is_semantic = 1
-
-        # Rule b: FRAME with layout_mode
-        elif node.get("node_type") == "FRAME" and node.get("layout_mode") is not None:
-            is_semantic = 1
-
-        # Rule c: name doesn't start with NON_SEMANTIC_PREFIXES
-        elif not any(node.get("name", "").startswith(prefix) for prefix in NON_SEMANTIC_PREFIXES):
+        if node.get("node_type") in SEMANTIC_NODE_TYPES or (node.get("node_type") == "FRAME" and node.get("layout_mode") is not None) or not any(node.get("name", "").startswith(prefix) for prefix in NON_SEMANTIC_PREFIXES):
             is_semantic = 1
 
         node["is_semantic"] = is_semantic
@@ -385,7 +377,7 @@ def compute_is_semantic(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return nodes
 
 
-def insert_nodes(conn, screen_id: int, nodes: List[Dict[str, Any]]) -> List[int]:
+def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]:
     """
     Insert nodes into the database with parent_idx to parent_id mapping.
 
@@ -472,9 +464,9 @@ def update_screen_status(
     run_id: int,
     screen_id: int,
     status: str,
-    node_count: Optional[int] = None,
-    binding_count: Optional[int] = None,
-    error: Optional[str] = None
+    node_count: int | None = None,
+    binding_count: int | None = None,
+    error: str | None = None
 ) -> None:
     """
     Update the extraction status for a screen in a run.

@@ -12,12 +12,22 @@ The orchestrator handles advisory locking, error recovery, and summary reporting
 
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Optional
 
 from dd.cluster_colors import cluster_colors, ensure_collection_and_mode
-from dd.cluster_typography import cluster_typography, cluster_letter_spacing, ensure_typography_collection
+from dd.cluster_misc import (
+    cluster_effects,
+    cluster_opacity,
+    cluster_radius,
+    ensure_effects_collection,
+    ensure_opacity_collection,
+    ensure_radius_collection,
+)
 from dd.cluster_spacing import cluster_spacing, ensure_spacing_collection
-from dd.cluster_misc import cluster_radius, cluster_effects, cluster_opacity, ensure_radius_collection, ensure_effects_collection, ensure_opacity_collection
+from dd.cluster_typography import (
+    cluster_letter_spacing,
+    cluster_typography,
+    ensure_typography_collection,
+)
 
 
 def acquire_clustering_lock(conn: sqlite3.Connection, agent_id: str = "clustering", timeout_minutes: int = 10) -> None:
@@ -161,35 +171,35 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
         try:
             color_coll_id, color_mode_id = ensure_collection_and_mode(conn, file_id, "Colors")
         except Exception as e:
-            errors.append(f"Colors collection: {str(e)}")
+            errors.append(f"Colors collection: {e!s}")
             color_coll_id = color_mode_id = None
 
         # Typography
         try:
             type_coll_id, type_mode_id = ensure_typography_collection(conn, file_id)
         except Exception as e:
-            errors.append(f"Typography collection: {str(e)}")
+            errors.append(f"Typography collection: {e!s}")
             type_coll_id = type_mode_id = None
 
         # Spacing
         try:
             spacing_coll_id, spacing_mode_id = ensure_spacing_collection(conn, file_id)
         except Exception as e:
-            errors.append(f"Spacing collection: {str(e)}")
+            errors.append(f"Spacing collection: {e!s}")
             spacing_coll_id = spacing_mode_id = None
 
         # Radius
         try:
             radius_coll_id, radius_mode_id = ensure_radius_collection(conn, file_id)
         except Exception as e:
-            errors.append(f"Radius collection: {str(e)}")
+            errors.append(f"Radius collection: {e!s}")
             radius_coll_id = radius_mode_id = None
 
         # Effects
         try:
             effects_coll_id, effects_mode_id = ensure_effects_collection(conn, file_id)
         except Exception as e:
-            errors.append(f"Effects collection: {str(e)}")
+            errors.append(f"Effects collection: {e!s}")
             effects_coll_id = effects_mode_id = None
 
         # Run clustering in sequence
@@ -201,7 +211,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 results_by_type['color'] = color_result
                 print(f"[Clustering] Colors: {color_result['tokens_created']} tokens, {color_result['bindings_updated']} bindings")
             except Exception as e:
-                errors.append(f"Color clustering: {str(e)}")
+                errors.append(f"Color clustering: {e!s}")
                 results_by_type['color'] = {'tokens_created': 0, 'bindings_updated': 0}
         else:
             results_by_type['color'] = {'tokens_created': 0, 'bindings_updated': 0}
@@ -213,7 +223,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 results_by_type['typography'] = type_result
                 print(f"[Clustering] Typography: {type_result['tokens_created']} tokens, {type_result['bindings_updated']} bindings")
             except Exception as e:
-                errors.append(f"Typography clustering: {str(e)}")
+                errors.append(f"Typography clustering: {e!s}")
                 results_by_type['typography'] = {'tokens_created': 0, 'bindings_updated': 0}
         else:
             results_by_type['typography'] = {'tokens_created': 0, 'bindings_updated': 0}
@@ -228,7 +238,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                     results_by_type['typography']['tokens_created'] = results_by_type['typography'].get('tokens_created', 0) + ls_result['tokens_created']
                     results_by_type['typography']['bindings_updated'] = results_by_type['typography'].get('bindings_updated', 0) + ls_result['bindings_updated']
             except Exception as e:
-                errors.append(f"LetterSpacing clustering: {str(e)}")
+                errors.append(f"LetterSpacing clustering: {e!s}")
 
         # 3. Spacing
         if spacing_coll_id is not None:
@@ -237,7 +247,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 results_by_type['spacing'] = spacing_result
                 print(f"[Clustering] Spacing: {spacing_result['tokens_created']} tokens, {spacing_result['bindings_updated']} bindings")
             except Exception as e:
-                errors.append(f"Spacing clustering: {str(e)}")
+                errors.append(f"Spacing clustering: {e!s}")
                 results_by_type['spacing'] = {'tokens_created': 0, 'bindings_updated': 0}
         else:
             results_by_type['spacing'] = {'tokens_created': 0, 'bindings_updated': 0}
@@ -249,7 +259,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 results_by_type['radius'] = radius_result
                 print(f"[Clustering] Radius: {radius_result['tokens_created']} tokens, {radius_result['bindings_updated']} bindings")
             except Exception as e:
-                errors.append(f"Radius clustering: {str(e)}")
+                errors.append(f"Radius clustering: {e!s}")
                 results_by_type['radius'] = {'tokens_created': 0, 'bindings_updated': 0}
         else:
             results_by_type['radius'] = {'tokens_created': 0, 'bindings_updated': 0}
@@ -261,7 +271,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
                 results_by_type['effects'] = effects_result
                 print(f"[Clustering] Effects: {effects_result['tokens_created']} tokens, {effects_result['bindings_updated']} bindings")
             except Exception as e:
-                errors.append(f"Effects clustering: {str(e)}")
+                errors.append(f"Effects clustering: {e!s}")
                 results_by_type['effects'] = {'tokens_created': 0, 'bindings_updated': 0}
         else:
             results_by_type['effects'] = {'tokens_created': 0, 'bindings_updated': 0}
@@ -274,7 +284,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
             if opacity_result['tokens_created'] > 0:
                 print(f"[Clustering] Opacity: {opacity_result['tokens_created']} tokens, {opacity_result['bindings_updated']} bindings")
         except Exception as e:
-            errors.append(f"Opacity clustering: {str(e)}")
+            errors.append(f"Opacity clustering: {e!s}")
             results_by_type['opacity'] = {'tokens_created': 0, 'bindings_updated': 0}
 
         # 7. Mark CSS defaults as intentionally unbound
@@ -283,7 +293,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
             if defaults_marked > 0:
                 print(f"[Clustering] Marked {defaults_marked} default bindings (letterSpacing=0, lineHeight=AUTO)")
         except Exception as e:
-            errors.append(f"Default marking: {str(e)}")
+            errors.append(f"Default marking: {e!s}")
 
         # 8. Mark gradient fills as intentionally unbound
         try:
@@ -291,7 +301,7 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
             if gradients_marked > 0:
                 print(f"[Clustering] Marked {gradients_marked} gradient bindings as intentionally unbound")
         except Exception as e:
-            errors.append(f"Gradient marking: {str(e)}")
+            errors.append(f"Gradient marking: {e!s}")
 
         # Generate summary
         summary = generate_summary(conn, file_id, results_by_type)

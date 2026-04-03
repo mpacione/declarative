@@ -5,10 +5,10 @@ Notation format: stack(header, scroll(content), bottom_nav)
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def extract_skeleton(conn: sqlite3.Connection, screen_id: int) -> Optional[Dict[str, Any]]:
+def extract_skeleton(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any] | None:
     """Generate skeleton notation for a screen from its classified instances.
 
     Groups depth-1 classified components into header/content/footer zones
@@ -37,7 +37,7 @@ def extract_skeleton(conn: sqlite3.Connection, screen_id: int) -> Optional[Dict[
     return {"notation": notation, "skeleton_type": skeleton_type}
 
 
-def _get_screen(conn: sqlite3.Connection, screen_id: int) -> Optional[Dict[str, Any]]:
+def _get_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any] | None:
     cursor = conn.execute(
         "SELECT id, width, height FROM screens WHERE id = ?", (screen_id,)
     )
@@ -49,7 +49,7 @@ def _get_screen(conn: sqlite3.Connection, screen_id: int) -> Optional[Dict[str, 
 
 def _build_zones(
     conn: sqlite3.Connection, screen_id: int, screen_height: float
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """Partition depth-1 nodes into header/content/footer zones by y-position."""
     cursor = conn.execute(
         "SELECT n.y, n.height, COALESCE(sci.canonical_type, 'content') as ctype "
@@ -62,7 +62,7 @@ def _build_zones(
     )
     rows = cursor.fetchall()
 
-    zones: Dict[str, List[str]] = {"header": [], "content": [], "footer": []}
+    zones: dict[str, list[str]] = {"header": [], "content": [], "footer": []}
 
     for y, height, ctype in rows:
         y = y or 0
@@ -84,9 +84,9 @@ def _build_zones(
     return zones
 
 
-def _zones_to_notation(zones: Dict[str, List[str]]) -> str:
+def _zones_to_notation(zones: dict[str, list[str]]) -> str:
     """Convert zones dict to compact skeleton notation."""
-    parts: List[str] = []
+    parts: list[str] = []
 
     for ctype in zones["header"]:
         parts.append(ctype)
@@ -107,7 +107,7 @@ def _zones_to_notation(zones: Dict[str, List[str]]) -> str:
     return f"stack({', '.join(parts)})"
 
 
-def _infer_skeleton_type(zones: Dict[str, List[str]]) -> Optional[str]:
+def _infer_skeleton_type(zones: dict[str, list[str]]) -> str | None:
     """Infer a screen archetype from the zone composition."""
     has_header = len(zones["header"]) > 0
     has_footer = len(zones["footer"]) > 0

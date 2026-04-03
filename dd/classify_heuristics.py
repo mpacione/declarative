@@ -7,13 +7,13 @@ All rules are defined in dd/classify_rules.py.
 """
 
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from dd.catalog import get_catalog
 from dd.classify_rules import apply_heuristic_rules
 
 
-def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> Dict[str, Any]:
+def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Step 2: Classify remaining nodes using structural heuristics.
 
     Runs position-based, text-based, and layout-based rules on nodes
@@ -30,7 +30,7 @@ def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
         return {"classified": 0}
 
     catalog_ids = _build_catalog_id_lookup(conn)
-    inserts: List[Tuple] = []
+    inserts: list[tuple] = []
 
     for node in unclassified:
         result = apply_heuristic_rules(node, screen_width, screen_height)
@@ -57,7 +57,7 @@ def classify_heuristics(conn: sqlite3.Connection, screen_id: int) -> Dict[str, A
     return {"classified": len(inserts)}
 
 
-def _get_screen_dimensions(conn: sqlite3.Connection, screen_id: int) -> Optional[Tuple[float, float]]:
+def _get_screen_dimensions(conn: sqlite3.Connection, screen_id: int) -> tuple[float, float] | None:
     cursor = conn.execute(
         "SELECT width, height FROM screens WHERE id = ?", (screen_id,)
     )
@@ -67,7 +67,7 @@ def _get_screen_dimensions(conn: sqlite3.Connection, screen_id: int) -> Optional
     return (row[0], row[1])
 
 
-def _get_unclassified_nodes(conn: sqlite3.Connection, screen_id: int) -> List[Dict[str, Any]]:
+def _get_unclassified_nodes(conn: sqlite3.Connection, screen_id: int) -> list[dict[str, Any]]:
     cursor = conn.execute(
         "SELECT n.id, n.name, n.node_type, n.depth, n.x, n.y, n.width, n.height, "
         "n.layout_mode, n.font_family, n.font_weight, n.font_size, n.text_content, "
@@ -82,6 +82,6 @@ def _get_unclassified_nodes(conn: sqlite3.Connection, screen_id: int) -> List[Di
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
-def _build_catalog_id_lookup(conn: sqlite3.Connection) -> Dict[str, Optional[int]]:
+def _build_catalog_id_lookup(conn: sqlite3.Connection) -> dict[str, int | None]:
     catalog = get_catalog(conn)
     return {entry["canonical_name"]: entry["id"] for entry in catalog}

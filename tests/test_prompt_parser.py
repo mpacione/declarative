@@ -2,14 +2,13 @@
 
 import json
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
-from dd.prompt_parser import parse_prompt, extract_json, prompt_to_figma, SYSTEM_PROMPT
-
+from dd.db import init_db
+from dd.prompt_parser import SYSTEM_PROMPT, extract_json, parse_prompt, prompt_to_figma
 
 # ---------------------------------------------------------------------------
 # Mock helpers

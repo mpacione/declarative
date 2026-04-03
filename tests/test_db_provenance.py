@@ -6,8 +6,8 @@ force_renormalize scoping to source='figma' only, and the retention utility.
 """
 
 import sqlite3
-import pytest
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers

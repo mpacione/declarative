@@ -5,12 +5,8 @@ doesn't match their token's value. This catches stale bindings from
 normalization changes, designer edits, or token value modifications.
 """
 
-import json
-import sqlite3
 
-import pytest
 
-from tests.fixtures import seed_post_curation
 
 
 def _seed_primitives_and_semantics(conn):

@@ -1,7 +1,6 @@
 """Tests for dd.push module — MCP action generation and push manifest orchestration."""
 
 import json
-import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -9,7 +8,11 @@ import pytest
 
 from dd.cli import main
 from dd.db import init_db
-from dd.push import convert_value_for_figma, generate_push_manifest, generate_variable_actions
+from dd.push import (
+    convert_value_for_figma,
+    generate_push_manifest,
+    generate_variable_actions,
+)
 from tests.fixtures import seed_post_curation
 
 

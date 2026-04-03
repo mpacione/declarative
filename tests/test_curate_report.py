@@ -1,9 +1,6 @@
 """Tests for the curate-report command — surfaces curation work the agent should do."""
 
-import json
 import sqlite3
-
-import pytest
 
 from dd.curate_report import generate_curation_report
 from dd.db import init_db

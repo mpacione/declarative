@@ -1,14 +1,15 @@
 """Smoke tests for fixture functions."""
 
-import pytest
 import sqlite3
 
+import pytest
+
 from tests.fixtures import (
-    seed_post_extraction,
+    make_mock_figma_response,
     seed_post_clustering,
     seed_post_curation,
+    seed_post_extraction,
     seed_post_validation,
-    make_mock_figma_response
 )
 
 

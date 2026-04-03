@@ -2,22 +2,22 @@
 
 import json
 import sqlite3
-from typing import Dict, List, Any, Optional
+from typing import Any
 
 from dd.normalize import (
-    normalize_fill,
-    normalize_stroke,
     normalize_effect,
-    normalize_typography,
-    normalize_spacing,
-    normalize_radius,
-    normalize_stroke_weight,
-    normalize_paragraph_spacing,
+    normalize_fill,
     normalize_font_style,
+    normalize_paragraph_spacing,
+    normalize_radius,
+    normalize_spacing,
+    normalize_stroke,
+    normalize_stroke_weight,
+    normalize_typography,
 )
 
 
-def create_bindings_for_node(node_row: Dict[str, Any]) -> List[Dict[str, str]]:
+def create_bindings_for_node(node_row: dict[str, Any]) -> list[dict[str, str]]:
     """Create binding dictionaries from a node's extracted data.
 
     Args:
@@ -116,7 +116,7 @@ def create_bindings_for_node(node_row: Dict[str, Any]) -> List[Dict[str, str]]:
 def insert_bindings(
     conn: sqlite3.Connection,
     node_id: int,
-    bindings: List[Dict[str, str]],
+    bindings: list[dict[str, str]],
     force_renormalize: bool = False,
 ) -> int:
     """Insert or update bindings for a node.

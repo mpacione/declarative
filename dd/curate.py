@@ -2,7 +2,6 @@
 
 import re
 import sqlite3
-from typing import Optional
 
 from dd.db import backup_db, insert_token_value
 
@@ -58,7 +57,7 @@ def accept_token(conn: sqlite3.Connection, token_id: int) -> dict:
     return {"token_id": token_id, "bindings_updated": bindings_updated}
 
 
-def accept_all(conn: sqlite3.Connection, file_id: int, db_path: Optional[str] = None) -> dict:
+def accept_all(conn: sqlite3.Connection, file_id: int, db_path: str | None = None) -> dict:
     """
     Bulk accept all extracted tokens and proposed bindings for a file.
 
@@ -141,7 +140,7 @@ def rename_token(conn: sqlite3.Connection, token_id: int, new_name: str) -> dict
 
 
 def merge_tokens(conn: sqlite3.Connection, survivor_id: int, victim_id: int,
-                 db_path: Optional[str] = None) -> dict:
+                 db_path: str | None = None) -> dict:
     """
     Merge victim token into survivor, reassigning all bindings.
 
@@ -265,7 +264,7 @@ def split_token(conn: sqlite3.Connection, token_id: int, new_name: str,
 
 
 def reject_token(conn: sqlite3.Connection, token_id: int,
-                 db_path: Optional[str] = None) -> dict:
+                 db_path: str | None = None) -> dict:
     """
     Reject a token, reverting bindings to unbound and deleting the token.
 
@@ -328,7 +327,7 @@ def create_alias(conn: sqlite3.Connection, alias_name: str, target_token_id: int
         raise ValueError(f"Target token {target_token_id} does not exist")
 
     if target["alias_of"] is not None:
-        raise ValueError(f"Target token cannot be an alias")
+        raise ValueError("Target token cannot be an alias")
 
     cursor = conn.execute("""
         SELECT COUNT(*) FROM tokens
@@ -353,7 +352,7 @@ def create_alias(conn: sqlite3.Connection, alias_name: str, target_token_id: int
 
 
 def create_collection(conn: sqlite3.Connection, name: str, file_id: int,
-                      mode_names: Optional[list[str]] = None) -> dict:
+                      mode_names: list[str] | None = None) -> dict:
     """
     Create a new token collection with mode(s).
 

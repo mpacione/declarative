@@ -1,21 +1,19 @@
 """Unit tests for validation checks and export readiness."""
 
-import json
 import pytest
 
 from dd.validate import (
+    check_alias_targets_curated,
+    check_binding_coverage,
     check_mode_completeness,
     check_name_dtcg_compliant,
-    check_orphan_tokens,
-    check_binding_coverage,
-    check_alias_targets_curated,
     check_name_uniqueness,
+    check_orphan_tokens,
     check_value_format,
-    run_validation,
     is_export_ready,
+    run_validation,
 )
 from tests.fixtures import seed_post_clustering, seed_post_curation
-
 
 # Validation check tests
 

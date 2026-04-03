@@ -1,44 +1,35 @@
 """Unit tests for all code export modules (CSS, Tailwind, DTCG)."""
 
 import json
-import pytest
 import sqlite3
-from datetime import datetime
+
+import pytest
 
 from dd.export_css import (
-    token_name_to_css_var,
+    export_css,
     format_css_value,
-    query_css_tokens,
-    generate_css_for_collection,
     generate_css,
+    token_name_to_css_var,
     write_code_mappings,
-    export_css
+)
+from dd.export_dtcg import (
+    assemble_composite_shadow,
+    assemble_composite_typography,
+    build_alias_reference,
+    build_token_tree,
+    export_dtcg,
+    format_dtcg_value,
+    generate_dtcg_dict,
+    generate_dtcg_json,
 )
 from dd.export_tailwind import (
-    TAILWIND_SECTION_MAP,
-    map_token_to_tailwind_section,
-    token_name_to_tailwind_key,
     format_tailwind_value,
     generate_tailwind_config,
     generate_tailwind_config_dict,
+    map_token_to_tailwind_section,
+    token_name_to_tailwind_key,
     write_tailwind_mappings,
-    export_tailwind
 )
-from dd.export_dtcg import (
-    DTCG_TYPE_MAP,
-    TYPOGRAPHY_FIELDS,
-    SHADOW_FIELDS,
-    build_alias_reference,
-    format_dtcg_value,
-    assemble_composite_typography,
-    assemble_composite_shadow,
-    query_dtcg_tokens,
-    build_token_tree,
-    generate_dtcg_dict,
-    generate_dtcg_json,
-    export_dtcg
-)
-
 from tests.fixtures import seed_post_curation
 
 

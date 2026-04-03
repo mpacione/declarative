@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from dd.db import init_db
 from dd.catalog import seed_catalog
+from dd.db import init_db
 from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
 
 

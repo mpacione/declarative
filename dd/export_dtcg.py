@@ -1,8 +1,7 @@
 """W3C DTCG v2025.10 tokens.json export module."""
 
 import json
-from typing import Any, Optional, Union
-
+from typing import Any
 
 DTCG_TYPE_MAP = {
     "color": "color",
@@ -69,7 +68,7 @@ def format_dtcg_value(resolved_value: str, token_type: str) -> Any:
     return resolved_value
 
 
-def assemble_composite_typography(atomic_tokens: dict[str, dict]) -> Optional[dict]:
+def assemble_composite_typography(atomic_tokens: dict[str, dict]) -> dict | None:
     """Assemble a DTCG composite typography value from atomic tokens."""
     # Check minimum required fields
     if "fontFamily" not in atomic_tokens or "fontSize" not in atomic_tokens:
@@ -105,7 +104,7 @@ def assemble_composite_typography(atomic_tokens: dict[str, dict]) -> Optional[di
     return composite
 
 
-def assemble_composite_shadow(atomic_tokens: dict[str, dict]) -> Optional[dict]:
+def assemble_composite_shadow(atomic_tokens: dict[str, dict]) -> dict | None:
     """Assemble a DTCG composite shadow value from atomic tokens."""
     # Check we have enough fields to make a shadow
     if "color" not in atomic_tokens:

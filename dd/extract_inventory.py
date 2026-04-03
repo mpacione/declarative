@@ -2,7 +2,7 @@
 
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.types import DeviceClass, classify_device, is_component_sheet_name
 
@@ -11,10 +11,10 @@ def populate_file(
     conn: sqlite3.Connection,
     file_key: str,
     name: str,
-    node_count: Optional[int] = None,
-    screen_count: Optional[int] = None,
-    last_modified: Optional[str] = None,
-    metadata: Optional[str] = None,
+    node_count: int | None = None,
+    screen_count: int | None = None,
+    last_modified: str | None = None,
+    metadata: str | None = None,
 ) -> int:
     """
     UPSERT a file into the files table.
@@ -99,8 +99,8 @@ def classify_screen(
 def populate_screens(
     conn: sqlite3.Connection,
     file_id: int,
-    frames: List[Dict[str, Any]],
-) -> List[int]:
+    frames: list[dict[str, Any]],
+) -> list[int]:
     """
     UPSERT screens into the screens table.
 
@@ -160,7 +160,7 @@ def populate_screens(
 def create_extraction_run(
     conn: sqlite3.Connection,
     file_id: int,
-    agent_id: Optional[str] = None,
+    agent_id: str | None = None,
 ) -> int:
     """
     Create a new extraction run and initialize screen extraction status.
@@ -210,7 +210,7 @@ def create_extraction_run(
 def get_pending_screens(
     conn: sqlite3.Connection,
     run_id: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get screens that are pending or failed for extraction.
 

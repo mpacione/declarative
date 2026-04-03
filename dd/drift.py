@@ -10,7 +10,7 @@ and validate.py for value comparison and normalization.
 
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dd.export_figma_vars import figma_path_to_dtcg
 
@@ -87,15 +87,13 @@ def normalize_value_for_comparison(value: str, token_type: str) -> str:
 
     elif token_type == "fontFamily":
         # Strip surrounding quotes
-        if normalized.startswith('"') and normalized.endswith('"'):
-            normalized = normalized[1:-1]
-        elif normalized.startswith("'") and normalized.endswith("'"):
+        if (normalized.startswith('"') and normalized.endswith('"')) or (normalized.startswith("'") and normalized.endswith("'")):
             normalized = normalized[1:-1]
 
     return normalized
 
 
-def parse_figma_variables_for_drift(raw_response: dict) -> List[Dict[str, Any]]:
+def parse_figma_variables_for_drift(raw_response: dict) -> list[dict[str, Any]]:
     """Parse Figma variables response for drift detection.
 
     Args:
@@ -188,7 +186,7 @@ def parse_figma_variables_for_drift(raw_response: dict) -> List[Dict[str, Any]]:
 
 
 def compare_token_values(conn: sqlite3.Connection, file_id: int,
-                        figma_variables: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
+                        figma_variables: list[dict[str, Any]]) -> dict[str, list[dict]]:
     """Compare DB token values against Figma variable values.
 
     Args:
@@ -368,7 +366,7 @@ def compare_token_values(conn: sqlite3.Connection, file_id: int,
 
 
 def update_sync_statuses(conn: sqlite3.Connection, file_id: int,
-                        comparison: Dict[str, List[Dict]]) -> Dict[str, int]:
+                        comparison: dict[str, list[dict]]) -> dict[str, int]:
     """Update token sync_status based on comparison results.
 
     Args:
@@ -453,7 +451,7 @@ def update_sync_statuses(conn: sqlite3.Connection, file_id: int,
     return counts
 
 
-def generate_drift_report(conn: sqlite3.Connection, file_id: int) -> Dict[str, Any]:
+def generate_drift_report(conn: sqlite3.Connection, file_id: int) -> dict[str, Any]:
     """Generate a drift report for a file.
 
     Args:
@@ -542,7 +540,7 @@ def generate_drift_report(conn: sqlite3.Connection, file_id: int) -> Dict[str, A
 
 
 def detect_drift(conn: sqlite3.Connection, file_id: int,
-                figma_variables_response: dict) -> Dict[str, Any]:
+                figma_variables_response: dict) -> dict[str, Any]:
     """Main drift detection entry point - updates sync statuses.
 
     Args:
@@ -573,7 +571,7 @@ def detect_drift(conn: sqlite3.Connection, file_id: int,
 
 
 def detect_drift_readonly(conn: sqlite3.Connection, file_id: int,
-                         figma_variables_response: dict) -> Dict[str, Any]:
+                         figma_variables_response: dict) -> dict[str, Any]:
     """Read-only drift detection - does NOT update sync statuses.
 
     Args:

@@ -6,7 +6,7 @@ into the dict format expected by parse_extraction_response().
 
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -33,7 +33,7 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
 
 
 def get_file_tree(
-    file_key: str, token: str, page_id: Optional[str] = None, depth: Optional[int] = None
+    file_key: str, token: str, page_id: str | None = None, depth: int | None = None
 ) -> dict:
     """Fetch file structure from Figma REST API.
 
@@ -83,7 +83,7 @@ def get_screen_nodes(
 
 def extract_top_level_frames(
     file_json: dict,
-    page_id: Optional[str] = None,
+    page_id: str | None = None,
     from_nodes_endpoint: bool = False,
 ) -> list[dict]:
     """Extract top-level frame metadata from a file or nodes response.
@@ -121,10 +121,10 @@ def extract_top_level_frames(
 
 def convert_node_tree(
     api_node: dict,
-    parent_idx: Optional[int] = None,
+    parent_idx: int | None = None,
     depth: int = 0,
     sort_order: int = 0,
-    result: Optional[list] = None,
+    result: list | None = None,
 ) -> list[dict]:
     """Recursively convert a Figma REST API node tree to extraction format.
 
@@ -145,7 +145,7 @@ def convert_node_tree(
 
 
 def _convert_single_node(
-    api_node: dict, parent_idx: Optional[int], depth: int, sort_order: int
+    api_node: dict, parent_idx: int | None, depth: int, sort_order: int
 ) -> dict:
     """Convert a single REST API node dict to extraction format."""
     bbox = api_node.get("absoluteBoundingBox")
