@@ -11,6 +11,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dd.compose import generate_from_prompt as _generate_from_prompt
+from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
 
 
 _MODEL = "claude-haiku-4-5-20251001"
@@ -79,6 +80,7 @@ def parse_prompt(
     prompt: str,
     client: Any,
     catalog_types: Optional[List[str]] = None,
+    system_prompt: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Parse a natural language prompt into a component list using Claude.
 
@@ -87,7 +89,7 @@ def parse_prompt(
     response = client.messages.create(
         model=_MODEL,
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system=system_prompt or SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
     response_text = response.content[0].text
@@ -101,9 +103,23 @@ def prompt_to_figma(
 ) -> Dict[str, Any]:
     """End-to-end: natural language prompt → Figma JS script.
 
-    Orchestrates: parse_prompt → generate_from_prompt (compose + render).
+    Enriches the LLM prompt with project-specific screen patterns
+    extracted from the DB, then orchestrates:
+    parse_prompt → generate_from_prompt (compose + render).
     """
-    components = parse_prompt(prompt, client)
+    file_row = conn.execute("SELECT id FROM files LIMIT 1").fetchone()
+    file_id = file_row[0] if file_row else None
+
+    archetype_context = ""
+    if file_id:
+        archetypes = extract_screen_archetypes(conn, file_id)
+        archetype_context = get_archetype_prompt_context(archetypes)
+
+    system = SYSTEM_PROMPT
+    if archetype_context:
+        system = system + "\n\n" + archetype_context
+
+    components = parse_prompt(prompt, client, system_prompt=system)
     result = _generate_from_prompt(conn, components)
     result["components"] = components
     return result
