@@ -89,7 +89,8 @@ class TestBuildTemplateVisuals:
         return {
             "button": [{"fills": '[{"type":"SOLID","color":{"r":0,"g":0.5,"b":1,"a":1}}]',
                          "strokes": None, "effects": None, "corner_radius": "10",
-                         "opacity": 1.0, "stroke_weight": None}],
+                         "opacity": 1.0, "stroke_weight": None,
+                         "component_key": "key_btn_solid"}],
             "header": [{"fills": '[{"type":"SOLID","color":{"r":0.98,"g":0.98,"b":0.98,"a":1}}]',
                          "strokes": None, "effects": '[{"type":"BACKGROUND_BLUR","visible":true,"radius":15}]',
                          "corner_radius": None, "opacity": 0.95, "stroke_weight": None}],
@@ -128,6 +129,20 @@ class TestBuildTemplateVisuals:
         unknown_eid = next(eid for eid, el in spec["elements"].items() if el["type"] == "unknown_widget")
         nid = spec["_node_id_map"][unknown_eid]
         assert visuals[nid]["fills"] is None
+
+    def test_component_key_propagated(self):
+        spec = compose_screen([{"type": "button"}])
+        visuals = build_template_visuals(spec, self._make_templates())
+        button_eid = next(eid for eid, el in spec["elements"].items() if el["type"] == "button")
+        nid = spec["_node_id_map"][button_eid]
+        assert visuals[nid]["component_key"] == "key_btn_solid"
+
+    def test_no_component_key_for_unknown_type(self):
+        spec = compose_screen([{"type": "unknown_widget"}])
+        visuals = build_template_visuals(spec, self._make_templates())
+        eid = next(eid for eid, el in spec["elements"].items() if el["type"] == "unknown_widget")
+        nid = spec["_node_id_map"][eid]
+        assert visuals[nid]["component_key"] is None
 
 
 # ---------------------------------------------------------------------------

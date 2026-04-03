@@ -218,40 +218,68 @@ def generate_figma_script(
     lines.append("")
 
     var_map: Dict[str, str] = {}
+    mode1_eids: set = set()
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
+        # Skip children of Mode 1 elements (they come from the instance)
+        if parent_eid in mode1_eids:
+            continue
+
         var = f"n{idx}"
         var_map[eid] = var
         etype = element.get("type", "")
         is_text = etype in _TEXT_TYPES
 
-        if is_text:
-            lines.append(f"const {var} = figma.createText();")
-        else:
-            lines.append(f"const {var} = figma.createFrame();")
-
-        lines.append(f'{var}.name = "{_escape_js(eid)}";')
-
-        layout = element.get("layout", {})
-        layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
-        lines.extend(layout_lines)
-        all_token_refs.extend(layout_refs)
-
+        # Check for component key (Mode 1)
+        component_key = None
         if db_visuals is not None:
             node_id = spec.get("_node_id_map", {}).get(eid)
             raw_visual = db_visuals.get(node_id, {}) if node_id else {}
-            visual = build_visual_from_db(raw_visual)
+            component_key = raw_visual.get("component_key")
+
+        component_figma_id = raw_visual.get("component_figma_id") if (db_visuals is not None and raw_visual) else None
+
+        if (component_key or component_figma_id) and not is_text:
+            # Mode 1: component instance (inherits structure + visuals)
+            if component_figma_id:
+                lines.append(
+                    f'const {var} = (await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")).createInstance();'
+                )
+            else:
+                lines.append(
+                    f'const {var} = (await figma.importComponentByKeyAsync("{_escape_js(component_key)}")).createInstance();'
+                )
+            lines.append(f'{var}.name = "{_escape_js(eid)}";')
+            mode1_eids.add(eid)
         else:
-            visual = {}
-        visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
-        lines.extend(visual_lines)
-        all_token_refs.extend(visual_refs)
+            # Mode 2: create frame/text
+            if is_text:
+                lines.append(f"const {var} = figma.createText();")
+            else:
+                lines.append(f"const {var} = figma.createFrame();")
 
-        style = element.get("style", {})
-        if is_text:
-            _emit_text_props(var, element, style, tokens, lines)
+            lines.append(f'{var}.name = "{_escape_js(eid)}";')
 
-        if parent_eid is not None and parent_eid in var_map:
+            layout = element.get("layout", {})
+            layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
+            lines.extend(layout_lines)
+            all_token_refs.extend(layout_refs)
+
+            if db_visuals is not None:
+                node_id = spec.get("_node_id_map", {}).get(eid)
+                raw_visual = db_visuals.get(node_id, {}) if node_id else {}
+                visual = build_visual_from_db(raw_visual)
+            else:
+                visual = {}
+            visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
+            lines.extend(visual_lines)
+            all_token_refs.extend(visual_refs)
+
+            style = element.get("style", {})
+            if is_text:
+                _emit_text_props(var, element, style, tokens, lines)
+
+        if parent_eid is not None and parent_eid in var_map and parent_eid not in mode1_eids:
             parent_var = var_map[parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
 

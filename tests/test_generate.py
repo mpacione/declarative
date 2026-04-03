@@ -430,6 +430,71 @@ class TestGenerateFigmaScriptFromDB:
         script, _ = generate_figma_script(spec, db_visuals=None)
         assert "fills" not in script
 
+    def test_mode1_emits_import_component(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "importComponentByKeyAsync" in script
+        assert '"abc123"' in script
+        assert "createInstance()" in script
+
+    def test_mode1_skips_layout_and_visual(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button", "layout": {"direction": "horizontal", "gap": 10}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "fills": json.dumps([{"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0, "a": 1}}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = script.split("\n")
+        button_lines = [l for l in lines if "button-1" in l or ("n1" in l and "n1." in l)]
+        # Mode 1 should NOT have layoutMode or fills
+        assert not any("layoutMode" in l for l in button_lines)
+        assert not any("fills" in l for l in button_lines)
+
+    def test_mode1_children_skipped(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button", "children": ["icon-1"]},
+            "icon-1": {"type": "icon"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2, "icon-1": -3}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+            -3: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert '"icon-1"' not in script
+
+    def test_mode2_still_creates_frame(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": None, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "figma.createFrame()" in script
+        assert "importComponentByKeyAsync" not in script
+
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -117,12 +117,15 @@ def query_templates(conn: sqlite3.Connection) -> Dict[str, List[Dict[str, Any]]]
     Returns dict mapping catalog_type to list of template dicts.
     """
     cursor = conn.execute(
-        "SELECT catalog_type, variant, component_key, representative_node_id, "
-        "instance_count, layout_mode, width, height, "
-        "padding_top, padding_right, padding_bottom, padding_left, "
-        "item_spacing, primary_align, counter_align, corner_radius, "
-        "fills, strokes, effects, opacity, slots "
-        "FROM component_templates ORDER BY catalog_type, variant"
+        "SELECT ct.catalog_type, ct.variant, ct.component_key, ct.representative_node_id, "
+        "ct.instance_count, ct.layout_mode, ct.width, ct.height, "
+        "ct.padding_top, ct.padding_right, ct.padding_bottom, ct.padding_left, "
+        "ct.item_spacing, ct.primary_align, ct.counter_align, ct.corner_radius, "
+        "ct.fills, ct.strokes, ct.effects, ct.opacity, ct.slots, "
+        "c.figma_node_id as component_figma_id "
+        "FROM component_templates ct "
+        "LEFT JOIN components c ON ct.variant = c.name "
+        "ORDER BY ct.catalog_type, ct.variant"
     )
     columns = [desc[0] for desc in cursor.description]
     result: Dict[str, List[Dict[str, Any]]] = {}

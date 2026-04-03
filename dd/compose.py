@@ -23,6 +23,22 @@ _SIZING_MAP = {
 }
 
 
+def _pick_best_template(
+    tmpl_list: Optional[List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    """Pick the best template from a list, preferring one with a component_key.
+
+    Prefers the keyed template with the highest instance count (Mode 1).
+    Falls back to keyless (Mode 2) if no keyed template exists.
+    """
+    if not tmpl_list:
+        return None
+    keyed = [t for t in tmpl_list if t.get("component_key")]
+    if keyed:
+        return max(keyed, key=lambda t: t.get("instance_count") or 0)
+    return tmpl_list[0]
+
+
 def compose_screen(
     components: List[Dict[str, Any]],
     templates: Optional[Dict[str, List[Dict[str, Any]]]] = None,
@@ -94,7 +110,10 @@ def _build_layout_from_template(
         layout["direction"] = "vertical"
         return layout
 
-    tmpl = templates[comp_type][0]
+    tmpl = _pick_best_template(templates.get(comp_type))
+    if not tmpl:
+        layout["direction"] = "vertical"
+        return layout
 
     direction = _DIRECTION_MAP.get(tmpl.get("layout_mode") or "", "stacked")
     layout["direction"] = direction
@@ -143,7 +162,7 @@ def build_template_visuals(
 
         comp_type = element.get("type", "")
         tmpl_list = templates.get(comp_type)
-        tmpl = tmpl_list[0] if tmpl_list else None
+        tmpl = _pick_best_template(tmpl_list)
 
         visuals[synthetic_nid] = {
             "fills": tmpl.get("fills") if tmpl else None,
@@ -152,6 +171,8 @@ def build_template_visuals(
             "corner_radius": tmpl.get("corner_radius") if tmpl else None,
             "opacity": tmpl.get("opacity") if tmpl else None,
             "stroke_weight": None,
+            "component_key": tmpl.get("component_key") if tmpl else None,
+            "component_figma_id": tmpl.get("component_figma_id") if tmpl else None,
             "bindings": [],
         }
 
