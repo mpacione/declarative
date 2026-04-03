@@ -218,8 +218,52 @@ Transforms classified screen data + token bindings into CompositionSpec.
 
 ## Layer 4: Rendering (6 modules)
 
-### dd/generate.py — Figma Generation (69 tests)
-Generates Figma Plugin API JavaScript from CompositionSpec. Supports dual visual data paths: IR visual section (legacy) or DB visual data via `db_visuals` parameter (Phase 1).
+### dd/compose.py — Prompt Composition (18 tests)
+Composes a CompositionSpec from a component list using extracted templates.
+
+| Function | Purpose |
+|----------|---------|
+| `compose_screen(components, templates)` | Build IR spec from component list with template layout defaults |
+| `build_template_visuals(spec, templates)` | Map elements to template visual data with synthetic node IDs |
+| `generate_from_prompt(conn, components)` | End-to-end: query_templates → compose → visuals → generate_figma_script |
+
+### dd/prompt_parser.py — LLM Prompt Parsing (17 tests)
+Parses natural language into component lists using Claude Haiku.
+
+| Function | Purpose |
+|----------|---------|
+| `parse_prompt(prompt, client, catalog_types, system_prompt)` | Call Claude with catalog types, return component list |
+| `prompt_to_figma(prompt, conn, client)` | End-to-end: enrich with screen patterns → parse → compose → render |
+| `extract_json(text)` | Robust JSON extraction from LLM responses (code blocks, wrapping) |
+
+### dd/screen_patterns.py — Screen Archetypes (7 tests)
+Extracts common screen patterns from classified screens.
+
+| Function | Purpose |
+|----------|---------|
+| `extract_screen_archetypes(conn, file_id)` | Cluster app screens by root component types, return ranked archetypes |
+| `get_archetype_prompt_context(archetypes)` | Generate text block for LLM prompt enrichment |
+
+### dd/templates.py — Template Extraction (16 tests)
+Extracts component templates (structure + visual defaults) from classified instances.
+
+| Function | Purpose |
+|----------|---------|
+| `extract_templates(conn, file_id)` | Compute mode templates per catalog type, populate component_templates table |
+| `query_templates(conn)` | Fetch all templates keyed by catalog_type (with component_figma_id from components table) |
+| `compute_mode_template(instances)` | Statistical mode for each field across instances |
+
+### dd/rebind_prompt.py — Token Rebinding for Prompt Screens (10 tests)
+Bridges generation pipeline to existing rebind infrastructure.
+
+| Function | Purpose |
+|----------|---------|
+| `query_token_variables(conn)` | Fetch token name → Figma variable ID mapping |
+| `build_rebind_entries(token_refs, figma_node_map, token_variables)` | Convert token_refs + M dict to rebind entries |
+| `generate_rebind_script(entries)` | Generate compact pipe-delimited rebind JS |
+
+### dd/generate.py — Figma Generation (65 tests)
+Generates Figma Plugin API JavaScript from CompositionSpec. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + template visuals) for keyless types.
 
 | Function | Purpose |
 |----------|---------|
