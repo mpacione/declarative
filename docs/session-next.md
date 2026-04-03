@@ -1,186 +1,141 @@
-# Next Session: Test & Harden the Prompt→Figma Pipeline
+# Next Session: Pipeline Quality Iteration
 
 ## Session Goal
 
-The full prompt→Figma pipeline was built in one marathon session (19 commits, 1,325 tests). It works end-to-end but hasn't been stress-tested. This session is about exercising every path, finding edge cases, fixing bugs, and improving output quality. Think of it as QA + polish.
+The prompt→Figma pipeline was hardened across two sessions (50 new tests, 5 root cause fixes). Generated screens now have background fills, HUG-sized cards, real component instances, text overrides, and token rebinding. This session is about closing the remaining quality gaps and extending the system to new capabilities.
 
 ---
 
 ## Step 1: Get Up to Speed (DO THIS FIRST)
 
-Before writing any code, thoroughly familiarize yourself with the codebase. This project is large (40+ modules, 1,325 tests) and the architecture has specific decisions you need to understand.
-
 ### Read Memory Files
 
 Read `MEMORY.md` at `/Users/mattpacione/.claude/projects/-Users-mattpacione-declarative-build/memory/MEMORY.md`, then read EVERY memory file it references. Pay special attention to:
 
-- `project_t5_progress.md` — the complete build log of what was implemented and when
-- `project_phase0_decisions.md` — critical architectural decisions (no FigmaPlatformContext, no synthetic tokens for rendering, renderer reads DB directly)
-- `project_system_overview.md` — the four-layer model
-- `feedback_reuse_systems.md` — reuse existing machinery, don't build one-offs
-- `feedback_atomic_composable.md` — pipeline functions must be atomic and composable
+- `project_t5_progress.md` — complete build log including hardening sessions
+- `project_pipeline_gap_analysis.md` — ground truth comparison methodology and findings
+- `project_phase0_decisions.md` — critical architectural decisions
+- `feedback_compare_against_ground_truth.md` — always diff output vs real DB data
+- `feedback_figma_pages.md` — Pages are organizational, not per-screen
+- `feedback_reuse_systems.md` — reuse existing machinery
 
 ### Read Architecture & Docs
 
-1. **`docs/continuation.md`** — current state, full pipeline diagram, all key files, environment setup
-2. **`docs/t5-four-layer-architecture.md`** — THE authoritative spec (1,640+ lines). Read at least: the four-layer overview (lines 1-25), Layer 3 Composition / What the IR Carries (lines 312-440), Layer 4 Rendering / Two Figma Generation Modes (lines 755-852), and Integration Checkpoints (lines 1400-1490)
-3. **`docs/module-reference.md`** — complete API reference for all modules. Focus on the new modules: `dd/compose.py`, `dd/prompt_parser.py`, `dd/templates.py`, `dd/screen_patterns.py`, `dd/rebind_prompt.py`, `dd/generate.py`
+1. **`docs/continuation.md`** — current state (2026-04-03), pipeline diagram, all key files
+2. **`docs/t5-four-layer-architecture.md`** — THE authoritative spec. Read at minimum: Layer 3 (lines 312-440), Layer 4 rendering modes (lines 755-852), RendererConfig (lines 450-510)
+3. **`docs/module-reference.md`** — API reference for all modules
 
 ### Explore with code-graph-mcp
 
-Use the code-graph-mcp tools extensively BEFORE writing code. This helps you understand what exists so you don't duplicate or conflict with it.
-
 ```
-# Start here — get the full project architecture
 project_map (compact=true)
-
-# Understand the key modules
 module_overview path="dd" (compact=true)
+```
 
-# Trace the prompt→Figma pipeline
-get_call_graph symbol_name="prompt_to_figma" direction="callees"
-get_call_graph symbol_name="generate_from_prompt" direction="callees"
-get_call_graph symbol_name="generate_figma_script" direction="callees"
+### Run the Test Suite
 
-# Before modifying anything, check blast radius
-impact_analysis symbol_name="generate_figma_script"
+```bash
+source .venv/bin/activate
+python -m pytest tests/ --tb=short  # Expect 1,375 passing
 ```
 
 ---
 
-## Step 2: What Was Built (Context)
+## Step 2: What Exists Now
 
-### The Project
-
-Declarative Design is a bi-directional design compiler. It parses UI from any source (Figma, React, screenshots, prompts) into an abstract compositional IR, then generates to any target with token-bound fidelity.
-
-### Current Database
-
-`Dank-EXP-02.declarative.db` — extracted from the "Dank (Experimental)" Figma file (`drxXOUOdYEBBQ09mrXJeYu`):
-- 86,761 nodes across 72 columns
-- 182,871 token bindings (node properties → Figma variables)
-- 388 tokens with Figma variable IDs across 8 collections
-- 338 screens (204 app screens, 117 icon defs, 14 component defs, 3 design canvases)
-- 47,292 classified nodes (93.6% coverage)
-- 21 components with 49 slot definitions and 21 a11y contracts
-- 108 component templates across 13 catalog types
-- 25,860 nodes with component keys (122 unique master components)
-
-### The Pipeline (Built 2026-04-02, 19 commits)
-
+### Pipeline Architecture
 ```
-Natural language prompt ("build me a settings page with toggle sections")
-    ↓
-dd/prompt_parser.py — Claude Haiku parses with 48 catalog types + project screen patterns
-    ↓
-Component list: [{type: "header"}, {type: "card", children: [{type: "toggle"}, ...]}, ...]
-    ↓
-dd/compose.py — compose_screen() builds IR spec with template layout defaults
-    ↓
-dd/compose.py — build_template_visuals() maps elements to template fills/strokes/effects
-    ↓
-dd/generate.py — generate_figma_script(spec, db_visuals)
-    Mode 1: getNodeByIdAsync(masterId).createInstance() for keyed components (header, buttons, tabs)
-    Mode 2: createFrame() + template visuals for keyless types (card, heading, text)
-    ↓
-Figma JS script (executed via figma_execute MCP)
-    ↓
-Returns M dict: {element_id → figma_node_id}
-    ↓
-dd/rebind_prompt.py — build_rebind_entries(token_refs, M, token_variables) + generate_rebind_script()
-    ↓
-Compact pipe-delimited rebind script (executed via figma_execute MCP)
-    ↓
-Token variables bound to created nodes
+prompt → Claude Haiku (with project vocabulary + archetypes)
+    → component list → validate_components() → compose_screen(templates)
+    → build_template_visuals() (composition data + figma_ids from registry)
+    → generate_figma_script() (Mode 1 instances + Mode 2 frames + composition children)
+    → figma_execute → M dict
+    → build_template_rebind_entries() → generate_rebind_script()
+    → figma_execute → variables bound
 ```
 
-### Phases Completed
+### Key Infrastructure Built
 
-| Phase | What | Key Files |
-|-------|------|-----------|
-| 0 | `_node_id_map` + `query_screen_visuals` — renderer reads DB directly | `dd/ir.py` |
-| 1 | `build_visual_from_db` + `db_visuals` param — generator reads DB | `dd/generate.py` |
-| 2 | Removed IR visual section — thin IR (type, layout, style, props only) | `dd/ir.py` |
-| 3a | Component extraction — 21 components, 49 slots, 21 a11y contracts | `dd/extract_components.py` |
-| 3b | Semantic tree — 116→20 elements, named slots, chrome filtering | `dd/ir.py` |
-| 4a | Template extraction — 108 templates, statistical mode per type | `dd/templates.py` |
-| 4b | Prompt composition — compose_screen + template visuals | `dd/compose.py` |
-| Mode 1 | Component instances via getNodeByIdAsync (local components) | `dd/generate.py` |
-| LLM | Claude Haiku prompt parsing + project pattern enrichment | `dd/prompt_parser.py`, `dd/screen_patterns.py` |
-| Rebind | Token variable binding for prompt-generated screens | `dd/rebind_prompt.py` |
+| System | What | Status |
+|--------|------|--------|
+| Component key registry | 122 component_key → figma_node_id mappings | ✅ 80% resolved |
+| Child composition | 139 composition entries across 104 templates | ✅ Extracted from 44K parent→child relationships |
+| Template sizing modes | layout_sizing_h/v captured (HUG/FILL/FIXED) | ✅ Cards use HUG |
+| Screen template | #F6F6F6 background from depth-0 nodes | ✅ Applied to generated screens |
+| Project vocabulary | Real variant names + keys injected into LLM prompt | ✅ Working |
+| Validation layer | Warns about unsupported types, preserves in IR | ✅ Working |
+| Composition guard | Only fires when IR element has no explicit children | ✅ Working |
 
-### Key Architectural Decisions
+### What's in the DB
 
-1. **Thin IR**: No visual data in the IR. The renderer reads visual properties from the DB via `query_screen_visuals()` for existing screens, or from templates for prompt-generated screens.
-2. **No FigmaPlatformContext**: The renderer queries the DB directly using node IDs. No intermediary cache object.
-3. **No synthetic tokens for rendering**: Synthetic tokens are a composition/curation feature, deferred. The renderer doesn't need them.
-4. **Mode 1 preferred**: `getNodeByIdAsync(masterId).createInstance()` for local components. `importComponentByKeyAsync` for published library components (untested — Dank components are local/unpublished).
-5. **Mode 2 fallback**: `createFrame()` + template structure + visual defaults for types without component keys (card, heading, text, container).
-6. **Semantic tree is opt-in**: `generate_ir(semantic=True)` collapses 116→20 elements. Default is flat for backward compatibility.
+```
+86,761 nodes (72 columns)
+182,871 token bindings
+388 tokens with Figma variable IDs
+47,292 classified nodes (93.6% coverage)
+21 components, 49 slots, 21 a11y contracts
+109 templates (23 fields each, 104 with composition data)
+122-entry component key registry
+```
 
 ---
 
-## Step 3: What To Test & Fix
+## Step 3: What To Do Next (Priority Order)
 
-### 3.1 End-to-End Pipeline Stress Test
+### 3.1 Card Width: FILL Not HUG
 
-Execute the full pipeline with various prompts via Figma MCP. Screenshot each result and evaluate quality.
+**Problem:** Cards now use HUG for both axes. But real Dank cards use HUG vertically (wrap content) and FILL horizontally (span the parent width). Currently cards render narrow because they hug their text content width.
 
-```python
-# Setup
-from dotenv import load_dotenv
-load_dotenv('.env')
-import anthropic, sqlite3
-from dd.prompt_parser import prompt_to_figma
-client = anthropic.Anthropic()
-conn = sqlite3.connect('Dank-EXP-02.declarative.db')
-conn.row_factory = sqlite3.Row
+**Investigate:** Query the real Dank card instances:
+```sql
+SELECT layout_sizing_h, layout_sizing_v, COUNT(*)
+FROM nodes n JOIN screen_component_instances sci ON sci.node_id = n.id
+WHERE sci.canonical_type = 'card'
+GROUP BY layout_sizing_h, layout_sizing_v
 ```
 
-**Prompts to try** (execute each, screenshot, evaluate):
-1. "Build a settings page with notification and privacy toggle sections"
-2. "Create a dashboard with three metric cards and a header"
-3. "Design a profile page with avatar, name, bio, and a settings list"
-4. "Make a chat screen with a message input at the bottom"
-5. "Build an onboarding flow with a hero image and continue button"
-6. "Create an empty state page with an illustration and action button"
+**Fix:** If cards universally use FILL horizontally, the template should reflect that. The `compute_mode_template` already computes the statistical mode — verify it's capturing the right data.
 
-For each: check Mode 1 instances look correct, Mode 2 frames have proper fills/padding/radius, text is readable, layout is sensible.
+### 3.2 Variant Selection on Mode 1 Instances
 
-### 3.2 Token Rebinding Execution
+**Problem:** The LLM outputs variant names (e.g., `"variant": "button/large/translucent"`), and the template selector picks the right template. But the Figma instance doesn't have its variant properties set — it just uses the master component's defaults.
 
-The rebind pipeline is built but hasn't been executed in Figma yet. Test it:
-
-```python
-from dd.rebind_prompt import query_token_variables, build_rebind_entries, generate_rebind_script
-
-# 1. Generate a screen → execute in Figma → get M dict back
-# 2. Build rebind entries: entries = build_rebind_entries(result['token_refs'], M_dict, query_token_variables(conn))
-# 3. Generate script: script = generate_rebind_script(entries)
-# 4. Execute script via figma_execute
-# 5. Inspect nodes in Figma — are variables actually bound?
+**Investigate:** Check what variant properties Dank components have:
+```sql
+SELECT name, variant_properties FROM components WHERE variant_properties IS NOT NULL
 ```
+The `component_variants` table is empty (0 rows). This means `extract_components()` didn't find COMPONENT_SET nodes (Dank uses standalone COMPONENT nodes, not variant sets).
 
-### 3.3 Edge Cases
+**Fix:** Since Dank components are standalone (not variant sets), variant selection means picking a DIFFERENT component master to instantiate. The `_pick_best_template` + registry already does this — when the LLM says `"variant": "button/large/translucent"`, the template with that variant is selected, and its `component_figma_id` is used for `getNodeByIdAsync`. Verify this works end-to-end.
 
-- **Empty prompt**: `prompt_to_figma("", conn, client)` — should produce empty or minimal screen
-- **Invalid types in LLM response**: What if Claude returns a type not in the catalog?
-- **Very large prompt**: 20+ component screen — does it render without hitting limits?
-- **No templates for a type**: What happens with `compose_screen([{"type": "date_picker"}])`?
-- **Multiple sequential executions**: Generate 5 screens in a row — orphan node cleanup?
+### 3.3 Composition Children Execution
 
-### 3.4 Mode 1 Deep Testing
+**Problem:** Composition children were built but the `importComponentByKeyAsync` path timed out during Figma execution. The `getNodeByIdAsync` path works for local components. 20/139 composition children have `component_figma_id` — these should work.
 
-- Test all keyed types: header (nav/top-nav), button variants (large/solid, small/translucent), tabs (nav/tabs), drawer, button_group, image (logo/dank)
-- Icons: 82 templates with keys but currently skipped as Mode 1 children — test if standalone icons work
-- Verify Mode 1 instances respond to token variable rebinding
+**Test:** Generate a screen where composition children have figma_ids (e.g., tabs with button children), execute in Figma, verify the buttons appear inside the tabs container.
 
-### 3.5 Quality Improvements to Build
+### 3.4 CLI Command
 
-- **Text overrides on Mode 1 instances**: Button labels currently show template default text ("Do the thing"). Need to find the TEXT child and set `.characters`.
-- **Better layout for Mode 2 frames**: Card sizing, spacing between cards, scroll container behavior.
-- **CLI command**: `dd generate-prompt "your prompt here" --db path.db` for command-line usage.
-- **Figma page management**: Create a named page/section for each generation to avoid orphans on the canvas.
+**Build:** `dd generate-prompt "your prompt" --db path.db` that:
+1. Loads DB, builds registry, extracts templates
+2. Calls prompt_to_figma()
+3. Writes the Figma JS to stdout or a file
+4. Optionally executes via figma_execute MCP
+
+### 3.5 Ground Truth Comparison Automation
+
+**Build:** A function `compare_generated_vs_ground_truth(conn, generated_spec, reference_screen_id)` that:
+1. Takes a generated CompositionSpec and a real screen ID
+2. Compares: element count, Mode 1 vs Mode 2 ratio, instance types, visual properties
+3. Returns a structured diff report
+4. Used for automated quality tracking
+
+### 3.6 Non-Dank File Testing
+
+Test the pipeline on a different Figma file to verify it generalizes. This requires:
+1. A second Figma file with its own extraction DB
+2. Running the full pipeline: extract → classify → extract_templates → prompt_to_figma
+3. Verifying the output uses the second file's components and tokens
 
 ---
 
@@ -189,34 +144,36 @@ from dd.rebind_prompt import query_token_variables, build_rebind_entries, genera
 ```bash
 source .venv/bin/activate
 
-# Run all 1,325 tests
+# Run all tests (1,375 expected)
 python -m pytest tests/ --tb=short
 
-# Run integration tests only (200+ tests, requires Dank DB)
+# Run integration tests only
 python -m pytest tests/ -m integration -v
 
-# Run specific phase tests
-python -m pytest tests/test_phase0_integration.py tests/test_phase2_integration.py tests/test_phase3a_integration.py tests/test_phase3b_integration.py tests/test_phase4a_integration.py tests/test_phase4b_integration.py tests/test_mode1_integration.py tests/test_prompt_parser_integration.py tests/test_rebind_integration.py tests/test_semantic_tree_integration.py tests/test_integration_real_db.py tests/test_screen_patterns_integration.py -v
-
-# Quick pipeline smoke test (needs ANTHROPIC_API_KEY in .env)
-ANTHROPIC_API_KEY=$(grep ANTHROPIC_API_KEY .env | cut -d= -f2) python -c "
+# Quick pipeline test with all fixes
+python -c "
 from dd.prompt_parser import prompt_to_figma
+from dd.templates import build_component_key_registry, extract_templates
 import anthropic, sqlite3
 client = anthropic.Anthropic()
 conn = sqlite3.connect('Dank-EXP-02.declarative.db')
 conn.row_factory = sqlite3.Row
-result = prompt_to_figma('Build a settings page with toggles', conn, client)
-print(f'Components: {len(result[\"components\"])}, Elements: {result[\"element_count\"]}, Script: {len(result[\"structure_script\"])} chars')
-print(f'Mode 1: {result[\"structure_script\"].count(\"getNodeByIdAsync\")}, Mode 2: {result[\"structure_script\"].count(\"createFrame\")}')
+file_id = conn.execute('SELECT id FROM files LIMIT 1').fetchone()[0]
+build_component_key_registry(conn)
+extract_templates(conn, file_id)
+result = prompt_to_figma('Build a settings page with two card sections', conn, client, page_name='Generated')
+print(f'Elements: {result[\"element_count\"]}, Warnings: {result.get(\"warnings\", [])}')
+print(f'Mode 1: {result[\"structure_script\"].count(\"getNodeByIdAsync\")}')
+print(f'HUG: {result[\"structure_script\"].count(\"HUG\")}')
 "
 
-# Execute generated script in Figma (requires Desktop Bridge plugin running)
+# Execute in Figma (requires Desktop Bridge plugin)
 # Use figma_execute MCP tool with the structure_script content
 ```
 
 ## Step 5: Branch & Git
 
 - **Branch**: `t5/architecture-vision`
-- **Remote**: Pushed to `origin` with 19 commits from the 2026-04-02 session
-- **Last commit**: `f2149f2` — ruff + mypy static analysis tooling
-- Figma file: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — needs Desktop Bridge plugin for execution
+- **Last commit**: `4a4e636` — pipeline hardening root cause fixes
+- **Tests**: 1,375 passing
+- Figma file: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
