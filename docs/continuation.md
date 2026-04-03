@@ -10,7 +10,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
 - **Extraction**: Complete. REST API + Plugin API supplemental. 60K constraints, 25K component keys populated.
 - **Classification**: 93.6% coverage (47,292 classified nodes). Zero missed on app screens.
-- **Tests**: 1,217 passing
+- **Tests**: 1,235 passing
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model
@@ -28,8 +28,11 @@ Key decisions: thin IR (no visual section), semantic tree (116→20 elements wit
 
 ## What To Do Next
 
-### Phase 4b: Prompt→IR composition + template-based rendering
-Compose IR from natural language prompts using the extracted templates and screen patterns. Render to Figma using Mode 1 (componentKey instances) and Mode 2 (frame construction from templates). End-to-end prompt→Figma screen.
+### Next: Mode 1 rendering (componentKey instances), LLM prompt parsing, screen patterns
+The basic prompt→Figma pipeline works (Phase 4b). Next improvements:
+- Mode 1: use `importComponentByKeyAsync` for components with keys (icons, buttons, tabs, header)
+- LLM integration: parse natural language prompts into component lists
+- Screen patterns: use skeleton_notation + screen archetypes to compose richer layouts
 
 ### Before Phase 1, consider:
 - Run `extract_components()` on Dank file to populate the 6 empty composition tables
