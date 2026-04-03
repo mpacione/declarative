@@ -855,6 +855,35 @@ LEFT JOIN variant_axes va ON va.component_id = c.id
 GROUP BY c.id
 ORDER BY c.category, c.name;
 
+-- Component templates extracted from classified instances (Phase 4a).
+-- Captures the most common structure + visual defaults per catalog type.
+CREATE TABLE IF NOT EXISTS component_templates (
+    id                      INTEGER PRIMARY KEY,
+    catalog_type            TEXT NOT NULL,
+    variant                 TEXT,
+    component_key           TEXT,
+    representative_node_id  INTEGER,
+    instance_count          INTEGER,
+    layout_mode             TEXT,
+    width                   REAL,
+    height                  REAL,
+    padding_top             REAL,
+    padding_right           REAL,
+    padding_bottom          REAL,
+    padding_left            REAL,
+    item_spacing            REAL,
+    primary_align           TEXT,
+    counter_align           TEXT,
+    corner_radius           TEXT,
+    fills                   TEXT,
+    strokes                 TEXT,
+    effects                 TEXT,
+    opacity                 REAL,
+    slots                   TEXT,
+    created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(catalog_type, variant)
+);
+
 -- Pre-export validation summary.
 CREATE VIEW v_export_readiness AS
 SELECT
