@@ -177,39 +177,39 @@ Walks L0 (DB `parent_id` tree) directly. For each node:
 - Applies instance property overrides via `setProperties()`
 - Applies visibility overrides on instance children
 
-### React Renderer (Code Generation)
+### Future Renderers (After Round-Trip Is Proven)
 
-Reads L1 (classification) + L2 (tokens). For each semantic element:
-- `direction: horizontal` → `display: flex; flex-direction: row`
-- `padding: {space.lg}` → `padding: var(--space-lg)`
-- `type: button, variant: primary` → `<Button variant="primary">`
-- `sizing: {width: fill}` → `flex: 1` or `width: 100%`
-- Token references become CSS custom properties
+The same IR supports additional backends. These are NOT built yet — they come after round-trip fidelity is achieved.
 
-### SwiftUI Renderer (Future)
+**React**: `direction: horizontal` → `flex-direction: row`. Token refs → CSS custom properties.
+**SwiftUI**: `direction: horizontal` → `HStack`. Token refs → Swift token constants.
+**Flutter**: `direction: horizontal` → `Row()`. Token refs → theme values.
 
-Same IR, different output:
-- `direction: horizontal` → `HStack`
-- `padding: {space.lg}` → `.padding(SpacingTokens.lg)`
-- `type: button` → `Button`
+Each renderer reads the IR levels it needs (L1+L2 for code generation, L0 for pixel-precise reproduction).
 
 ---
 
-## 6. Round-Trip Verification
+## 6. Round-Trip: The Foundational Requirement
 
-The foundational test: **Figma → DB → IR → Figma** produces a visually identical screen.
+**Nothing else matters until round-trip works.** No cross-platform renderers, no L3 format spec, no React/SwiftUI backends, no prompt-based generation. The entire compiler model rests on one proof: Figma → DB → Figma produces a visually identical screen.
+
+If we cannot faithfully reproduce a screen from our own database, the data is untrustworthy, the IR is unproven, and every downstream consumer inherits those errors. Round-trip fidelity is the foundation that everything else builds on.
+
+### The Test
+
+Extract screen 184 from the Dank file into the DB. Generate Figma Plugin API JavaScript from the DB. Execute it in Figma. The result must be visually indistinguishable from the original at 1:1 zoom.
 
 ### Current Status
 
 Screen 184 (Dank meme editor, 203 nodes, 428×926):
 - Extraction: Complete (all 203 nodes in DB with 72 columns each)
-- L0 → Figma: Structurally broken — renderer walks IR tree instead of DB tree
-- Root cause: `generate_screen()` calls `generate_ir()` which builds a classification-based tree
+- L0 → Figma: **Structurally broken** — renderer walks IR tree instead of DB `parent_id` tree
+- Root cause: `generate_screen()` calls `generate_ir()` which builds a classification-based tree, losing real parent-child relationships
 
 ### What Must Work
 
 1. Every node in the original screen appears in the reproduction
-2. Parent-child relationships match the original
+2. Parent-child relationships match the original (`parent_id` tree preserved)
 3. Positions, sizes, and layout properties match
 4. Visual properties (fills, strokes, effects, radius, opacity) match
 5. Component instances are created from the correct master components
@@ -222,6 +222,14 @@ Screen 184 (Dank meme editor, 203 nodes, 428×926):
 - Figma node IDs (new nodes get new IDs)
 - Layer names (may use IR element IDs instead of original names)
 - Canvas position (reproduction placed at a different position on the canvas)
+
+### What Comes AFTER Round-Trip (Not Before)
+
+Only once round-trip is proven:
+1. Formalize the L3 semantic format (YAML schema)
+2. Build additional frontends (React parser, SwiftUI parser)
+3. Build additional backends (React renderer, SwiftUI renderer)
+4. LLM-based generation (prompt → L3 → target)
 
 ---
 

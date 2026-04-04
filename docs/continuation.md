@@ -42,20 +42,17 @@ Declarative Design is a **design system compiler** — LLVM for design systems. 
 
 ## What To Do Next
 
-### Step 1: Verify Extraction Completeness
-Confirm that the DB captures everything from Figma with zero loss. Compare a real Figma screen against its DB representation node-by-node. If anything is missing, fix extraction first.
+### THE ONLY PRIORITY: Round-Trip Fidelity
 
-### Step 2: DB-Direct Renderer (Round-Trip)
-Build `generate_screen_from_db()` that walks the `parent_id` tree directly, bypassing the IR. Use `query_screen_visuals()` for visual properties. For INSTANCE nodes, use `getNodeByIdAsync`. The test: execute on screen 184, screenshot, compare against original. Must achieve 100% structural + visual fidelity.
+Nothing else matters until a screen goes Figma → DB → Figma and comes back visually identical. No L3 format, no React renderer, no prompt generation. Those are all downstream of a working round-trip.
 
-### Step 3: MLIR Spec with Diagrams
-Expand `docs/compiler-architecture.md` with detailed diagrams showing data flow between levels, examples of each level for the same screen, and the formal schema for L3 (YAML).
+**Step 1: Verify extraction completeness.** Confirm the DB captures everything from Figma with zero loss. Compare screen 184 node-by-node against the live Figma data. If anything is missing, fix extraction first.
 
-### Step 4: L3 Format Definition
-Define the YAML schema for Level 3. Extract screen 184 into L3 format. Verify it contains enough information for the React renderer to produce equivalent output.
+**Step 2: Build DB-direct renderer.** `generate_screen_from_db()` walks the DB `parent_id` tree directly, bypassing the IR. For each node, create the right Figma element type, apply all properties from the DB, parent it correctly. Execute on screen 184, screenshot, compare against original.
 
-### Step 5: First Cross-Platform Backend
-Build the simplest possible React renderer that reads L1+L2 and produces JSX + CSS with design token CSS custom properties. Verify: same screen, same layout, same tokens — different platform.
+**Step 3: Iterate until 100% fidelity.** Screenshot comparison, find gaps, fix them. Repeat until the reproduction is visually indistinguishable from the original.
+
+**Only after round-trip is proven:** L3 format definition, additional frontends/backends, prompt-based generation.
 
 ## Key Files
 
