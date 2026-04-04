@@ -75,16 +75,39 @@ The fundamental blocker for screen reproduction is the IR tree structure. Testin
 - **Instance property overrides not extracted**: The `instance_overrides` table exists but is empty. Buttons show wrong icons because we don't capture what the designer changed from the master component.
 - **Image fills not reproducible**: RECTANGLE nodes with IMAGE fills store `imageRef` but not image bytes.
 
-## What To Do Next
+### Critical Finding: The DB IS the Scene Graph
+Deep audit revealed the DB nodes table (72 columns, parent_id tree, sort_order z-index) is already a complete, lossless scene graph. The IR was designed to walk the DB (architecture spec lines 836-839) but actually walks a lossy classification-based tree. `generate_screen()` calls `generate_ir()` when it shouldn't need to — the renderer should walk the DB directly.
 
-### Priority 1: IR Tree Fidelity
-The IR must preserve the real Figma parent-child tree, not re-infer it from classification data. Investigate by systematically comparing the IR tree against the actual node tree in the DB for screen 184. Find every place where the IR loses structural information.
+### Multi-Level IR Design (MLIR-Inspired)
+Designed a non-lossy IR architecture inspired by MLIR compiler dialects:
+- **Level 0**: Full scene graph (the DB itself in tree form). For Figma reproduction.
+- **Level 1**: Classification annotations on nodes. For semantic understanding.
+- **Level 2**: Token binding annotations on properties. For design system portability.
+- **Level 3**: Semantic tree (~20 elements with slots). For cross-platform output AND LLM generation.
 
-### Priority 2: Instance Property Overrides
-Extract `componentProperties` from INSTANCE nodes via Plugin API supplement. Store in `instance_overrides` table. Renderer emits `setProperties()` calls.
+Each level adds information, none removes it. Different consumers read different levels.
 
-### Priority 3: Then Other Outputs
-Once reproduction works, the same IR becomes the foundation for React/SwiftUI renderers and prompt-based generation.
+### Spatial Encoding (6 mechanisms identified)
+1. **Position**: auto-layout (implicit) or absolute (parent-relative x,y, origin top-left 0,0)
+2. **Size**: fixed/hug/fill + min/max bounds
+3. **Padding**: {top, right, bottom, left} — tokenized
+4. **Gap**: uniform spacing between auto-layout children
+5. **Constraints**: anchoring for absolute children (min/center/max/stretch/scale)
+6. **Z-order**: document order = stacking order
+
+## What To Do Next (Priority Order)
+
+### Priority 1: DB-Direct Renderer for Screen Reproduction
+Build a `generate_screen_from_db()` that walks the DB node tree (parent_id) directly, bypassing the IR entirely. Use `query_screen_visuals()` for visual properties. This is the fastest path to faithful screen reproduction and validates the scene graph approach.
+
+### Priority 2: Define Level 3 Format Specification
+Design the human/LLM-readable semantic format. YAML-like, ~20 elements per screen, component types + nesting + token refs. Extract 204 Dank screens to Level 3 as training data.
+
+### Priority 3: Instance Property Overrides
+Extract `componentProperties` from INSTANCE nodes via Plugin API. Populate `instance_overrides` table. Renderer emits `setProperties()`.
+
+### Priority 4: Cross-Platform Renderers
+Once Level 3 spec is defined and reproduction works, build React and SwiftUI renderers that read Level 1+2+3.
 
 ## Key Files
 
