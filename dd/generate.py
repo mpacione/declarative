@@ -22,6 +22,13 @@ from dd.ir import (
 # Text element types that use figma.createText()
 _TEXT_TYPES = frozenset({"text", "heading", "link"})
 
+# Container types that should fill parent width in vertical auto-layout.
+# These are full-width components that span the screen in real designs.
+_FILL_WIDTH_TYPES = frozenset({
+    "card", "accordion", "header", "search_input", "tabs",
+    "drawer", "sheet", "alert", "empty_state",
+})
+
 _TOKEN_REF_RE = re.compile(r"^\{(.+)\}$")
 
 _WEIGHT_TO_STYLE = {
@@ -354,6 +361,8 @@ def generate_figma_script(
             parent_var = var_map[parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
             if is_text and eid not in mode1_eids:
+                lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
+            elif etype in _FILL_WIDTH_TYPES:
                 lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
 
         lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')

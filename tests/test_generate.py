@@ -226,6 +226,50 @@ class TestGenerateFigmaScript:
         assert "textAutoResize" in script
         assert 'layoutSizingHorizontal = "FILL"' in script
 
+    def test_card_fills_parent_width_in_vertical_layout(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["card-1"]},
+            "card-1": {"type": "card", "layout": {"direction": "vertical"}},
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutSizingHorizontal = "FILL"' in script
+
+    def test_container_types_fill_parent_width(self):
+        for container_type in ["card", "accordion", "header", "search_input", "tabs", "drawer"]:
+            spec = _make_spec({
+                "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["c-1"]},
+                "c-1": {"type": container_type, "layout": {"direction": "vertical"}},
+            })
+            script, _ = generate_figma_script(spec)
+            fill_count = script.count('layoutSizingHorizontal = "FILL"')
+            assert fill_count >= 1, f"{container_type} should get FILL width but didn't"
+
+    def test_mode1_card_instance_fills_parent_width(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        visuals = {
+            -1: {"fills": None, "strokes": None, "effects": None, "corner_radius": None,
+                 "opacity": None, "stroke_weight": None, "component_key": None,
+                 "component_figma_id": None, "bindings": []},
+            -2: {"fills": None, "strokes": None, "effects": None, "corner_radius": None,
+                 "opacity": None, "stroke_weight": None, "component_key": "abc123",
+                 "component_figma_id": "1:234", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=visuals)
+        assert "getNodeByIdAsync" in script
+        assert 'layoutSizingHorizontal = "FILL"' in script
+
+    def test_button_does_not_fill_parent_width(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["b-1"]},
+            "b-1": {"type": "button", "layout": {"direction": "horizontal"}},
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutSizingHorizontal = "FILL"' not in script
+
     def test_font_loading(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["t-1"]},

@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from dd.catalog import seed_catalog
-from dd.compose import build_template_visuals, collect_template_rebind_entries, compose_screen, generate_from_prompt
+from dd.compose import build_template_visuals, collect_template_rebind_entries, compare_generated_vs_ground_truth, compose_screen, generate_from_prompt
 from dd.db import init_db
 
 # ---------------------------------------------------------------------------
@@ -378,3 +378,128 @@ class TestVariantAwareSelection:
         spec = compose_screen([{"type": "button"}], templates=templates)
         button = next(el for el in spec["elements"].values() if el["type"] == "button")
         assert button["layout"]["sizing"]["width"] == 152
+
+
+# ---------------------------------------------------------------------------
+# Ground truth comparison tests
+# ---------------------------------------------------------------------------
+
+class TestCompareGeneratedVsGroundTruth:
+    """Verify automated ground truth comparison against real DB screens."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+        conn = init_db(db_path)
+        seed_catalog(conn)
+
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        file_id = conn.execute("SELECT id FROM files LIMIT 1").fetchone()[0]
+
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height, screen_type) "
+            "VALUES (?, '1:1', 'Test Screen', 428, 926, 'app_screen')",
+            (file_id,),
+        )
+        screen_id = conn.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+
+        # Add nodes at depth 0 (screen frame)
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, width, height) "
+            "VALUES (?, '1:1', 'Test Screen', 'FRAME', 0, 428, 926)",
+            (screen_id,),
+        )
+
+        # Add classified instances
+        for i, (ctype, comp_key) in enumerate([
+            ("header", "key_header"),
+            ("card", None),
+            ("button", "key_btn1"),
+            ("button", "key_btn2"),
+            ("text", None),
+            ("text", None),
+            ("icon", "key_icon1"),
+        ]):
+            node_id_val = f"node_{i}"
+            conn.execute(
+                "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, width, height, component_key) "
+                "VALUES (?, ?, ?, 'INSTANCE', 1, 100, 50, ?)",
+                (screen_id, node_id_val, f"{ctype}-{i}", comp_key),
+            )
+            nid = conn.execute("SELECT id FROM nodes WHERE figma_node_id = ?", (node_id_val,)).fetchone()[0]
+            conn.execute(
+                "INSERT INTO screen_component_instances (screen_id, node_id, canonical_type, classification_source) VALUES (?, ?, ?, 'heuristic')",
+                (screen_id, nid, ctype),
+            )
+
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_returns_structured_report(self, db):
+        spec = compose_screen([
+            {"type": "header"},
+            {"type": "card", "children": [
+                {"type": "button"},
+                {"type": "text"},
+            ]},
+        ])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert "generated" in report
+        assert "reference" in report
+        assert "diff" in report
+
+    def test_reports_element_counts(self, db):
+        spec = compose_screen([
+            {"type": "header"},
+            {"type": "card"},
+        ])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert report["generated"]["element_count"] > 0
+        assert report["reference"]["element_count"] == 7
+
+    def test_reports_type_distribution(self, db):
+        spec = compose_screen([
+            {"type": "header"},
+            {"type": "card"},
+            {"type": "button"},
+        ])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert "button" in report["reference"]["type_distribution"]
+        assert report["reference"]["type_distribution"]["button"] == 2
+
+    def test_reports_mode_ratio(self, db):
+        spec = compose_screen([{"type": "button"}])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert "mode1_count" in report["reference"]
+        assert "mode2_count" in report["reference"]
+        assert report["reference"]["mode1_count"] == 4  # header + 2 buttons + icon have keys
+        assert report["reference"]["mode2_count"] == 3  # card + 2 text
+
+    def test_diff_shows_missing_and_extra_types(self, db):
+        spec = compose_screen([
+            {"type": "header"},
+            {"type": "card"},
+            {"type": "slider"},  # not in reference
+        ])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert "button" in report["diff"]["missing_types"]
+        assert "slider" in report["diff"]["extra_types"]
+
+    def test_empty_spec_reports_all_missing(self, db):
+        spec = compose_screen([])
+        screen_id = db.execute("SELECT id FROM screens LIMIT 1").fetchone()[0]
+        report = compare_generated_vs_ground_truth(db, spec, screen_id)
+
+        assert report["generated"]["element_count"] == 1  # just screen root
+        assert len(report["diff"]["missing_types"]) > 0

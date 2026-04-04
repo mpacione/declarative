@@ -7,6 +7,7 @@ Usage:
     python -m dd validate [--db PATH]
     python -m dd status [--db PATH]
     python -m dd export css|tailwind|dtcg [--db PATH] [--out FILE]
+    python -m dd generate-prompt "your prompt" [--db PATH] [--out FILE] [--page NAME]
     python -m dd maintenance [--db PATH] [--keep-last N] [--dry-run]
 """
 
@@ -644,6 +645,50 @@ def _run_push(db_path: str, args: argparse.Namespace) -> None:
         print(output)
 
 
+def _make_anthropic_client():
+    """Create an Anthropic client. Separated for test mockability."""
+    import anthropic
+    return anthropic.Anthropic()
+
+
+def _run_generate_prompt(db_path: str, prompt: str, out: str | None = None, page_name: str | None = None) -> None:
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.prompt_parser import prompt_to_figma
+    from dd.templates import build_component_key_registry, extract_templates
+
+    conn = get_connection(db_path)
+    file_row = conn.execute("SELECT id FROM files LIMIT 1").fetchone()
+    if file_row:
+        file_id = file_row[0] if isinstance(file_row, tuple) else file_row["id"]
+        build_component_key_registry(conn)
+        extract_templates(conn, file_id)
+
+    client = _make_anthropic_client()
+    result = prompt_to_figma(prompt, conn, client, page_name=page_name)
+    conn.close()
+
+    script = result["structure_script"]
+    warnings = result.get("warnings", [])
+
+    if warnings:
+        for w in warnings:
+            print(f"Warning: {w}", file=sys.stderr)
+
+    if out:
+        Path(out).write_text(script)
+        print(f"Script written to {out} ({len(script):,} chars)", file=sys.stderr)
+        print(f"Elements: {result['element_count']}", file=sys.stderr)
+    else:
+        print(script)
+
+    rebind_entries = result.get("template_rebind_entries", [])
+    if rebind_entries:
+        print(f"Rebind entries: {len(rebind_entries)}", file=sys.stderr)
+
+
 def _parse_figma_input(raw: str) -> str:
     match = re.search(r'figma\.com/(?:design|file)/([a-zA-Z0-9]+)', raw)
     if match:
@@ -711,6 +756,12 @@ def main(argv: list | None = None) -> None:
     supp_parser.add_argument("--batch-size", type=int, default=5, help="Screens per batch")
     supp_parser.add_argument("--dry-run", action="store_true", help="Show what would be extracted, don't execute")
 
+    gen_prompt_parser = subparsers.add_parser("generate-prompt", help="Generate Figma script from natural language prompt")
+    gen_prompt_parser.add_argument("prompt", help="Natural language description of the screen to build")
+    gen_prompt_parser.add_argument("--db", help="Database path")
+    gen_prompt_parser.add_argument("--out", help="Write script to file instead of stdout")
+    gen_prompt_parser.add_argument("--page", help="Figma page name for the generated screen")
+
     push_parser = subparsers.add_parser("push", help="Generate Figma push manifest (variables + rebind)")
     push_parser.add_argument("--db", help="Database path")
     push_parser.add_argument("--figma-state", help="Path to figma_get_variables JSON response")
@@ -770,6 +821,9 @@ def main(argv: list | None = None) -> None:
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)
         _run_extract_supplement(db_path, args)
+    elif args.command == "generate-prompt":
+        db_path = detect_db_path(args.db)
+        _run_generate_prompt(db_path, args.prompt, out=args.out, page_name=args.page)
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)

@@ -279,6 +279,73 @@ def collect_template_rebind_entries(
     return entries
 
 
+def compare_generated_vs_ground_truth(
+    conn: sqlite3.Connection,
+    spec: dict[str, Any],
+    reference_screen_id: int,
+) -> dict[str, Any]:
+    """Compare a generated CompositionSpec against a real screen in the DB.
+
+    Returns a structured report with:
+      generated: element_count, type_distribution
+      reference: element_count, type_distribution, mode1_count, mode2_count
+      diff: missing_types, extra_types, element_count_delta
+    """
+    elements = spec.get("elements", {})
+    gen_types: dict[str, int] = {}
+    for element in elements.values():
+        etype = element.get("type", "")
+        if etype == "screen":
+            continue
+        gen_types[etype] = gen_types.get(etype, 0) + 1
+
+    ref_rows = conn.execute(
+        "SELECT sci.canonical_type, "
+        "CASE WHEN n.component_key IS NOT NULL THEN 1 ELSE 0 END AS is_keyed "
+        "FROM screen_component_instances sci "
+        "JOIN nodes n ON sci.node_id = n.id "
+        "WHERE sci.screen_id = ?",
+        (reference_screen_id,),
+    ).fetchall()
+
+    ref_types: dict[str, int] = {}
+    mode1_count = 0
+    mode2_count = 0
+    for row in ref_rows:
+        ctype = row[0]
+        is_keyed = row[1]
+        ref_types[ctype] = ref_types.get(ctype, 0) + 1
+        if is_keyed:
+            mode1_count += 1
+        else:
+            mode2_count += 1
+
+    all_types = set(gen_types.keys()) | set(ref_types.keys())
+    missing = sorted(t for t in all_types if t in ref_types and t not in gen_types)
+    extra = sorted(t for t in all_types if t in gen_types and t not in ref_types)
+
+    gen_element_count = len(elements)
+    ref_element_count = len(ref_rows)
+
+    return {
+        "generated": {
+            "element_count": gen_element_count,
+            "type_distribution": dict(gen_types),
+        },
+        "reference": {
+            "element_count": ref_element_count,
+            "type_distribution": dict(ref_types),
+            "mode1_count": mode1_count,
+            "mode2_count": mode2_count,
+        },
+        "diff": {
+            "element_count_delta": gen_element_count - ref_element_count,
+            "missing_types": missing,
+            "extra_types": extra,
+        },
+    }
+
+
 def validate_components(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]],

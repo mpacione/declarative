@@ -421,6 +421,91 @@ class TestExtractSupplement:
         assert "componentKey" in captured.out
 
 
+class TestGeneratePrompt:
+    def _make_db_with_templates(self, db_path: str) -> None:
+        from dd.catalog import seed_catalog
+        conn = init_db(db_path)
+        seed_catalog(conn)
+
+        conn.execute(
+            "INSERT INTO files (file_key, name) VALUES ('test_key', 'Test File')"
+        )
+        file_id = conn.execute("SELECT id FROM files LIMIT 1").fetchone()[0]
+
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, layout_sizing_h, layout_sizing_v) "
+            "VALUES ('card', NULL, NULL, 100, 'VERTICAL', 400, 200, 'HUG', 'HUG')"
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, layout_sizing_h, layout_sizing_v) "
+            "VALUES ('screen', NULL, NULL, 50, 'VERTICAL', 428, 926, NULL, NULL)"
+        )
+        conn.commit()
+        conn.close()
+
+    def test_generate_prompt_writes_script_to_stdout(self, tmp_path, capsys):
+        db_path = str(tmp_path / "test.declarative.db")
+        self._make_db_with_templates(db_path)
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[{"type": "card", "children": []}]')]
+
+        with patch("dd.prompt_parser.anthropic", create=True):
+            with patch("dd.cli._make_anthropic_client") as mock_client_fn:
+                mock_client = MagicMock()
+                mock_client.messages.create.return_value = mock_response
+                mock_client_fn.return_value = mock_client
+
+                main(["generate-prompt", "Build a simple card", "--db", db_path])
+
+        captured = capsys.readouterr()
+        assert "createFrame" in captured.out
+        assert "card" in captured.out.lower()
+
+    def test_generate_prompt_writes_to_file(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+        self._make_db_with_templates(db_path)
+        out_path = str(tmp_path / "output.js")
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[{"type": "card"}]')]
+
+        with patch("dd.cli._make_anthropic_client") as mock_client_fn:
+            mock_client = MagicMock()
+            mock_client.messages.create.return_value = mock_response
+            mock_client_fn.return_value = mock_client
+
+            main(["generate-prompt", "Build a card", "--db", db_path, "--out", out_path])
+
+        content = open(out_path).read()
+        assert "createFrame" in content
+
+    def test_generate_prompt_with_page_name(self, tmp_path, capsys):
+        db_path = str(tmp_path / "test.declarative.db")
+        self._make_db_with_templates(db_path)
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text='[{"type": "card"}]')]
+
+        with patch("dd.cli._make_anthropic_client") as mock_client_fn:
+            mock_client = MagicMock()
+            mock_client.messages.create.return_value = mock_response
+            mock_client_fn.return_value = mock_client
+
+            main(["generate-prompt", "Build a card", "--db", db_path, "--page", "Generated"])
+
+        captured = capsys.readouterr()
+        assert "Generated" in captured.out
+
+    def test_generate_prompt_nonexistent_db_exits(self, tmp_path):
+        with pytest.raises(SystemExit):
+            main(["generate-prompt", "hello", "--db", str(tmp_path / "nope.db")])
+
+
 class TestMainArgParsing:
     def test_extract_missing_file_key_exits(self):
         with pytest.raises(SystemExit):
