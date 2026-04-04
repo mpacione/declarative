@@ -397,15 +397,33 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
     This is the renderer's DB access path — it provides all the visual
     data needed to render a screen without reading the IR's visual section.
     """
-    cursor = conn.execute(
-        "SELECT id, fills, strokes, effects, corner_radius, opacity, "
-        "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
-        "component_key, rotation, constraint_h, constraint_v, "
-        "font_family, font_weight, font_size, font_style, line_height, "
-        "letter_spacing, text_align, text_content "
-        "FROM nodes WHERE screen_id = ?",
-        (screen_id,),
-    )
+    has_registry = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='component_key_registry'"
+    ).fetchone()
+
+    if has_registry:
+        cursor = conn.execute(
+            "SELECT n.id, n.fills, n.strokes, n.effects, n.corner_radius, n.opacity, "
+            "n.stroke_weight, n.stroke_align, n.blend_mode, n.visible, n.clips_content, "
+            "n.component_key, n.rotation, n.constraint_h, n.constraint_v, "
+            "n.font_family, n.font_weight, n.font_size, n.font_style, n.line_height, "
+            "n.letter_spacing, n.text_align, n.text_content, "
+            "ckr.figma_node_id as component_figma_id "
+            "FROM nodes n "
+            "LEFT JOIN component_key_registry ckr ON n.component_key = ckr.component_key "
+            "WHERE n.screen_id = ?",
+            (screen_id,),
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT id, fills, strokes, effects, corner_radius, opacity, "
+            "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
+            "component_key, rotation, constraint_h, constraint_v, "
+            "font_family, font_weight, font_size, font_style, line_height, "
+            "letter_spacing, text_align, text_content "
+            "FROM nodes WHERE screen_id = ?",
+            (screen_id,),
+        )
     columns = [desc[0] for desc in cursor.description]
     rows = cursor.fetchall()
 
@@ -436,6 +454,28 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                 "token_name": row[2],
                 "resolved_value": row[3],
             })
+
+    instance_ids = [nid for nid, v in result.items() if v.get("component_key")]
+    if instance_ids:
+        ph = ",".join("?" for _ in instance_ids)
+        hidden_cursor = conn.execute(
+            f"SELECT root.id as instance_id, c.name "
+            f"FROM nodes root "
+            f"JOIN nodes p ON p.parent_id = root.id "
+            f"JOIN nodes c ON c.parent_id = p.id "
+            f"WHERE root.id IN ({ph}) AND c.visible = 0 "
+            f"UNION "
+            f"SELECT parent_id as instance_id, name "
+            f"FROM nodes "
+            f"WHERE parent_id IN ({ph}) AND visible = 0",
+            instance_ids + instance_ids,
+        )
+        for row in hidden_cursor.fetchall():
+            instance_id = row[0]
+            if instance_id in result:
+                if "hidden_children" not in result[instance_id]:
+                    result[instance_id]["hidden_children"] = []
+                result[instance_id]["hidden_children"].append({"name": row[1]})
 
     return result
 
@@ -674,6 +714,34 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
 
     all_nodes = container_nodes + raw_rows
 
+    # Include unclassified depth-0/1 nodes (structural elements like RECTANGLEs)
+    # Exclude INSTANCE nodes at depth 1 (system chrome: StatusBar, Safari, HomeIndicator)
+    known_node_ids = classified_node_ids | {d["node_id"] for d in container_nodes}
+    if known_node_ids:
+        kn_ph = ",".join("?" for _ in known_node_ids)
+        structural_cursor = conn.execute(
+            f"SELECT id as node_id, name, node_type, depth, sort_order, "
+            f"x, y, width, height, layout_mode, "
+            f"padding_top, padding_right, padding_bottom, padding_left, "
+            f"item_spacing, counter_axis_spacing, "
+            f"layout_sizing_h, layout_sizing_v, primary_align, counter_align, "
+            f"NULL as text_content, corner_radius, opacity, fills, "
+            f"NULL as font_family, NULL as font_weight, NULL as font_size, "
+            f"'container' as canonical_type, NULL as sci_id, NULL as parent_instance_id, "
+            f"parent_id "
+            f"FROM nodes "
+            f"WHERE screen_id = ? AND depth <= 1 "
+            f"AND id NOT IN ({kn_ph}) "
+            f"AND NOT (node_type = 'INSTANCE' AND depth = 1)",
+            [screen_id] + list(known_node_ids),
+        )
+        columns = [desc[0] for desc in structural_cursor.description]
+        for row in structural_cursor.fetchall():
+            d = dict(zip(columns, row))
+            d["bindings"] = bindings_by_node.get(d["node_id"], [])
+            d["_is_container"] = True
+            all_nodes.append(d)
+
     tokens_cursor = conn.execute(
         "SELECT DISTINCT t.name, ntb.resolved_value "
         "FROM node_token_bindings ntb "
@@ -684,12 +752,21 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     )
     tokens = {row[0]: row[1] for row in tokens_cursor.fetchall()}
 
+    origin_row = conn.execute(
+        "SELECT x, y FROM nodes WHERE screen_id = ? AND depth = 0 LIMIT 1",
+        (screen_id,),
+    ).fetchone()
+    screen_origin_x = origin_row[0] if origin_row else 0
+    screen_origin_y = origin_row[1] if origin_row else 0
+
     return {
         "screen_name": screen_row[0],
         "width": screen_row[1],
         "height": screen_row[2],
         "nodes": all_nodes,
         "tokens": tokens,
+        "screen_origin_x": screen_origin_x or 0,
+        "screen_origin_y": screen_origin_y or 0,
     }
 
 
@@ -759,11 +836,28 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         if node_id_to_element_id[n["node_id"]] not in has_parent
     ]
 
+    # Build node lookup for position data
+    node_by_id = {n["node_id"]: n for n in nodes}
+    origin_x = data.get("screen_origin_x", 0)
+    origin_y = data.get("screen_origin_y", 0)
+
+    # Enrich root-level elements with position relative to screen origin
+    for eid in root_ids:
+        nid = next((nid for nid, e in node_id_to_element_id.items() if e == eid), None)
+        if nid is not None and nid in node_by_id:
+            node = node_by_id[nid]
+            if "layout" not in elements[eid]:
+                elements[eid]["layout"] = {}
+            elements[eid]["layout"]["position"] = {
+                "x": (node.get("x", 0) or 0) - origin_x,
+                "y": (node.get("y", 0) or 0) - origin_y,
+            }
+
     root_id = "screen-1"
     elements[root_id] = {
         "type": "screen",
         "layout": {
-            "direction": "vertical",
+            "direction": "absolute",
             "sizing": {"width": data.get("width", 0), "height": data.get("height", 0)},
         },
         "children": root_ids,

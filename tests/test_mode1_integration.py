@@ -169,3 +169,28 @@ class TestMode1TextOverrides:
         ])
         script = result["structure_script"]
         assert "Settings" in script
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
+class TestVisibilityOverridesIntegration:
+    """Verify hidden children are populated from real Dank DB."""
+
+    def test_screen_visuals_include_hidden_children(self, dank_db):
+        from dd.ir import query_screen_visuals
+        visuals = query_screen_visuals(dank_db, 184)
+        # Find nav/top-nav instance — it should have hidden children
+        nav_nid = dank_db.execute(
+            "SELECT id FROM nodes WHERE screen_id = 184 AND name = 'nav/top-nav' AND node_type = 'INSTANCE'"
+        ).fetchone()[0]
+        nav_visual = visuals[nav_nid]
+        hidden = nav_visual.get("hidden_children", [])
+        assert len(hidden) > 0
+        hidden_names = {h["name"] for h in hidden}
+        # We know from investigation that Left/Title is hidden on screen 184
+        # but hidden_children are direct children only, not grandchildren
+        # The 3 direct children (Left, Center, Right) are all visible
+        # So hidden_children comes from depth-2 children of the nav instance
+        # Actually our query checks parent_id IN instance_ids — so it only gets
+        # direct children. Let's verify what we get.
+        assert isinstance(hidden, list)

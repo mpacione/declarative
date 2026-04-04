@@ -188,10 +188,17 @@ class TestGenerateFigmaScript:
         assert "paddingRight = 16" in script
 
     def test_fill_sizing(self):
-        spec = _make_spec({"screen-1": {
-            "type": "screen",
-            "layout": {"direction": "vertical", "sizing": {"width": "fill"}},
-        }})
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["card-1"],
+            },
+            "card-1": {
+                "type": "card",
+                "layout": {"direction": "vertical", "sizing": {"width": "fill"}},
+            },
+        })
         script, _ = generate_figma_script(spec)
         assert 'layoutSizingHorizontal = "FILL"' in script
 
@@ -561,6 +568,54 @@ class TestGenerateFigmaScriptFromDB:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "findOne" not in script
 
+    def test_mode1_text_override_targets_title_or_label_first(self):
+        """Text override should try to find a TEXT named Title/Label before
+        falling back to any TEXT node."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header", "props": {"text": "Settings"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "1835:155037", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "Settings" in script
+        # Should try name-based search first, then fall back
+        assert "Title" in script or "Label" in script or "title" in script
+        assert "findOne" in script
+
+    def test_mode1_text_override_with_explicit_text_target(self):
+        """When props include text_target, the override finds that named node."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header", "props": {"text": "Settings", "text_target": "Title"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "Settings" in script
+        assert '"Title"' in script
+
+    def test_mode1_subtitle_override(self):
+        """When props include subtitle, a second text override targets Subtitle nodes."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header", "props": {"text": "Settings", "subtitle": "Account preferences"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "Settings" in script
+        assert "Account preferences" in script
+
     def test_page_name_finds_or_creates_page(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["card-1"]},
@@ -868,6 +923,369 @@ class TestBuildVisualFromDB:
         assert visual["effects"][0]["type"] == "drop-shadow"
         assert visual["cornerRadius"] == 8.0
         assert visual["opacity"] == 0.9
+
+    # --- font data ---
+
+    def test_font_data_in_visual(self):
+        visual = build_visual_from_db({
+            "font_family": "Inter Variable", "font_size": 16.0,
+            "font_weight": 600, "font_style": "Regular",
+            "line_height": '{"unit": "AUTO"}', "letter_spacing": None,
+            "text_align": "LEFT", "bindings": [],
+        })
+        assert visual["font"]["font_family"] == "Inter Variable"
+        assert visual["font"]["font_size"] == 16.0
+        assert visual["font"]["font_weight"] == 600
+
+    def test_no_font_data_when_absent(self):
+        visual = build_visual_from_db({"bindings": []})
+        assert "font" not in visual
+
+    # --- clipsContent ---
+
+    def test_clips_content_truthy(self):
+        visual = build_visual_from_db({"clips_content": 1, "bindings": []})
+        assert visual["clipsContent"] is True
+
+    def test_clips_content_absent_when_null(self):
+        visual = build_visual_from_db({"clips_content": None, "bindings": []})
+        assert "clipsContent" not in visual
+
+    def test_clips_content_absent_when_zero(self):
+        visual = build_visual_from_db({"clips_content": 0, "bindings": []})
+        assert "clipsContent" not in visual
+
+    # --- rotation ---
+
+    def test_rotation_nonzero(self):
+        visual = build_visual_from_db({"rotation": 45.0, "bindings": []})
+        assert visual["rotation"] == 45.0
+
+    def test_rotation_excluded_when_zero(self):
+        visual = build_visual_from_db({"rotation": 0, "bindings": []})
+        assert "rotation" not in visual
+
+    def test_rotation_excluded_when_none(self):
+        visual = build_visual_from_db({"rotation": None, "bindings": []})
+        assert "rotation" not in visual
+
+    # --- constraints ---
+
+    def test_constraints_both_axes(self):
+        visual = build_visual_from_db({
+            "constraint_h": "SCALE", "constraint_v": "TOP", "bindings": [],
+        })
+        assert visual["constraints"] == {"horizontal": "SCALE", "vertical": "TOP"}
+
+    def test_constraints_horizontal_only(self):
+        visual = build_visual_from_db({
+            "constraint_h": "CENTER", "constraint_v": None, "bindings": [],
+        })
+        assert visual["constraints"] == {"horizontal": "CENTER"}
+
+    def test_constraints_absent_when_both_null(self):
+        visual = build_visual_from_db({
+            "constraint_h": None, "constraint_v": None, "bindings": [],
+        })
+        assert "constraints" not in visual
+
+
+class TestEmitVisualAdditiveProperties:
+    """Verify _emit_visual emits clipsContent, rotation, and constraints."""
+
+    def test_emit_clips_content(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"clips_content": 1, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "clipsContent = true" in script
+
+    def test_emit_rotation(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"rotation": 45.0, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "rotation = 45" in script
+
+    def test_no_rotation_when_zero(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"rotation": 0, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "rotation" not in script
+
+    def test_emit_constraints(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"constraint_h": "SCALE", "constraint_v": "TOP", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "constraints" in script
+        assert "SCALE" in script
+        # TOP maps to MIN in Plugin API
+        assert "MIN" in script
+
+    def test_no_constraints_when_null(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "constraints" not in script
+
+    def test_mode2_text_uses_font_from_visual(self):
+        """Mode 2 text elements should use font data from db_visuals."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "bindings": [],
+                "font": {
+                    "font_family": "Inter Variable",
+                    "font_size": 16.0,
+                    "font_weight": 600,
+                },
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert '"Inter"' in script  # Inter Variable normalized to Inter
+        assert '"Semi Bold"' in script  # weight 600 → Semi Bold
+        assert "fontSize = 16" in script
+
+    def test_mode2_text_defaults_when_no_font(self):
+        """Mode 2 text without font data should use Inter Regular."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert '"Inter"' in script
+        assert '"Regular"' in script
+
+
+class TestVisibilityOverrides:
+    """Verify Mode 1 instances emit visibility overrides for hidden children."""
+
+    def test_mode1_hides_children(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "bindings": [],
+                "hidden_children": [
+                    {"name": "Title"},
+                    {"name": "Titles"},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'n.name === "Title"' in script
+        assert 'n.name === "Titles"' in script
+        assert ".visible = false" in script
+
+    def test_mode1_no_visibility_when_all_visible(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc123", "bindings": [], "hidden_children": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".visible = false" not in script
+
+    def test_mode1_no_visibility_when_no_key(self):
+        """Mode 2 elements don't get visibility overrides."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": [], "hidden_children": [{"name": "Divider"}]},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".visible = false" not in script
+
+    def test_mode1_escapes_child_names(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "bindings": [],
+                "hidden_children": [{"name": 'icon/back "test"'}],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'icon/back \\"test\\"' in script
+
+
+class TestAbsolutePositioning:
+    """Verify renderer handles absolute positioning (direction='absolute')."""
+
+    def test_absolute_root_no_layout_mode(self):
+        """Absolute root should NOT emit layoutMode."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["card-1"],
+            },
+            "card-1": {"type": "card"},
+        })
+        script, _ = generate_figma_script(spec)
+        root_lines = [l for l in script.split("\n") if "n0." in l and "layoutMode" in l]
+        assert len(root_lines) == 0
+
+    def test_absolute_children_get_xy(self):
+        """Children under absolute parent get x/y positioning."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["header-1"],
+            },
+            "header-1": {
+                "type": "header",
+                "layout": {"position": {"x": 0, "y": 0}, "sizing": {"width": 428, "height": 111}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert ".x = 0;" in script
+        assert ".y = 0;" in script
+
+    def test_absolute_children_no_fill_width(self):
+        """FILL_WIDTH_TYPES should NOT get FILL under absolute parent."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["card-1"],
+            },
+            "card-1": {
+                "type": "card",
+                "layout": {"position": {"x": 0, "y": 100}, "sizing": {"width": 428, "height": 200}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutSizingHorizontal = "FILL"' not in script
+
+    def test_absolute_root_still_resizes(self):
+        """Absolute root should still get resize()."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(428, 926)" in script
+
+    def test_absolute_root_with_clips_content(self):
+        """Absolute root with clipsContent from db_visuals."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1}
+        db_visuals = {-1: {"clips_content": 1, "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "clipsContent = true" in script
+
+    def test_mixed_absolute_root_autolayout_children(self):
+        """Absolute root with auto-layout children (children have their own direction)."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["card-1"],
+            },
+            "card-1": {
+                "type": "card",
+                "layout": {
+                    "direction": "vertical",
+                    "position": {"x": 0, "y": 100},
+                    "sizing": {"width": 400, "height": 200},
+                },
+                "children": ["text-1"],
+            },
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        script, _ = generate_figma_script(spec)
+        # Root has no layoutMode
+        lines = script.split("\n")
+        n0_lines = [l for l in lines if l.startswith("n0.") and "layoutMode" in l]
+        assert len(n0_lines) == 0
+        # Card has layoutMode VERTICAL
+        assert 'layoutMode = "VERTICAL"' in script
+        # Card has x/y positioning
+        assert ".x = 0;" in script
+        assert ".y = 100;" in script
+
+    def test_autolayout_root_still_applies_fill(self):
+        """Existing behavior: vertical root still applies FILL width to cards."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical", "sizing": {"width": 428, "height": 926}},
+                "children": ["card-1"],
+            },
+            "card-1": {"type": "card", "layout": {"direction": "vertical"}},
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutSizingHorizontal = "FILL"' in script
 
 
 # ---------------------------------------------------------------------------

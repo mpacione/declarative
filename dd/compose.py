@@ -75,6 +75,14 @@ def compose_screen(
             element["variant"] = variant
 
         layout = _build_layout_from_template(comp_type, templates, variant=variant)
+        layout_direction_override = comp.get("layout_direction")
+        if layout_direction_override:
+            layout["direction"] = layout_direction_override
+        layout_sizing_override = comp.get("layout_sizing")
+        if layout_sizing_override:
+            if "sizing" not in layout:
+                layout["sizing"] = {}
+            layout["sizing"].update(layout_sizing_override)
         if layout:
             element["layout"] = layout
 
@@ -94,7 +102,7 @@ def compose_screen(
 
     root_id = "screen-1"
     screen_layout: dict[str, Any] = {
-        "direction": "vertical",
+        "direction": "absolute",
         "sizing": {"width": 428, "height": 926},
     }
 
@@ -105,9 +113,26 @@ def compose_screen(
         if w and h:
             screen_layout["sizing"] = {"width": w, "height": h}
 
+    _DEFAULT_ELEMENT_HEIGHT = 50
+
+    y_cursor: float = 0
+    for child_id in root_child_ids:
+        child = elements[child_id]
+        if "layout" not in child:
+            child["layout"] = {}
+        child["layout"]["position"] = {"x": 0, "y": y_cursor}
+
+        sizing = child["layout"].get("sizing", {})
+        child_height = sizing.get("heightPixels") or sizing.get("height")
+        if isinstance(child_height, (int, float)):
+            y_cursor += child_height
+        else:
+            y_cursor += _DEFAULT_ELEMENT_HEIGHT
+
     elements[root_id] = {
         "type": "screen",
         "layout": screen_layout,
+        "clipsContent": True,
         "children": root_child_ids,
     }
 
@@ -155,6 +180,11 @@ def _build_layout_from_template(
         sizing["height"] = _SIZING_MAP[sizing_v].lower()
     elif height is not None:
         sizing["height"] = height
+
+    if width is not None:
+        sizing["widthPixels"] = width
+    if height is not None:
+        sizing["heightPixels"] = height
 
     if sizing:
         layout["sizing"] = sizing
@@ -236,7 +266,15 @@ def build_template_visuals(
         if children_composition:
             element["_composition"] = children_composition
 
-        visuals[synthetic_nid] = {
+        font_data: dict[str, Any] = {}
+        if tmpl:
+            for fk in ("font_family", "font_size", "font_weight", "font_style",
+                        "line_height", "letter_spacing", "text_align"):
+                val = tmpl.get(fk)
+                if val is not None:
+                    font_data[fk] = val
+
+        visual_entry: dict[str, Any] = {
             "fills": tmpl.get("fills") if tmpl else None,
             "strokes": tmpl.get("strokes") if tmpl else None,
             "effects": tmpl.get("effects") if tmpl else None,
@@ -247,6 +285,10 @@ def build_template_visuals(
             "component_figma_id": tmpl.get("component_figma_id") if tmpl else None,
             "bindings": bindings,
         }
+        if font_data:
+            visual_entry["font"] = font_data
+
+        visuals[synthetic_nid] = visual_entry
 
     spec["_node_id_map"] = node_id_map
     return visuals
@@ -346,33 +388,145 @@ def compare_generated_vs_ground_truth(
     }
 
 
+# Composed alias patterns: unsupported types → container with label + control.
+# Each entry defines the container direction and child elements.
+# "from_prop" means the child gets its text from the parent component's prop.
+_COMPOSED_ALIASES: dict[str, dict[str, Any]] = {
+    "toggle": {
+        "direction": "horizontal",
+        "children": [
+            {"type": "text", "from_prop": "text"},
+            {"type": "icon", "variant": "icon/switch"},
+        ],
+    },
+    "checkbox": {
+        "direction": "horizontal",
+        "children": [
+            {"type": "icon", "variant": "icon/checkbox-empty"},
+            {"type": "text", "from_prop": "text"},
+        ],
+    },
+    "radio": {
+        "direction": "horizontal",
+        "children": [
+            {"type": "icon", "variant": "icon/checkbox-empty"},
+            {"type": "text", "from_prop": "text"},
+        ],
+    },
+    "radio_group": {
+        "direction": "horizontal",
+        "children": [
+            {"type": "icon", "variant": "icon/checkbox-empty"},
+            {"type": "text", "from_prop": "text"},
+        ],
+    },
+    "toggle_group": {
+        "direction": "horizontal",
+        "children": [
+            {"type": "text", "from_prop": "text"},
+            {"type": "icon", "variant": "icon/switch"},
+        ],
+    },
+}
+
+# Simple alias mapping for types that map 1:1 (no container wrapping needed).
+_SIMPLE_ALIASES: dict[str, tuple[str, str]] = {
+    "navigation_row": ("button", "button/large/translucent"),
+    "icon_button": ("button", "button/small/translucent"),
+    "select": ("button", "button/small/solid"),
+    "segmented_control": ("tabs", "nav/tabs"),
+}
+
+
+def resolve_type_aliases(
+    components: list[dict[str, Any]],
+    templates: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Resolve unsupported component types via composed patterns or simple aliases.
+
+    Composed aliases (toggle, checkbox, radio) expand into a container with
+    label text + icon children. Simple aliases (segmented_control, icon_button)
+    remap to an existing type + variant.
+
+    Mutates nothing — returns a new list. Recurses into children.
+    """
+    available_types = set(templates.keys())
+
+    def _resolve(comp: dict[str, Any]) -> dict[str, Any]:
+        comp_type = comp.get("type", "")
+        resolved = dict(comp)
+
+        if comp_type not in available_types:
+            if comp_type in _COMPOSED_ALIASES and not comp.get("variant"):
+                pattern = _COMPOSED_ALIASES[comp_type]
+                icon_type = next(
+                    (c["type"] for c in pattern["children"] if c["type"] != "text"),
+                    None,
+                )
+                if icon_type and icon_type in available_types:
+                    props = comp.get("props", {})
+                    children: list[dict[str, Any]] = []
+                    for child_spec in pattern["children"]:
+                        child: dict[str, Any] = {"type": child_spec["type"]}
+                        if child_spec.get("variant"):
+                            child["variant"] = child_spec["variant"]
+                        if child_spec.get("from_prop"):
+                            prop_val = props.get(child_spec["from_prop"])
+                            if prop_val:
+                                child["props"] = {"text": prop_val}
+                        children.append(child)
+
+                    resolved = {
+                        "type": "container",
+                        "layout_direction": pattern["direction"],
+                        "layout_sizing": {"width": "fill", "height": "hug"},
+                        "children": children,
+                    }
+                    return resolved
+
+            if comp_type in _SIMPLE_ALIASES:
+                target_type, target_variant = _SIMPLE_ALIASES[comp_type]
+                if target_type in available_types:
+                    resolved["type"] = target_type
+                    if not comp.get("variant"):
+                        resolved["variant"] = target_variant
+
+        children = comp.get("children", [])
+        if children:
+            resolved["children"] = [_resolve(child) for child in children]
+
+        return resolved
+
+    return [_resolve(comp) for comp in components]
+
+
 def validate_components(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Validate LLM-output components against available templates.
 
-    Returns (components, warnings). Components are passed through unchanged
-    (the IR is valid at any completeness). Warnings list types that have
+    Resolves type aliases first, then checks remaining unsupported types.
+    Returns (components, warnings). Warnings list types that have
     no template and will render as empty frames.
     """
+    resolved = resolve_type_aliases(components, templates)
     available_types = set(templates.keys())
     warnings: list[str] = []
 
-    for comp in components:
+    def _check(comp: dict[str, Any]) -> None:
         comp_type = comp.get("type", "")
         if comp_type and comp_type not in available_types:
             warnings.append(
                 f"Type '{comp_type}' has no template in this project — will render as empty frame"
             )
         for child in comp.get("children", []):
-            child_type = child.get("type", "")
-            if child_type and child_type not in available_types:
-                warnings.append(
-                    f"Type '{child_type}' has no template in this project — will render as empty frame"
-                )
+            _check(child)
 
-    return components, warnings
+    for comp in resolved:
+        _check(comp)
+
+    return resolved, warnings
 
 
 def generate_from_prompt(

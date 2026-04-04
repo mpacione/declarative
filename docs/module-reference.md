@@ -218,7 +218,7 @@ Transforms classified screen data + token bindings into CompositionSpec.
 
 ## Layer 4: Rendering (6 modules)
 
-### dd/compose.py — Prompt Composition (37 tests)
+### dd/compose.py — Prompt Composition (47 tests)
 Composes a CompositionSpec from a component list using extracted templates.
 
 | Function | Purpose |
@@ -226,7 +226,8 @@ Composes a CompositionSpec from a component list using extracted templates.
 | `compose_screen(components, templates)` | Build IR spec from component list with template layout defaults |
 | `build_template_visuals(spec, templates)` | Map elements to template visual data with synthetic node IDs |
 | `generate_from_prompt(conn, components, page_name)` | End-to-end: query_templates → compose → visuals → generate_figma_script |
-| `validate_components(components, templates)` | Validate LLM output types against available templates, return warnings |
+| `validate_components(components, templates)` | Resolve type aliases then validate against templates, return warnings |
+| `resolve_type_aliases(components, templates)` | Map unsupported types to existing templates (toggle→icon/switch, checkbox→icon/checkbox-empty, etc.) |
 | `compare_generated_vs_ground_truth(conn, spec, screen_id)` | Diff generated spec vs real screen: element counts, type distributions, Mode 1/2 ratio |
 | `collect_template_rebind_entries(spec, visuals)` | Collect variable rebind entries from template boundVariables |
 
@@ -269,14 +270,15 @@ Bridges generation pipeline to existing rebind infrastructure.
 | `build_template_rebind_entries(template_entries, figma_node_map)` | Convert template boundVariable data + M dict to rebind entries |
 | `generate_rebind_script(entries)` | Generate compact pipe-delimited rebind JS |
 
-### dd/generate.py — Figma Generation (78 tests)
-Generates Figma Plugin API JavaScript from CompositionSpec. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + template visuals) for keyless types. Container types in `_FILL_WIDTH_TYPES` get `layoutSizingHorizontal="FILL"` after appendChild.
+### dd/generate.py — Figma Generation (81 tests)
+Generates Figma Plugin API JavaScript from CompositionSpec. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + template visuals) for keyless types. Container types in `_FILL_WIDTH_TYPES` get `layoutSizingHorizontal="FILL"` after appendChild. Mode 1 text overrides use smart targeting: searches for TEXT nodes named Title/Label/Heading first, falls back to `findOne(TEXT)`. Supports `text_target` prop for explicit targeting and `subtitle` prop for secondary text.
 
 | Function | Purpose |
 |----------|---------|
 | `generate_figma_script(spec, db_visuals=None, page_name=None)` | Walk IR, emit JS. `db_visuals` switches visual source to DB. `page_name` creates a named page. |
 | `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script (uses DB path) |
 | `build_visual_from_db(node_visual)` | Normalize raw DB visual data to the format `_emit_visual` expects |
+| `_build_text_finder(var, text_target, subtitle)` | Build JS expression to find the right TEXT node in a Mode 1 instance |
 | `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing, alignment |
 | `_emit_visual(var, eid, visual, tokens)` | Emit fills, strokes, effects, cornerRadius, opacity |
 | `_emit_fills(var, eid, fills, tokens)` | Emit Figma paint array from IR fills |

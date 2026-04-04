@@ -165,6 +165,33 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     if opacity is not None and opacity < 1.0:
         visual["opacity"] = opacity
 
+    clips = node_visual.get("clips_content")
+    if clips:
+        visual["clipsContent"] = True
+
+    rotation = node_visual.get("rotation")
+    if rotation is not None and rotation != 0:
+        visual["rotation"] = rotation
+
+    font_data: dict[str, Any] = {}
+    for fk in ("font_family", "font_size", "font_weight", "font_style",
+               "line_height", "letter_spacing", "text_align"):
+        val = node_visual.get(fk)
+        if val is not None:
+            font_data[fk] = val
+    if font_data:
+        visual["font"] = font_data
+
+    constraint_h = node_visual.get("constraint_h")
+    constraint_v = node_visual.get("constraint_v")
+    if constraint_h or constraint_v:
+        constraints: dict[str, str] = {}
+        if constraint_h:
+            constraints["horizontal"] = constraint_h
+        if constraint_v:
+            constraints["vertical"] = constraint_v
+        visual["constraints"] = constraints
+
     return visual
 
 
@@ -186,6 +213,38 @@ def _normalize_font_family(family: str) -> str:
     return family
 
 
+_TITLE_NAMES_RE = r"/^(title|label|heading)$/i"
+_SUBTITLE_NAMES_RE = r"/^(subtitle|description|caption)$/i"
+
+
+def _build_text_finder(
+    var: str,
+    text_target: str | None,
+    subtitle: bool = False,
+) -> str:
+    """Build a JS expression to find the right TEXT node in a Mode 1 instance.
+
+    When text_target is given, searches by exact name. Otherwise uses a
+    name-pattern search (Title/Label/Heading) with fallback to any TEXT.
+    For subtitles, searches for Subtitle/Description/Caption names.
+    """
+    if text_target:
+        escaped = _escape_js(text_target)
+        return (
+            f'{var}.findOne(n => n.type === "TEXT" && n.name === "{escaped}")'
+            f' || {var}.findOne(n => n.type === "TEXT")'
+        )
+    if subtitle:
+        return (
+            f'{var}.findOne(n => n.type === "TEXT" && {_SUBTITLE_NAMES_RE}.test(n.name))'
+            f' || {var}.findAll(n => n.type === "TEXT")[1]'
+        )
+    return (
+        f'{var}.findOne(n => n.type === "TEXT" && {_TITLE_NAMES_RE}.test(n.name))'
+        f' || {var}.findOne(n => n.type === "TEXT")'
+    )
+
+
 _DIRECTION_MAP = {"horizontal": "HORIZONTAL", "vertical": "VERTICAL"}
 
 _SIZING_MAP = {"fill": "FILL", "hug": "HUG", "fixed": "FIXED"}
@@ -193,6 +252,15 @@ _SIZING_MAP = {"fill": "FILL", "hug": "HUG", "fixed": "FIXED"}
 _ALIGNMENT_MAP = {
     "start": "MIN", "center": "CENTER", "end": "MAX",
     "stretch": "STRETCH", "space-between": "SPACE_BETWEEN",
+}
+
+# REST API → Plugin API constraint mapping.
+# REST uses LEFT/RIGHT/TOP/BOTTOM; Plugin uses MIN/MAX/STRETCH.
+_CONSTRAINT_MAP = {
+    "LEFT": "MIN", "RIGHT": "MAX", "TOP": "MIN", "BOTTOM": "MAX",
+    "CENTER": "CENTER", "SCALE": "SCALE",
+    "LEFT_RIGHT": "STRETCH", "TOP_BOTTOM": "STRETCH",
+    "MIN": "MIN", "MAX": "MAX", "STRETCH": "STRETCH",
 }
 
 
@@ -280,6 +348,7 @@ def generate_figma_script(
 
     var_map: dict[str, str] = {}
     mode1_eids: set = set()
+    absolute_eids: set = set()
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
         # Skip children of Mode 1 elements (they come from the instance)
@@ -312,13 +381,38 @@ def generate_figma_script(
                 )
             lines.append(f'{var}.name = "{_escape_js(eid)}";')
 
-            text_override = element.get("props", {}).get("text", "")
+            props = element.get("props", {})
+            text_override = props.get("text", "")
             if text_override:
+                text_target = props.get("text_target")
+                find_expr = _build_text_finder(var, text_target)
                 lines.append(
-                    f'{{ const _t = {var}.findOne(n => n.type === "TEXT"); '
+                    f'{{ const _t = {find_expr}; '
                     f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
                     f'_t.characters = "{_escape_js(text_override)}"; }} }}'
                 )
+
+            subtitle_override = props.get("subtitle", "")
+            if subtitle_override:
+                sub_find = _build_text_finder(var, None, subtitle=True)
+                lines.append(
+                    f'{{ const _t = {sub_find}; '
+                    f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
+                    f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
+                )
+
+            hidden_children = raw_visual.get("hidden_children", []) if (db_visuals is not None and raw_visual) else []
+            for hc in hidden_children:
+                hname = _escape_js(hc["name"])
+                lines.append(
+                    f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
+                    f"if (_h) _h.visible = false; }}"
+                )
+
+            position = element.get("layout", {}).get("position")
+            if position:
+                lines.append(f"{var}.x = {position.get('x', 0)};")
+                lines.append(f"{var}.y = {position.get('y', 0)};")
 
             mode1_eids.add(eid)
         else:
@@ -350,6 +444,17 @@ def generate_figma_script(
 
             style = element.get("style", {})
             if is_text:
+                font_data = visual.get("font") or (raw_visual.get("font") if db_visuals is not None else None)
+                if font_data:
+                    style = dict(style)
+                    _FONT_KEY_MAP = {
+                        "font_family": "fontFamily",
+                        "font_size": "fontSize",
+                        "font_weight": "fontWeight",
+                    }
+                    for db_key, style_key in _FONT_KEY_MAP.items():
+                        if db_key in font_data and style_key not in style:
+                            style[style_key] = font_data[db_key]
                 _emit_text_props(var, element, style, tokens, lines)
 
             composition = element.get("_composition")
@@ -357,13 +462,21 @@ def generate_figma_script(
             if composition and not is_text and not has_ir_children:
                 _emit_composition_children(var, eid, composition, lines, idx * 100)
 
+            elem_direction = element.get("layout", {}).get("direction", "")
+            if elem_direction == "absolute":
+                absolute_eids.add(eid)
+
         if parent_eid is not None and parent_eid in var_map and parent_eid not in mode1_eids:
             parent_var = var_map[parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
-            if is_text and eid not in mode1_eids:
-                lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
-            elif etype in _FILL_WIDTH_TYPES:
-                lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
+            parent_is_autolayout = parent_eid not in absolute_eids
+            if parent_is_autolayout:
+                elem_sizing = element.get("layout", {}).get("sizing", {})
+                wants_fill = elem_sizing.get("width") == "fill"
+                if is_text and eid not in mode1_eids:
+                    lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
+                elif etype in _FILL_WIDTH_TYPES or wants_fill:
+                    lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
 
         lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
         lines.append("")
@@ -446,15 +559,20 @@ def _emit_layout(
             continue
         if isinstance(val, str):
             mapped = _SIZING_MAP.get(val)
-            if mapped:
+            # FILL requires parent auto-layout — defer to post-appendChild
+            if mapped and mapped != "FILL":
                 lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
         elif isinstance(val, (int, float)) and has_auto_layout:
             lines.append(f'{var}.layoutSizing{figma_axis} = "FIXED";')
 
     w = sizing.get("width")
     h = sizing.get("height")
-    rw = int(w) if isinstance(w, (int, float)) else None
-    rh = int(h) if isinstance(h, (int, float)) else None
+    rw = int(w) if isinstance(w, (int, float)) else sizing.get("widthPixels")
+    rh = int(h) if isinstance(h, (int, float)) else sizing.get("heightPixels")
+    if rw is not None:
+        rw = int(rw)
+    if rh is not None:
+        rh = int(rh)
     if rw is not None or rh is not None:
         lines.append(f"{var}.resize({rw or 1}, {rh or 1});")
 
@@ -467,6 +585,13 @@ def _emit_layout(
     if cross_align:
         mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
         lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
+
+    position = layout.get("position")
+    if position:
+        px = position.get("x", 0)
+        py = position.get("y", 0)
+        lines.append(f"{var}.x = {px};")
+        lines.append(f"{var}.y = {py};")
 
     return (lines, refs)
 
@@ -504,6 +629,24 @@ def _emit_visual(
     opacity = visual.get("opacity")
     if opacity is not None:
         lines.append(f"{var}.opacity = {opacity};")
+
+    if visual.get("clipsContent"):
+        lines.append(f"{var}.clipsContent = true;")
+
+    rotation = visual.get("rotation")
+    if rotation is not None:
+        lines.append(f"{var}.rotation = {rotation};")
+
+    constraints = visual.get("constraints")
+    if constraints:
+        parts = []
+        if "horizontal" in constraints:
+            mapped = _CONSTRAINT_MAP.get(constraints["horizontal"], constraints["horizontal"])
+            parts.append(f'horizontal: "{mapped}"')
+        if "vertical" in constraints:
+            mapped = _CONSTRAINT_MAP.get(constraints["vertical"], constraints["vertical"])
+            parts.append(f'vertical: "{mapped}"')
+        lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
 
     return (lines, refs)
 

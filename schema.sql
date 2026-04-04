@@ -888,6 +888,13 @@ CREATE TABLE IF NOT EXISTS component_templates (
     max_width               REAL,
     min_height              REAL,
     max_height              REAL,
+    font_family             TEXT,
+    font_size               REAL,
+    font_weight             INTEGER,
+    font_style              TEXT,
+    line_height             TEXT,
+    letter_spacing          TEXT,
+    text_align              TEXT,
     created_at              TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(catalog_type, variant)
 );

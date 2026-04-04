@@ -5,7 +5,15 @@ import sqlite3
 import pytest
 
 from dd.catalog import seed_catalog
-from dd.compose import build_template_visuals, collect_template_rebind_entries, compare_generated_vs_ground_truth, compose_screen, generate_from_prompt
+from dd.compose import (
+    build_template_visuals,
+    collect_template_rebind_entries,
+    compare_generated_vs_ground_truth,
+    compose_screen,
+    generate_from_prompt,
+    resolve_type_aliases,
+    validate_components,
+)
 from dd.db import init_db
 
 # ---------------------------------------------------------------------------
@@ -503,3 +511,267 @@ class TestCompareGeneratedVsGroundTruth:
 
         assert report["generated"]["element_count"] == 1  # just screen root
         assert len(report["diff"]["missing_types"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Type alias resolution tests
+# ---------------------------------------------------------------------------
+
+class TestResolveTypeAliases:
+    """Verify unsupported types resolve to existing template types."""
+
+    def test_toggle_becomes_container(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}]}
+        components = [{"type": "toggle", "props": {"text": "Dark Mode"}}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "container"
+        assert len(resolved[0]["children"]) == 2
+
+    def test_toggle_has_text_and_icon_children(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}]}
+        components = [{"type": "toggle", "props": {"text": "Dark Mode"}}]
+        resolved = resolve_type_aliases(components, templates)
+        child_types = {c["type"] for c in resolved[0]["children"]}
+        assert "text" in child_types
+        assert "icon" in child_types
+
+    def test_toggle_label_gets_text_prop(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}]}
+        components = [{"type": "toggle", "props": {"text": "Dark Mode"}}]
+        resolved = resolve_type_aliases(components, templates)
+        text_child = next(c for c in resolved[0]["children"] if c["type"] == "text")
+        assert text_child["props"]["text"] == "Dark Mode"
+
+    def test_toggle_container_is_horizontal(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}]}
+        components = [{"type": "toggle"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0].get("layout_direction") == "horizontal"
+
+    def test_checkbox_becomes_container(self):
+        templates = {"icon": [{"variant": "icon/checkbox-empty"}], "text": [{"variant": "default"}]}
+        components = [{"type": "checkbox", "props": {"text": "Accept"}}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "container"
+        icon_child = next(c for c in resolved[0]["children"] if c["type"] == "icon")
+        assert icon_child["variant"] == "icon/checkbox-empty"
+
+    def test_supported_type_unchanged(self):
+        templates = {"button": [{"variant": "default", "instance_count": 10}]}
+        components = [{"type": "button"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "button"
+
+    def test_unknown_type_left_unchanged(self):
+        templates = {"button": [{"variant": "default"}]}
+        components = [{"type": "slider"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "slider"
+
+    def test_explicit_variant_uses_simple_alias(self):
+        templates = {"icon": [{"variant": "icon/switch"}]}
+        components = [{"type": "toggle", "variant": "custom-toggle"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["variant"] == "custom-toggle"
+
+    def test_nested_children_resolved(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}], "card": [{"variant": "default"}]}
+        components = [{"type": "card", "children": [{"type": "toggle", "props": {"text": "On"}}]}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["children"][0]["type"] == "container"
+
+    def test_simple_alias_still_works(self):
+        templates = {"tabs": [{"variant": "nav/tabs"}]}
+        components = [{"type": "segmented_control"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "tabs"
+        assert resolved[0]["variant"] == "nav/tabs"
+
+    def test_toggle_without_text_still_has_icon(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}]}
+        components = [{"type": "toggle"}]
+        resolved = resolve_type_aliases(components, templates)
+        assert resolved[0]["type"] == "container"
+        icon_child = next(c for c in resolved[0]["children"] if c["type"] == "icon")
+        assert icon_child["variant"] == "icon/switch"
+
+
+class TestFontDataInComposition:
+    """Verify font properties flow from templates into element styles."""
+
+    def test_build_template_visuals_includes_font_data(self):
+        templates = {
+            "text": [{
+                "fills": None, "strokes": None, "effects": None,
+                "corner_radius": None, "opacity": 1.0,
+                "font_family": "Inter Variable", "font_size": 16.0,
+                "font_weight": 600, "font_style": "Regular",
+                "line_height": '{"unit": "AUTO"}', "letter_spacing": None,
+                "text_align": "LEFT",
+            }],
+        }
+        spec = compose_screen([{"type": "text", "props": {"text": "Hello"}}])
+        visuals = build_template_visuals(spec, templates)
+        text_nid = next(nid for nid, v in visuals.items() if v.get("font"))
+        assert visuals[text_nid]["font"]["font_family"] == "Inter Variable"
+        assert visuals[text_nid]["font"]["font_size"] == 16.0
+        assert visuals[text_nid]["font"]["font_weight"] == 600
+
+    def test_no_font_data_when_template_lacks_fonts(self):
+        templates = {
+            "card": [{
+                "fills": None, "strokes": None, "effects": None,
+                "corner_radius": None, "opacity": 1.0,
+            }],
+        }
+        spec = compose_screen([{"type": "card"}])
+        visuals = build_template_visuals(spec, templates)
+        card_nid = next(nid for nid, v in visuals.items()
+                        if v.get("component_key") is None and nid != list(visuals.keys())[0])
+        assert "font" not in visuals[card_nid] or not visuals[card_nid].get("font")
+
+    def test_font_data_not_on_screen_element(self):
+        templates = {
+            "text": [{
+                "fills": None, "strokes": None, "effects": None,
+                "corner_radius": None, "opacity": 1.0,
+                "font_family": "Inter", "font_size": 14.0, "font_weight": 400,
+            }],
+        }
+        spec = compose_screen([{"type": "text", "props": {"text": "Hi"}}])
+        visuals = build_template_visuals(spec, templates)
+        screen_nid = spec["_node_id_map"]["screen-1"]
+        assert not visuals[screen_nid].get("font")
+
+
+class TestAbsoluteScreenRoot:
+    """Verify compose_screen uses absolute positioning for the screen root."""
+
+    def test_root_direction_is_absolute(self):
+        spec = compose_screen([{"type": "header"}])
+        root = spec["elements"][spec["root"]]
+        assert root["layout"]["direction"] == "absolute"
+
+    def test_root_has_clips_content(self):
+        spec = compose_screen([{"type": "header"}])
+        root = spec["elements"][spec["root"]]
+        assert root.get("clipsContent") is True
+
+    def test_children_have_computed_positions(self):
+        templates = {
+            "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 111,
+                        "instance_count": 10}],
+            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 200,
+                      "instance_count": 10}],
+        }
+        spec = compose_screen(
+            [{"type": "header"}, {"type": "card"}],
+            templates=templates,
+        )
+        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        # Header at top
+        assert header["layout"]["position"]["y"] == 0
+        # Card below header
+        assert card["layout"]["position"]["y"] == 111
+
+    def test_children_x_defaults_to_zero(self):
+        spec = compose_screen([{"type": "header"}])
+        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        assert header["layout"]["position"]["x"] == 0
+
+    def test_children_position_accumulates_heights(self):
+        templates = {
+            "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 100,
+                        "instance_count": 10}],
+            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 150,
+                      "instance_count": 10}],
+            "button": [{"layout_mode": "HORIZONTAL", "width": 200, "height": 48,
+                        "instance_count": 10}],
+        }
+        spec = compose_screen(
+            [{"type": "header"}, {"type": "card"}, {"type": "button"}],
+            templates=templates,
+        )
+        elements = spec["elements"]
+        header = next(el for el in elements.values() if el["type"] == "header")
+        card = next(el for el in elements.values() if el["type"] == "card")
+        button = next(el for el in elements.values() if el["type"] == "button")
+        assert header["layout"]["position"]["y"] == 0
+        assert card["layout"]["position"]["y"] == 100
+        assert button["layout"]["position"]["y"] == 250  # 100 + 150
+
+    def test_children_without_template_get_default_height(self):
+        """Types with no template use a default height for positioning."""
+        spec = compose_screen([{"type": "unknown_type"}, {"type": "header"}])
+        elements_list = [el for el in spec["elements"].values() if el["type"] != "screen"]
+        unknown = next(el for el in elements_list if el["type"] == "unknown_type")
+        header = next(el for el in elements_list if el["type"] == "header")
+        # unknown gets some default height, header is positioned below it
+        assert unknown["layout"]["position"]["y"] == 0
+        assert header["layout"]["position"]["y"] > 0
+
+    def test_hug_card_uses_pixel_width_for_sizing(self):
+        """Cards with HUG sizing should still get pixel width from template."""
+        templates = {
+            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 194,
+                      "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
+                      "instance_count": 10}],
+        }
+        spec = compose_screen([{"type": "card"}], templates=templates)
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        sizing = card["layout"]["sizing"]
+        # Should have pixel width available even with HUG mode
+        assert sizing.get("widthPixels") == 428 or sizing.get("width") == 428
+
+    def test_hug_card_y_position_uses_pixel_height(self):
+        """Y-position accumulation should use pixel height, not 'hug' string."""
+        templates = {
+            "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 111,
+                        "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
+                        "instance_count": 10}],
+            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 194,
+                      "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
+                      "instance_count": 10}],
+        }
+        spec = compose_screen(
+            [{"type": "header"}, {"type": "card"}],
+            templates=templates,
+        )
+        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        assert header["layout"]["position"]["y"] == 0
+        assert card["layout"]["position"]["y"] == 111  # Not 50 (default)
+
+    def test_children_have_pixel_dimensions_under_absolute(self):
+        """Absolute-positioned children should have pixel width/height for resize."""
+        templates = {
+            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 194,
+                      "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
+                      "instance_count": 10}],
+        }
+        spec = compose_screen([{"type": "card"}], templates=templates)
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        sizing = card["layout"]["sizing"]
+        # Renderer needs pixel values for resize() under absolute parent
+        assert sizing.get("widthPixels") == 428
+        assert sizing.get("heightPixels") == 194
+
+
+class TestValidateComponentsWithAliases:
+    """Verify validate_components resolves aliases before validation."""
+
+    def test_toggle_no_longer_warned_when_icon_exists(self):
+        templates = {"icon": [{"variant": "icon/switch"}], "text": [{"variant": "default"}], "container": [{"variant": "default"}]}
+        components, warnings = validate_components(
+            [{"type": "toggle"}], templates,
+        )
+        toggle_warnings = [w for w in warnings if "toggle" in w.lower()]
+        assert not any("no template" in w.lower() for w in toggle_warnings)
+
+    def test_truly_unsupported_type_still_warns(self):
+        templates = {"button": [{"variant": "default"}]}
+        components, warnings = validate_components(
+            [{"type": "slider"}], templates,
+        )
+        assert any("slider" in w for w in warnings)

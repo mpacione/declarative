@@ -11,7 +11,7 @@ Declarative Design is a bi-directional design compiler. Parses UI from any sourc
 - **Extraction**: Complete. REST API + Plugin API supplemental.
 - **Classification**: 93.6% coverage (47,292 classified nodes).
 - **Composition tables**: 21 components, 49 slots, 21 a11y contracts, 109 templates (with sizing modes + child composition + screen template), 122-entry component key registry
-- **Tests**: 1,389 passing (including 200+ integration tests against real Dank DB)
+- **Tests**: 1,475 passing (including 200+ integration tests against real Dank DB)
 - **Branch**: `t5/architecture-vision`
 
 ## Architecture: Four-Layer Model — ALL LAYERS OPERATIONAL
@@ -52,26 +52,39 @@ Variables bound to created nodes
 - **Ground truth comparison**: `compare_generated_vs_ground_truth(conn, spec, screen_id)` returns structured diff report: element counts, type distributions, Mode 1/2 ratio, missing/extra types. 6 tests.
 - **Figma execution verified**: Settings page with header (Mode 1), cards (Mode 2 + FILL), buttons (Mode 1 + text overrides), tabs (Mode 1). Token rebinding: 6/6 entries bound successfully.
 
-### Known Gaps
-- Toggle/radio/checkbox types have no Dank templates — render as empty frames
-- Header text override targets first TEXT child (may not be the right one in complex headers)
-- Composition children fire but most are keyless (119/139 use container/text types)
-- No non-Dank file testing yet
+### Visual Fidelity & Generalizability Session (2026-04-03)
+- **Smart text overrides**: Mode 1 text override now searches for TEXT nodes named Title/Label/Heading first via `_build_text_finder()`, then falls back to any TEXT. Supports `text_target` prop for explicit name-based targeting and `subtitle` prop for secondary text override. 3 tests.
+- **Type alias mapping**: `resolve_type_aliases()` maps 9 unsupported types to existing templates: toggle→icon/switch, checkbox→icon/checkbox-empty, radio→icon/checkbox-empty, navigation_row→button/large/translucent, icon_button→button/small/translucent, select→button/small/solid, segmented_control→nav/tabs, plus radio_group and toggle_group. `validate_components()` now resolves aliases before validation. 10 tests.
+- **Generalizability proven**: 16-test suite creates a synthetic "ShopUI Kit" e-commerce project with different component names (nav-bar, product-card, primary-btn, ghost-btn, search-field), different dimensions (iPhone 15 Pro Max 430×932), and different layout patterns — verifies template query, composition, rendering (Mode 1 + Mode 2), type alias resolution, and end-to-end pipeline all work on non-Dank data.
+- **Tests**: 1,418 passing (29 new tests added).
+
+### Rendering Pipeline Fixes (2026-04-04)
+- **Phase 1 — Additive visual properties**: `build_visual_from_db` + `_emit_visual` now handle clipsContent, rotation, constraints. Constraint values mapped from REST API (LEFT/TOP) to Plugin API (MIN/MAX/STRETCH). 14 tests.
+- **Phase 2 — Font properties in templates**: 7 font columns added to component_templates schema + `_TEMPLATE_FIELDS`. Template pipeline extracts font_family/size/weight/style/line_height/letter_spacing/text_align. Composition wires font data through to renderer. Auto-migration for existing DBs. 12 tests.
+- **Phase 3 — Absolute positioning**: Screen root uses `direction: "absolute"`, children get computed x/y positions. FILL width guarded to auto-layout parents only. IR path (`build_composition_spec`) uses relative positions from screen origin. Pixel dimensions stored alongside sizing modes via `widthPixels`/`heightPixels`. 13+ tests.
+- **Phase 4 — Visibility overrides**: `query_screen_visuals` builds `hidden_children` lists (depth 1-2) for Mode 1 instances. Renderer emits `findOne → visible = false`. 5 tests.
+- **Phase 6 — Composed type aliases**: Toggle/checkbox/radio expand into horizontal container rows (label + icon) instead of bare icons. `_COMPOSED_ALIASES` dict with `layout_direction` and `layout_sizing` overrides. 3+ tests.
+- **A1 — Component resolution fix**: `query_screen_visuals` now JOINs `component_key_registry` to get `figma_node_id`. Renderer prefers `getNodeByIdAsync` (local components) over `importComponentByKeyAsync` (published libraries). Screen 184: 31 getNodeByIdAsync, 1 importComponentByKeyAsync. 2 tests.
+- **A2 — Unclassified structural nodes**: `query_screen_for_ir` includes depth-0/1 unclassified FRAME/RECTANGLE/GROUP nodes (not system chrome INSTANCE). 2 tests.
+- **Tests**: 1,475 passing (57 new).
+
+### Known Gaps — IR Tree Fidelity
+The fundamental blocker for screen reproduction is the IR tree structure. Testing `generate_screen(184)` in Figma revealed:
+- **IR tree doesn't match real parent-child relationships**: The IR uses classification-based wiring (`parent_instance_id`, `parent_id`) which doesn't preserve the actual Figma node tree. Elements end up attached to the wrong parent (synthetic screen-1 root instead of the real depth-0 frame).
+- **Orphaned nodes**: Classified nodes whose parents aren't in the IR get created but never appended — they float as invisible orphans.
+- **Instance property overrides not extracted**: The `instance_overrides` table exists but is empty. Buttons show wrong icons because we don't capture what the designer changed from the master component.
+- **Image fills not reproducible**: RECTANGLE nodes with IMAGE fills store `imageRef` but not image bytes.
 
 ## What To Do Next
 
-### High-Value Improvements
-1. **Non-Dank file testing** — Verify generalizability on a second Figma file
-2. **Toggle/radio/checkbox mapping** — Either find Dank components that match or provide visual fallbacks
-3. **Smarter text overrides** — Target specific TEXT nodes by name/role instead of first findOne
-4. **React/SwiftUI renderers** — The IR is platform-agnostic. New renderers read the same IR + a ReactRendererConfig/SwiftUIRendererConfig.
-5. **Synthetic tokens** — The architecture spec describes synthetic tokens for unbound visual values.
+### Priority 1: IR Tree Fidelity
+The IR must preserve the real Figma parent-child tree, not re-infer it from classification data. Investigate by systematically comparing the IR tree against the actual node tree in the DB for screen 184. Find every place where the IR loses structural information.
 
-### Quality Improvements
-- Header text override should target title text, not first text node
-- Composition children ordering within containers
-- Multiple text overrides per component (title + subtitle)
-- Empty frame fallback visuals for unsupported types
+### Priority 2: Instance Property Overrides
+Extract `componentProperties` from INSTANCE nodes via Plugin API supplement. Store in `instance_overrides` table. Renderer emits `setProperties()` calls.
+
+### Priority 3: Then Other Outputs
+Once reproduction works, the same IR becomes the foundation for React/SwiftUI renderers and prompt-based generation.
 
 ## Key Files
 

@@ -302,14 +302,20 @@ def _seed_ir_screen(db: sqlite3.Connection) -> None:
     db.execute("INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (2, 1, '#000000', '#000000')")
 
     nodes = [
-        # header at depth 1
-        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, 0, 0, 428, 56, "HORIZONTAL", None, None, None, None, None, None),
+        # screen frame at depth 0 (unclassified — should be included in IR)
+        (9, 1, "s1_frame", "iPhone 13 Pro Max", "FRAME", 0, 0, -9000, 7000, 428, 926, None, None, None, None, None, None, None),
+        # header at depth 1 (absolute coords: screen origin + relative)
+        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, -9000, 7000, 428, 56, "HORIZONTAL", None, None, None, None, None, None),
         # icon inside header at depth 2
-        (11, 1, "ib1", "icon/back", "INSTANCE", 2, 0, 8, 8, 24, 24, None, None, None, None, None, None, 10),
+        (11, 1, "ib1", "icon/back", "INSTANCE", 2, 0, -8992, 7008, 24, 24, None, None, None, None, None, None, 10),
         # text heading at depth 2
-        (12, 1, "t1", "Section Title", "TEXT", 2, 1, 16, 80, 396, 28, None, "Inter", 700, 24, None, "Settings", 10),
+        (12, 1, "t1", "Section Title", "TEXT", 2, 1, -8984, 7080, 396, 28, None, "Inter", 700, 24, None, "Settings", 10),
         # content frame at depth 1
-        (13, 1, "c1", "Content", "FRAME", 1, 1, 0, 56, 428, 802, "VERTICAL", None, None, None, 16, None, None),
+        (13, 1, "c1", "Content", "FRAME", 1, 1, -9000, 7056, 428, 802, "VERTICAL", None, None, None, 16, None, None),
+        # background image at depth 1 (unclassified RECTANGLE — should be included)
+        (14, 1, "img1", "image 319", "RECTANGLE", 1, 2, -9000, 7000, 1012, 1012, None, None, None, None, None, None, 9),
+        # system chrome at depth 1 (unclassified INSTANCE — should be excluded)
+        (15, 1, "sb1", "iOS/StatusBar", "INSTANCE", 1, 3, -9000, 7000, 428, 47, None, None, None, None, None, None, 9),
     ]
     db.executemany(
         "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
@@ -494,6 +500,45 @@ class TestBuildCompositionSpec:
         assert 10 in node_ids_in_map  # header node
         assert 11 in node_ids_in_map  # icon node
         assert 12 in node_ids_in_map  # heading node
+
+    def test_screen_root_direction_is_absolute(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        root = spec["elements"][spec["root"]]
+        assert root["layout"]["direction"] == "absolute"
+
+    def test_root_children_have_position(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        root = spec["elements"][spec["root"]]
+        for child_id in root["children"]:
+            child = spec["elements"][child_id]
+            assert "position" in child["layout"], f"{child_id} missing position"
+            assert "x" in child["layout"]["position"]
+            assert "y" in child["layout"]["position"]
+
+    def test_root_children_position_from_db(self, db: sqlite3.Connection):
+        """Position values come from real node x/y coordinates."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        # Header is at x=0, y=0 in seed data (node 10)
+        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        assert header["layout"]["position"]["x"] == 0
+        assert header["layout"]["position"]["y"] == 0
+
+    def test_ir_includes_unclassified_depth1_rectangle(self, db: sqlite3.Connection):
+        """Unclassified RECTANGLE at depth 1 should be in the IR as container."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 14 in node_ids  # image 319 RECTANGLE
+
+    def test_ir_excludes_system_chrome_instances(self, db: sqlite3.Connection):
+        """Unclassified INSTANCE at depth 1 (system chrome) should NOT be in IR."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 15 not in node_ids  # iOS/StatusBar
 
 
 # ---------------------------------------------------------------------------
@@ -1056,3 +1101,22 @@ class TestQueryScreenVisuals:
         result = query_screen_visuals(db, screen_id=1)
         node_11 = result[11]
         assert node_11["bindings"] == []
+
+    def test_includes_component_figma_id_from_registry(self, db: sqlite3.Connection):
+        """When component_key_registry exists, figma_node_id is included."""
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry "
+            "(component_key TEXT PRIMARY KEY, figma_node_id TEXT, name TEXT, instance_count INTEGER)"
+        )
+        db.execute(
+            "INSERT INTO component_key_registry VALUES ('abc123', '1835:155037', 'nav/top-nav', 45)"
+        )
+        db.commit()
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[10].get("component_figma_id") == "1835:155037"
+
+    def test_component_figma_id_none_without_registry(self, db: sqlite3.Connection):
+        """Without the registry table, component_figma_id is absent."""
+        result = query_screen_visuals(db, screen_id=1)
+        # component_figma_id not in result when registry doesn't exist
+        assert result[10].get("component_figma_id") is None

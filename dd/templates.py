@@ -18,6 +18,8 @@ _TEMPLATE_FIELDS = [
     "layout_sizing_h", "layout_sizing_v",
     "clips_content", "layout_wrap",
     "min_width", "max_width", "min_height", "max_height",
+    "font_family", "font_size", "font_weight", "font_style",
+    "line_height", "letter_spacing", "text_align",
 ]
 
 
@@ -229,6 +231,7 @@ def extract_templates(conn: sqlite3.Connection, file_id: int) -> int:
 
     Returns the number of templates created.
     """
+    _ensure_font_columns(conn)
     conn.execute("DELETE FROM component_templates")
 
     cursor = conn.execute(
@@ -325,11 +328,32 @@ def _extract_screen_template(
     return compute_mode_template(dicts)
 
 
+_FONT_COLUMNS = [
+    ("font_family", "TEXT"),
+    ("font_size", "REAL"),
+    ("font_weight", "INTEGER"),
+    ("font_style", "TEXT"),
+    ("line_height", "TEXT"),
+    ("letter_spacing", "TEXT"),
+    ("text_align", "TEXT"),
+]
+
+
+def _ensure_font_columns(conn: sqlite3.Connection) -> None:
+    """Add font columns to component_templates if missing (schema migration)."""
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(component_templates)").fetchall()}
+    for col_name, col_type in _FONT_COLUMNS:
+        if col_name not in existing:
+            conn.execute(f"ALTER TABLE component_templates ADD COLUMN {col_name} {col_type}")
+
+
 def query_templates(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
     """Fetch all templates keyed by catalog_type.
 
     Returns dict mapping catalog_type to list of template dicts.
     """
+    _ensure_font_columns(conn)
+
     has_registry = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='component_key_registry'"
     ).fetchone()
@@ -342,7 +366,9 @@ def query_templates(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]
         "ct.fills, ct.strokes, ct.effects, ct.opacity, ct.slots, "
         "ct.layout_sizing_h, ct.layout_sizing_v, "
         "ct.clips_content, ct.layout_wrap, "
-        "ct.min_width, ct.max_width, ct.min_height, ct.max_height"
+        "ct.min_width, ct.max_width, ct.min_height, ct.max_height, "
+        "ct.font_family, ct.font_size, ct.font_weight, ct.font_style, "
+        "ct.line_height, ct.letter_spacing, ct.text_align"
     )
 
     if has_registry:
@@ -396,7 +422,9 @@ def _query_instances(
         "n.corner_radius, n.fills, n.strokes, n.effects, n.opacity, "
         "n.layout_sizing_h, n.layout_sizing_v, "
         "n.clips_content, n.layout_wrap, "
-        "n.min_width, n.max_width, n.min_height, n.max_height "
+        "n.min_width, n.max_width, n.min_height, n.max_height, "
+        "n.font_family, n.font_size, n.font_weight, n.font_style, "
+        "n.line_height, n.letter_spacing, n.text_align "
         "FROM nodes n "
         "JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
         "JOIN screens s ON n.screen_id = s.id "
@@ -442,8 +470,10 @@ def _insert_template(
         "item_spacing, primary_align, counter_align, corner_radius, "
         "fills, strokes, effects, opacity, slots, "
         "layout_sizing_h, layout_sizing_v, clips_content, layout_wrap, "
-        "min_width, max_width, min_height, max_height) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "min_width, max_width, min_height, max_height, "
+        "font_family, font_size, font_weight, font_style, "
+        "line_height, letter_spacing, text_align) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             catalog_type, variant, component_key,
             template.get("representative_node_id"),
@@ -462,5 +492,9 @@ def _insert_template(
             template.get("clips_content"), template.get("layout_wrap"),
             template.get("min_width"), template.get("max_width"),
             template.get("min_height"), template.get("max_height"),
+            template.get("font_family"), template.get("font_size"),
+            template.get("font_weight"), template.get("font_style"),
+            template.get("line_height"), template.get("letter_spacing"),
+            template.get("text_align"),
         ),
     )

@@ -213,3 +213,102 @@ class TestQueryTemplates:
         assert "width" in btn
         assert "height" in btn
         assert "instance_count" in btn
+
+
+# ---------------------------------------------------------------------------
+# Font property tests
+# ---------------------------------------------------------------------------
+
+class TestFontPropertiesInTemplates:
+    """Verify font properties flow through template extraction and query."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height, screen_type) "
+            "VALUES (1, 1, 's1', 'Screen', 428, 926, 'app_screen')"
+        )
+        # 3 text nodes with font properties
+        nodes = [
+            (30, 1, "t1", "body text", "TEXT", 1, 0, 0, 0, 200, 16,
+             None, None, None, None, None, None, None, None, None, None, None, None, 1.0, None,
+             "Inter Variable", 600, 16.0, "Regular", '{"unit": "AUTO"}', None, "LEFT"),
+            (31, 1, "t2", "body text", "TEXT", 1, 1, 0, 20, 200, 16,
+             None, None, None, None, None, None, None, None, None, None, None, None, 1.0, None,
+             "Inter Variable", 600, 16.0, "Regular", '{"unit": "AUTO"}', None, "LEFT"),
+            (32, 1, "t3", "body text", "TEXT", 1, 2, 0, 40, 200, 16,
+             None, None, None, None, None, None, None, None, None, None, None, None, 1.0, None,
+             "Inter Variable", 500, 14.0, "Regular", '{"value": 22, "unit": "PIXELS"}', None, "LEFT"),
+        ]
+        conn.executemany(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, x, y, width, height, "
+            "layout_mode, padding_top, padding_right, padding_bottom, padding_left, item_spacing, "
+            "primary_align, counter_align, corner_radius, fills, strokes, effects, opacity, component_key, "
+            "font_family, font_weight, font_size, font_style, line_height, letter_spacing, text_align) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            nodes,
+        )
+        sci_rows = [
+            (1, 30, "text", 0.9, "heuristic"),
+            (1, 31, "text", 0.9, "heuristic"),
+            (1, 32, "text", 0.9, "heuristic"),
+        ]
+        conn.executemany(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source) "
+            "VALUES (?, ?, ?, ?, ?)",
+            sci_rows,
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_compute_mode_template_font_family(self):
+        instances = [
+            {"font_family": "Inter Variable"},
+            {"font_family": "Inter Variable"},
+            {"font_family": "Roboto"},
+        ]
+        template = compute_mode_template(instances)
+        assert template["font_family"] == "Inter Variable"
+
+    def test_compute_mode_template_font_size(self):
+        instances = [
+            {"font_size": 16.0},
+            {"font_size": 16.0},
+            {"font_size": 14.0},
+        ]
+        template = compute_mode_template(instances)
+        assert template["font_size"] == 16.0
+
+    def test_compute_mode_template_font_weight(self):
+        instances = [
+            {"font_weight": 600},
+            {"font_weight": 600},
+            {"font_weight": 400},
+        ]
+        template = compute_mode_template(instances)
+        assert template["font_weight"] == 600
+
+    def test_extract_templates_stores_font_fields(self, db):
+        extract_templates(db, file_id=1)
+        row = db.execute(
+            "SELECT font_family, font_size, font_weight, font_style, text_align "
+            "FROM component_templates WHERE catalog_type = 'text'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "Inter Variable"
+        assert row[1] == 16.0  # mode of 16, 16, 14
+        assert row[2] == 600   # mode of 600, 600, 500
+
+    def test_query_templates_returns_font_fields(self, db):
+        extract_templates(db, file_id=1)
+        templates = query_templates(db)
+        text_tmpl = templates["text"][0]
+        assert text_tmpl.get("font_family") == "Inter Variable"
+        assert text_tmpl.get("font_size") == 16.0
+        assert text_tmpl.get("font_weight") == 600
