@@ -1284,6 +1284,14 @@ class TestDeepChildSwaps:
             "0, 1, 'icon_undo_key', 102, 0, 0, 24, 24, '2026-01-01')"
         )
 
+        # Non-overridden INSTANCE at depth 3 (default component, should NOT be swapped)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (104, 1, 'I2244:100;2036:004', 'button/small/translucent', 'INSTANCE', 3, 1, "
+            "0, 1, 'btn_default_key', 101, 50, 0, 48, 32, '2026-01-01')"
+        )
+
         # Component key registry for the swap targets
         conn.execute(
             "CREATE TABLE IF NOT EXISTS component_key_registry "
@@ -1295,26 +1303,65 @@ class TestDeepChildSwaps:
         conn.execute(
             "INSERT INTO component_key_registry VALUES ('icon_undo_key', '1315:139115', 'icon/undo', 5)"
         )
+        conn.execute(
+            "INSERT INTO component_key_registry VALUES ('btn_small_key', '1334:10864', 'button/small', 20)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry VALUES ('btn_default_key', '1334:10865', 'button/default', 20)"
+        )
+
+        # Instance overrides: only the icon swap is an actual override
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS instance_overrides ("
+            "id INTEGER PRIMARY KEY, "
+            "node_id INTEGER NOT NULL, "
+            "property_type TEXT NOT NULL, "
+            "property_name TEXT NOT NULL, "
+            "override_value TEXT, "
+            "UNIQUE(node_id, property_name))"
+        )
+        # override_value is the figma_node_id of the swap target component
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (100, 'INSTANCE_SWAP', ';2036:002;1334:003', '1315:139115')"
+        )
+        # Also add a non-swap override to verify it's not picked up as a swap
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (100, 'BOOLEAN', ';2036:004:visible', 'false')"
+        )
         conn.commit()
         yield conn
         conn.close()
 
-    def test_deep_child_swap_captured(self, db: sqlite3.Connection):
-        """icon/undo at depth 4 should appear as a child_swap on nav/top-nav (depth 1)."""
+    def test_overridden_child_swap_captured(self, db: sqlite3.Connection):
+        """Only overridden icon swap should appear, not all descendant instances."""
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]
         child_swaps = nav_visual.get("child_swaps", [])
-        assert len(child_swaps) >= 1, "Should find deep nested icon swap"
 
-        # The icon at depth 4 should be swappable via its master-relative ID
+        # Should find the overridden icon swap
         swap_ids = [cs["child_id"] for cs in child_swaps]
         assert any(";1334:003" in sid for sid in swap_ids), (
-            f"Expected master-relative ID containing ;1334:003, got {swap_ids}"
+            f"Expected overridden swap ;1334:003, got {swap_ids}"
         )
 
-    def test_deep_swap_has_target_id(self, db: sqlite3.Connection):
-        """The swap target should be the figma_node_id from the registry."""
+    def test_non_overridden_instance_not_swapped(self, db: sqlite3.Connection):
+        """Non-overridden descendant instances should NOT appear in child_swaps."""
+        result = query_screen_visuals(db, screen_id=1)
+
+        nav_visual = result[100]
+        child_swaps = nav_visual.get("child_swaps", [])
+
+        # btn_default_key (node 104) is not overridden — should not be swapped
+        swap_ids = [cs["child_id"] for cs in child_swaps]
+        assert not any(";2036:004" in sid for sid in swap_ids), (
+            f"Non-overridden instance should not be in child_swaps, got {swap_ids}"
+        )
+
+    def test_swap_has_correct_target_id(self, db: sqlite3.Connection):
+        """The swap target should come from instance_overrides, not the node's own key."""
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]

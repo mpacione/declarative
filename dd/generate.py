@@ -889,11 +889,13 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
     Returns dict with:
-      structure_script: JS string for figma_execute (Phase A)
+      structure_script: JS string for figma_execute (Phase A — creates nodes)
       token_refs: list of (element_id, property, token_name) for rebinding
+      token_variables: dict mapping token_name → figma_variable_id
       element_count: number of elements in the spec
     """
     from dd.ir import generate_ir, query_screen_visuals
+    from dd.rebind_prompt import query_token_variables
 
     ir_result = generate_ir(conn, screen_id)
     spec = ir_result["spec"]
@@ -904,6 +906,32 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     return {
         "structure_script": script,
         "token_refs": token_refs,
+        "token_variables": query_token_variables(conn),
         "element_count": ir_result["element_count"],
         "token_count": ir_result["token_count"],
     }
+
+
+def build_rebind_script_from_result(
+    result: dict[str, Any],
+    figma_node_map: dict[str, str],
+) -> str:
+    """Build a token rebind script from generate_screen result + Figma node map.
+
+    Call this after executing structure_script in Figma. Pass the M dict
+    (element_id → figma_node_id) returned by the structure script as
+    figma_node_map.
+
+    Returns a JS string that binds Figma variables to the created nodes.
+    Returns empty string if no rebindable entries.
+    """
+    from dd.rebind_prompt import build_rebind_entries, generate_rebind_script
+
+    token_refs = result.get("token_refs", [])
+    token_variables = result.get("token_variables", {})
+
+    entries = build_rebind_entries(token_refs, figma_node_map, token_variables)
+    if not entries:
+        return ""
+
+    return generate_rebind_script(entries)

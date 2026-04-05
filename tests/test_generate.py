@@ -821,6 +821,21 @@ class TestGenerateScreen:
         result = generate_screen(db, screen_id=1)
         assert result["element_count"] >= 2  # header + heading at minimum
 
+    def test_returns_token_variables(self, db: sqlite3.Connection):
+        result = generate_screen(db, screen_id=1)
+        assert "token_variables" in result
+        assert isinstance(result["token_variables"], dict)
+
+    def test_build_rebind_script_from_result(self, db: sqlite3.Connection):
+        from dd.generate import build_rebind_script_from_result
+
+        result = generate_screen(db, screen_id=1)
+        # Simulate Figma returning M dict
+        figma_node_map = {"header-1": "999:1", "heading-1": "999:2"}
+        rebind_script = build_rebind_script_from_result(result, figma_node_map)
+        # Should produce a script (may be empty if no token refs match)
+        assert isinstance(rebind_script, str)
+
 
 class TestGenerateCLI:
     """Verify generate CLI command."""
