@@ -354,6 +354,38 @@ def generate_figma_script(
         lines.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
 
     lines.append("const M = {};")
+
+    # Pre-fetch all unique Figma node IDs needed for createInstance/swapComponent.
+    # Batching into a single preamble avoids redundant async lookups (50→27 calls
+    # on screen 184, more on complex screens with deep component nesting).
+    needed_node_ids: set[str] = set()
+    for _, element, _ in walk_order:
+        if db_visuals is not None:
+            nid = spec.get("_node_id_map", {}).get(_[0] if isinstance(_, tuple) else "")
+        else:
+            nid = None
+        # Can't easily pre-scan without duplicating mode1 logic — collect from db_visuals
+    if db_visuals is not None:
+        for nid, vis in db_visuals.items():
+            figma_id = vis.get("component_figma_id")
+            if figma_id:
+                needed_node_ids.add(figma_id)
+            for cs in vis.get("child_swaps", []):
+                needed_node_ids.add(cs["swap_target_id"])
+            for ov in vis.get("instance_overrides", []):
+                if ov.get("type") == "INSTANCE_SWAP" and ov.get("value"):
+                    needed_node_ids.add(ov["value"])
+
+    if needed_node_ids:
+        lines.append("// Pre-fetch component nodes (deduplicated)")
+        node_id_vars: dict[str, str] = {}
+        for i, nid in enumerate(sorted(needed_node_ids)):
+            var_name = f"_p{i}"
+            node_id_vars[nid] = var_name
+            lines.append(f'const {var_name} = await figma.getNodeByIdAsync("{_escape_js(nid)}");')
+    else:
+        node_id_vars = {}
+
     lines.append("")
 
     var_map: dict[str, str] = {}
@@ -384,8 +416,9 @@ def generate_figma_script(
         if (component_key or component_figma_id) and not is_text:
             # Mode 1: component instance (inherits structure + visuals)
             if component_figma_id:
+                node_expr = node_id_vars.get(component_figma_id, f'await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")')
                 lines.append(
-                    f'const {var} = (await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")).createInstance();'
+                    f'const {var} = ({node_expr}).createInstance();'
                 )
             else:
                 lines.append(
@@ -447,10 +480,11 @@ def generate_figma_script(
                     )
                 elif ov_type == "INSTANCE_SWAP" and ov_value:
                     # Instance swap: find child, swap its component
+                    comp_expr = node_id_vars.get(ov_value, f'await figma.getNodeByIdAsync("{_escape_js(ov_value)}")')
                     lines.append(
                         f'{{ const _c = {var}.findOne(n => n.id.endsWith("{child_id}")); '
                         f'if (_c && _c.type === "INSTANCE") {{ '
-                        f'const _comp = await figma.getNodeByIdAsync("{_escape_js(ov_value)}"); '
+                        f"const _comp = {comp_expr}; "
                         f"if (_comp) _c.swapComponent(_comp); }} }}"
                     )
 
@@ -458,11 +492,12 @@ def generate_figma_script(
             child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
             for cs in child_swaps:
                 cs_child_id = _escape_js(cs["child_id"])
-                cs_target_id = _escape_js(cs["swap_target_id"])
+                cs_target_id = cs["swap_target_id"]
+                comp_expr = node_id_vars.get(cs_target_id, f'await figma.getNodeByIdAsync("{_escape_js(cs_target_id)}")')
                 lines.append(
                     f'{{ const _c = {var}.findOne(n => n.id.endsWith("{cs_child_id}")); '
                     f'if (_c && _c.type === "INSTANCE") {{ '
-                    f'const _comp = await figma.getNodeByIdAsync("{cs_target_id}"); '
+                    f"const _comp = {comp_expr}; "
                     f"if (_comp) _c.swapComponent(_comp); }} }}"
                 )
 

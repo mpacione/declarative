@@ -93,7 +93,7 @@ class TestMode1ChildrenSkipped:
         ])
         script = result["structure_script"]
         # Mode 1 button's children come from the instance, not created
-        assert script.count("getNodeByIdAsync") == 1  # just the button
+        assert script.count("createInstance()") == 1  # just the button
         assert '"icon-1"' not in script
 
 
