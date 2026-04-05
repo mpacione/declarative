@@ -366,3 +366,50 @@ class TestInstanceOverrideExtraction:
         assert row[1] == "TEXT"  # property_type
         assert row[2] == ";1835:155173"  # child relative ID
         assert row[3] == "Hello"  # override value
+
+    def test_fills_override_stored(self):
+        """Fills overrides should be captured as FILLS entries."""
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, is_semantic, visible, extracted_at) "
+            "VALUES (10, 1, '200:10', 'button', 'INSTANCE', 1, 0, 1, 1, '2026-01-01')"
+        )
+        conn.commit()
+
+        supplement_data = {
+            "200:10": {
+                "ov": [
+                    {"cid": ":self", "f": ["fills", "height", "width"], "t": "INSTANCE",
+                     "fills": '[{"type":"SOLID","visible":false,"opacity":0.05}]',
+                     "w": 48, "h": 52},
+                ],
+            }
+        }
+        apply_supplement(conn, supplement_data)
+
+        rows = conn.execute(
+            "SELECT property_type, property_name, override_value "
+            "FROM instance_overrides WHERE node_id = 10 ORDER BY property_type"
+        ).fetchall()
+        types = {r[0] for r in rows}
+        assert "FILLS" in types
+        assert "WIDTH" in types
+        assert "HEIGHT" in types
+
+        fills_row = next(r for r in rows if r[0] == "FILLS")
+        assert '"SOLID"' in fills_row[2]
+
+    def test_self_override_uses_self_marker(self):
+        """Self-overrides use ':self' as child ID."""
+        from dd.extract_supplement import generate_supplement_script
+
+        script = generate_supplement_script(["100:1"])
+        assert ":self" in script

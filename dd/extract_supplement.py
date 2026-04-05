@@ -48,15 +48,16 @@ async function walkNode(node) {{
       if (main) entry.ck = main.key;
     }} catch (e) {{}}
 
-    // Extract overrides (child node mutations)
+    // Extract overrides (child node mutations + self-overrides)
     if (node.overrides && node.overrides.length > 0) {{
       const ovs = [];
       for (const ov of node.overrides) {{
-        // Extract master-relative child ID (part after last instance prefix)
-        const cid = ov.id.includes(';') ? ov.id.substring(ov.id.indexOf(';')) : ov.id;
-        const child = node.findOne(n => n.id === ov.id);
+        // Self-override: override ID matches the node itself
+        const isSelf = ov.id === node.id;
+        const child = isSelf ? node : node.findOne(n => n.id === ov.id);
         if (!child) continue;
 
+        const cid = isSelf ? ':self' : (ov.id.includes(';') ? ov.id.substring(ov.id.indexOf(';')) : ov.id);
         const o = {{ cid, f: ov.overriddenFields, t: child.type }};
 
         if (ov.overriddenFields.includes('characters') && child.type === 'TEXT') {{
@@ -64,6 +65,18 @@ async function walkNode(node) {{
         }}
         if (ov.overriddenFields.includes('visible')) {{
           o.vis = child.visible;
+        }}
+        if (ov.overriddenFields.includes('fills')) {{
+          try {{ o.fills = JSON.stringify(child.fills); }} catch (e) {{}}
+        }}
+        if (ov.overriddenFields.includes('width')) {{
+          o.w = child.width;
+        }}
+        if (ov.overriddenFields.includes('height')) {{
+          o.h = child.height;
+        }}
+        if (ov.overriddenFields.includes('opacity')) {{
+          o.op = child.opacity;
         }}
         if (child.type === 'INSTANCE' && ov.overriddenFields.some(f => f === 'fills' || f === 'fillStyleId')) {{
           // Possible instance swap — check main component
@@ -199,6 +212,42 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
                             "(node_id, property_type, property_name, override_value) "
                             "VALUES (?, 'INSTANCE_SWAP', ?, ?)",
                             (node_id, child_id, ov["swapId"]),
+                        )
+                        override_count += 1
+
+                    if "fills" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'FILLS', ?, ?)",
+                            (node_id, f"{child_id}:fills", ov["fills"]),
+                        )
+                        override_count += 1
+
+                    if "w" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'WIDTH', ?, ?)",
+                            (node_id, f"{child_id}:width", str(ov["w"])),
+                        )
+                        override_count += 1
+
+                    if "h" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'HEIGHT', ?, ?)",
+                            (node_id, f"{child_id}:height", str(ov["h"])),
+                        )
+                        override_count += 1
+
+                    if "op" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'OPACITY', ?, ?)",
+                            (node_id, f"{child_id}:opacity", str(ov["op"])),
                         )
                         override_count += 1
 

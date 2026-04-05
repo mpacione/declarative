@@ -492,6 +492,43 @@ def generate_figma_script(
                         f"const _comp = {comp_expr}; "
                         f"if (_comp) _c.swapComponent(_comp); }} }}"
                     )
+                elif ov_type == "FILLS" and ov_value:
+                    # Fill override: set fills on self or child
+                    target_id = child_id.replace(":fills", "")
+                    if target_id == ":self":
+                        lines.append(f"{var}.fills = {ov_value};")
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f"if (_c) _c.fills = {ov_value}; }}"
+                        )
+                elif ov_type == "WIDTH" and ov_value:
+                    target_id = child_id.replace(":width", "")
+                    if target_id == ":self":
+                        lines.append(f"{var}.resize({ov_value}, {var}.height);")
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f"if (_c) _c.resize({ov_value}, _c.height); }}"
+                        )
+                elif ov_type == "HEIGHT" and ov_value:
+                    target_id = child_id.replace(":height", "")
+                    if target_id == ":self":
+                        lines.append(f"{var}.resize({var}.width, {ov_value});")
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f"if (_c) _c.resize(_c.width, {ov_value}); }}"
+                        )
+                elif ov_type == "OPACITY" and ov_value:
+                    target_id = child_id.replace(":opacity", "")
+                    if target_id == ":self":
+                        lines.append(f"{var}.opacity = {ov_value};")
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f"if (_c) _c.opacity = {ov_value}; }}"
+                        )
 
             # Child instance swaps: replace nested instances with correct components
             child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
