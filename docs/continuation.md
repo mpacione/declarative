@@ -6,89 +6,61 @@ Declarative Design is a **design system compiler** — LLVM for design systems. 
 
 **Authoritative spec**: `docs/compiler-architecture.md`
 
-## Current State (2026-04-04)
+## Current State (2026-04-05)
 
-- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes (72 columns), 182,871 bindings, 388 tokens, 338 screens (204 app screens)
-- **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental) — 374 variables, 8 collections
-- **Extraction**: Complete. REST API + Plugin API supplemental.
-- **Classification (L1)**: 93.6% coverage (47,292 classified nodes)
-- **Token Bindings (L2)**: 182,871 bindings, 388 tokens
-- **Tests**: 1,475 passing
+- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes (72 columns), 182,871 bindings, 388 tokens, 338 screens
+- **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
+- **Tests**: 1,502 passing
 - **Branch**: `t5/architecture-vision`
+- **Round-trip**: Screen 184 successfully reproduced (structural fidelity achieved, visual polish remaining)
 
-## What Was Built (2026-04-04 Session)
+## What Was Built (2026-04-05 Session)
 
-### Rendering Pipeline Fixes (57 new tests)
-- clipsContent, rotation, constraints (with REST→Plugin API value mapping)
-- Font properties in templates (7 columns, auto-migration)
-- Absolute positioning (screen root, x/y from DB, relative to screen origin)
-- Visibility overrides (hidden_children query, findOne→visible=false)
-- Composed type aliases (toggle/checkbox → horizontal container rows)
-- Component resolution (query_screen_visuals JOINs registry → getNodeByIdAsync)
-- Unclassified structural nodes (depth-0/1 FRAME/RECTANGLE in IR)
+### Round-Trip Progressive Fallback (L2→L1→L0)
+The renderer now walks ALL nodes via LEFT JOIN on L1 classification, with progressive fallback:
+- **L2**: Token variable bindings (12 applied on screen 184)
+- **L1**: Component instances via getNodeByIdAsync (11 Mode 1 instances)
+- **L0**: Raw properties for unclassified nodes (createFrame/Rectangle/Text)
 
-### Architecture Discovery & Refinement
-- **DB IS L0** — The `nodes` table with 72 columns IS Level 0 of the IR. Not a separate data structure — the table itself is the scene graph. L1, L2, L3 are annotations stored in separate tables that enrich L0.
-- **Progressive fallback model** — Renderers read from the highest IR level available and fall back to lower levels: L2 (tokens) → L1 (classification) → L0 (raw values). L0 is always the safety net. This applies to ALL renderers, not just Figma.
-- **Round-trip proves the full stack** — The Figma renderer exercises L2 (token variable binding), L1 (component createInstance), and L0 (raw property application) via progressive fallback. Success validates all levels.
-- **The IR exists for the M×N problem** — Without the IR, 5 frontends × 5 backends = 25 translators each reimplementing classification, token binding, and semantic compression. With the IR, analysis is written once and shared.
-- **Current break is a query/wiring bug, not an architecture bug** — `query_screen_for_ir()` INNER JOINs on L1 classification (dropping unclassified nodes). Fix: LEFT JOIN L1/L2 as annotations on the L0 tree.
-- **Compiler model validated** — Mitosis (behavioral IR), Ghost (SDUI), USD (composition arcs) each solve parts. Nobody combines all with design tool support.
+### Key Changes
+- `query_screen_for_ir()`: LEFT JOIN replaces INNER JOIN — all nodes returned with L1/L2 as annotations
+- `build_composition_spec()`: Type fallback (canonical_type → node_type.lower()), original names, absolute positioning for non-auto-layout parents, visibility from L0
+- `generate_figma_script()`: Node type dispatch (createRectangle/Ellipse, skip vector/group), recursive mode1 skip, pre-fetch preamble for deduplication, deferred position + constraints (after all children appended)
+- `extract_supplement.py`: Override extraction (text, visibility, instance swaps from Figma's overrides API)
+- `query_screen_visuals()`: Instance overrides + recursive CTE for deep child swaps at any depth, deduplicated
 
-### Research Completed
-- Format comparison: 8 formats side-by-side (YAML recommended for now, KDL for future)
-- Constrained decoding (XGrammar ICML 2025) guarantees valid structured output
-- SDUI architecture briefing (Airbnb, Lyft, Netflix, DoorDash, Spotify)
-- KDL deep dive, Mitosis deep dive, compiler primer
+### Architecture Refinement
+- **Progressive fallback model** documented in compiler-architecture.md
+- **IR exists for M×N problem** — shared analysis, not bypassed for round-trip
+- **Deferred position + constraints** — Figma recalculates position when children added to HUG frames with CENTER constraints
 
 ## What To Do Next
 
-### THE ONLY PRIORITY: Round-Trip Fidelity
+### Remaining Round-Trip Gap: Nested Visual Property Overrides
 
-Nothing else matters until a screen goes Figma → DB → Figma and comes back as a **semantically equivalent design file** — with live token variables, real component instances, proper naming, and visual fidelity. Not a flat photocopy of rectangles with hex colors.
+The structural round-trip is proven. Remaining visual differences are **fill/size/opacity overrides on deeply nested elements** within component instances:
 
-### Architectural Principle: Progressive Fallback
+1. **Share button green background** — fill override on nested button not captured
+2. **Toolbar button visible backgrounds** — fill opacity override not applied
+3. **Green dot size** — size difference in logo/dank component
+4. **Header text spacing** — padding/spacing override within nav/top-nav
 
-The round-trip renderer uses **all IR levels** via progressive fallback (see `compiler-architecture.md` Section 5):
+**Root cause (confirmed via investigation)**: Two issues in the extraction:
 
-```
-L2 (token bindings)  → Figma variables (live, themeable)
-  ↓ fallback
-L1 (classification)  → createInstance() (real components with variants)
-  ↓ fallback
-L0 (raw DB values)   → createFrame/Rectangle/Text with literal values
-```
+1. **Self-overrides dropped**: Figma's `overrides` API can report overrides on the INSTANCE node ITSELF (not just children). When the override ID matches the node's own ID, `findOne` returns null (it only searches children). The override is silently dropped. Example: toolbar buttons have `{id: "2244:146079", overriddenFields: ["fills", "height", "width"]}` where the fill should be `visible: false` (transparent).
 
-Every property reads from the highest level available. L0 is the safety net — complete and lossless. The result is a working Figma file, not a dead screenshot.
+2. **Visual field values not read**: Even for child overrides, the extraction only reads values for `characters` and `visible` fields. It does NOT read fills, width, height, or opacity values — even though `overriddenFields` lists them.
 
-### The Fix: What to Change in Existing Code
+**Fix** (in existing code):
+1. In `extract_supplement.py` extraction JS: check `ov.id === node.id` for self-overrides, read values from node directly
+2. For ALL override entries: read `child.fills` (JSON), `child.width/height`, `child.opacity` when those fields appear in `overriddenFields`
+3. Store as new property_type entries in `instance_overrides`: "FILLS", "WIDTH", "HEIGHT", "OPACITY"
+4. In `generate.py`: after createInstance(), apply self-fill overrides, size overrides, opacity overrides
 
-The rendering building blocks work: `build_visual_from_db()`, `_emit_visual()`, `_emit_layout()`, `_emit_fills/strokes/effects()`. The break is in how the tree walk is sourced.
-
-**Root cause**: `generate_screen()` → `generate_ir()` → `query_screen_for_ir()` INNER JOINs on `screen_component_instances`, dropping 89/203 nodes. Then `build_composition_spec()` wires the tree via `parent_instance_id` (L1) instead of `parent_id` (L0). The renderer walks this lossy IR tree.
-
-**What needs to change** (in existing modules, no new modules):
-
-1. **`query_screen_for_ir()` in `dd/ir.py`**: Must fetch ALL nodes for the screen (L0 complete tree), not just classified ones. L1 classification and L2 bindings are LEFT JOINed as annotations — present when available, NULL when not. The query result carries all levels in one pass.
-
-2. **`build_composition_spec()` in `dd/ir.py`**: Must wire the tree via `parent_id` (L0 structure), not `parent_instance_id` (L1 relationship). Every node gets an element in the spec. INSTANCE nodes with children in the DB get those children skipped in the walk (they're inherited from createInstance).
-
-3. **`generate_figma_script()` in `dd/generate.py`**: For each element in the walk:
-   - Check L2: does this node have token bindings? → collect for variable rebinding
-   - Check L1: does this node have a component_key? → Mode 1 createInstance
-   - Fallback L0: create from raw properties → Mode 2 createFrame/Rectangle/Text
-
-4. **Token rebinding**: After structure creation, bind Figma variables using L2 data. This already exists in `dd/rebind_prompt.py` and `dd/export_rebind.py` — reuse it.
-
-### Steps
-
-**Step 1: Verify extraction completeness.** Compare screen 184 node-by-node against live Figma data. If anything is missing, fix extraction first.
-
-**Step 2: Fix the query and tree assembly.** Modify `query_screen_for_ir()` to LEFT JOIN L1/L2 instead of INNER JOIN. Fix `build_composition_spec()` to wire via `parent_id`. Fix `generate_figma_script()` to implement progressive fallback (L2 → L1 → L0).
-
-**Step 3: Execute and iterate.** Run on screen 184. Screenshot. Compare against original. Find gaps. Fix. Repeat.
-
-**Only after round-trip is proven:** L3 format definition, additional frontends/backends, prompt-based generation.
+### After Visual Fidelity
+- Image fill reproduction (getBytesAsync → createImage)
+- L3 semantic format (YAML schema)
+- Additional frontends/backends
 
 ## Key Files
 
@@ -97,15 +69,14 @@ The rendering building blocks work: `build_visual_from_db()`, `_emit_visual()`, 
 | `docs/compiler-architecture.md` | THE authoritative architecture spec |
 | `docs/module-reference.md` | Complete API reference for all modules |
 | `dd/ir.py` | IR generation, query_screen_visuals, build_composition_spec |
-| `dd/generate.py` | Figma renderer (generate_figma_script, generate_screen) |
-| `dd/compose.py` | Prompt composition (compose_screen, validate_components) |
-| `dd/templates.py` | Template extraction (extract_templates, query_templates) |
+| `dd/generate.py` | Figma renderer (generate_figma_script, generate_screen, build_rebind_script_from_result) |
+| `dd/extract_supplement.py` | Plugin API supplemental extraction (component keys + overrides) |
+| `dd/rebind_prompt.py` | Token variable rebinding (L2) |
 | `schema.sql` | DB schema (L0 scene graph + L1/L2 annotation tables) |
 
 ## Environment
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/ --tb=short          # 1,475 tests
-python -m dd generate-prompt "prompt" --db Dank-EXP-02.declarative.db --page Generated
+python -m pytest tests/ --tb=short          # 1,502 tests
 ```
