@@ -355,6 +355,11 @@ def generate_figma_script(
 
     lines.append("const M = {};")
 
+    # Position + constraints are deferred to after ALL children are appended.
+    # Figma recalculates position when children are added to HUG/auto-layout
+    # frames with CENTER constraints, so x/y must be set last.
+    deferred_lines: list[str] = []
+
     # Pre-fetch all unique Figma node IDs needed for createInstance/swapComponent.
     # Batching into a single preamble avoids redundant async lookups (50→27 calls
     # on screen 184, more on complex screens with deep component nesting).
@@ -578,12 +583,28 @@ def generate_figma_script(
                 elif etype in _FILL_WIDTH_TYPES or wants_fill:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
             else:
-                # Position AFTER appendChild — Figma needs parent context
-                # to interpret x/y as parent-relative coordinates
+                # Position deferred — Figma recalculates position when
+                # children are added to HUG frames with CENTER constraints
                 position = element.get("layout", {}).get("position")
                 if position:
-                    lines.append(f"{var}.x = {position.get('x', 0)};")
-                    lines.append(f"{var}.y = {position.get('y', 0)};")
+                    deferred_lines.append(f"{var}.x = {position.get('x', 0)};")
+                    deferred_lines.append(f"{var}.y = {position.get('y', 0)};")
+
+            # Constraints also deferred (after position)
+            if db_visuals is not None:
+                node_id = spec.get("_node_id_map", {}).get(eid)
+                constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
+                c_h = constraint_visual.get("constraint_h")
+                c_v = constraint_visual.get("constraint_v")
+                if c_h or c_v:
+                    parts = []
+                    if c_h:
+                        mapped = _CONSTRAINT_MAP.get(c_h, c_h)
+                        parts.append(f'horizontal: "{mapped}"')
+                    if c_v:
+                        mapped = _CONSTRAINT_MAP.get(c_v, c_v)
+                        parts.append(f'vertical: "{mapped}"')
+                    deferred_lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
 
         lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
         lines.append("")
@@ -599,6 +620,12 @@ def generate_figma_script(
             lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
             lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
+
+    # Emit deferred position + constraints (after all children are appended)
+    if deferred_lines:
+        lines.append("")
+        lines.append("// Position + constraints (deferred until all children appended)")
+        lines.extend(deferred_lines)
 
     lines.append("return M;")
 
@@ -741,16 +768,9 @@ def _emit_visual(
     if rotation is not None:
         lines.append(f"{var}.rotation = {rotation};")
 
-    constraints = visual.get("constraints")
-    if constraints:
-        parts = []
-        if "horizontal" in constraints:
-            mapped = _CONSTRAINT_MAP.get(constraints["horizontal"], constraints["horizontal"])
-            parts.append(f'horizontal: "{mapped}"')
-        if "vertical" in constraints:
-            mapped = _CONSTRAINT_MAP.get(constraints["vertical"], constraints["vertical"])
-            parts.append(f'vertical: "{mapped}"')
-        lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
+    # Constraints are NOT emitted here — they must be set AFTER position
+    # in the post-appendChild block. Constraints like "CENTER" auto-calculate
+    # position, so they must come after explicit x/y is set.
 
     return (lines, refs)
 
