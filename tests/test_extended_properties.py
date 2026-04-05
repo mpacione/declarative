@@ -286,3 +286,83 @@ class TestNormalizeGradientStops:
         bindings = normalize_fill(fills)
         assert len(bindings) == 1
         assert bindings[0]["property"] == "fill.0.gradient"
+
+
+# ---------------------------------------------------------------------------
+# Instance override extraction and storage
+# ---------------------------------------------------------------------------
+
+class TestInstanceOverrideExtraction:
+    """Verify override extraction generates correct JS and stores results."""
+
+    def test_supplement_script_includes_override_collection(self):
+        from dd.extract_supplement import generate_supplement_script
+
+        script = generate_supplement_script(["100:1"])
+        assert "overrides" in script
+        assert "overriddenFields" in script
+
+    def test_apply_supplement_creates_override_rows(self):
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, is_semantic, visible, extracted_at) "
+            "VALUES (10, 1, '200:10', 'nav/top-nav', 'INSTANCE', 1, 0, 1, 1, '2026-01-01')"
+        )
+        conn.commit()
+
+        supplement_data = {
+            "200:10": {
+                "ck": "nav_key_123",
+                "ov": [
+                    {"cid": ";1835:155173", "f": ["characters"], "chars": "Meme-00001", "t": "TEXT"},
+                    {"cid": ";1334:10838", "f": ["swap"], "swapId": "1315:139154", "t": "INSTANCE"},
+                    {"cid": ";1835:25921", "f": ["visible"], "vis": False, "t": "TEXT"},
+                ],
+            }
+        }
+        result = apply_supplement(conn, supplement_data)
+
+        rows = conn.execute("SELECT * FROM instance_overrides WHERE node_id = 10").fetchall()
+        assert len(rows) == 3
+
+    def test_override_row_has_correct_fields(self):
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, is_semantic, visible, extracted_at) "
+            "VALUES (10, 1, '200:10', 'header', 'INSTANCE', 1, 0, 1, 1, '2026-01-01')"
+        )
+        conn.commit()
+
+        supplement_data = {
+            "200:10": {
+                "ov": [
+                    {"cid": ";1835:155173", "f": ["characters"], "chars": "Hello", "t": "TEXT"},
+                ],
+            }
+        }
+        apply_supplement(conn, supplement_data)
+
+        row = conn.execute(
+            "SELECT node_id, property_type, property_name, override_value "
+            "FROM instance_overrides WHERE node_id = 10"
+        ).fetchone()
+        assert row[0] == 10  # node_id
+        assert row[1] == "TEXT"  # property_type
+        assert row[2] == ";1835:155173"  # child relative ID
+        assert row[3] == "Hello"  # override value

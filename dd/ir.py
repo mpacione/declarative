@@ -261,8 +261,10 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     bindings = node.get("bindings", [])
     binding_index = _build_binding_index(bindings)
 
+    resolved_type = node.get("canonical_type") or node.get("node_type", "frame").lower()
+
     element: dict[str, Any] = {
-        "type": node["canonical_type"],
+        "type": resolved_type,
     }
 
     layout = _build_layout(node, binding_index)
@@ -276,6 +278,9 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     props = _build_props(node)
     if props:
         element["props"] = props
+
+    if node.get("visible") == 0:
+        element["visible"] = False
 
     return element
 
@@ -374,7 +379,7 @@ def _build_style(node: dict[str, Any], binding_index: dict[str, str]) -> dict[st
 def _build_props(node: dict[str, Any]) -> dict[str, Any]:
     props: dict[str, Any] = {}
 
-    canonical_type = node.get("canonical_type", "")
+    canonical_type = node.get("canonical_type") or node.get("node_type", "").lower()
     text = node.get("text_content")
 
     if text and canonical_type in _TEXT_PROP_TYPES:
@@ -476,6 +481,27 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                 if "hidden_children" not in result[instance_id]:
                     result[instance_id]["hidden_children"] = []
                 result[instance_id]["hidden_children"].append({"name": row[1]})
+
+        # Instance overrides (text, visibility, instance swap from Plugin API)
+        has_overrides = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='instance_overrides'"
+        ).fetchone()
+        if has_overrides:
+            override_cursor = conn.execute(
+                f"SELECT node_id, property_type, property_name, override_value "
+                f"FROM instance_overrides WHERE node_id IN ({ph})",
+                instance_ids,
+            )
+            for row in override_cursor.fetchall():
+                node_id = row[0]
+                if node_id in result:
+                    if "instance_overrides" not in result[node_id]:
+                        result[node_id]["instance_overrides"] = []
+                    result[node_id]["instance_overrides"].append({
+                        "type": row[1],
+                        "child_id": row[2],
+                        "value": row[3],
+                    })
 
     return result
 
@@ -627,7 +653,12 @@ def build_semantic_tree(
 
 
 def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
-    """Fetch all classified nodes, bindings, and tokens for a screen.
+    """Fetch all nodes for a screen with L1/L2 annotations where available.
+
+    Uses LEFT JOIN on screen_component_instances so ALL nodes are returned.
+    Classified nodes have canonical_type, sci_id, parent_instance_id set.
+    Unclassified nodes have those fields as NULL — the renderer uses
+    progressive fallback (L2 → L1 → L0) to handle both cases.
 
     Returns dict with screen metadata and a list of node dicts,
     each containing its bindings grouped in-memory.
@@ -647,16 +678,16 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
         "n.layout_sizing_h, n.layout_sizing_v, n.primary_align, n.counter_align, "
         "n.text_content, n.corner_radius, n.opacity, n.fills, n.strokes, n.effects, "
         "n.font_family, n.font_weight, n.font_size, "
-        "n.parent_id, "
+        "n.parent_id, n.component_key, n.visible, "
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "
         "FROM nodes n "
-        "JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
+        "LEFT JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
         "WHERE n.screen_id = ? "
         "ORDER BY n.depth, n.sort_order",
         (screen_id,),
     )
     columns = [desc[0] for desc in cursor.description]
-    raw_rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    all_nodes = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     bindings_cursor = conn.execute(
         "SELECT ntb.node_id, ntb.property, t.name as token_name, ntb.resolved_value "
@@ -677,70 +708,8 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
             "resolved_value": row[3],
         })
 
-    for node_dict in raw_rows:
+    for node_dict in all_nodes:
         node_dict["bindings"] = bindings_by_node.get(node_dict["node_id"], [])
-
-    # Find unclassified parent FRAMEs that should become containers
-    classified_node_ids = {n["node_id"] for n in raw_rows}
-    parent_node_ids = set()
-    for n in raw_rows:
-        cursor = conn.execute("SELECT parent_id FROM nodes WHERE id = ?", (n["node_id"],))
-        row = cursor.fetchone()
-        if row and row[0] and row[0] not in classified_node_ids:
-            parent_node_ids.add(row[0])
-
-    container_nodes = []
-    if parent_node_ids:
-        placeholders = ",".join("?" for _ in parent_node_ids)
-        cursor = conn.execute(
-            f"SELECT id as node_id, name, 'FRAME' as node_type, depth, sort_order, "
-            f"x, y, width, height, layout_mode, "
-            f"padding_top, padding_right, padding_bottom, padding_left, "
-            f"item_spacing, counter_axis_spacing, "
-            f"layout_sizing_h, layout_sizing_v, primary_align, counter_align, "
-            f"NULL as text_content, corner_radius, opacity, fills, "
-            f"NULL as font_family, NULL as font_weight, NULL as font_size, "
-            f"'container' as canonical_type, NULL as sci_id, NULL as parent_instance_id, "
-            f"parent_id "
-            f"FROM nodes WHERE id IN ({placeholders}) AND node_type = 'FRAME'",
-            list(parent_node_ids),
-        )
-        columns = [desc[0] for desc in cursor.description]
-        for row in cursor.fetchall():
-            d = dict(zip(columns, row))
-            d["bindings"] = bindings_by_node.get(d["node_id"], [])
-            d["_is_container"] = True
-            container_nodes.append(d)
-
-    all_nodes = container_nodes + raw_rows
-
-    # Include unclassified depth-0/1 nodes (structural elements like RECTANGLEs)
-    # Exclude INSTANCE nodes at depth 1 (system chrome: StatusBar, Safari, HomeIndicator)
-    known_node_ids = classified_node_ids | {d["node_id"] for d in container_nodes}
-    if known_node_ids:
-        kn_ph = ",".join("?" for _ in known_node_ids)
-        structural_cursor = conn.execute(
-            f"SELECT id as node_id, name, node_type, depth, sort_order, "
-            f"x, y, width, height, layout_mode, "
-            f"padding_top, padding_right, padding_bottom, padding_left, "
-            f"item_spacing, counter_axis_spacing, "
-            f"layout_sizing_h, layout_sizing_v, primary_align, counter_align, "
-            f"NULL as text_content, corner_radius, opacity, fills, "
-            f"NULL as font_family, NULL as font_weight, NULL as font_size, "
-            f"'container' as canonical_type, NULL as sci_id, NULL as parent_instance_id, "
-            f"parent_id "
-            f"FROM nodes "
-            f"WHERE screen_id = ? AND depth <= 1 "
-            f"AND id NOT IN ({kn_ph}) "
-            f"AND NOT (node_type = 'INSTANCE' AND depth = 1)",
-            [screen_id] + list(known_node_ids),
-        )
-        columns = [desc[0] for desc in structural_cursor.description]
-        for row in structural_cursor.fetchall():
-            d = dict(zip(columns, row))
-            d["bindings"] = bindings_by_node.get(d["node_id"], [])
-            d["_is_container"] = True
-            all_nodes.append(d)
 
     tokens_cursor = conn.execute(
         "SELECT DISTINCT t.name, ntb.resolved_value "
@@ -790,25 +759,25 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     elements: dict[str, dict[str, Any]] = {}
 
     for node in nodes:
-        canonical = node["canonical_type"]
-        type_counters[canonical] = type_counters.get(canonical, 0) + 1
-        element_id = f"{canonical}-{type_counters[canonical]}"
+        resolved_type = node.get("canonical_type") or node.get("node_type", "frame").lower()
+        type_counters[resolved_type] = type_counters.get(resolved_type, 0) + 1
+        element_id = f"{resolved_type}-{type_counters[resolved_type]}"
 
         node_id_to_element_id[node["node_id"]] = element_id
         if node.get("sci_id") is not None:
             sci_id_to_element_id[node["sci_id"]] = element_id
 
         element = map_node_to_element(node)
+        if node.get("name"):
+            element["_original_name"] = node["name"]
         elements[element_id] = element
 
-    # Wire children: use parent_instance_id (classified→classified) or
-    # parent_id (classified→container) to build the tree
+    # Wire children: use parent_instance_id (L1 classified→classified) or
+    # parent_id (L0 node→node) to build the tree
     children_map: dict[str, list[str]] = {}
     has_parent = set()
 
     for node in nodes:
-        if node.get("_is_container"):
-            continue
 
         element_id = node_id_to_element_id[node["node_id"]]
         parent_sci_id = node.get("parent_instance_id")
@@ -841,17 +810,47 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     origin_x = data.get("screen_origin_x", 0)
     origin_y = data.get("screen_origin_y", 0)
 
-    # Enrich root-level elements with position relative to screen origin
-    for eid in root_ids:
-        nid = next((nid for nid, e in node_id_to_element_id.items() if e == eid), None)
-        if nid is not None and nid in node_by_id:
-            node = node_by_id[nid]
+    # Absolute positioning: children of non-auto-layout parents get explicit x/y.
+    # In Figma, children of frames with no layoutMode are absolutely positioned.
+    # Auto-layout children (parent has HORIZONTAL/VERTICAL) get position from flow.
+    element_id_to_nid = {eid: nid for nid, eid in node_id_to_element_id.items()}
+
+    for node in nodes:
+        eid = node_id_to_element_id.get(node["node_id"])
+        if eid is None:
+            continue
+
+        parent_node_id = node.get("parent_id")
+        if parent_node_id is None:
+            # Root-level element: position relative to screen origin
             if "layout" not in elements[eid]:
                 elements[eid]["layout"] = {}
             elements[eid]["layout"]["position"] = {
                 "x": (node.get("x", 0) or 0) - origin_x,
                 "y": (node.get("y", 0) or 0) - origin_y,
             }
+            continue
+
+        parent_node = node_by_id.get(parent_node_id)
+        if parent_node is None:
+            continue
+
+        parent_layout_mode = parent_node.get("layout_mode")
+        if parent_layout_mode in ("HORIZONTAL", "VERTICAL"):
+            continue  # Auto-layout child — position comes from flow
+
+        # Parent has no auto-layout: set position relative to parent origin
+        parent_x = parent_node.get("x", 0) or 0
+        parent_y = parent_node.get("y", 0) or 0
+        node_x = node.get("x", 0) or 0
+        node_y = node.get("y", 0) or 0
+
+        if "layout" not in elements[eid]:
+            elements[eid]["layout"] = {}
+        elements[eid]["layout"]["position"] = {
+            "x": node_x - parent_x,
+            "y": node_y - parent_y,
+        }
 
     root_id = "screen-1"
     elements[root_id] = {

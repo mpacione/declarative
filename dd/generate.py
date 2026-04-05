@@ -31,6 +31,16 @@ _FILL_WIDTH_TYPES = frozenset({
 
 _TOKEN_REF_RE = re.compile(r"^\{(.+)\}$")
 
+# Node type → Figma creation call for non-FRAME types
+_NODE_CREATE_MAP = {
+    "rectangle": "figma.createRectangle()",
+    "ellipse": "figma.createEllipse()",
+    "line": "figma.createLine()",
+}
+
+# Node types that cannot be created in Figma — skip silently
+_SKIP_NODE_TYPES = frozenset({"vector", "boolean_operation", "group"})
+
 _WEIGHT_TO_STYLE = {
     100: "Thin",
     200: "Extra Light",
@@ -348,11 +358,13 @@ def generate_figma_script(
 
     var_map: dict[str, str] = {}
     mode1_eids: set = set()
+    skipped_eids: set = set()
     absolute_eids: set = set()
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
-        # Skip children of Mode 1 elements (they come from the instance)
-        if parent_eid in mode1_eids:
+        # Skip descendants of Mode 1 elements (they come from the instance)
+        if parent_eid in mode1_eids or parent_eid in skipped_eids:
+            skipped_eids.add(eid)
             continue
 
         var = f"n{idx}"
@@ -379,7 +391,8 @@ def generate_figma_script(
                 lines.append(
                     f'const {var} = (await figma.importComponentByKeyAsync("{_escape_js(component_key)}")).createInstance();'
                 )
-            lines.append(f'{var}.name = "{_escape_js(eid)}";')
+            original_name = element.get("_original_name", eid)
+            lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
             props = element.get("props", {})
             text_override = props.get("text", "")
@@ -409,6 +422,38 @@ def generate_figma_script(
                     f"if (_h) _h.visible = false; }}"
                 )
 
+            # Instance overrides: replay child node mutations from DB
+            inst_overrides = raw_visual.get("instance_overrides", []) if (db_visuals is not None and raw_visual) else []
+            for ov in inst_overrides:
+                child_id = _escape_js(ov["child_id"])
+                ov_type = ov["type"]
+                ov_value = ov.get("value", "")
+
+                if ov_type == "TEXT" and ov_value:
+                    # Text override: find child by master-relative ID, set characters
+                    lines.append(
+                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{child_id}")); '
+                        f'if (_c && _c.type === "TEXT") {{ '
+                        f'await figma.loadFontAsync(_c.fontName); '
+                        f'_c.characters = "{_escape_js(ov_value)}"; }} }}'
+                    )
+                elif ov_type == "BOOLEAN":
+                    # Visibility override: child_id has ":visible" suffix
+                    pure_id = child_id.replace(":visible", "")
+                    vis_val = "true" if ov_value == "true" else "false"
+                    lines.append(
+                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{pure_id}")); '
+                        f"if (_c) _c.visible = {vis_val}; }}"
+                    )
+                elif ov_type == "INSTANCE_SWAP" and ov_value:
+                    # Instance swap: find child, swap its component
+                    lines.append(
+                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{child_id}")); '
+                        f'if (_c && _c.type === "INSTANCE") {{ '
+                        f'const _comp = await figma.getNodeByIdAsync("{_escape_js(ov_value)}"); '
+                        f"if (_comp) _c.swapComponent(_comp); }} }}"
+                    )
+
             position = element.get("layout", {}).get("position")
             if position:
                 lines.append(f"{var}.x = {position.get('x', 0)};")
@@ -416,13 +461,20 @@ def generate_figma_script(
 
             mode1_eids.add(eid)
         else:
-            # Mode 2: create frame/text
+            # Mode 2: create from L0 properties
+            if etype in _SKIP_NODE_TYPES:
+                skipped_eids.add(eid)
+                continue
+
             if is_text:
                 lines.append(f"const {var} = figma.createText();")
+            elif etype in _NODE_CREATE_MAP:
+                lines.append(f"const {var} = {_NODE_CREATE_MAP[etype]};")
             else:
                 lines.append(f"const {var} = figma.createFrame();")
 
-            lines.append(f'{var}.name = "{_escape_js(eid)}";')
+            original_name = element.get("_original_name", eid)
+            lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
             if is_text:
                 lines.append(f'{var}.textAutoResize = "WIDTH_AND_HEIGHT";')
@@ -441,6 +493,9 @@ def generate_figma_script(
             visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
             lines.extend(visual_lines)
             all_token_refs.extend(visual_refs)
+
+            if element.get("visible") is False:
+                lines.append(f"{var}.visible = false;")
 
             style = element.get("style", {})
             if is_text:
@@ -469,7 +524,8 @@ def generate_figma_script(
         if parent_eid is not None and parent_eid in var_map and parent_eid not in mode1_eids:
             parent_var = var_map[parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
-            parent_is_autolayout = parent_eid not in absolute_eids
+            parent_direction = spec.get("elements", {}).get(parent_eid, {}).get("layout", {}).get("direction", "")
+            parent_is_autolayout = parent_direction in ("horizontal", "vertical")
             if parent_is_autolayout:
                 elem_sizing = element.get("layout", {}).get("sizing", {})
                 wants_fill = elem_sizing.get("width") == "fill"

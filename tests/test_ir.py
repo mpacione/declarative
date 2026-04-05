@@ -302,19 +302,19 @@ def _seed_ir_screen(db: sqlite3.Connection) -> None:
     db.execute("INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value) VALUES (2, 1, '#000000', '#000000')")
 
     nodes = [
-        # screen frame at depth 0 (unclassified — should be included in IR)
+        # screen frame at depth 0 (unclassified, layout_mode=None = absolute positioning)
         (9, 1, "s1_frame", "iPhone 13 Pro Max", "FRAME", 0, 0, -9000, 7000, 428, 926, None, None, None, None, None, None, None),
-        # header at depth 1 (absolute coords: screen origin + relative)
-        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, -9000, 7000, 428, 56, "HORIZONTAL", None, None, None, None, None, None),
+        # header at depth 1 (absolute coords: screen origin + relative → (0, 0))
+        (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, -9000, 7000, 428, 56, "HORIZONTAL", None, None, None, None, None, 9),
         # icon inside header at depth 2
         (11, 1, "ib1", "icon/back", "INSTANCE", 2, 0, -8992, 7008, 24, 24, None, None, None, None, None, None, 10),
         # text heading at depth 2
         (12, 1, "t1", "Section Title", "TEXT", 2, 1, -8984, 7080, 396, 28, None, "Inter", 700, 24, None, "Settings", 10),
-        # content frame at depth 1
-        (13, 1, "c1", "Content", "FRAME", 1, 1, -9000, 7056, 428, 802, "VERTICAL", None, None, None, 16, None, None),
-        # background image at depth 1 (unclassified RECTANGLE — should be included)
+        # content frame at depth 1 (relative to parent: (0, 56))
+        (13, 1, "c1", "Content", "FRAME", 1, 1, -9000, 7056, 428, 802, "VERTICAL", None, None, None, 16, None, 9),
+        # background image at depth 1 (unclassified RECTANGLE)
         (14, 1, "img1", "image 319", "RECTANGLE", 1, 2, -9000, 7000, 1012, 1012, None, None, None, None, None, None, 9),
-        # system chrome at depth 1 (unclassified INSTANCE — should be excluded)
+        # system chrome at depth 1 (unclassified INSTANCE)
         (15, 1, "sb1", "iOS/StatusBar", "INSTANCE", 1, 3, -9000, 7000, 428, 47, None, None, None, None, None, None, 9),
     ]
     db.executemany(
@@ -399,6 +399,35 @@ class TestQueryScreenForIR:
         header_node = next(n for n in result["nodes"] if n["node_id"] == 10)
         assert header_node["strokes"] == strokes_json
         assert header_node["effects"] == effects_json
+
+    def test_includes_all_nodes_with_left_join(self, db: sqlite3.Connection):
+        """All 7 fixture nodes should be returned — classified and unclassified."""
+        result = query_screen_for_ir(db, screen_id=1)
+        assert len(result["nodes"]) == 7
+
+    def test_unclassified_node_has_null_canonical_type(self, db: sqlite3.Connection):
+        """Unclassified RECTANGLE (node 14) has canonical_type=None."""
+        result = query_screen_for_ir(db, screen_id=1)
+        rect_node = next(n for n in result["nodes"] if n["node_id"] == 14)
+        assert rect_node["canonical_type"] is None
+        assert rect_node["sci_id"] is None
+
+    def test_unclassified_node_preserves_real_node_type(self, db: sqlite3.Connection):
+        """Unclassified nodes carry their real node_type from L0."""
+        result = query_screen_for_ir(db, screen_id=1)
+        rect_node = next(n for n in result["nodes"] if n["node_id"] == 14)
+        assert rect_node["node_type"] == "RECTANGLE"
+
+        frame_node = next(n for n in result["nodes"] if n["node_id"] == 9)
+        assert frame_node["node_type"] == "FRAME"
+
+    def test_includes_component_key_column(self, db: sqlite3.Connection):
+        """component_key is available for Mode 1 detection in the renderer."""
+        db.execute("UPDATE nodes SET component_key = 'test_key_abc' WHERE id = 10")
+        db.commit()
+        result = query_screen_for_ir(db, screen_id=1)
+        header_node = next(n for n in result["nodes"] if n["node_id"] == 10)
+        assert header_node["component_key"] == "test_key_abc"
 
 
 class TestBuildCompositionSpec:
@@ -527,26 +556,118 @@ class TestBuildCompositionSpec:
         assert header["layout"]["position"]["y"] == 0
 
     def test_ir_includes_unclassified_depth1_rectangle(self, db: sqlite3.Connection):
-        """Unclassified RECTANGLE at depth 1 should be in the IR as container."""
+        """Unclassified RECTANGLE at depth 1 should be in the IR."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         node_ids = set(spec["_node_id_map"].values())
         assert 14 in node_ids  # image 319 RECTANGLE
 
-    def test_ir_excludes_system_chrome_instances(self, db: sqlite3.Connection):
-        """Unclassified INSTANCE at depth 1 (system chrome) should NOT be in IR."""
+    def test_unclassified_element_uses_node_type_as_type(self, db: sqlite3.Connection):
+        """Unclassified RECTANGLE gets type='rectangle' (from node_type.lower())."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+        rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
+        assert spec["elements"][rect_eid]["type"] == "rectangle"
+
+    def test_unclassified_element_id_uses_node_type(self, db: sqlite3.Connection):
+        """Unclassified RECTANGLE gets element ID like 'rectangle-1'."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+        rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
+        assert rect_eid.startswith("rectangle-")
+
+    def test_classified_element_still_uses_canonical_type(self, db: sqlite3.Connection):
+        """Classified nodes still use canonical_type, not node_type."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        header = next(el for el in spec["elements"].values() if el.get("type") == "header")
+        assert header is not None
+
+    def test_original_name_preserved_in_element(self, db: sqlite3.Connection):
+        """Elements carry _original_name from the DB node name."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+        rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
+        assert spec["elements"][rect_eid].get("_original_name") == "image 319"
+
+    def test_ir_includes_system_chrome_instances(self, db: sqlite3.Connection):
+        """System chrome nodes ARE in the IR (needed for round-trip).
+
+        The semantic path (generate_ir(semantic=True)) filters them post-build
+        via filter_system_chrome(). The structural IR includes everything.
+        """
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         node_ids = set(spec["_node_id_map"].values())
-        assert 15 not in node_ids  # iOS/StatusBar
+        assert 15 in node_ids  # iOS/StatusBar — included for round-trip
+
+    def test_children_of_non_autolayout_parent_have_position(self, db: sqlite3.Connection):
+        """Children of parents with no layout_mode get absolute position.
+
+        Node 9 (depth 0) has layout_mode=None. Its children (10, 13, 14)
+        should have position set relative to node 9's origin.
+        Node 9 is at (-9000, 7000). Node 13 (Content) is at (-9000, 7056).
+        So Content's position should be (0, 56).
+        """
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        # Content frame (node 13) should have position relative to parent (node 9)
+        content_eid = next(eid for eid, nid in node_id_map.items() if nid == 13)
+        content_el = spec["elements"][content_eid]
+        assert "position" in content_el.get("layout", {}), "Content should have absolute position"
+        assert content_el["layout"]["position"]["x"] == 0
+        assert content_el["layout"]["position"]["y"] == 56
+
+    def test_children_of_autolayout_parent_have_no_position(self, db: sqlite3.Connection):
+        """Children inside auto-layout parents should NOT get position.
+
+        Node 10 (header, HORIZONTAL layout) has children 11 and 12.
+        These should NOT have position — auto-layout determines their placement.
+        """
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        # icon (node 11) is child of header (node 10, HORIZONTAL layout)
+        icon_eid = next(eid for eid, nid in node_id_map.items() if nid == 11)
+        icon_el = spec["elements"][icon_eid]
+        assert "position" not in icon_el.get("layout", {}), "Auto-layout child should not have position"
+
+    def test_hidden_node_has_visible_false(self, db: sqlite3.Connection):
+        """Nodes with visible=0 in DB should carry visible=false in element."""
+        # Make node 14 hidden
+        db.execute("UPDATE nodes SET visible = 0 WHERE id = 14")
+        db.commit()
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
+        rect_el = spec["elements"][rect_eid]
+        assert rect_el.get("visible") is False
+
+    def test_visible_node_has_no_visible_key(self, db: sqlite3.Connection):
+        """Nodes with visible=1 should NOT have a visible key (default)."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        header_eid = next(eid for eid, nid in node_id_map.items() if nid == 10)
+        header_el = spec["elements"][header_eid]
+        assert "visible" not in header_el
 
 
 # ---------------------------------------------------------------------------
 # Step 4: generate_ir wrapper + CLI
 # ---------------------------------------------------------------------------
 
-class TestContainerInjection:
-    """Verify unclassified parent FRAMEs become container elements."""
+class TestUnclassifiedParentWiring:
+    """Verify unclassified parent FRAMEs wire children correctly via parent_id."""
 
     @pytest.fixture
     def db(self) -> sqlite3.Connection:
@@ -584,39 +705,38 @@ class TestContainerInjection:
         yield conn
         conn.close()
 
-    def test_injects_container_for_unclassified_parent(self, db):
+    def test_unclassified_parent_has_classified_children(self, db):
+        """Unclassified FRAME wires classified button children via parent_id."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
 
-        # The two buttons should NOT be root children
-        root = spec["elements"][spec["root"]]
-        # There should be a container element that holds them
-        container = None
-        for eid, el in spec["elements"].items():
-            if el.get("type") == "container":
-                container = el
-                break
+        # Find the element for unclassified FRAME (node 10)
+        node_id_map = spec["_node_id_map"]
+        frame_eid = next(eid for eid, nid in node_id_map.items() if nid == 10)
+        frame_el = spec["elements"][frame_eid]
 
-        assert container is not None, "Expected a container element for unclassified parent FRAME"
-        assert "children" in container
-        assert len(container["children"]) == 2
+        assert "children" in frame_el
+        assert len(frame_el["children"]) == 2
 
-    def test_container_preserves_layout(self, db):
+    def test_unclassified_parent_preserves_layout(self, db):
+        """Unclassified FRAME's layout properties come from L0."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
 
-        container = next(
-            el for el in spec["elements"].values() if el.get("type") == "container"
-        )
-        assert container["layout"]["direction"] == "vertical"
-        assert container["layout"]["gap"] == 16
+        node_id_map = spec["_node_id_map"]
+        frame_eid = next(eid for eid, nid in node_id_map.items() if nid == 10)
+        frame_el = spec["elements"][frame_eid]
+
+        assert frame_el["layout"]["direction"] == "vertical"
+        assert frame_el["layout"]["gap"] == 16
 
     def test_reduces_root_children(self, db):
+        """Buttons are children of the FRAME, not root children."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
 
         root = spec["elements"][spec["root"]]
-        # Should have 1 container, not 2 loose buttons
+        # Should have 1 element (the unclassified FRAME), not 2 loose buttons
         assert len(root["children"]) == 1
 
 

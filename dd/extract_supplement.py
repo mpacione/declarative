@@ -47,6 +47,35 @@ async function walkNode(node) {{
       const main = await node.getMainComponentAsync();
       if (main) entry.ck = main.key;
     }} catch (e) {{}}
+
+    // Extract overrides (child node mutations)
+    if (node.overrides && node.overrides.length > 0) {{
+      const ovs = [];
+      for (const ov of node.overrides) {{
+        // Extract master-relative child ID (part after last instance prefix)
+        const cid = ov.id.includes(';') ? ov.id.substring(ov.id.indexOf(';')) : ov.id;
+        const child = node.findOne(n => n.id === ov.id);
+        if (!child) continue;
+
+        const o = {{ cid, f: ov.overriddenFields, t: child.type }};
+
+        if (ov.overriddenFields.includes('characters') && child.type === 'TEXT') {{
+          o.chars = child.characters;
+        }}
+        if (ov.overriddenFields.includes('visible')) {{
+          o.vis = child.visible;
+        }}
+        if (child.type === 'INSTANCE' && ov.overriddenFields.some(f => f === 'fills' || f === 'fillStyleId')) {{
+          // Possible instance swap — check main component
+          try {{
+            const childMain = await child.getMainComponentAsync();
+            if (childMain) o.swapId = childMain.id;
+          }} catch (e) {{}}
+        }}
+        ovs.push(o);
+      }}
+      if (ovs.length > 0) entry.ov = ovs;
+    }}
   }}
 
   if (node.layoutMode === 'GRID') {{
@@ -81,14 +110,26 @@ return result;
 
 
 def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[str, Any]]) -> dict[str, int]:
-    """Apply supplemental data to the nodes table.
+    """Apply supplemental data to the nodes table and instance_overrides table.
 
-    Updates layout_positioning, component_key, and Grid properties from
-    the compact format returned by the supplement script.
+    Updates layout_positioning, component_key, Grid properties, and
+    instance overrides from the compact format returned by the supplement script.
     """
+    # Ensure instance_overrides table exists (may not if DB predates schema addition)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS instance_overrides ("
+        "id INTEGER PRIMARY KEY, "
+        "node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE, "
+        "property_type TEXT NOT NULL, "
+        "property_name TEXT NOT NULL, "
+        "override_value TEXT, "
+        "UNIQUE(node_id, property_name))"
+    )
+
     positioning_count = 0
     component_key_count = 0
     grid_count = 0
+    override_count = 0
 
     for figma_node_id, fields in supplement_data.items():
         updates = {}
@@ -115,16 +156,51 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
         if "gcs" in fields:
             updates["grid_column_sizes"] = json.dumps(fields["gcs"]) if isinstance(fields["gcs"], list) else fields["gcs"]
 
-        if not updates:
-            continue
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [figma_node_id]
+            conn.execute(
+                f"UPDATE nodes SET {set_clause} WHERE figma_node_id = ?",
+                values,
+            )
 
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        values = list(updates.values()) + [figma_node_id]
+        # Instance overrides: child node mutations (text, visibility, instance swap)
+        if "ov" in fields:
+            node_row = conn.execute(
+                "SELECT id FROM nodes WHERE figma_node_id = ?", (figma_node_id,)
+            ).fetchone()
+            if node_row:
+                node_id = node_row[0]
+                for ov in fields["ov"]:
+                    child_id = ov["cid"]
+                    child_type = ov.get("t", "UNKNOWN")
 
-        conn.execute(
-            f"UPDATE nodes SET {set_clause} WHERE figma_node_id = ?",
-            values,
-        )
+                    if "chars" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'TEXT', ?, ?)",
+                            (node_id, child_id, ov["chars"]),
+                        )
+                        override_count += 1
+
+                    if "vis" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'BOOLEAN', ?, ?)",
+                            (node_id, f"{child_id}:visible", json.dumps(ov["vis"])),
+                        )
+                        override_count += 1
+
+                    if "swapId" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'INSTANCE_SWAP', ?, ?)",
+                            (node_id, child_id, ov["swapId"]),
+                        )
+                        override_count += 1
 
     conn.commit()
 
@@ -132,6 +208,7 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
         "layout_positioning": positioning_count,
         "component_key": component_key_count,
         "grid": grid_count,
+        "overrides": override_count,
         "total_nodes_updated": len(supplement_data),
     }
 

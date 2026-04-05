@@ -27,11 +27,12 @@ Declarative Design is a **design system compiler** — LLVM for design systems. 
 - Component resolution (query_screen_visuals JOINs registry → getNodeByIdAsync)
 - Unclassified structural nodes (depth-0/1 FRAME/RECTANGLE in IR)
 
-### Architecture Discovery
-- **DB IS the scene graph** — 72 columns, parent_id tree, sort_order z-index. Complete and lossless.
-- **Renderer was designed to walk DB but walks IR instead** — architecture spec says DB, code does IR. This divergence breaks reproduction.
-- **IR tree is lossy by design** — classification-based wiring drops 43% of nodes, rewires parent-child. Correct for semantic abstraction, wrong for reproduction.
-- **Multi-level IR design** — MLIR-inspired. L0=DB, L1=classification, L2=tokens, L3=semantic. Each level adds, none removes.
+### Architecture Discovery & Refinement
+- **DB IS L0** — The `nodes` table with 72 columns IS Level 0 of the IR. Not a separate data structure — the table itself is the scene graph. L1, L2, L3 are annotations stored in separate tables that enrich L0.
+- **Progressive fallback model** — Renderers read from the highest IR level available and fall back to lower levels: L2 (tokens) → L1 (classification) → L0 (raw values). L0 is always the safety net. This applies to ALL renderers, not just Figma.
+- **Round-trip proves the full stack** — The Figma renderer exercises L2 (token variable binding), L1 (component createInstance), and L0 (raw property application) via progressive fallback. Success validates all levels.
+- **The IR exists for the M×N problem** — Without the IR, 5 frontends × 5 backends = 25 translators each reimplementing classification, token binding, and semantic compression. With the IR, analysis is written once and shared.
+- **Current break is a query/wiring bug, not an architecture bug** — `query_screen_for_ir()` INNER JOINs on L1 classification (dropping unclassified nodes). Fix: LEFT JOIN L1/L2 as annotations on the L0 tree.
 - **Compiler model validated** — Mitosis (behavioral IR), Ghost (SDUI), USD (composition arcs) each solve parts. Nobody combines all with design tool support.
 
 ### Research Completed
@@ -44,13 +45,48 @@ Declarative Design is a **design system compiler** — LLVM for design systems. 
 
 ### THE ONLY PRIORITY: Round-Trip Fidelity
 
-Nothing else matters until a screen goes Figma → DB → Figma and comes back visually identical. No L3 format, no React renderer, no prompt generation. Those are all downstream of a working round-trip.
+Nothing else matters until a screen goes Figma → DB → Figma and comes back as a **semantically equivalent design file** — with live token variables, real component instances, proper naming, and visual fidelity. Not a flat photocopy of rectangles with hex colors.
 
-**Step 1: Verify extraction completeness.** Confirm the DB captures everything from Figma with zero loss. Compare screen 184 node-by-node against the live Figma data. If anything is missing, fix extraction first.
+### Architectural Principle: Progressive Fallback
 
-**Step 2: Build DB-direct renderer.** `generate_screen_from_db()` walks the DB `parent_id` tree directly, bypassing the IR. For each node, create the right Figma element type, apply all properties from the DB, parent it correctly. Execute on screen 184, screenshot, compare against original.
+The round-trip renderer uses **all IR levels** via progressive fallback (see `compiler-architecture.md` Section 5):
 
-**Step 3: Iterate until 100% fidelity.** Screenshot comparison, find gaps, fix them. Repeat until the reproduction is visually indistinguishable from the original.
+```
+L2 (token bindings)  → Figma variables (live, themeable)
+  ↓ fallback
+L1 (classification)  → createInstance() (real components with variants)
+  ↓ fallback
+L0 (raw DB values)   → createFrame/Rectangle/Text with literal values
+```
+
+Every property reads from the highest level available. L0 is the safety net — complete and lossless. The result is a working Figma file, not a dead screenshot.
+
+### The Fix: What to Change in Existing Code
+
+The rendering building blocks work: `build_visual_from_db()`, `_emit_visual()`, `_emit_layout()`, `_emit_fills/strokes/effects()`. The break is in how the tree walk is sourced.
+
+**Root cause**: `generate_screen()` → `generate_ir()` → `query_screen_for_ir()` INNER JOINs on `screen_component_instances`, dropping 89/203 nodes. Then `build_composition_spec()` wires the tree via `parent_instance_id` (L1) instead of `parent_id` (L0). The renderer walks this lossy IR tree.
+
+**What needs to change** (in existing modules, no new modules):
+
+1. **`query_screen_for_ir()` in `dd/ir.py`**: Must fetch ALL nodes for the screen (L0 complete tree), not just classified ones. L1 classification and L2 bindings are LEFT JOINed as annotations — present when available, NULL when not. The query result carries all levels in one pass.
+
+2. **`build_composition_spec()` in `dd/ir.py`**: Must wire the tree via `parent_id` (L0 structure), not `parent_instance_id` (L1 relationship). Every node gets an element in the spec. INSTANCE nodes with children in the DB get those children skipped in the walk (they're inherited from createInstance).
+
+3. **`generate_figma_script()` in `dd/generate.py`**: For each element in the walk:
+   - Check L2: does this node have token bindings? → collect for variable rebinding
+   - Check L1: does this node have a component_key? → Mode 1 createInstance
+   - Fallback L0: create from raw properties → Mode 2 createFrame/Rectangle/Text
+
+4. **Token rebinding**: After structure creation, bind Figma variables using L2 data. This already exists in `dd/rebind_prompt.py` and `dd/export_rebind.py` — reuse it.
+
+### Steps
+
+**Step 1: Verify extraction completeness.** Compare screen 184 node-by-node against live Figma data. If anything is missing, fix extraction first.
+
+**Step 2: Fix the query and tree assembly.** Modify `query_screen_for_ir()` to LEFT JOIN L1/L2 instead of INNER JOIN. Fix `build_composition_spec()` to wire via `parent_id`. Fix `generate_figma_script()` to implement progressive fallback (L2 → L1 → L0).
+
+**Step 3: Execute and iterate.** Run on screen 184. Screenshot. Compare against original. Find gaps. Fix. Repeat.
 
 **Only after round-trip is proven:** L3 format definition, additional frontends/backends, prompt-based generation.
 

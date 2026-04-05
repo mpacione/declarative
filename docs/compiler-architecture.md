@@ -43,10 +43,10 @@ Each frontend fills the levels it can:
 - React parser fills L1 + L2 (semantic types + tokens, no Figma scene graph)
 - LLM/prompt fills L3 only (semantic intent, system compiles down)
 
-Each backend reads the levels it needs:
-- Figma reproduction reads L0 (full scene graph, pixel-perfect)
-- React renderer reads L1 + L2 (semantic types + tokens)
-- Cross-platform output reads L3 (semantic tree)
+Each backend reads from the highest level available and falls back to lower levels for missing data (see Section 5, Progressive Fallback):
+- Figma reproduction: L2 → L1 → L0 (tokens first, then components, then raw properties)
+- React renderer: L2 → L1 → L0 (tokens as CSS vars, components as JSX, raw values as fallback)
+- Cross-platform output: L3 → L2 → L1 (semantic tree, with token and type references)
 
 ---
 
@@ -164,28 +164,89 @@ Document order = stacking order. Last child renders on top. No explicit z-index 
 
 ## 5. Renderer Architecture
 
-Each target platform gets a renderer — a function that reads the IR and produces target-specific output.
+Each target platform gets a renderer — a function that reads the IR and produces target-specific output. Different renderers read different levels of the IR, just as different LLVM backends read different levels of the machine IR hierarchy.
+
+### Why the IR Matters (The M×N Problem)
+
+Without the IR, every source→target pair needs its own translator: 5 frontends × 5 backends = 25 translators, each reimplementing analysis logic. With the IR, analysis is written once and stored:
+
+- **Classification** (L1): "This FRAME is a button" — written once by the classification cascade, reused by every renderer
+- **Token binding** (L2): "This padding is `{space.lg}`" — written once by the clustering pipeline, reused by every renderer
+- **Semantic compression** (L3): "header, card with 2 toggles, save button" — written once, reused by every renderer and LLM
+
+These are compiler passes that operate on the IR. Without it, each renderer independently reimplements component detection, token mapping, and semantic understanding. The IR is where shared analysis lives.
+
+### Progressive Fallback: How Renderers Read the IR
+
+Every renderer starts from the **highest IR level available** for each property and falls back to lower levels when data is missing. L0 is always the safety net — complete and lossless.
+
+```
+L3 (semantic intent)     → highest abstraction, used when available
+  ↓ fallback
+L2 (token bindings)      → design system portability (Figma variables, CSS vars)
+  ↓ fallback
+L1 (classification)      → component identity (createInstance, <Button>)
+  ↓ fallback
+L0 (raw DB properties)   → complete, lossless, always available
+```
+
+This means renderers never fail — they degrade gracefully from semantic (tokens + components) to literal (raw values + generic elements). A property with a token binding renders as a live Figma variable or CSS custom property. A property without a token binding renders as a hardcoded value from L0. Both are correct — one is more portable.
+
+| Renderer | Reads | Fallback | Output Character |
+|----------|-------|----------|------------------|
+| **Figma** | L2 → L1 → L0 | Raw DB values | Semantically equivalent design file with live tokens and real components |
+| **React** | L2 → L1 → L0 | Hardcoded CSS values | Idiomatic JSX with CSS custom properties, falling back to literals |
+| **SwiftUI** | L2 → L1 → L0 | Hardcoded Swift values | Native SwiftUI with token constants, falling back to literals |
+| **LLM/Prompt** | L3 → L2 → L1 | Component types | Compact YAML with token refs and semantic types |
 
 ### Figma Renderer (Reproduction)
 
-Walks L0 (DB `parent_id` tree) directly. For each node:
-- INSTANCE with `component_key` → `getNodeByIdAsync(figma_node_id).createInstance()`
-- FRAME → `figma.createFrame()` + apply layout, fills, strokes, effects, constraints
-- TEXT → `figma.createText()` + apply font, content
-- RECTANGLE → `figma.createRectangle()` + apply fills
-- Sets `visible`, `clipsContent`, `rotation`, `constraints` from DB
-- Applies instance property overrides via `setProperties()`
-- Applies visibility overrides on instance children
+The Figma renderer produces a **semantically equivalent design file** — not a flat photocopy of rectangles with hex colors, but a working Figma file with real components, live design token variables, proper naming, and correct hierarchy. It reads all IR levels via progressive fallback.
+
+For each node, walking the L0 `parent_id` tree:
+
+1. **L2 — Token bindings**: For every property on the node, check if a token binding exists in `node_token_bindings`. If yes, the reproduced node gets a live Figma variable binding (not a dead hex value). This makes the reproduced file respond to theme changes, mode switching, and token updates — just like the original.
+
+2. **L1 — Classification**: Is this node classified with a `component_key`?
+   - Yes → Mode 1: `getNodeByIdAsync(figma_node_id).createInstance()`. The reproduced node IS a real component instance with proper variant structure, naming, and inherited children. Skip creating child nodes (they come from the component).
+   - Apply instance property overrides (text, visibility, variant selection) from the DB.
+
+3. **L0 — Raw properties (fallback)**: For unclassified nodes or properties without token bindings:
+   - FRAME → `figma.createFrame()` + apply layout, fills, strokes, effects, constraints from raw DB columns
+   - TEXT → `figma.createText()` + apply font, content from raw DB columns
+   - RECTANGLE → `figma.createRectangle()` + apply fills from raw DB columns
+   - VECTOR, ELLIPSE, GROUP → create appropriate element type from L0 data
+   - Sets `visible`, `clipsContent`, `rotation`, `constraints` from raw DB values
+
+4. **Apply visibility and overrides**: Hidden children, instance property overrides, blend modes.
+
+The result is a Figma file that isn't just visually identical to the original — it's structurally equivalent. Components are real components. Tokens are live variables. Naming preserves semantic intent. A designer can open the reproduced file and work with it normally.
 
 ### Future Renderers (After Round-Trip Is Proven)
 
-The same IR supports additional backends. These are NOT built yet — they come after round-trip fidelity is achieved.
+The same progressive fallback model applies to every backend. These are NOT built yet — they come after round-trip fidelity is achieved.
 
-**React**: `direction: horizontal` → `flex-direction: row`. Token refs → CSS custom properties.
-**SwiftUI**: `direction: horizontal` → `HStack`. Token refs → Swift token constants.
-**Flutter**: `direction: horizontal` → `Row()`. Token refs → theme values.
+**React**: For each L1-classified component:
+- L2 token binding exists? → `color: var(--color-brand)` (CSS custom property)
+- No token binding? → Query L0 → `color: #09090B` (hardcoded fallback)
+- L1 classification exists? → `<Button variant="primary">` (semantic component)
+- No classification? → `<div style={...}>` (generic element with L0 properties)
 
-Each renderer reads the IR levels it needs (L1+L2 for code generation, L0 for pixel-precise reproduction).
+**SwiftUI**: Same pattern. `canonical_type: "button"` → `Button(.primary)`. Token refs → Swift token constants. Unbound properties → literal values from L0.
+
+**Flutter**: Same pattern. `canonical_type: "button"` → `ElevatedButton()`. Token refs → theme values. Unbound properties → literal values from L0.
+
+No renderer ever encounters "missing data" — L0 is always the complete fallback. The higher levels make the output more portable, more semantic, and more maintainable. L0 ensures correctness.
+
+### The Round-Trip Proves All Levels
+
+The round-trip test (Figma → DB → Figma) validates the full IR stack because the Figma renderer exercises every level via progressive fallback:
+
+- **L2 proven**: Token bindings rebind to Figma variables — the reproduced file has live design tokens
+- **L1 proven**: Classified components render via `createInstance()` — the reproduced file has real components
+- **L0 proven**: Every node reproduced with correct properties — extraction is lossless
+
+If the round-trip succeeds, every downstream renderer (React, SwiftUI, Flutter) can trust the IR data it reads, because the Figma renderer has already validated L0, L1, and L2 end-to-end. L3 is validated separately (semantic compression is a higher-level concern tested by prompt→screen generation).
 
 ---
 
@@ -203,19 +264,25 @@ Extract screen 184 from the Dank file into the DB. Generate Figma Plugin API Jav
 
 Screen 184 (Dank meme editor, 203 nodes, 428×926):
 - Extraction: Complete (all 203 nodes in DB with 72 columns each)
-- L0 → Figma: **Structurally broken** — renderer walks IR tree instead of DB `parent_id` tree
-- Root cause: `generate_screen()` calls `generate_ir()` which builds a classification-based tree, losing real parent-child relationships
+- Classification (L1): 114 of 203 nodes classified (56% for this screen)
+- Token Bindings (L2): bindings exist for classified nodes
+- Rendering: **Structurally broken** — `generate_screen()` calls `generate_ir()` which filters through L1 classification (INNER JOIN on `screen_component_instances`), dropping 89 unclassified nodes. Tree wiring uses `parent_instance_id` (L1 relationship) instead of `parent_id` (L0 structure).
+- Root cause: The renderer reads L1 as a filter instead of reading L0 as the base with L1/L2 as progressive enrichment.
 
 ### What Must Work
 
-1. Every node in the original screen appears in the reproduction
+The reproduced file must be a **semantically equivalent design file**, not just a visual match:
+
+1. Every node in the original screen appears in the reproduction (L0 completeness)
 2. Parent-child relationships match the original (`parent_id` tree preserved)
-3. Positions, sizes, and layout properties match
-4. Visual properties (fills, strokes, effects, radius, opacity) match
-5. Component instances are created from the correct master components
-6. Instance property overrides are applied
-7. Visibility states match (hidden children stay hidden)
-8. The reproduction is visually indistinguishable from the original at 1:1 zoom
+3. Properties with token bindings render as live Figma variables (L2 fidelity)
+4. Classified components render as real component instances via `createInstance()` (L1 fidelity)
+5. Unclassified nodes render from raw L0 properties (progressive fallback)
+6. Positions, sizes, and layout properties match
+7. Visual properties (fills, strokes, effects, radius, opacity) match
+8. Instance property overrides are applied
+9. Visibility states match (hidden children stay hidden)
+10. The reproduction is visually indistinguishable from the original at 1:1 zoom
 
 ### What May Differ
 
@@ -300,6 +367,7 @@ tests/                       # 1,475 tests
 | **Frontend** | Parser that reads a source format into the IR. |
 | **Backend** | Renderer that writes the IR to a target format. |
 | **Progressive lowering** | Transforming high-level IR (L3) to lower-level (L0) by filling in details. |
-| **Round-trip** | Source → IR → Source with zero loss. The foundational correctness test. |
+| **Progressive fallback** | Renderer reads highest IR level available, falls back to lower levels for missing data. L3→L2→L1→L0. |
+| **Round-trip** | Source → IR → Source with zero loss. The foundational correctness test. Proves all IR levels. |
 | **Design token** | A named, reusable value (color, spacing, font) that can be resolved differently per theme/platform. |
 | **Scene graph** | The complete node tree with all visual, layout, and structural properties. |

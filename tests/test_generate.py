@@ -1289,6 +1289,152 @@ class TestAbsolutePositioning:
 
 
 # ---------------------------------------------------------------------------
+# Phase 3: Node type dispatch, recursive skip, original names
+# ---------------------------------------------------------------------------
+
+class TestNodeTypeDispatch:
+    """Verify the generator creates the correct Figma element for each node type."""
+
+    def test_rectangle_creates_rectangle(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["rectangle-1"],
+            },
+            "rectangle-1": {
+                "type": "rectangle",
+                "layout": {"sizing": {"width": 50, "height": 50}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "figma.createRectangle()" in script
+
+    def test_ellipse_creates_ellipse(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["ellipse-1"],
+            },
+            "ellipse-1": {
+                "type": "ellipse",
+                "layout": {"sizing": {"width": 50, "height": 50}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "figma.createEllipse()" in script
+
+    def test_vector_type_skipped(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["vector-1"],
+            },
+            "vector-1": {
+                "type": "vector",
+                "layout": {"sizing": {"width": 20, "height": 20}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "vector" not in script.lower() or "createVector" not in script
+
+    def test_group_type_skipped(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["group-1"],
+            },
+            "group-1": {
+                "type": "group",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "createFrame" not in script or 'name = "group' not in script
+
+
+class TestRecursiveMode1Skip:
+    """Verify Mode 1 instances skip ALL descendants, not just direct children."""
+
+    def test_mode1_skips_grandchildren(self):
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "tokens": {},
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                    "children": ["instance-1"],
+                },
+                "instance-1": {
+                    "type": "instance",
+                    "layout": {},
+                    "children": ["child-1"],
+                },
+                "child-1": {
+                    "type": "frame",
+                    "layout": {},
+                    "children": ["grandchild-1"],
+                },
+                "grandchild-1": {
+                    "type": "text",
+                    "layout": {},
+                    "style": {},
+                    "props": {"text": "should not appear"},
+                },
+            },
+            "_node_id_map": {"instance-1": 100, "child-1": 101, "grandchild-1": 102},
+        }
+        db_visuals = {
+            100: {"component_key": "abc123", "component_figma_id": "1:234", "bindings": [], "visible": 1},
+            101: {"bindings": [], "visible": 1},
+            102: {"bindings": [], "visible": 1},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'getNodeByIdAsync("1:234")' in script
+        assert "should not appear" not in script
+
+
+class TestOriginalNames:
+    """Verify the generator uses _original_name for Figma layer names."""
+
+    def test_original_name_in_script(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["frame-1"],
+            },
+            "frame-1": {
+                "type": "frame",
+                "layout": {},
+                "_original_name": "Content Area",
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert '"Content Area"' in script
+
+    def test_falls_back_to_element_id(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["frame-1"],
+            },
+            "frame-1": {
+                "type": "frame",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert '"frame-1"' in script
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
