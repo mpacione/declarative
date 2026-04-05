@@ -1240,3 +1240,84 @@ class TestQueryScreenVisuals:
         result = query_screen_visuals(db, screen_id=1)
         # component_figma_id not in result when registry doesn't exist
         assert result[10].get("component_figma_id") is None
+
+
+class TestDeepChildSwaps:
+    """Verify child_swaps captures swapped instances at any nesting depth."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Screen', 428, 926)"
+        )
+
+        # Top-level INSTANCE (nav/top-nav, depth 1)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (100, 1, '2244:100', 'nav/top-nav', 'INSTANCE', 1, 0, "
+            "1, 1, 'nav_key', NULL, 0, 0, 428, 111, '2026-01-01')"
+        )
+        # Frame inside instance (Left, depth 2)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (101, 1, 'I2244:100;1835:001', 'Left', 'FRAME', 2, 0, "
+            "0, 1, 100, 0, 0, 130, 64, '2026-01-01')"
+        )
+        # Button INSTANCE inside frame (depth 3) — with a swapped icon
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (102, 1, 'I2244:100;2036:002', 'button/small/translucent', 'INSTANCE', 3, 0, "
+            "0, 1, 'btn_small_key', 101, 0, 0, 48, 32, '2026-01-01')"
+        )
+        # Swapped icon INSTANCE inside button (depth 4) — the actual icon
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (103, 1, 'I2244:100;2036:002;1334:003', 'icon/undo', 'INSTANCE', 4, 0, "
+            "0, 1, 'icon_undo_key', 102, 0, 0, 24, 24, '2026-01-01')"
+        )
+
+        # Component key registry for the swap targets
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry "
+            "(component_key TEXT PRIMARY KEY, figma_node_id TEXT, name TEXT, instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry VALUES ('nav_key', '1835:155037', 'nav/top-nav', 10)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry VALUES ('icon_undo_key', '1315:139115', 'icon/undo', 5)"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_deep_child_swap_captured(self, db: sqlite3.Connection):
+        """icon/undo at depth 4 should appear as a child_swap on nav/top-nav (depth 1)."""
+        result = query_screen_visuals(db, screen_id=1)
+
+        nav_visual = result[100]
+        child_swaps = nav_visual.get("child_swaps", [])
+        assert len(child_swaps) >= 1, "Should find deep nested icon swap"
+
+        # The icon at depth 4 should be swappable via its master-relative ID
+        swap_ids = [cs["child_id"] for cs in child_swaps]
+        assert any(";1334:003" in sid for sid in swap_ids), (
+            f"Expected master-relative ID containing ;1334:003, got {swap_ids}"
+        )
+
+    def test_deep_swap_has_target_id(self, db: sqlite3.Connection):
+        """The swap target should be the figma_node_id from the registry."""
+        result = query_screen_visuals(db, screen_id=1)
+
+        nav_visual = result[100]
+        child_swaps = nav_visual.get("child_swaps", [])
+        icon_swap = next(cs for cs in child_swaps if ";1334:003" in cs["child_id"])
+        assert icon_swap["swap_target_id"] == "1315:139115"

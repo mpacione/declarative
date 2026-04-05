@@ -454,6 +454,18 @@ def generate_figma_script(
                         f"if (_comp) _c.swapComponent(_comp); }} }}"
                     )
 
+            # Child instance swaps: replace nested instances with correct components
+            child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
+            for cs in child_swaps:
+                cs_child_id = _escape_js(cs["child_id"])
+                cs_target_id = _escape_js(cs["swap_target_id"])
+                lines.append(
+                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{cs_child_id}")); '
+                    f'if (_c && _c.type === "INSTANCE") {{ '
+                    f'const _comp = await figma.getNodeByIdAsync("{cs_target_id}"); '
+                    f"if (_comp) _c.swapComponent(_comp); }} }}"
+                )
+
             position = element.get("layout", {}).get("position")
             if position:
                 lines.append(f"{var}.x = {position.get('x', 0)};")

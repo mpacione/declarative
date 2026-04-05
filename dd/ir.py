@@ -503,6 +503,40 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                         "value": row[3],
                     })
 
+        # Instance child swaps: find ALL descendant INSTANCE nodes within
+        # each top-level instance's subtree (any depth). After createInstance(),
+        # nested instances that differ from the master's default need
+        # swapComponent(). Uses a single recursive CTE seeded with all
+        # top-level instance IDs for performance.
+        if not has_registry:
+            return result
+        child_swap_cursor = conn.execute(
+            f"WITH RECURSIVE subtree(id, root_id) AS ("
+            f"  SELECT id, id as root_id FROM nodes WHERE id IN ({ph}) "
+            f"  UNION ALL "
+            f"  SELECT n.id, s.root_id FROM nodes n JOIN subtree s ON n.parent_id = s.id"
+            f") "
+            f"SELECT s.root_id, c.figma_node_id, ckr.figma_node_id as swap_target_id "
+            f"FROM nodes c "
+            f"JOIN subtree s ON c.id = s.id "
+            f"JOIN component_key_registry ckr ON c.component_key = ckr.component_key "
+            f"WHERE c.node_type = 'INSTANCE' AND c.component_key IS NOT NULL "
+            f"AND c.visible = 1 AND c.id != s.root_id",
+            instance_ids,
+        )
+        for row in child_swap_cursor.fetchall():
+            root_inst_id = row[0]
+            child_figma_id = row[1]
+            swap_target_id = row[2]
+            if root_inst_id in result and child_figma_id and swap_target_id and ";" in child_figma_id:
+                master_child_id = child_figma_id[child_figma_id.index(";"):]
+                if "child_swaps" not in result[root_inst_id]:
+                    result[root_inst_id]["child_swaps"] = []
+                result[root_inst_id]["child_swaps"].append({
+                    "child_id": master_child_id,
+                    "swap_target_id": swap_target_id,
+                })
+
     return result
 
 
