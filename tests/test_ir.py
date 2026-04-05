@@ -1347,18 +1347,22 @@ class TestDeepChildSwaps:
             f"Expected overridden swap ;1334:003, got {swap_ids}"
         )
 
-    def test_non_overridden_instance_not_swapped(self, db: sqlite3.Connection):
-        """Non-overridden descendant instances should NOT appear in child_swaps."""
+    def test_all_descendant_instances_included(self, db: sqlite3.Connection):
+        """All visible descendant INSTANCE nodes appear in child_swaps.
+
+        The recursive CTE returns every descendant instance because we can't
+        know which ones differ from the master's default without storing
+        master component data. swapComponent is a no-op for matching components.
+        """
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]
         child_swaps = nav_visual.get("child_swaps", [])
 
-        # btn_default_key (node 104) is not overridden — should not be swapped
+        # Both overridden (node 103) and non-overridden (node 104) are included
         swap_ids = [cs["child_id"] for cs in child_swaps]
-        assert not any(";2036:004" in sid for sid in swap_ids), (
-            f"Non-overridden instance should not be in child_swaps, got {swap_ids}"
-        )
+        assert any(";1334:003" in sid for sid in swap_ids), "Overridden icon should be in swaps"
+        assert any(";2036:004" in sid for sid in swap_ids), "All descendants included"
 
     def test_swap_has_correct_target_id(self, db: sqlite3.Connection):
         """The swap target should come from instance_overrides, not the node's own key."""

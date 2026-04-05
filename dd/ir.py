@@ -534,29 +534,36 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                         swap_child_ids_seen[inst_id] = set()
                     swap_child_ids_seen[inst_id].add(child_id)
 
-        # Source 2: descendant instances with component_keys (only visible, direct children)
+        # Source 2: recursive CTE for descendant instances at any depth.
+        # Finds ALL INSTANCE descendants within each top-level instance's
+        # subtree, deduplicating against Source 1 via swap_child_ids_seen.
+        # swapComponent is a no-op when the component already matches.
         if has_registry:
             child_swap_cursor = conn.execute(
-                f"SELECT c.parent_id, c.figma_node_id, "
-                f"ckr.figma_node_id as swap_target_id "
+                f"WITH RECURSIVE subtree(id, root_id) AS ("
+                f"  SELECT id, id as root_id FROM nodes WHERE id IN ({ph}) "
+                f"  UNION ALL "
+                f"  SELECT n.id, s.root_id FROM nodes n JOIN subtree s ON n.parent_id = s.id"
+                f") "
+                f"SELECT s.root_id, c.figma_node_id, ckr.figma_node_id as swap_target_id "
                 f"FROM nodes c "
+                f"JOIN subtree s ON c.id = s.id "
                 f"JOIN component_key_registry ckr ON c.component_key = ckr.component_key "
-                f"WHERE c.parent_id IN ({ph}) "
-                f"AND c.node_type = 'INSTANCE' AND c.component_key IS NOT NULL "
-                f"AND c.visible = 1",
+                f"WHERE c.node_type = 'INSTANCE' AND c.component_key IS NOT NULL "
+                f"AND c.visible = 1 AND c.id != s.root_id",
                 instance_ids,
             )
             for row in child_swap_cursor.fetchall():
-                parent_id = row[0]
+                root_inst_id = row[0]
                 child_figma_id = row[1]
                 swap_target_id = row[2]
-                if parent_id in result and child_figma_id and swap_target_id and ";" in child_figma_id:
+                if root_inst_id in result and child_figma_id and swap_target_id and ";" in child_figma_id:
                     master_child_id = child_figma_id[child_figma_id.index(";"):]
-                    seen = swap_child_ids_seen.get(parent_id, set())
+                    seen = swap_child_ids_seen.get(root_inst_id, set())
                     if master_child_id not in seen:
-                        if "child_swaps" not in result[parent_id]:
-                            result[parent_id]["child_swaps"] = []
-                        result[parent_id]["child_swaps"].append({
+                        if "child_swaps" not in result[root_inst_id]:
+                            result[root_inst_id]["child_swaps"] = []
+                        result[root_inst_id]["child_swaps"].append({
                             "child_id": master_child_id,
                             "swap_target_id": swap_target_id,
                         })

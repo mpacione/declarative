@@ -501,10 +501,7 @@ def generate_figma_script(
                     f"if (_comp) _c.swapComponent(_comp); }} }}"
                 )
 
-            position = element.get("layout", {}).get("position")
-            if position:
-                lines.append(f"{var}.x = {position.get('x', 0)};")
-                lines.append(f"{var}.y = {position.get('y', 0)};")
+            # Position set after appendChild (see post-appendChild block below)
 
             mode1_eids.add(eid)
         else:
@@ -580,6 +577,13 @@ def generate_figma_script(
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
                 elif etype in _FILL_WIDTH_TYPES or wants_fill:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
+            else:
+                # Position AFTER appendChild — Figma needs parent context
+                # to interpret x/y as parent-relative coordinates
+                position = element.get("layout", {}).get("position")
+                if position:
+                    lines.append(f"{var}.x = {position.get('x', 0)};")
+                    lines.append(f"{var}.y = {position.get('y', 0)};")
 
         lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
         lines.append("")
@@ -689,12 +693,9 @@ def _emit_layout(
         mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
         lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
 
-    position = layout.get("position")
-    if position:
-        px = position.get("x", 0)
-        py = position.get("y", 0)
-        lines.append(f"{var}.x = {px};")
-        lines.append(f"{var}.y = {py};")
+    # Position is NOT emitted here — it must be set AFTER appendChild
+    # because Figma interprets x/y as parent-relative only when the
+    # child is attached. See the post-appendChild block in the main loop.
 
     return (lines, refs)
 
