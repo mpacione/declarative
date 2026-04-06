@@ -995,9 +995,9 @@ class TestBuildVisualFromDB:
         visual = build_visual_from_db({"clips_content": None, "bindings": []})
         assert "clipsContent" not in visual
 
-    def test_clips_content_absent_when_zero(self):
+    def test_clips_content_false_when_zero(self):
         visual = build_visual_from_db({"clips_content": 0, "bindings": []})
-        assert "clipsContent" not in visual
+        assert visual["clipsContent"] is False
 
     # --- rotation ---
 

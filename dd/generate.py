@@ -177,8 +177,8 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
         visual["opacity"] = opacity
 
     clips = node_visual.get("clips_content")
-    if clips:
-        visual["clipsContent"] = True
+    if clips is not None:
+        visual["clipsContent"] = bool(clips)
 
     rotation = node_visual.get("rotation")
     if rotation is not None and rotation != 0:
@@ -576,6 +576,10 @@ def generate_figma_script(
                 if inst_opacity is not None and inst_opacity < 1.0:
                     lines.append(f"{var}.opacity = {inst_opacity};")
 
+            # Instance's own visibility (e.g., hidden keyboard overlay)
+            if element.get("visible") is False:
+                lines.append(f"{var}.visible = false;")
+
             # Position set after appendChild (see post-appendChild block below)
 
             mode1_eids.add(eid)
@@ -669,16 +673,28 @@ def generate_figma_script(
                         nv = db_visuals.get(nid, {})
                         db_sizing_h = nv.get("layout_sizing_h")
                         db_sizing_v = nv.get("layout_sizing_v")
-                # Horizontal sizing
+                # Horizontal sizing: DB > IR sizing dict > heuristic fallback
                 if db_sizing_h:
                     lines.append(f'{var}.layoutSizingHorizontal = "{db_sizing_h}";')
+                elif isinstance(elem_sizing.get("width"), str):
+                    mapped = _SIZING_MAP.get(elem_sizing["width"])
+                    if mapped:
+                        lines.append(f'{var}.layoutSizingHorizontal = "{mapped}";')
+                elif isinstance(elem_sizing.get("width"), (int, float)):
+                    lines.append(f'{var}.layoutSizingHorizontal = "FIXED";')
                 elif is_text and eid not in mode1_eids:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
                 elif etype in _FILL_WIDTH_TYPES or wants_fill:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
-                # Vertical sizing (only from DB — no fallback heuristic)
+                # Vertical sizing: DB > IR sizing dict
                 if db_sizing_v:
                     lines.append(f'{var}.layoutSizingVertical = "{db_sizing_v}";')
+                elif isinstance(elem_sizing.get("height"), str):
+                    mapped = _SIZING_MAP.get(elem_sizing["height"])
+                    if mapped:
+                        lines.append(f'{var}.layoutSizingVertical = "{mapped}";')
+                elif isinstance(elem_sizing.get("height"), (int, float)):
+                    lines.append(f'{var}.layoutSizingVertical = "FIXED";')
             else:
                 # Position deferred — Figma recalculates position when
                 # children are added to HUG frames with CENTER constraints
@@ -784,20 +800,9 @@ def _emit_layout(
 
     sizing = layout.get("sizing", {})
     has_auto_layout = direction in ("horizontal", "vertical")
-    # layoutSizing can only be set on auto-layout frames or children of auto-layout
-    # frames. At this point the node isn't appended yet, so only emit for nodes
-    # that ARE auto-layout containers themselves. Non-auto-layout children (text,
-    # rectangles, etc.) get their layoutSizing set after appendChild.
-    for axis, figma_axis in [("width", "Horizontal"), ("height", "Vertical")]:
-        val = sizing.get(axis)
-        if val is None:
-            continue
-        if isinstance(val, str) and has_auto_layout:
-            mapped = _SIZING_MAP.get(val)
-            if mapped and mapped != "FILL":
-                lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
-        elif isinstance(val, (int, float)) and has_auto_layout:
-            lines.append(f'{var}.layoutSizing{figma_axis} = "FIXED";')
+    # layoutSizing is NOT emitted here. It requires the node to be in a parent
+    # auto-layout context, which only exists after appendChild. All layoutSizing
+    # is set in the post-appendChild block.
 
     w = sizing.get("width")
     h = sizing.get("height")
@@ -865,8 +870,13 @@ def _emit_visual(
     if opacity is not None:
         lines.append(f"{var}.opacity = {opacity};")
 
-    if visual.get("clipsContent"):
+    clips = visual.get("clipsContent")
+    if clips is True:
         lines.append(f"{var}.clipsContent = true;")
+    elif clips is False:
+        # Figma's default for createFrame() is clipsContent=true.
+        # Must explicitly clear when original doesn't clip.
+        lines.append(f"{var}.clipsContent = false;")
 
     rotation = visual.get("rotation")
     if rotation is not None:
