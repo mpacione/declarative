@@ -800,9 +800,20 @@ def _emit_layout(
 
     sizing = layout.get("sizing", {})
     has_auto_layout = direction in ("horizontal", "vertical")
-    # layoutSizing is NOT emitted here. It requires the node to be in a parent
-    # auto-layout context, which only exists after appendChild. All layoutSizing
-    # is set in the post-appendChild block.
+    # Auto-layout containers CAN set their own layoutSizing before appendChild
+    # (they define their own auto-layout context). Non-auto-layout children
+    # (text, rectangles, non-layout frames) must defer to post-appendChild.
+    if has_auto_layout:
+        for axis, figma_axis in [("width", "Horizontal"), ("height", "Vertical")]:
+            val = sizing.get(axis)
+            if val is None:
+                continue
+            if isinstance(val, str):
+                mapped = _SIZING_MAP.get(val)
+                if mapped and mapped != "FILL":
+                    lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
+            elif isinstance(val, (int, float)):
+                lines.append(f'{var}.layoutSizing{figma_axis} = "FIXED";')
 
     w = sizing.get("width")
     h = sizing.get("height")
