@@ -151,6 +151,8 @@ The round-trip script takes ~90-120s to execute via PROXY_EXECUTE due to 44 `swa
 10. **Layout sizing after appendChild** — `layoutSizing` only valid on auto-layout children, must be set post-append
 11. **Radians→degrees** — DB stores radians (REST API), renderer converts via `math.degrees()`
 12. **Mode 1 L0 properties** — rotation + opacity applied directly to instance after createInstance()
+13. **Property registry** — `dd/property_registry.py` defines all 58 Figma properties; extraction, query, and renderer reference it
+14. **Generic override handler** — registry-defined override types dispatched automatically, no ad-hoc if/elif needed
 
 ## Key Files
 
