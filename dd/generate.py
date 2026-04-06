@@ -534,8 +534,10 @@ def generate_figma_script(
                 elif ov_type == "LAYOUT_SIZING_H" and ov_value:
                     target_id = child_id.replace(":layoutSizingH", "")
                     if target_id == ":self":
-                        lines.append(f'{var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
+                        # Defer: layoutSizing requires parent auto-layout context
+                        deferred_lines.append(f'{var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
                     else:
+                        # Child targets are already in the instance tree — safe to set now
                         lines.append(
                             f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
                             f'if (_c) _c.layoutSizingHorizontal = "{_escape_js(ov_value)}"; }}'
@@ -543,7 +545,7 @@ def generate_figma_script(
                 elif ov_type == "LAYOUT_SIZING_V" and ov_value:
                     target_id = child_id.replace(":layoutSizingV", "")
                     if target_id == ":self":
-                        lines.append(f'{var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
+                        deferred_lines.append(f'{var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
                     else:
                         lines.append(
                             f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
