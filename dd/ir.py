@@ -395,30 +395,33 @@ def _build_props(node: dict[str, Any]) -> dict[str, Any]:
 def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, dict[str, Any]]:
     """Fetch visual properties for all nodes in a screen.
 
-    Returns dict keyed by node_id with fills, strokes, effects,
-    corner_radius, opacity, stroke_weight, stroke_align, blend_mode,
-    component_key, typography, constraints, and token bindings.
+    Returns dict keyed by node_id with all visual, layout, and text
+    properties, component_key, and token bindings.
 
-    This is the renderer's DB access path — it provides all the visual
-    data needed to render a screen without reading the IR's visual section.
+    Column list driven by the property registry — automatically includes
+    any new property added to the registry without manual SQL changes.
     """
+    from dd.property_registry import PROPERTIES
+
     has_registry = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='component_key_registry'"
     ).fetchone()
 
-    # Check if text_auto_resize column exists (backwards compat with older DBs)
+    # Build column list from registry, filtered by what exists in this DB
     node_cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
-    tar_col = ", n.text_auto_resize" if "text_auto_resize" in node_cols else ""
-    tar_col_bare = ", text_auto_resize" if "text_auto_resize" in node_cols else ""
+    registry_cols = []
+    for prop in PROPERTIES:
+        if prop.db_column and prop.db_column in node_cols:
+            registry_cols.append(prop.db_column)
+    # Always include component_key (not in registry — it's structural)
+    if "component_key" not in registry_cols and "component_key" in node_cols:
+        registry_cols.append("component_key")
+
+    col_list = ", ".join(f"n.{c}" for c in registry_cols)
 
     if has_registry:
         cursor = conn.execute(
-            "SELECT n.id, n.fills, n.strokes, n.effects, n.corner_radius, n.opacity, "
-            "n.stroke_weight, n.stroke_align, n.blend_mode, n.visible, n.clips_content, "
-            "n.component_key, n.rotation, n.constraint_h, n.constraint_v, "
-            "n.font_family, n.font_weight, n.font_size, n.font_style, n.line_height, "
-            f"n.letter_spacing, n.text_align, n.text_content{tar_col}, "
-            "n.layout_sizing_h, n.layout_sizing_v, "
+            f"SELECT n.id, {col_list}, "
             "ckr.figma_node_id as component_figma_id "
             "FROM nodes n "
             "LEFT JOIN component_key_registry ckr ON n.component_key = ckr.component_key "
@@ -426,13 +429,9 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
             (screen_id,),
         )
     else:
+        col_list_bare = ", ".join(registry_cols)
         cursor = conn.execute(
-            "SELECT id, fills, strokes, effects, corner_radius, opacity, "
-            "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
-            "component_key, rotation, constraint_h, constraint_v, "
-            "font_family, font_weight, font_size, font_style, line_height, "
-            f"letter_spacing, text_align, text_content{tar_col_bare}, "
-            "layout_sizing_h, layout_sizing_v "
+            f"SELECT id, {col_list_bare} "
             "FROM nodes WHERE screen_id = ?",
             (screen_id,),
         )
