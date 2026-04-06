@@ -78,6 +78,12 @@ async function walkNode(node) {{
         if (ov.overriddenFields.includes('opacity')) {{
           o.op = child.opacity;
         }}
+        if (ov.overriddenFields.includes('layoutSizingHorizontal') || ov.overriddenFields.includes('primaryAxisSizingMode')) {{
+          o.lsh = child.layoutSizingHorizontal;
+        }}
+        if (ov.overriddenFields.includes('layoutSizingVertical') || ov.overriddenFields.includes('counterAxisSizingMode')) {{
+          o.lsv = child.layoutSizingVertical;
+        }}
         if (child.type === 'INSTANCE' && ov.overriddenFields.some(f => f === 'fills' || f === 'fillStyleId')) {{
           // Possible instance swap — check main component
           try {{
@@ -248,6 +254,24 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
                             "(node_id, property_type, property_name, override_value) "
                             "VALUES (?, 'OPACITY', ?, ?)",
                             (node_id, f"{child_id}:opacity", str(ov["op"])),
+                        )
+                        override_count += 1
+
+                    if "lsh" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'LAYOUT_SIZING_H', ?, ?)",
+                            (node_id, f"{child_id}:layoutSizingH", ov["lsh"]),
+                        )
+                        override_count += 1
+
+                    if "lsv" in ov:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO instance_overrides "
+                            "(node_id, property_type, property_name, override_value) "
+                            "VALUES (?, 'LAYOUT_SIZING_V', ?, ?)",
+                            (node_id, f"{child_id}:layoutSizingV", ov["lsv"]),
                         )
                         override_count += 1
 

@@ -406,13 +406,19 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='component_key_registry'"
     ).fetchone()
 
+    # Check if text_auto_resize column exists (backwards compat with older DBs)
+    node_cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    tar_col = ", n.text_auto_resize" if "text_auto_resize" in node_cols else ""
+    tar_col_bare = ", text_auto_resize" if "text_auto_resize" in node_cols else ""
+
     if has_registry:
         cursor = conn.execute(
             "SELECT n.id, n.fills, n.strokes, n.effects, n.corner_radius, n.opacity, "
             "n.stroke_weight, n.stroke_align, n.blend_mode, n.visible, n.clips_content, "
             "n.component_key, n.rotation, n.constraint_h, n.constraint_v, "
             "n.font_family, n.font_weight, n.font_size, n.font_style, n.line_height, "
-            "n.letter_spacing, n.text_align, n.text_content, "
+            f"n.letter_spacing, n.text_align, n.text_content{tar_col}, "
+            "n.layout_sizing_h, n.layout_sizing_v, "
             "ckr.figma_node_id as component_figma_id "
             "FROM nodes n "
             "LEFT JOIN component_key_registry ckr ON n.component_key = ckr.component_key "
@@ -425,7 +431,8 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
             "stroke_weight, stroke_align, blend_mode, visible, clips_content, "
             "component_key, rotation, constraint_h, constraint_v, "
             "font_family, font_weight, font_size, font_style, line_height, "
-            "letter_spacing, text_align, text_content "
+            f"letter_spacing, text_align, text_content{tar_col_bare}, "
+            "layout_sizing_h, layout_sizing_v "
             "FROM nodes WHERE screen_id = ?",
             (screen_id,),
         )
@@ -568,7 +575,110 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                             "swap_target_id": swap_target_id,
                         })
 
+        # Hoist overrides from nested Mode 1 instances to their top-level ancestor.
+        # When nav/top-nav (Mode 1) contains button/small (also Mode 1), the
+        # button is skipped during rendering. Its overrides must be applied
+        # on the top-level instance instead, with :self references transformed
+        # to master-relative paths derived from the nested instance's figma_node_id.
+        if has_overrides and len(instance_ids) > 1:
+            _hoist_descendant_overrides(conn, instance_ids, result)
+
     return result
+
+
+def _hoist_descendant_overrides(
+    conn: sqlite3.Connection,
+    instance_ids: list[int],
+    result: dict[int, dict[str, Any]],
+) -> None:
+    """Move overrides from nested Mode 1 instances to their top-level ancestor.
+
+    For each Mode 1 instance that is a descendant of another Mode 1 instance:
+    - Transform :self references to master-relative paths
+    - Non-self paths are already master-relative and pass through unchanged
+    - Add the transformed overrides to the ancestor's instance_overrides list
+    """
+    instance_id_set = set(instance_ids)
+
+    # Build parent_id + figma_node_id lookup for instance nodes
+    ph = ",".join("?" for _ in instance_ids)
+    rows = conn.execute(
+        f"SELECT id, parent_id, figma_node_id FROM nodes WHERE id IN ({ph})",
+        instance_ids,
+    ).fetchall()
+
+    parent_map: dict[int, int | None] = {r[0]: r[1] for r in rows}
+    figma_id_map: dict[int, str] = {r[0]: r[2] for r in rows}
+
+    # For each instance, walk up parent_id to find the nearest Mode 1 ancestor.
+    # Need parent_ids for intermediate (non-instance) nodes too.
+    all_parent_ids: set[int] = set()
+    for pid in parent_map.values():
+        if pid is not None:
+            all_parent_ids.add(pid)
+    # Fetch parents that aren't already in parent_map
+    missing = all_parent_ids - instance_id_set
+    if missing:
+        mph = ",".join("?" for _ in missing)
+        for r in conn.execute(
+            f"SELECT id, parent_id FROM nodes WHERE id IN ({mph})",
+            list(missing),
+        ).fetchall():
+            parent_map[r[0]] = r[1]
+
+    def find_mode1_ancestor(node_id: int) -> int | None:
+        current = parent_map.get(node_id)
+        while current is not None:
+            if current in instance_id_set:
+                return current
+            current = parent_map.get(current)
+        return None
+
+    for inst_id in instance_ids:
+        ancestor_id = find_mode1_ancestor(inst_id)
+        if ancestor_id is None:
+            continue  # top-level instance, nothing to hoist
+
+        nested_overrides = result.get(inst_id, {}).get("instance_overrides", [])
+        if not nested_overrides:
+            continue
+
+        figma_nid = figma_id_map.get(inst_id, "")
+        if ";" not in figma_nid:
+            continue  # can't derive master-relative path
+
+        master_relative = figma_nid[figma_nid.index(";"):]
+
+        if "instance_overrides" not in result[ancestor_id]:
+            result[ancestor_id]["instance_overrides"] = []
+
+        # Build set of existing (type, child_id) to deduplicate
+        existing = {
+            (ov["type"], ov["child_id"])
+            for ov in result[ancestor_id]["instance_overrides"]
+        }
+
+        for ov in nested_overrides:
+            child_id = ov["child_id"]
+            if child_id.startswith(":self"):
+                # Transform :self → master-relative path
+                # :self → ;2036:002, :self:fills → ;2036:002:fills
+                suffix = child_id[5:]  # strip ":self"
+                new_child_id = master_relative + suffix
+            else:
+                # Already a master-relative path, pass through
+                new_child_id = child_id
+
+            key = (ov["type"], new_child_id)
+            if key in existing:
+                continue  # already reported by parent's own overrides
+
+            existing.add(key)
+            result[ancestor_id]["instance_overrides"].append({
+                "type": ov["type"],
+                "child_id": new_child_id,
+                "value": ov["value"],
+            })
 
 
 def query_slot_definitions(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:

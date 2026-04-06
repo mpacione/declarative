@@ -1132,11 +1132,11 @@ def _seed_visual_screen(db: sqlite3.Connection) -> None:
         "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
         "x, y, width, height, "
         "font_family, font_weight, font_size, font_style, line_height, "
-        "letter_spacing, text_align, text_content) "
+        "letter_spacing, text_align, text_content, text_auto_resize) "
         "VALUES (11, 1, 't1', 'Section Title', 'TEXT', 2, 1, "
         "16, 80, 396, 28, "
         "'Inter', 700, 24, 'Bold', '32', "
-        "'0.5', 'LEFT', 'Settings')",
+        "'0.5', 'LEFT', 'Settings', 'HEIGHT')",
     )
 
     # Token + binding
@@ -1204,6 +1204,11 @@ class TestQueryScreenVisuals:
         assert node_11["letter_spacing"] == "0.5"
         assert node_11["text_align"] == "LEFT"
         assert node_11["text_content"] == "Settings"
+
+    def test_includes_text_auto_resize(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        node_11 = result[11]
+        assert node_11["text_auto_resize"] == "HEIGHT"
 
     def test_includes_bindings(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
@@ -1372,3 +1377,196 @@ class TestDeepChildSwaps:
         child_swaps = nav_visual.get("child_swaps", [])
         icon_swap = next(cs for cs in child_swaps if ";1334:003" in cs["child_id"])
         assert icon_swap["swap_target_id"] == "1315:139115"
+
+
+class TestDescendantOverrideHoisting:
+    """Verify overrides on nested Mode 1 instances are hoisted to their top-level ancestor.
+
+    When nav/top-nav contains button/small/translucent (itself Mode 1 with overrides),
+    rendering skips the button because it's inside a Mode 1 parent. The button's
+    overrides must be hoisted to nav/top-nav with :self references transformed
+    to master-relative paths.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Screen', 428, 926)"
+        )
+
+        # Top-level INSTANCE: nav/top-nav (depth 1, Mode 1)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (100, 1, '2244:100', 'nav/top-nav', 'INSTANCE', 1, 0, "
+            "1, 1, 'nav_key', NULL, 0, 0, 428, 111, '2026-01-01')"
+        )
+        # Frame inside instance (Left, depth 2)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (101, 1, 'I2244:100;1835:001', 'Left', 'FRAME', 2, 0, "
+            "0, 1, 100, 0, 0, 130, 64, '2026-01-01')"
+        )
+        # Nested INSTANCE: button/small/translucent (depth 3, Mode 1, INSIDE nav/top-nav)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (102, 1, 'I2244:100;2036:002', 'button/small/translucent', 'INSTANCE', 3, 0, "
+            "0, 1, 'btn_small_key', 101, 0, 0, 48, 32, '2026-01-01')"
+        )
+        # Icon INSTANCE inside button (depth 4)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "is_semantic, visible, component_key, parent_id, x, y, width, height, extracted_at) "
+            "VALUES (103, 1, 'I2244:100;2036:002;1334:003', 'icon/undo', 'INSTANCE', 4, 0, "
+            "0, 1, 'icon_undo_key', 102, 0, 0, 24, 24, '2026-01-01')"
+        )
+
+        # Component key registry
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry "
+            "(component_key TEXT PRIMARY KEY, figma_node_id TEXT, name TEXT, instance_count INTEGER)"
+        )
+        conn.execute("INSERT INTO component_key_registry VALUES ('nav_key', '1835:155037', 'nav/top-nav', 10)")
+        conn.execute("INSERT INTO component_key_registry VALUES ('btn_small_key', '1334:10864', 'button/small', 20)")
+        conn.execute("INSERT INTO component_key_registry VALUES ('icon_undo_key', '1315:139115', 'icon/undo', 5)")
+
+        # Instance overrides on the NESTED button (node 102)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS instance_overrides ("
+            "id INTEGER PRIMARY KEY, "
+            "node_id INTEGER NOT NULL, "
+            "property_type TEXT NOT NULL, "
+            "property_name TEXT NOT NULL, "
+            "override_value TEXT, "
+            "UNIQUE(node_id, property_name))"
+        )
+        # Self-visibility override on button
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (102, 'BOOLEAN', ':self:visible', 'true')"
+        )
+        # Self-fills override on button
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            'VALUES (102, \'FILLS\', \':self:fills\', \'[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]\')'
+        )
+        # Deep child visibility override (child of button, relative path includes button segment)
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (102, 'BOOLEAN', ';2036:002;1334:003:visible', 'false')"
+        )
+        # Text override on a child of button
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (102, 'TEXT', ';2036:002;1334:005', 'Hello')"
+        )
+
+        # Also add a direct override on the top-level nav (to verify it's kept)
+        conn.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (100, 'BOOLEAN', ';1835:001:visible', 'false')"
+        )
+
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_top_level_keeps_own_overrides(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        own_overrides = [
+            ov for ov in nav.get("instance_overrides", [])
+            if ov["child_id"] == ";1835:001:visible"
+        ]
+        assert len(own_overrides) == 1
+        assert own_overrides[0]["value"] == "false"
+
+    def test_self_visibility_hoisted_with_master_relative_path(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        hoisted = [
+            ov for ov in overrides
+            if ov["child_id"] == ";2036:002:visible" and ov["type"] == "BOOLEAN"
+        ]
+        assert len(hoisted) == 1, (
+            f"Expected :self:visible on button to be hoisted as ;2036:002:visible, "
+            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+        )
+        assert hoisted[0]["value"] == "true"
+
+    def test_self_fills_hoisted_with_master_relative_path(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        hoisted = [
+            ov for ov in overrides
+            if ov["child_id"] == ";2036:002:fills" and ov["type"] == "FILLS"
+        ]
+        assert len(hoisted) == 1, (
+            f"Expected :self:fills on button to be hoisted as ;2036:002:fills, "
+            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+        )
+
+    def test_deep_child_override_hoisted_unchanged(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        deep_vis = [
+            ov for ov in overrides
+            if ov["child_id"] == ";2036:002;1334:003:visible"
+        ]
+        assert len(deep_vis) == 1, (
+            f"Expected deep child visibility override to be hoisted unchanged, "
+            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+        )
+        assert deep_vis[0]["value"] == "false"
+
+    def test_deep_text_override_hoisted_unchanged(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        text_ovs = [
+            ov for ov in overrides
+            if ov["child_id"] == ";2036:002;1334:005" and ov["type"] == "TEXT"
+        ]
+        assert len(text_ovs) == 1
+        assert text_ovs[0]["value"] == "Hello"
+
+    def test_total_override_count_on_ancestor(self, db: sqlite3.Connection):
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        # 1 own override + 4 hoisted from button = 5 total
+        assert len(overrides) == 5, (
+            f"Expected 5 total overrides (1 own + 4 hoisted), got {len(overrides)}: "
+            f"{[(ov['type'], ov['child_id']) for ov in overrides]}"
+        )
+
+    def test_dedup_skips_overrides_already_on_ancestor(self, db: sqlite3.Connection):
+        """If ancestor already has an override for the same (type, child_id),
+        the hoisted version should be skipped to avoid double-applying."""
+        # Add a direct override on nav that matches what would be hoisted from button
+        db.execute(
+            "INSERT INTO instance_overrides (node_id, property_type, property_name, override_value) "
+            "VALUES (100, 'BOOLEAN', ';2036:002:visible', 'false')"
+        )
+        db.commit()
+
+        result = query_screen_visuals(db, screen_id=1)
+        nav = result[100]
+        overrides = nav.get("instance_overrides", [])
+        vis_overrides = [
+            ov for ov in overrides
+            if ov["child_id"] == ";2036:002:visible"
+        ]
+        # Should be exactly 1 (the ancestor's own), not 2
+        assert len(vis_overrides) == 1
+        # Ancestor's version wins (value='false')
+        assert vis_overrides[0]["value"] == "false"

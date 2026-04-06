@@ -38,9 +38,9 @@ L0 (raw DB values)   → createFrame/Rectangle/Text with literals
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes (72 columns), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,504 passing
+- **Tests**: 1,530 passing
 - **Branch**: `t5/architecture-vision`
-- **Round-trip**: Screen 184 near pixel-perfect reproduction achieved
+- **Round-trip**: Screen 184 near pixel-perfect reproduction achieved; screen 185 (iPhone 13 Pro Max - 114) also reproduced successfully
 
 ### What the Round-Trip Produces (Screen 184)
 - 11 real component instances via getNodeByIdAsync (L1 → Mode 1)
@@ -53,19 +53,75 @@ L0 (raw DB values)   → createFrame/Rectangle/Text with literals
 
 ## Remaining Issues
 
-### Issue 1: Green Dot Size Difference (Minor)
+### Issue 1: Green Dot Size Difference (Minor) — INVESTIGATED
 
 The `logo/dank` component's green ellipse renders at a slightly smaller size in the reproduction than the original.
 
-**Clues**: The logo/dank is a Mode 1 instance (createInstance from master). Its internal `Ellipse 55` has a gradient fill that renders correctly (green color matches). The size difference suggests a width/height override on a deeply nested element within logo/dank that our extraction doesn't reach. The `node.overrides` API on nav/top-nav reports overrides on logo/dank's visibility (`visible: true`) but may not report size changes within the logo's subtree. Check if logo/dank itself has `overrides` that include size changes on its children.
+**Finding**: The logo/dank master is 104×24 (logo + wordmark). On screen 184, the wordmark is hidden via visibility override (`;1835:155173;2281:131869:visible = false`), and logo/dank uses HUG sizing, so it shrinks to 24×24. The Ellipse 55 inside is 18×18 in both the DB extraction and likely the master. There are NO missing width/height overrides for logo or its children — the size difference may be caused by Figma's layout recalculation when HUG content changes after wordmark visibility is toggled. This is a layout timing issue in the generated script, not a data gap.
 
-### Issue 2: Extraction Depth for Overrides
+### Issue 2: Extraction Depth for Overrides — FIXED
 
-Currently, override extraction reads `node.overrides` on each INSTANCE node during the tree walk. This captures overrides that Figma reports at each instance level. But there may be override cascading — a top-level instance (nav/top-nav) has overrides that include changes to its grandchildren (buttons), and those buttons themselves have overrides on their own children (icons).
+**What was found**: 73 Mode 1 instances on screen 184, of which 62 are nested inside other Mode 1 instances. 15 nested instances had overrides in the DB. However, Figma's `node.overrides` API on the top-level instance already reports cascaded overrides for deeply nested children — so all 38 overrides on nav/top-nav already included the nested data.
 
-The current extraction walks the FULL tree and captures overrides at each level. But the `instance_overrides` table associates overrides with the node_id of the INSTANCE they were read from. During rendering, only top-level Mode 1 instances get their overrides applied — overrides read from depth-3 button instances (which are inside nav/top-nav and skipped by Mode 1 child skipping) are captured in the DB but never applied.
+**What was fixed**: Added `_hoist_descendant_overrides()` to `query_screen_visuals()` in `dd/ir.py`. This function:
+1. Walks the parent chain for each Mode 1 instance to find its nearest Mode 1 ancestor
+2. Transforms `:self` references on nested instances to master-relative paths (e.g., `:self:visible` on button `;2036:002` becomes `;2036:002:visible`)
+3. Hoists non-self paths unchanged (they're already master-relative)
+4. Deduplicates against existing ancestor overrides to avoid double-applying
 
-**Clue**: Check if overrides exist in `instance_overrides` for nodes that are descendants of Mode 1 instances (depth 3+). If so, the rendering needs to apply overrides from ALL ancestor instances in the chain, not just the top-level one.
+This ensures correctness even when Figma's overrides API doesn't report nested overrides at the top level (future screens, different component structures). 7 new tests in `TestDescendantOverrideHoisting`.
+
+### Issue 5: Text Auto Resize Not Extracted — FIXED
+
+**Root cause**: The `textAutoResize` property (NONE, HEIGHT, WIDTH_AND_HEIGHT, TRUNCATE) was never extracted from Figma or stored in the DB. The renderer hardcoded `WIDTH_AND_HEIGHT` for all text nodes. This caused:
+- Text boxes that should have fixed width (e.g., "Meme-00001" field title above canvas) to auto-shrink
+- Text within auto-layout parents to not respect their intended sizing mode
+- Layout breakage in Frame 358 (the header row above the canvas area)
+
+**Fix**:
+1. Added `text_auto_resize` column to `schema.sql`
+2. Extract `node.textAutoResize` in Plugin API script (`extract_screens.py`)
+3. Added to field cleaning and DB insert column lists
+4. `query_screen_visuals()` includes `text_auto_resize` with backwards compatibility (detects column existence via PRAGMA)
+5. `generate.py` reads stored value, falls back to `WIDTH_AND_HEIGHT` when NULL
+6. 6 new tests in `TestTextAutoResize` + `TestQueryScreenVisuals`
+
+**Note**: Existing DB needs re-extraction to populate the column. Until then, existing behavior is preserved (defaults to WIDTH_AND_HEIGHT).
+
+### Issue 6: Mixed-Dimension Resize — FIXED
+
+**Root cause**: `_emit_layout()` emitted `resize({rw or 1}, {rh or 1})`. When one dimension was HUG/FILL (no pixel value), `None or 1` forced the other dimension to 1px. Frame 358 got `resize(394, 1)` — height crushed to 1px.
+
+**Fix**: Use `{var}.height` or `{var}.width` to preserve the current dimension when only one axis has a pixel value.
+
+### Issue 7: Default Fill Leak — FIXED
+
+**Root cause**: `figma.createFrame()` creates frames with a default white fill. The DB stores `fills = None` for transparent frames. The renderer treated NULL as "don't touch" — leaving the default white fill visible.
+
+**Fix**: For non-text Mode 2 frames with no fills in the DB, explicitly emit `fills = []` to clear the default.
+
+### Issue 8: Layout Sizing Not Extracted for Auto-Layout Children — FIXED
+
+**Root cause**: `layoutSizingHorizontal`/`layoutSizingVertical` were only read inside the `if (node.layoutMode)` block. TEXT nodes and other auto-layout children that don't have their own layoutMode never got their sizing captured. The renderer hardcoded `FILL` for all text in auto-layout.
+
+**Fix**:
+1. Read `layoutSizingH/V` for ALL nodes in `extract_screens.py` (not just auto-layout containers)
+2. Added `layout_sizing_h/v` to `query_screen_visuals()` SELECT
+3. Renderer reads DB value; falls back to FILL only when NULL
+4. `layoutSizing` must be set AFTER `appendChild` (setting before throws — node must be child of auto-layout)
+5. Override extraction checks `primaryAxisSizingMode` (Figma's override field name differs from the property name)
+
+### Issue 9: Mode 1 L0 Visual Properties Not Applied — FIXED
+
+**Root cause**: Mode 1 instances only applied override mutations on children. The instance node ITSELF could have L0 property differences from the master (rotation, opacity) that weren't applied.
+
+**Fix**: After `createInstance()`, apply `rotation` (converting radians→degrees) and `opacity` from the DB when they differ from defaults.
+
+### Issue 10: Rotation Unit Mismatch — FIXED
+
+**Root cause**: DB stores rotation in radians (from REST API). Figma Plugin API uses degrees. The renderer emitted radians directly.
+
+**Fix**: `build_visual_from_db()` converts radians to degrees via `math.degrees()`.
 
 ### Issue 3: Image Fills (Not Yet Addressed)
 
@@ -89,6 +145,12 @@ The round-trip script takes ~90-120s to execute via PROXY_EXECUTE due to 44 `swa
 4. **Two-source swaps** — Source 1: `instance_overrides` INSTANCE_SWAP entries + Source 2: recursive CTE for descendant instances, deduplicated
 5. **Self-overrides** — override ID can match the instance itself (not just children). Use `:self` marker.
 6. **Pre-fetch preamble** — deduplicated `getNodeByIdAsync` calls at top of generated script
+7. **Override hoisting** — `_hoist_descendant_overrides()` transforms :self→master-relative, deduplicates, hoists to ancestor
+8. **Text auto resize from DB** — stored per-node, renderer reads it instead of hardcoding WIDTH_AND_HEIGHT
+9. **Default fill clearing** — Mode 2 frames with no DB fills get `fills = []` to clear Figma's default white
+10. **Layout sizing after appendChild** — `layoutSizing` only valid on auto-layout children, must be set post-append
+11. **Radians→degrees** — DB stores radians (REST API), renderer converts via `math.degrees()`
+12. **Mode 1 L0 properties** — rotation + opacity applied directly to instance after createInstance()
 
 ## Key Files
 

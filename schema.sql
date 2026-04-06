@@ -378,6 +378,7 @@ CREATE TABLE nodes (
     text_decoration TEXT,                        -- NONE, UNDERLINE, STRIKETHROUGH
     text_case       TEXT,                        -- ORIGINAL, UPPER, LOWER, TITLE, SMALL_CAPS, SMALL_CAPS_FORCED
     text_content    TEXT,                        -- actual text string
+    text_auto_resize TEXT,                       -- NONE, HEIGHT, WIDTH_AND_HEIGHT, TRUNCATE
 
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync

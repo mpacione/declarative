@@ -205,7 +205,8 @@ class TestGenerateFigmaScript:
     def test_no_visual_output_without_db_visuals(self):
         spec = _make_spec({"screen-1": {"type": "screen"}})
         script, _ = generate_figma_script(spec, db_visuals=None)
-        assert "fills" not in script
+        # fills = [] is OK (clears default white), but no actual fill data
+        assert "SOLID" not in script
 
     def test_text_node_creation(self):
         spec = _make_spec({
@@ -406,6 +407,34 @@ class TestGenerateFigmaScript:
             icon_lines.append(lines[i])
         assert not any("layoutMode" in l for l in icon_lines)
 
+    def test_resize_with_fixed_width_hug_height(self):
+        """When width is FIXED (pixel) and height is HUG, resize should use
+        the pixel width and preserve the current height, not force height to 1."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["row-1"]},
+            "row-1": {"type": "frame", "layout": {
+                "direction": "horizontal", "sizing": {"width": 394, "height": "hug"},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        # Should NOT contain resize(394, 1) — that forces height to 1px
+        assert "resize(394, 1)" not in script
+        # Should resize width only, preserving current height
+        assert "resize(394, " in script
+
+    def test_resize_with_hug_width_fixed_height(self):
+        """When width is HUG and height is FIXED, resize should preserve width."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "vertical"},
+                         "children": ["col-1"]},
+            "col-1": {"type": "frame", "layout": {
+                "direction": "vertical", "sizing": {"width": "hug", "height": 300},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(1, " not in script  # should not force width to 1
+
     def test_escapes_text_quotes(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["t-1"]},
@@ -482,12 +511,12 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": 10}
         db_visuals = {}  # node 10 not present
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "fills" not in script
+        assert "SOLID" not in script
 
     def test_none_db_visuals_produces_no_visual_output(self):
         spec = _make_spec({"screen-1": {"type": "screen"}})
         script, _ = generate_figma_script(spec, db_visuals=None)
-        assert "fills" not in script
+        assert "SOLID" not in script
 
     def test_mode1_emits_import_component(self):
         spec = _make_spec({
@@ -973,8 +1002,9 @@ class TestBuildVisualFromDB:
     # --- rotation ---
 
     def test_rotation_nonzero(self):
-        visual = build_visual_from_db({"rotation": 45.0, "bindings": []})
-        assert visual["rotation"] == 45.0
+        import math
+        visual = build_visual_from_db({"rotation": math.radians(45), "bindings": []})
+        assert abs(visual["rotation"] - 45.0) < 0.01
 
     def test_rotation_excluded_when_zero(self):
         visual = build_visual_from_db({"rotation": 0, "bindings": []})
@@ -1029,10 +1059,10 @@ class TestEmitVisualAdditiveProperties:
         spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"rotation": 45.0, "bindings": []},
+            -2: {"rotation": __import__('math').radians(45), "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "rotation = 45" in script
+        assert "rotation = 45.0" in script or "rotation = 44.99" in script
 
     def test_no_rotation_when_zero(self):
         spec = _make_spec({
@@ -1447,6 +1477,351 @@ class TestOriginalNames:
         })
         script, _ = generate_figma_script(spec)
         assert '"frame-1"' in script
+
+
+class TestTextAutoResize:
+    """Verify text nodes use stored textAutoResize from DB instead of hardcoding."""
+
+    def test_uses_db_text_auto_resize_height(self):
+        """When DB has text_auto_resize=HEIGHT, script should emit HEIGHT not WIDTH_AND_HEIGHT."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "text_auto_resize": "HEIGHT"},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAutoResize = "HEIGHT"' in script
+        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' not in script
+
+    def test_uses_db_text_auto_resize_none(self):
+        """When DB has text_auto_resize=NONE, the text box is fixed-size."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "text_auto_resize": "NONE"},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAutoResize = "NONE"' in script
+        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' not in script
+
+    def test_uses_db_text_auto_resize_truncate(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "text_auto_resize": "TRUNCATE"},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAutoResize = "TRUNCATE"' in script
+
+    def test_defaults_to_width_and_height_when_no_db_visuals(self):
+        """Without db_visuals, should default to WIDTH_AND_HEIGHT for safety."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        script, _ = generate_figma_script(spec, db_visuals=None)
+        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' in script
+
+    def test_defaults_to_width_and_height_when_null_in_db(self):
+        """When DB has text_auto_resize=None, should default to WIDTH_AND_HEIGHT."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "text_auto_resize": None},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' in script
+
+
+class TestLayoutSizingFromDB:
+    """Verify text nodes use DB layout_sizing_h instead of hardcoded FILL."""
+
+    def test_text_uses_hug_from_db(self):
+        """When DB has layout_sizing_h=HUG, text should get HUG not FILL."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "layout_sizing_h": "HUG"},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutSizingHorizontal = "HUG"' in script
+        assert 'layoutSizingHorizontal = "FILL"' not in script
+
+    def test_text_uses_fixed_from_db(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "layout_sizing_h": "FIXED"},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutSizingHorizontal = "FIXED"' in script
+        assert 'layoutSizingHorizontal = "FILL"' not in script
+
+    def test_text_defaults_to_fill_when_null(self):
+        """When DB has no layout_sizing_h, text should fall back to FILL."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutSizingHorizontal = "FILL"' in script
+
+    def test_layout_sizing_override_on_instance(self):
+        """LAYOUT_SIZING_H override should set layoutSizingHorizontal on child."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["btn-1"],
+            },
+            "btn-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "btn-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "instance_overrides": [{
+                    "type": "LAYOUT_SIZING_H",
+                    "child_id": ";1334:005:layoutSizingH",
+                    "value": "HUG",
+                }],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutSizingHorizontal = "HUG"' in script
+
+    def test_layout_sizing_v_override_on_instance(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["btn-1"],
+            },
+            "btn-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "btn-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "instance_overrides": [{
+                    "type": "LAYOUT_SIZING_V",
+                    "child_id": ";1334:005:layoutSizingV",
+                    "value": "FILL",
+                }],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutSizingVertical = "FILL"' in script
+
+
+class TestDefaultFillClearing:
+    """Verify transparent frames don't inherit Figma's default white fill."""
+
+    def test_frame_without_fills_gets_empty_fills(self):
+        """A frame with no fills in DB should get fills=[] to clear default white."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["f-1"],
+            },
+            "f-1": {"type": "frame", "layout": {"direction": "vertical"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "f-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},  # no fills key
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The frame n1 (f-1) should get fills = [] to clear default
+        lines = script.split("\n")
+        f1_lines = [l for l in lines if "n1." in l]
+        assert any("fills = []" in l for l in f1_lines), (
+            f"Expected fills=[] to clear default white fill, got: {f1_lines}"
+        )
+
+    def test_frame_with_fills_not_cleared(self):
+        """A frame with actual fills should NOT get fills=[] on that node."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["f-1"],
+            },
+            "f-1": {"type": "frame", "layout": {"direction": "vertical"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "f-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "fills": json.dumps([{"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0, "a": 1}}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # f-1 is n1 — it should have real fills, not fills=[]
+        lines = [l for l in script.split("\n") if "n1." in l]
+        assert not any("fills = []" in l for l in lines), (
+            f"Frame with fills should not get fills=[], got: {lines}"
+        )
+
+    def test_text_not_cleared(self):
+        """Text nodes should NOT get fills=[] — they use fills for text color."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["t-1"],
+            },
+            "t-1": {"type": "text", "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "t-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Text node should NOT get fills=[]
+        lines = [l for l in script.split("\n") if "n1." in l]
+        assert not any("fills = []" in l for l in lines)
+
+
+class TestMode1L0Properties:
+    """Verify Mode 1 instances apply L0 visual properties from DB."""
+
+    def test_rotation_applied_to_mode1_instance(self):
+        """A Mode 1 instance with rotation in DB should have rotation set."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["icon-1"],
+            },
+            "icon-1": {"type": "icon"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "icon-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "rotation": -1.5707963267948966,  # -90 degrees in radians
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "rotation = -90" in script or "rotation = -90.0" in script
+
+    def test_no_rotation_when_zero(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["icon-1"],
+            },
+            "icon-1": {"type": "icon"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "icon-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "rotation": 0,
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "rotation" not in script
+
+    def test_opacity_applied_to_mode1_instance(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["icon-1"],
+            },
+            "icon-1": {"type": "icon"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "icon-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "opacity": 0.5,
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "opacity = 0.5" in script
 
 
 # ---------------------------------------------------------------------------

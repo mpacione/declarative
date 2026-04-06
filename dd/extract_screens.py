@@ -85,6 +85,10 @@ def generate_extraction_script(screen_node_id: str) -> str:
     // Child positioning within auto-layout parent
     if ('layoutPositioning' in node) entry.layout_positioning = node.layoutPositioning;
 
+    // Layout sizing: read for ALL nodes (auto-layout children, text nodes, etc.)
+    if ('layoutSizingHorizontal' in node) entry.layout_sizing_h = node.layoutSizingHorizontal;
+    if ('layoutSizingVertical' in node) entry.layout_sizing_v = node.layoutSizingVertical;
+
     // Auto-layout
     if (node.layoutMode && node.layoutMode !== 'NONE') {
       entry.layout_mode = node.layoutMode;
@@ -96,8 +100,6 @@ def generate_extraction_script(screen_node_id: str) -> str:
       entry.counter_axis_spacing = node.counterAxisSpacing;
       entry.primary_align = node.primaryAxisAlignItems;
       entry.counter_align = node.counterAxisAlignItems;
-      entry.layout_sizing_h = node.layoutSizingHorizontal;
-      entry.layout_sizing_v = node.layoutSizingVertical;
       if ('layoutWrap' in node) entry.layout_wrap = node.layoutWrap;
       if ('minWidth' in node) entry.min_width = node.minWidth;
       if ('maxWidth' in node) entry.max_width = node.maxWidth;
@@ -129,6 +131,7 @@ def generate_extraction_script(screen_node_id: str) -> str:
       if ('textDecoration' in node && node.textDecoration !== figma.mixed) entry.text_decoration = node.textDecoration;
       if ('textCase' in node && node.textCase !== figma.mixed) entry.text_case = node.textCase;
       entry.text_content = node.characters;
+      entry.text_auto_resize = node.textAutoResize;
     }
 
     // Component reference (INSTANCE nodes)
@@ -294,7 +297,8 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
         # Typography properties
         if node.get("node_type") == "TEXT":
             for field in ["font_family", "font_style", "text_align", "text_align_v",
-                          "text_decoration", "text_case", "text_content"]:
+                          "text_decoration", "text_case", "text_content",
+                          "text_auto_resize"]:
                 if field in node:
                     cleaned[field] = node[field]
             if "font_weight" in node:
@@ -432,7 +436,7 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "font_family", "font_weight", "font_size", "font_style",
             "line_height", "letter_spacing", "paragraph_spacing",
             "text_align", "text_align_v", "text_decoration", "text_case", "text_content",
-            "component_key",
+            "text_auto_resize", "component_key",
         ]
 
         for field in optional_fields:

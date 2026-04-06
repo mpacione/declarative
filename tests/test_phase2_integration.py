@@ -194,7 +194,8 @@ class TestNoVisualDataLoss:
 
         script, refs = generate_figma_script(spec, db_visuals=None)
 
-        assert "fills" not in script
+        # fills = [] (clearing default) is OK, but no actual SOLID/GRADIENT fill data
+        assert "SOLID" not in script
         assert "strokes" not in script
         assert "effects" not in script
         # Layout token refs (padding, gap) still collected — only visual refs should be absent

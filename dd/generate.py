@@ -8,6 +8,7 @@ Visual data source: DB path via query_screen_visuals() → build_visual_from_db(
   → _emit_visual pipeline. The IR does not carry visual data (thin IR).
 """
 
+import math
 import re
 import sqlite3
 from typing import Any
@@ -181,7 +182,8 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
 
     rotation = node_visual.get("rotation")
     if rotation is not None and rotation != 0:
-        visual["rotation"] = rotation
+        # DB stores radians (REST API), Figma Plugin API uses degrees
+        visual["rotation"] = math.degrees(rotation)
 
     font_data: dict[str, Any] = {}
     for fk in ("font_family", "font_size", "font_weight", "font_style",
@@ -529,6 +531,24 @@ def generate_figma_script(
                             f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
                             f"if (_c) _c.opacity = {ov_value}; }}"
                         )
+                elif ov_type == "LAYOUT_SIZING_H" and ov_value:
+                    target_id = child_id.replace(":layoutSizingH", "")
+                    if target_id == ":self":
+                        lines.append(f'{var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f'if (_c) _c.layoutSizingHorizontal = "{_escape_js(ov_value)}"; }}'
+                        )
+                elif ov_type == "LAYOUT_SIZING_V" and ov_value:
+                    target_id = child_id.replace(":layoutSizingV", "")
+                    if target_id == ":self":
+                        lines.append(f'{var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
+                            f'if (_c) _c.layoutSizingVertical = "{_escape_js(ov_value)}"; }}'
+                        )
 
             # Child instance swaps: replace nested instances with correct components
             child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
@@ -542,6 +562,17 @@ def generate_figma_script(
                     f"const _comp = {comp_expr}; "
                     f"if (_comp) _c.swapComponent(_comp); }} }}"
                 )
+
+            # L0 visual properties on the instance itself (rotation, opacity).
+            # These differ from the master's defaults but aren't captured as
+            # instance_overrides — they're direct properties on the DB node.
+            if db_visuals is not None and raw_visual:
+                inst_rotation = raw_visual.get("rotation")
+                if inst_rotation is not None and inst_rotation != 0:
+                    lines.append(f"{var}.rotation = {math.degrees(inst_rotation)};")
+                inst_opacity = raw_visual.get("opacity")
+                if inst_opacity is not None and inst_opacity < 1.0:
+                    lines.append(f"{var}.opacity = {inst_opacity};")
 
             # Position set after appendChild (see post-appendChild block below)
 
@@ -563,7 +594,14 @@ def generate_figma_script(
             lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
             if is_text:
-                lines.append(f'{var}.textAutoResize = "WIDTH_AND_HEIGHT";')
+                text_resize = "WIDTH_AND_HEIGHT"
+                if db_visuals is not None:
+                    node_id = spec.get("_node_id_map", {}).get(eid)
+                    text_visual = db_visuals.get(node_id, {}) if node_id else {}
+                    stored = text_visual.get("text_auto_resize")
+                    if stored:
+                        text_resize = stored
+                lines.append(f'{var}.textAutoResize = "{text_resize}";')
 
             layout = element.get("layout", {})
             layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
@@ -579,6 +617,11 @@ def generate_figma_script(
             visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
             lines.extend(visual_lines)
             all_token_refs.extend(visual_refs)
+            # Clear default white fill on frames that should be transparent.
+            # figma.createFrame() gets a default white fill; if the DB has no
+            # fills (NULL or []), the original was transparent — clear it.
+            if not is_text and not visual.get("fills") and etype not in _NODE_CREATE_MAP:
+                lines.append(f"{var}.fills = [];")
 
             if element.get("visible") is False:
                 lines.append(f"{var}.visible = false;")
@@ -615,10 +658,25 @@ def generate_figma_script(
             if parent_is_autolayout:
                 elem_sizing = element.get("layout", {}).get("sizing", {})
                 wants_fill = elem_sizing.get("width") == "fill"
-                if is_text and eid not in mode1_eids:
+                # Read layout sizing from DB when available (authoritative source)
+                db_sizing_h = None
+                db_sizing_v = None
+                if db_visuals is not None:
+                    nid = spec.get("_node_id_map", {}).get(eid)
+                    if nid:
+                        nv = db_visuals.get(nid, {})
+                        db_sizing_h = nv.get("layout_sizing_h")
+                        db_sizing_v = nv.get("layout_sizing_v")
+                # Horizontal sizing
+                if db_sizing_h:
+                    lines.append(f'{var}.layoutSizingHorizontal = "{db_sizing_h}";')
+                elif is_text and eid not in mode1_eids:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
                 elif etype in _FILL_WIDTH_TYPES or wants_fill:
                     lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
+                # Vertical sizing (only from DB — no fallback heuristic)
+                if db_sizing_v:
+                    lines.append(f'{var}.layoutSizingVertical = "{db_sizing_v}";')
             else:
                 # Position deferred — Figma recalculates position when
                 # children are added to HUG frames with CENTER constraints
@@ -724,13 +782,16 @@ def _emit_layout(
 
     sizing = layout.get("sizing", {})
     has_auto_layout = direction in ("horizontal", "vertical")
+    # layoutSizing can only be set on auto-layout frames or children of auto-layout
+    # frames. At this point the node isn't appended yet, so only emit for nodes
+    # that ARE auto-layout containers themselves. Non-auto-layout children (text,
+    # rectangles, etc.) get their layoutSizing set after appendChild.
     for axis, figma_axis in [("width", "Horizontal"), ("height", "Vertical")]:
         val = sizing.get(axis)
         if val is None:
             continue
-        if isinstance(val, str):
+        if isinstance(val, str) and has_auto_layout:
             mapped = _SIZING_MAP.get(val)
-            # FILL requires parent auto-layout — defer to post-appendChild
             if mapped and mapped != "FILL":
                 lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
         elif isinstance(val, (int, float)) and has_auto_layout:
@@ -744,8 +805,12 @@ def _emit_layout(
         rw = int(rw)
     if rh is not None:
         rh = int(rh)
-    if rw is not None or rh is not None:
-        lines.append(f"{var}.resize({rw or 1}, {rh or 1});")
+    if rw is not None and rh is not None:
+        lines.append(f"{var}.resize({rw}, {rh});")
+    elif rw is not None:
+        lines.append(f"{var}.resize({rw}, {var}.height);")
+    elif rh is not None:
+        lines.append(f"{var}.resize({var}.width, {rh});")
 
     main_align = layout.get("mainAxisAlignment")
     if main_align:
