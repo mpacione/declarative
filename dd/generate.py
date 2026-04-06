@@ -185,9 +185,23 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
         # DB stores radians (REST API), Figma Plugin API uses degrees
         visual["rotation"] = math.degrees(rotation)
 
+    blend_mode = node_visual.get("blend_mode")
+    if blend_mode and blend_mode != "PASS_THROUGH":
+        visual["blendMode"] = blend_mode
+
+    stroke_cap = node_visual.get("stroke_cap")
+    if stroke_cap and stroke_cap != "NONE":
+        visual["strokeCap"] = stroke_cap
+
+    stroke_join = node_visual.get("stroke_join")
+    if stroke_join and stroke_join != "MITER":
+        visual["strokeJoin"] = stroke_join
+
     font_data: dict[str, Any] = {}
     for fk in ("font_family", "font_size", "font_weight", "font_style",
-               "line_height", "letter_spacing", "text_align"):
+               "line_height", "letter_spacing", "text_align",
+               "text_align_v", "text_decoration", "text_case",
+               "paragraph_spacing"):
         val = node_visual.get(fk)
         if val is not None:
             font_data[fk] = val
@@ -551,6 +565,42 @@ def generate_figma_script(
                             f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
                             f'if (_c) _c.layoutSizingVertical = "{_escape_js(ov_value)}"; }}'
                         )
+                elif ov_value:
+                    # Generic override: registry-defined types not handled above.
+                    # Uses the override_type → figma property name mapping.
+                    from dd.property_registry import by_override_type
+                    prop = by_override_type(ov_type)
+                    if prop:
+                        figma_name = prop.figma_name
+                        # Strip the suffix from child_id to get the target
+                        suffix = f":{figma_name}"
+                        target_id = child_id[:-len(suffix)] if child_id.endswith(suffix) else child_id
+                        if target_id == ":self":
+                            if prop.value_type in ("number", "number_radians"):
+                                lines.append(f"{var}.{figma_name} = {ov_value};")
+                            elif prop.value_type == "json_array":
+                                lines.append(f"{var}.{figma_name} = {ov_value};")
+                            elif prop.value_type == "boolean":
+                                lines.append(f"{var}.{figma_name} = {ov_value};")
+                            else:
+                                lines.append(f'{var}.{figma_name} = "{_escape_js(ov_value)}";')
+                        else:
+                            esc_target = _escape_js(target_id)
+                            if prop.value_type in ("number", "number_radians"):
+                                lines.append(
+                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
+                                    f"if (_c) _c.{figma_name} = {ov_value}; }}"
+                                )
+                            elif prop.value_type == "json_array":
+                                lines.append(
+                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
+                                    f"if (_c) _c.{figma_name} = {ov_value}; }}"
+                                )
+                            else:
+                                lines.append(
+                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
+                                    f'if (_c) _c.{figma_name} = "{_escape_js(ov_value)}"; }}'
+                                )
 
             # Child instance swaps: replace nested instances with correct components
             child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
@@ -892,6 +942,18 @@ def _emit_visual(
     rotation = visual.get("rotation")
     if rotation is not None:
         lines.append(f"{var}.rotation = {rotation};")
+
+    blend_mode = visual.get("blendMode")
+    if blend_mode:
+        lines.append(f'{var}.blendMode = "{blend_mode}";')
+
+    stroke_cap = visual.get("strokeCap")
+    if stroke_cap:
+        lines.append(f'{var}.strokeCap = "{stroke_cap}";')
+
+    stroke_join = visual.get("strokeJoin")
+    if stroke_join:
+        lines.append(f'{var}.strokeJoin = "{stroke_join}";')
 
     # Constraints are NOT emitted here — they must be set AFTER position
     # in the post-appendChild block. Constraints like "CENTER" auto-calculate
