@@ -20,91 +20,128 @@ The round-trip (Figma → DB → Figma) is the existential proof that the compil
 
 Every renderer uses **progressive fallback**: read the highest IR level available, fall back to lower levels for missing data. L0 is always the safety net.
 
-## Current State (2026-04-06)
+## Current State (2026-04-06, Session 2)
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (17 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,530 passing
+- **Tests**: 1,573 passing
 - **Branch**: `t5/architecture-vision`
-- **Round-trip**: Screens 184, 185, 188, 238 reproduced with structural fidelity
-- **Property registry**: `dd/property_registry.py` — single source of truth for 58 Figma properties
+- **Round-trip**: 9 screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244) — 6 iPhone + 3 iPad
+- **Property registry**: `dd/property_registry.py` — 48 scalar properties + JSON arrays (fills/strokes/effects)
 
 ### What the Round-Trip Produces
 - Real component instances via getNodeByIdAsync (L1 → Mode 1)
+- Unpublished component fallback: getMainComponentAsync when registry has no figma_node_id
 - Deep nested instance swaps at any depth (recursive CTE)
-- 17 override types: visibility, fills, strokes, effects, corner radius, instance swaps, width, height, opacity, layout sizing, item spacing, padding, primary alignment, stroke weight/align, text
-- 12 token variable bindings (L2 → live Figma variables)
-- Deferred position + constraints (handles HUG+CENTER recalculation)
-- Pre-fetched component node IDs (deduplicated async calls)
-- Default clearing: fills=[], clipsContent=false for non-default Figma defaults
-- Mode 1 L0 properties: rotation (radians→degrees), opacity, visibility
-- blendMode, strokeCap, strokeJoin emission
+- 17 override types grouped by target (37-44% findOne reduction)
+- Gradient fill emission through IR (GRADIENT_LINEAR/RADIAL/ANGULAR/DIAMOND)
+- Progressive text fallback: L2 token → L0 DB value for fontSize/fontFamily/fontWeight
+- Per-corner radius emission (topLeftRadius, etc.)
+- Deferred position + constraints with canary verification
+- Font normalization: family-aware style names (SF Pro → "Semibold", Inter → "Semi Bold")
+- Execution: 0.7-3.9s per screen (warm cache)
 
-### Property Registry (dd/property_registry.py)
+### Property Registry — Current Limitation
 
-Single source of truth for all 58 Figma properties. Each property maps:
-- Figma Plugin API name → DB column → override field name(s) → value type → override type
+The registry currently drives extraction, query, and override dispatch — but **NOT emission**. The emit functions (`_emit_layout`, `_emit_visual`, `_emit_text_props`) each maintain their own hardcoded property lists that don't reference the registry. This is why 17 of 48 properties are extracted but never emitted.
 
-Used by:
-- **extract_supplement.py**: generates JS override checks from registry (40+ properties checked)
-- **ir.py**: `query_screen_visuals()` SELECT built from registry (51 columns)
-- **generate.py**: generic override handler dispatches via registry
-
-This prevents the "extract it, forget to query it, forget to emit it" pattern that caused every bug in this session.
+**Next step**: Extend the registry to drive emission (table-driven code generation). See "Planned: Table-Driven Emission" below.
 
 ## Remaining Issues
 
-### Issue 11: PROXY_EXECUTE Deferred Position Reliability — NOT YET RESOLVED
-
-Generated scripts are structurally correct (zero crash points), but deferred position+constraint lines intermittently fail to apply. Some executions return SUCCESS but all children remain at x=0, y=0. No correlation with script size — 80KB scripts work while 33KB scripts fail.
-
-**Hypothesis**: PROXY_EXECUTE WebSocket might have a timeout or message ordering issue where the script's return value (M object) is sent before all deferred lines complete. Or the Figma plugin runtime has an execution time limit that silently truncates.
-
-**Investigation needed**: Add a canary check at the end of the deferred section (e.g., set a property on the root node) and verify whether it was set. This would confirm whether the deferred section executed.
-
 ### Issue 3: Image Fills — NOT YET ADDRESSED
 
-`image 319` (background RECTANGLE) is created but has no image fill. Requires:
+IMAGE fills render as gray rectangles. Requires:
 1. Plugin API extraction: `figma.getImageByHash(hash).getBytesAsync()`
 2. New `image_data` table (hash → bytes)
 3. Rendering: `figma.createImage(bytes)`
 
-### Issue 4: Performance
+65 image fills across 9 target screens.
 
-Scripts take ~90-120s due to `findOne` tree searches for each override/swap. Optimizations:
-- Filter swaps to only those differing from master defaults
-- Batch `findOne` operations
-- Direct child indexing instead of tree search
+### 17 Properties Extracted But Not Emitted
 
-### Issue 12: Font Name Normalization
+Cross-reference analysis identified 17 properties that flow through extraction → DB → query but are never emitted by the Figma renderer:
 
-"Semi Bold" vs "Semibold" varies by font family (Inter uses space, SF Pro doesn't). Currently handled by string replacement in generated scripts. Needs a systematic font style mapping.
+**LAYOUT (3)**: `counterAxisSpacing`, `layoutWrap`, `layoutPositioning`
+**TEXT (8)**: `textAlignHorizontal`, `textAlignVertical`, `textDecoration`, `textCase`, `lineHeight`, `letterSpacing`, `paragraphSpacing`, `fontStyle`
+**SIZE (4)**: `minWidth`, `maxWidth`, `minHeight`, `maxHeight`
+**VISUAL (2)**: `strokeAlign`, `dashPattern`
+
+Root cause: Each emit function independently decides which properties to handle. The registry prevents gaps at the extraction/query/override layers but has no connection to the emission layer.
+
+**Fix**: Table-driven emission — extend the registry with emit patterns so the renderer reads from the table instead of maintaining ad-hoc lists.
+
+### Gradient Fills — Partially Resolved
+
+The emit code handles gradients, and supplement extraction captures `gradientTransform`. However:
+- 2,338 nodes now have `gradientTransform` in the DB (after supplement re-run)
+- 29 screens failed supplement extraction (complex screens hitting Plugin API limits)
+- Gradient fills on those 29 screens remain without `gradientTransform`
+
+### textAutoResize — Extraction Gap
+
+Supplement extraction now captures `textAutoResize` from Plugin API. But the DB has not been fully re-extracted — most TEXT nodes still have NULL. Requires supplement re-run.
+
+## Planned: Table-Driven Emission (Next Session)
+
+The property registry should drive ALL pipeline stages, including emission. Currently it drives 3 of 4:
+
+```
+FigmaProperty today:
+  figma_name → db_column → override_fields → value_type → override_type
+  Used by: extraction ✅, query ✅, overrides ✅, emission ❌
+```
+
+The plan (inspired by LLVM TableGen):
+
+```
+FigmaProperty extended:
+  figma_name → db_column → override_fields → value_type → override_type
+  + emit: { "figma": pattern_or_fn, "react": pattern_or_fn, "swift": pattern_or_fn }
+```
+
+For simple properties (most of the 17 gaps), the emit pattern is a string template:
+```python
+emit={"figma": '{var}.{figma_name} = "{value}";'}
+```
+
+For complex properties (fills, fontName, cornerRadius), the emit field references a custom function:
+```python
+emit={"figma": emit_fills_figma}
+```
+
+Benefits:
+- Adding a property → all renderers automatically emit it
+- Adding a renderer → it reads all existing properties from the table
+- No M×N gap possible — the table IS the source of truth
+- Cross-reference test verifies every property has an emit pattern for every registered renderer
+
+This is the architectural equivalent of LLVM's TableGen: instruction descriptions defined once, backends generated from them.
 
 ## Key Architectural Decisions
 
 1. **Progressive fallback** (L2→L1→L0) — renderers read highest level available
 2. **LEFT JOIN on L1** — all nodes enter IR, L1/L2 as annotations
-3. **Deferred position + constraints** — set after all children appended
-4. **Two-source swaps** — instance_overrides + recursive CTE, deduplicated
+3. **Deferred position + constraints** — set after all children appended, with canary verification
+4. **Override grouping by target** — one findOne per unique child_id, 37-44% reduction
 5. **Self-overrides** — `:self` marker for overrides targeting the instance itself
 6. **Pre-fetch preamble** — deduplicated `getNodeByIdAsync` calls
 7. **Override hoisting** — nested Mode 1 overrides transformed and hoisted to ancestor
 8. **Default clearing** — fills=[], clipsContent=false to override Figma's createFrame() defaults
-9. **Layout sizing deferral** — non-auto-layout children set layoutSizing after appendChild; auto-layout containers set their own before
-10. **Radians→degrees** — DB stores radians (REST API), renderer converts
-11. **Mode 1 L0 properties** — rotation, opacity, visibility applied after createInstance()
-12. **Property registry** — single source of truth for all pipeline layers
-13. **Generic override handler** — registry-defined types dispatched automatically
-14. **Figma override field aliases** — `primaryAxisSizingMode` ↔ `layoutSizingHorizontal`
+9. **Gradient enrichment** — supplement adds gradientTransform alongside REST API handlePositions. ORDERING: supplement must run AFTER REST extraction. If REST re-runs after supplement, enrichment is lost.
+10. **Unpublished component fallback** — component_figma_id → instance figma_node_id + getMainComponentAsync → Mode 2 createFrame
+11. **Progressive text fallback** — `_resolve_text_value()`: L2 token → resolved value → L0 DB value
+12. **Font normalization** — `normalize_font_style(family, style)`: per-family style names
+13. **Table-driven emission** (PLANNED) — registry defines emit patterns per renderer, eliminates hardcoded property lists
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `dd/property_registry.py` | **Single source of truth** for 58 Figma properties |
+| `dd/property_registry.py` | **Single source of truth** for 48 Figma properties (emission extension planned) |
 | `dd/ir.py` | IR generation, registry-driven query_screen_visuals |
-| `dd/generate.py` | Figma renderer with generic override handler |
-| `dd/extract_supplement.py` | Registry-driven override extraction |
+| `dd/generate.py` | Figma renderer — override grouping, gradient emission, text fallback |
+| `dd/extract_supplement.py` | Registry-driven override + gradient + textAutoResize extraction |
 | `dd/extract_screens.py` | Plugin API node extraction |
 | `docs/compiler-architecture.md` | Authoritative architecture spec |
 | `schema.sql` | DB schema (72 columns + instance_overrides) |
@@ -113,14 +150,19 @@ Scripts take ~90-120s due to `findOne` tree searches for each override/swap. Opt
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/ --tb=short          # 1,530 tests
+python -m pytest tests/ --tb=short          # 1,573 tests
 ```
 
 ## Reference Screens
 
-| Screen | Name | Figma Node | Nodes | Status |
-|--------|------|-----------|-------|--------|
-| 184 | iPhone 13 Pro Max - 8 | 2244:146076 | 203 | Near pixel-perfect |
-| 185 | iPhone 13 Pro Max - 114 | 2265:102114 | 225 | Good (Share/Save/Export) |
-| 188 | iPhone 13 Pro Max - 110 | 2244:146231 | 366 | Gallery grid (no images) |
-| 238 | iPhone 13 Pro Max - 79 | 2244:149329 | 417 | Color picker + keyboard |
+| Screen | Name | Figma Node | Nodes | Execution | Status |
+|--------|------|-----------|-------|-----------|--------|
+| 184 | iPhone 13 Pro Max - 8 | 2244:146076 | 203 | 0.7s | Good — fonts, positions, components correct |
+| 185 | iPhone 13 Pro Max - 114 | 2265:102114 | 225 | 0.9s | Good — Share/Save/Export panel |
+| 186 | iPhone 13 Pro Max - 21 | 2244:146096 | 203 | 0.8s | Good — image placeholder |
+| 188 | iPhone 13 Pro Max - 110 | 2244:146231 | 366 | 1.6s | Gallery — wrap layout not emitted, images gray |
+| 222 | iPhone 13 Pro Max - 86 | 2244:148249 | 303 | 2.3s | Border Size — text sizes fixed, gradients pending |
+| 238 | iPhone 13 Pro Max - 79 | 2244:149329 | 417 | 2.4s | Color picker — wrap layout not emitted |
+| 259 | iPad Pro 12.9" - 38 | 2255:76230 | 422 | 2.6s | iPad — unpublished component fallback works |
+| 253 | iPad Pro 12.9" - 35 | 2255:73824 | 463 | 3.9s | iPad — text sizes fixed |
+| 244 | iPad Pro 12.9" - 40 | 2255:77763 | 624 | 3.0s | iPad — largest screen, keyboard |

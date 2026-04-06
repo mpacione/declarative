@@ -533,8 +533,29 @@ The REST API returns rotation in radians (-π to π). The Plugin API uses degree
 ### Mode 1 Instances Need L0 Properties
 After `createInstance()`, the instance inherits the master's defaults. But the DB may show different rotation, opacity, or visibility. These L0 properties must be applied directly to the instance after creation — they're not "overrides" in Figma's sense, just property differences.
 
-### PROXY_EXECUTE Reliability
-Generated scripts are structurally correct but deferred position lines intermittently fail to apply. PROXY_EXECUTE returns SUCCESS but all children remain at x=0,y=0. No correlation with script size. Investigation needed — may be a WebSocket message ordering or Figma plugin runtime timeout issue.
+### PROXY_EXECUTE Reliability — ROOT CAUSED (2026-04-06 Session 2)
+**Not a reliability bug — timeout.** Scripts take >120s due to `findOne` tree searches. With override grouping (37-44% findOne reduction), execution drops to 0.7-3.9s. A canary check (`M["__canary"] = "deferred_ok"`) confirms the deferred section executes. Performance variance between screens is Figma plugin cold-start, not algorithmic — first execution in a session pays a heavy cache initialization cost (170s), subsequent runs reuse warm caches (0.7s for the same screen).
 
-### Font Style Naming Varies by Family
-"Inter" uses "Semi Bold" (with space). "SF Pro Text" uses "Semibold" (no space). Font loading will fail with the wrong style name. Needs systematic per-family normalization.
+### Font Style Naming — FIXED (2026-04-06 Session 2)
+`normalize_font_style(family, style)` maps per-family: SF Pro Text/Display/Pro → "Semibold" (no space), Baskerville → "SemiBold" (camelCase), Inter → "Semi Bold" (with space). Verified against `figma.listAvailableFontsAsync()` ground truth.
+
+### Override Grouping Eliminates Duplicate findOne Calls
+Each Mode 1 instance had separate `findOne` calls per override, even when multiple overrides targeted the same child node. Grouping by `_resolve_override_target()` and emitting one `findOne` per unique target reduced calls from 113→71 (screen 184), 190→106 (screen 238). Child swaps are merged into the same grouping for further deduplication.
+
+### Gradient Fill Emission Requires Two Data Formats
+The REST API stores `gradientHandlePositions` (3 points). The Plugin API needs `gradientTransform` (2x3 matrix). These are different parameterizations of the same gradient. The solution: store BOTH in the `fills` column. Supplement extraction enriches existing fills with `gradientTransform` from the Plugin API. **ORDERING RISK**: supplement must run AFTER REST extraction. If REST re-runs after supplement, the enrichment (gradientTransform) is lost and supplement must re-run.
+
+### Token Refs Without L0 Fallback — The Progressive Fallback Gap
+When the IR `style` dict has a token ref like `{type.display.s32.fontSize}` and the token isn't in the tokens dict, the renderer was skipping the property entirely instead of falling back to the DB value (32.0). This affected ALL text properties (fontSize, fontFamily, fontWeight) on Mode 2 text nodes — 42+ per screen. Fix: `_resolve_text_value()` implements progressive fallback: L2 (resolved token) → L0 (DB value).
+
+### Per-Corner Radius Was Silently Dropped
+`normalize_corner_radius` correctly returns a dict for asymmetric corners (`{"tl": 28, "tr": 28, "bl": 0, "br": 0}`), but `_emit_visual` only handled `isinstance(radius, (int, float))` and silently dropped dicts. Fix: emit `topLeftRadius`, `topRightRadius`, `bottomLeftRadius`, `bottomRightRadius` for dict format.
+
+### Unpublished Components Need Fallback Chain
+`importComponentByKeyAsync` only works for published library components. 25 of 122 component keys are unpublished (keyboard, Home Indicator, system chrome). Fix: fallback chain — component_figma_id → instance figma_node_id + `getMainComponentAsync()` → Mode 2 createFrame.
+
+### The Property Registry Only Drives 3 of 4 Pipeline Stages
+Cross-reference analysis revealed 17 of 48 properties are extracted/queried but never emitted. Root cause: `_emit_layout`, `_emit_visual`, `_emit_text_props` each maintain independent hardcoded property lists that don't reference the registry. The registry prevents gaps at extraction/query/override layers but has no connection to emission. This is the M×N problem at the property level — M properties × N emit functions, each independently deciding what to handle.
+
+### Table-Driven Emission Is the Architectural Fix
+Inspired by LLVM TableGen: define each property's emit behavior in the registry table, not in handcrafted emit functions. Simple properties (most of the 17 gaps) use string templates: `'{var}.{figma_name} = "{value}";'`. Complex properties (fills, fontName, cornerRadius) reference custom functions. Adding a property → all renderers emit it automatically. Adding a renderer → it reads all properties from the table. No gaps possible in either direction.

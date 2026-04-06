@@ -86,6 +86,12 @@ def normalize_fills(
             handle_positions = fill.get("gradientHandlePositions")
             if handle_positions:
                 entry["handlePositions"] = handle_positions
+            # Preserve Plugin API gradientTransform when available (added by
+            # supplement extraction). Both representations are stored so each
+            # renderer can use whichever maps best to its target format.
+            gradient_transform = fill.get("gradientTransform")
+            if gradient_transform:
+                entry["gradientTransform"] = gradient_transform
             if paint_opacity < 1.0:
                 entry["opacity"] = paint_opacity
             result.append(entry)
@@ -413,9 +419,11 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
     for prop in PROPERTIES:
         if prop.db_column and prop.db_column in node_cols:
             registry_cols.append(prop.db_column)
-    # Always include component_key (not in registry — it's structural)
+    # Always include structural columns (not in registry — they're structural)
     if "component_key" not in registry_cols and "component_key" in node_cols:
         registry_cols.append("component_key")
+    if "figma_node_id" not in registry_cols and "figma_node_id" in node_cols:
+        registry_cols.append("figma_node_id")
 
     col_list = ", ".join(f"n.{c}" for c in registry_cols)
 

@@ -413,3 +413,182 @@ class TestInstanceOverrideExtraction:
 
         script = generate_supplement_script(["100:1"])
         assert ":self" in script
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Gradient enrichment — supplement captures gradientTransform
+# ---------------------------------------------------------------------------
+
+class TestGradientEnrichment:
+    """Verify supplement extraction enriches gradient fills with Plugin API format.
+
+    The REST API stores gradientHandlePositions (3 points). The Plugin API
+    provides gradientTransform (2x3 matrix). Both are needed: different
+    renderers prefer different representations.
+
+    ORDERING RISK: The supplement ENRICHES the existing fills column — it
+    must preserve REST API fields (gradientHandlePositions) while adding
+    Plugin API fields (gradientTransform). If REST extraction re-runs after
+    supplement, the enrichment is lost. If supplement re-runs, it re-enriches.
+    """
+
+    def test_supplement_script_captures_gradient_transforms(self):
+        """The generated JS should extract gradientTransform from gradient fills."""
+        from dd.extract_supplement import generate_supplement_script
+
+        script = generate_supplement_script(["100:1"])
+        assert "gradientTransform" in script
+
+    def test_apply_supplement_enriches_gradient_fills(self):
+        """apply_supplement should merge gradientTransform into existing fills JSON."""
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        # Insert node with REST API gradient fills (has handlePositions, no transform)
+        import json
+        rest_fills = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "opacity": 0.1,
+            "gradientHandlePositions": [
+                {"x": 0.5, "y": 0}, {"x": 0.5, "y": 1}, {"x": 0, "y": 0}
+            ],
+            "gradientStops": [
+                {"color": {"r": 0, "g": 0, "b": 0, "a": 0}, "position": 0},
+                {"color": {"r": 0, "g": 0, "b": 0, "a": 1}, "position": 1},
+            ],
+        }])
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, is_semantic, visible, extracted_at, fills) "
+            "VALUES (10, 1, '200:10', 'Overlay', 'FRAME', 1, 0, 1, 1, '2026-01-01', ?)",
+            (rest_fills,),
+        )
+        conn.commit()
+
+        # Supplement provides Plugin API gradient format (has gradientTransform)
+        plugin_transform = [[-0.81, 0.19, 0.80], [-0.19, -0.21, 0.71]]
+        supplement_data = {
+            "200:10": {
+                "gt": [{
+                    "fillIndex": 0,
+                    "gradientTransform": plugin_transform,
+                }],
+            }
+        }
+        apply_supplement(conn, supplement_data)
+
+        # Verify fills column now has BOTH handlePositions and gradientTransform
+        row = conn.execute("SELECT fills FROM nodes WHERE id = 10").fetchone()
+        fills = json.loads(row[0])
+        assert len(fills) == 1
+        assert "gradientHandlePositions" in fills[0], "REST API field should be preserved"
+        assert "gradientTransform" in fills[0], "Plugin API field should be added"
+        assert fills[0]["gradientTransform"] == plugin_transform
+
+    def test_apply_supplement_preserves_solid_fills(self):
+        """Solid fills in the fills column should not be modified by gradient enrichment."""
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+        import json
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        solid_fills = json.dumps([{"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0}}])
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, is_semantic, visible, extracted_at, fills) "
+            "VALUES (10, 1, '200:10', 'card', 'FRAME', 1, 0, 1, 1, '2026-01-01', ?)",
+            (solid_fills,),
+        )
+        conn.commit()
+
+        # No gradient transforms to enrich
+        supplement_data = {"200:10": {"lp": "ABSOLUTE"}}
+        apply_supplement(conn, supplement_data)
+
+        row = conn.execute("SELECT fills FROM nodes WHERE id = 10").fetchone()
+        fills = json.loads(row[0])
+        assert fills[0]["type"] == "SOLID"
+        assert "gradientTransform" not in fills[0]
+
+    def test_normalize_fills_preserves_gradient_transform(self):
+        """normalize_fills should pass through gradientTransform when present."""
+        from dd.ir import normalize_fills
+
+        fills = normalize_fills(
+            '[{"type": "GRADIENT_LINEAR", "opacity": 0.1, '
+            '"gradientHandlePositions": [{"x":0.5,"y":0},{"x":0.5,"y":1},{"x":0,"y":0}], '
+            '"gradientTransform": [[0,1,0],[1,0,0]], '
+            '"gradientStops": [{"color":{"r":0,"g":0,"b":0,"a":0},"position":0},'
+            '{"color":{"r":0,"g":0,"b":0,"a":1},"position":1}]}]',
+            [],
+        )
+        assert len(fills) == 1
+        assert fills[0]["type"] == "gradient-linear"
+        assert "handlePositions" in fills[0]
+        assert "gradientTransform" in fills[0]
+        assert fills[0]["gradientTransform"] == [[0, 1, 0], [1, 0, 0]]
+
+    def test_emit_fills_produces_gradient_output(self):
+        """_emit_fills should emit gradient fills with gradientTransform."""
+        from dd.generate import _emit_fills
+
+        fills = [{
+            "type": "gradient-linear",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#000000", "position": 1.0},
+            ],
+            "gradientTransform": [[0, -1, 1], [1, 0, 0]],
+            "opacity": 0.1,
+        }]
+        lines, refs = _emit_fills("node", "eid-1", fills, {})
+        assert len(lines) == 1
+        js = lines[0]
+        assert "GRADIENT_LINEAR" in js
+        assert "gradientTransform" in js
+        assert "gradientStops" in js
+        assert "0.1" in js  # opacity
+
+
+class TestTextAutoResizeExtraction:
+    """Verify textAutoResize is captured by supplement extraction."""
+
+    def test_supplement_script_captures_text_auto_resize(self):
+        from dd.extract_supplement import generate_supplement_script
+
+        script = generate_supplement_script(["100:1"])
+        assert "textAutoResize" in script
+
+    def test_apply_supplement_stores_text_auto_resize(self):
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, is_semantic, visible, extracted_at) "
+            "VALUES (10, 1, '200:10', 'Title', 'TEXT', 1, 0, 1, 1, '2026-01-01')"
+        )
+        conn.commit()
+
+        supplement_data = {"200:10": {"tar": "HEIGHT"}}
+        apply_supplement(conn, supplement_data)
+
+        row = conn.execute("SELECT text_auto_resize FROM nodes WHERE id = 10").fetchone()
+        assert row[0] == "HEIGHT"

@@ -107,6 +107,30 @@ def font_weight_to_style(weight: Any) -> str:
     return _WEIGHT_TO_STYLE.get(int(weight), "Regular")
 
 
+# Font families where "Semi Bold" should be "Semibold" (no space)
+_SEMIBOLD_NO_SPACE = frozenset({"SF Pro", "SF Pro Text", "SF Pro Display"})
+
+# Font families where "Semi Bold" should be "SemiBold" (camelCase)
+_SEMIBOLD_CAMEL = frozenset({"Baskerville"})
+
+
+def normalize_font_style(family: str, style: str) -> str:
+    """Normalize font style name for a specific font family.
+
+    Different font families use different naming for the same weight:
+    - Inter: "Semi Bold" (space)
+    - SF Pro Text/Display/Pro: "Semibold" (no space)
+    - Baskerville: "SemiBold" (camelCase)
+    """
+    if "Semi Bold" not in style:
+        return style
+    if family in _SEMIBOLD_NO_SPACE:
+        return style.replace("Semi Bold", "Semibold")
+    if family in _SEMIBOLD_CAMEL:
+        return style.replace("Semi Bold", "SemiBold")
+    return style
+
+
 def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
     """Collect unique (family, style) pairs from text elements in the spec."""
     seen = set()
@@ -133,7 +157,7 @@ def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
             resolved_weight, _ = resolve_style_value(weight, tokens)
             weight = resolved_weight
 
-        figma_style = font_weight_to_style(weight)
+        figma_style = normalize_font_style(family, font_weight_to_style(weight))
         key = (family, figma_style)
         if key not in seen:
             seen.add(key)
@@ -219,6 +243,112 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
         visual["constraints"] = constraints
 
     return visual
+
+
+# ---------------------------------------------------------------------------
+# Override grouping helpers
+# ---------------------------------------------------------------------------
+
+# Suffix map: override_type → child_id suffix to strip for target resolution
+_OVERRIDE_SUFFIX_MAP = {
+    "FILLS": ":fills",
+    "BOOLEAN": ":visible",
+    "WIDTH": ":width",
+    "HEIGHT": ":height",
+    "OPACITY": ":opacity",
+    "LAYOUT_SIZING_H": ":layoutSizingH",
+    "LAYOUT_SIZING_V": ":layoutSizingV",
+}
+
+
+def _resolve_override_target(ov: dict[str, Any]) -> str:
+    """Extract the Figma node target_id from an override's child_id.
+
+    Strips property-specific suffixes (:fills, :visible, :width, etc.)
+    to get the raw node identifier. INSTANCE_SWAP and TEXT have no suffix.
+    For unknown types, uses registry figma_name as the suffix.
+    """
+    child_id = ov["child_id"]
+    ov_type = ov["type"]
+
+    suffix = _OVERRIDE_SUFFIX_MAP.get(ov_type)
+    if suffix:
+        return child_id.replace(suffix, "")
+
+    if ov_type in ("TEXT", "INSTANCE_SWAP"):
+        return child_id
+
+    from dd.property_registry import by_override_type
+    prop = by_override_type(ov_type)
+    if prop:
+        s = f":{prop.figma_name}"
+        if child_id.endswith(s):
+            return child_id[:-len(s)]
+    return child_id
+
+
+def _emit_override_op(
+    ov: dict[str, Any],
+    target_var: str,
+    node_id_vars: dict[str, str],
+    parent_var: str,
+    deferred_lines: list[str],
+) -> str:
+    """Emit JS for a single override operation on target_var (no findOne wrapper).
+
+    Returns a JS statement string. For deferred operations (LAYOUT_SIZING on :self),
+    appends to deferred_lines instead and returns empty string.
+    """
+    ov_type = ov["type"]
+    ov_value = ov.get("value", "")
+    is_self = (target_var == parent_var)
+
+    if ov_type == "TEXT" and ov_value:
+        return (
+            f'if ({target_var}.type === "TEXT") {{ '
+            f'await figma.loadFontAsync({target_var}.fontName); '
+            f'{target_var}.characters = "{_escape_js(ov_value)}"; }}'
+        )
+    if ov_type == "BOOLEAN":
+        vis_val = "true" if ov_value == "true" else "false"
+        return f"{target_var}.visible = {vis_val};"
+    if ov_type == "INSTANCE_SWAP" and ov_value:
+        comp_expr = node_id_vars.get(ov_value, f'await figma.getNodeByIdAsync("{_escape_js(ov_value)}")')
+        return (
+            f'if ({target_var}.type === "INSTANCE") {{ '
+            f"const _comp = {comp_expr}; "
+            f"if (_comp) {target_var}.swapComponent(_comp); }}"
+        )
+    if ov_type == "FILLS" and ov_value:
+        return f"{target_var}.fills = {ov_value};"
+    if ov_type == "WIDTH" and ov_value:
+        h_ref = f"{parent_var}.height" if is_self else f"{target_var}.height"
+        return f"{target_var}.resize({ov_value}, {h_ref});"
+    if ov_type == "HEIGHT" and ov_value:
+        w_ref = f"{parent_var}.width" if is_self else f"{target_var}.width"
+        return f"{target_var}.resize({w_ref}, {ov_value});"
+    if ov_type == "OPACITY" and ov_value:
+        return f"{target_var}.opacity = {ov_value};"
+    if ov_type == "LAYOUT_SIZING_H" and ov_value:
+        if is_self:
+            deferred_lines.append(f'{parent_var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
+            return ""
+        return f'{target_var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";'
+    if ov_type == "LAYOUT_SIZING_V" and ov_value:
+        if is_self:
+            deferred_lines.append(f'{parent_var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
+            return ""
+        return f'{target_var}.layoutSizingVertical = "{_escape_js(ov_value)}";'
+
+    if ov_value:
+        from dd.property_registry import by_override_type
+        prop = by_override_type(ov_type)
+        if prop:
+            fn = prop.figma_name
+            if prop.value_type in ("number", "number_radians", "json_array", "boolean"):
+                return f"{target_var}.{fn} = {ov_value};"
+            return f'{target_var}.{fn} = "{_escape_js(ov_value)}";'
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -434,17 +564,28 @@ def generate_figma_script(
 
         component_figma_id = raw_visual.get("component_figma_id") if (db_visuals is not None and raw_visual) else None
 
-        if (component_key or component_figma_id) and not is_text:
-            # Mode 1: component instance (inherits structure + visuals)
+        instance_figma_node_id = raw_visual.get("figma_node_id") if (db_visuals is not None and raw_visual) else None
+
+        # Mode 1 fallback chain:
+        #   1. component_figma_id (from registry) → getNodeByIdAsync → createInstance
+        #   2. instance figma_node_id (from DB) → getMainComponentAsync → createInstance
+        #      (handles unpublished/local components that importComponentByKeyAsync rejects)
+        #   3. Fall through to Mode 2 (createFrame) if no usable ID
+        use_mode1 = (component_key or component_figma_id) and not is_text
+        if use_mode1:
             if component_figma_id:
                 node_expr = node_id_vars.get(component_figma_id, f'await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")')
                 lines.append(
                     f'const {var} = ({node_expr}).createInstance();'
                 )
-            else:
+            elif instance_figma_node_id:
                 lines.append(
-                    f'const {var} = (await figma.importComponentByKeyAsync("{_escape_js(component_key)}")).createInstance();'
+                    f'const {var} = (await (await figma.getNodeByIdAsync("{_escape_js(instance_figma_node_id)}")).getMainComponentAsync()).createInstance();'
                 )
+            else:
+                use_mode1 = False
+
+        if use_mode1:
             original_name = element.get("_original_name", eid)
             lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
@@ -476,144 +617,50 @@ def generate_figma_script(
                     f"if (_h) _h.visible = false; }}"
                 )
 
-            # Instance overrides: replay child node mutations from DB
+            # Instance overrides + child swaps: replay mutations from DB.
+            # Grouped by target_id to minimize findOne tree traversals.
             inst_overrides = raw_visual.get("instance_overrides", []) if (db_visuals is not None and raw_visual) else []
-            for ov in inst_overrides:
-                child_id = _escape_js(ov["child_id"])
-                ov_type = ov["type"]
-                ov_value = ov.get("value", "")
-
-                if ov_type == "TEXT" and ov_value:
-                    # Text override: find child by master-relative ID, set characters
-                    lines.append(
-                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{child_id}")); '
-                        f'if (_c && _c.type === "TEXT") {{ '
-                        f'await figma.loadFontAsync(_c.fontName); '
-                        f'_c.characters = "{_escape_js(ov_value)}"; }} }}'
-                    )
-                elif ov_type == "BOOLEAN":
-                    # Visibility override: child_id has ":visible" suffix
-                    pure_id = child_id.replace(":visible", "")
-                    vis_val = "true" if ov_value == "true" else "false"
-                    lines.append(
-                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{pure_id}")); '
-                        f"if (_c) _c.visible = {vis_val}; }}"
-                    )
-                elif ov_type == "INSTANCE_SWAP" and ov_value:
-                    # Instance swap: find child, swap its component
-                    comp_expr = node_id_vars.get(ov_value, f'await figma.getNodeByIdAsync("{_escape_js(ov_value)}")')
-                    lines.append(
-                        f'{{ const _c = {var}.findOne(n => n.id.endsWith("{child_id}")); '
-                        f'if (_c && _c.type === "INSTANCE") {{ '
-                        f"const _comp = {comp_expr}; "
-                        f"if (_comp) _c.swapComponent(_comp); }} }}"
-                    )
-                elif ov_type == "FILLS" and ov_value:
-                    # Fill override: set fills on self or child
-                    target_id = child_id.replace(":fills", "")
-                    if target_id == ":self":
-                        lines.append(f"{var}.fills = {ov_value};")
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f"if (_c) _c.fills = {ov_value}; }}"
-                        )
-                elif ov_type == "WIDTH" and ov_value:
-                    target_id = child_id.replace(":width", "")
-                    if target_id == ":self":
-                        lines.append(f"{var}.resize({ov_value}, {var}.height);")
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f"if (_c) _c.resize({ov_value}, _c.height); }}"
-                        )
-                elif ov_type == "HEIGHT" and ov_value:
-                    target_id = child_id.replace(":height", "")
-                    if target_id == ":self":
-                        lines.append(f"{var}.resize({var}.width, {ov_value});")
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f"if (_c) _c.resize(_c.width, {ov_value}); }}"
-                        )
-                elif ov_type == "OPACITY" and ov_value:
-                    target_id = child_id.replace(":opacity", "")
-                    if target_id == ":self":
-                        lines.append(f"{var}.opacity = {ov_value};")
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f"if (_c) _c.opacity = {ov_value}; }}"
-                        )
-                elif ov_type == "LAYOUT_SIZING_H" and ov_value:
-                    target_id = child_id.replace(":layoutSizingH", "")
-                    if target_id == ":self":
-                        # Defer: layoutSizing requires parent auto-layout context
-                        deferred_lines.append(f'{var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
-                    else:
-                        # Child targets are already in the instance tree — safe to set now
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f'if (_c) _c.layoutSizingHorizontal = "{_escape_js(ov_value)}"; }}'
-                        )
-                elif ov_type == "LAYOUT_SIZING_V" and ov_value:
-                    target_id = child_id.replace(":layoutSizingV", "")
-                    if target_id == ":self":
-                        deferred_lines.append(f'{var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{_escape_js(target_id)}")); '
-                            f'if (_c) _c.layoutSizingVertical = "{_escape_js(ov_value)}"; }}'
-                        )
-                elif ov_value:
-                    # Generic override: registry-defined types not handled above.
-                    # Uses the override_type → figma property name mapping.
-                    from dd.property_registry import by_override_type
-                    prop = by_override_type(ov_type)
-                    if prop:
-                        figma_name = prop.figma_name
-                        # Strip the suffix from child_id to get the target
-                        suffix = f":{figma_name}"
-                        target_id = child_id[:-len(suffix)] if child_id.endswith(suffix) else child_id
-                        if target_id == ":self":
-                            if prop.value_type in ("number", "number_radians"):
-                                lines.append(f"{var}.{figma_name} = {ov_value};")
-                            elif prop.value_type == "json_array":
-                                lines.append(f"{var}.{figma_name} = {ov_value};")
-                            elif prop.value_type == "boolean":
-                                lines.append(f"{var}.{figma_name} = {ov_value};")
-                            else:
-                                lines.append(f'{var}.{figma_name} = "{_escape_js(ov_value)}";')
-                        else:
-                            esc_target = _escape_js(target_id)
-                            if prop.value_type in ("number", "number_radians"):
-                                lines.append(
-                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
-                                    f"if (_c) _c.{figma_name} = {ov_value}; }}"
-                                )
-                            elif prop.value_type == "json_array":
-                                lines.append(
-                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
-                                    f"if (_c) _c.{figma_name} = {ov_value}; }}"
-                                )
-                            else:
-                                lines.append(
-                                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
-                                    f'if (_c) _c.{figma_name} = "{_escape_js(ov_value)}"; }}'
-                                )
-
-            # Child instance swaps: replace nested instances with correct components
             child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
+            # Convert child_swaps to override format for unified grouping
             for cs in child_swaps:
-                cs_child_id = _escape_js(cs["child_id"])
-                cs_target_id = cs["swap_target_id"]
-                comp_expr = node_id_vars.get(cs_target_id, f'await figma.getNodeByIdAsync("{_escape_js(cs_target_id)}")')
-                lines.append(
-                    f'{{ const _c = {var}.findOne(n => n.id.endsWith("{cs_child_id}")); '
-                    f'if (_c && _c.type === "INSTANCE") {{ '
-                    f"const _comp = {comp_expr}; "
-                    f"if (_comp) _c.swapComponent(_comp); }} }}"
-                )
+                inst_overrides.append({
+                    "type": "INSTANCE_SWAP",
+                    "child_id": cs["child_id"],
+                    "value": cs["swap_target_id"],
+                })
+
+            if inst_overrides:
+                from collections import OrderedDict
+                grouped: OrderedDict[str, list[dict]] = OrderedDict()
+                for ov in inst_overrides:
+                    target = _resolve_override_target(ov)
+                    grouped.setdefault(target, []).append(ov)
+
+                # Self overrides — no findOne needed
+                for ov in grouped.pop(":self", []):
+                    op = _emit_override_op(ov, var, node_id_vars, var, deferred_lines)
+                    if op:
+                        lines.append(op)
+
+                # Non-self overrides — one findOne per unique target
+                for target_id, ovs in grouped.items():
+                    esc_target = _escape_js(target_id)
+                    ops = [_emit_override_op(ov, "_c", node_id_vars, var, deferred_lines) for ov in ovs]
+                    ops = [op for op in ops if op]
+                    if not ops:
+                        continue
+                    if len(ops) == 1:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
+                            f"if (_c) {{ {ops[0]} }} }}"
+                        )
+                    else:
+                        lines.append(
+                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); if (_c) {{'
+                        )
+                        for op in ops:
+                            lines.append(f"  {op}")
+                        lines.append("} }")
 
             # L0 visual properties on the instance itself (rotation, opacity).
             # These differ from the master's defaults but aren't captured as
@@ -669,6 +716,7 @@ def generate_figma_script(
                 raw_visual = db_visuals.get(node_id, {}) if node_id else {}
                 visual = build_visual_from_db(raw_visual)
             else:
+                raw_visual = {}
                 visual = {}
             visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
             lines.extend(visual_lines)
@@ -684,18 +732,21 @@ def generate_figma_script(
 
             style = element.get("style", {})
             if is_text:
-                font_data = visual.get("font") or (raw_visual.get("font") if db_visuals is not None else None)
-                if font_data:
-                    style = dict(style)
-                    _FONT_KEY_MAP = {
-                        "font_family": "fontFamily",
-                        "font_size": "fontSize",
-                        "font_weight": "fontWeight",
-                    }
-                    for db_key, style_key in _FONT_KEY_MAP.items():
-                        if db_key in font_data and style_key not in style:
-                            style[style_key] = font_data[db_key]
-                _emit_text_props(var, element, style, tokens, lines)
+                # DB font data used as L0 fallback in _emit_text_props.
+                # Progressive fallback: IR style (L2 tokens) → DB values (L0).
+                # We pass db_font separately so _emit_text_props can fall back
+                # per-property when a token ref can't be resolved.
+                # Sources (checked in order):
+                #   1. visual["font"] — from build_visual_from_db (flat DB columns)
+                #   2. raw_visual["font"] — pre-built font dict (test fixtures)
+                #   3. raw_visual — flat keys from query_screen_visuals
+                db_font: dict[str, Any] = (
+                    visual.get("font")
+                    or (raw_visual.get("font") if raw_visual else None)
+                    or (raw_visual if raw_visual else None)
+                    or {}
+                )
+                _emit_text_props(var, element, style, tokens, lines, db_font=db_font)
 
             composition = element.get("_composition")
             has_ir_children = bool(element.get("children"))
@@ -787,8 +838,17 @@ def generate_figma_script(
     # Emit deferred position + constraints (after all children are appended)
     if deferred_lines:
         lines.append("")
+        lines.append("// Yield to Figma's event loop before deferred positioning")
+        lines.append("await new Promise(r => setTimeout(r, 0));")
+        lines.append("")
         lines.append("// Position + constraints (deferred until all children appended)")
-        lines.extend(deferred_lines)
+        lines.append("try {")
+        for dl in deferred_lines:
+            lines.append(f"  {dl}")
+        lines.append('  M["__canary"] = "deferred_ok";')
+        lines.append("} catch (_e) {")
+        lines.append('  M["__canary"] = "deferred_error: " + _e.message;')
+        lines.append("}")
 
     lines.append("return M;")
 
@@ -926,6 +986,12 @@ def _emit_visual(
     if radius is not None:
         if isinstance(radius, (int, float)):
             lines.append(f"{var}.cornerRadius = {int(radius)};")
+        elif isinstance(radius, dict):
+            _CORNER_MAP = {"tl": "topLeftRadius", "tr": "topRightRadius",
+                           "bl": "bottomLeftRadius", "br": "bottomRightRadius"}
+            for corner_key, figma_prop in _CORNER_MAP.items():
+                val = radius.get(corner_key, 0)
+                lines.append(f"{var}.{figma_prop} = {val};")
 
     opacity = visual.get("opacity")
     if opacity is not None:
@@ -962,10 +1028,25 @@ def _emit_visual(
     return (lines, refs)
 
 
+# IR gradient type → Figma Plugin API type
+_GRADIENT_EMIT_MAP = {
+    "gradient-linear": "GRADIENT_LINEAR",
+    "gradient-radial": "GRADIENT_RADIAL",
+    "gradient-angular": "GRADIENT_ANGULAR",
+    "gradient-diamond": "GRADIENT_DIAMOND",
+}
+
+
 def _emit_fills(
     var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma fills array from IR normalized fills."""
+    """Emit Figma fills array from IR normalized fills.
+
+    Handles SOLID and GRADIENT_* types. Gradient emission requires
+    gradientTransform (Plugin API format) — stored by supplement extraction.
+    If gradientTransform is missing, the gradient is skipped (REST API
+    handlePositions cannot be used directly by the Plugin API).
+    """
     paints: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
@@ -984,6 +1065,35 @@ def _emit_fills(
                 paints.append(paint)
             if token_name:
                 refs.append((eid, f"fill.{i}.color", token_name))
+
+        elif fill_type in _GRADIENT_EMIT_MAP:
+            gradient_transform = fill.get("gradientTransform")
+            if not gradient_transform:
+                continue
+            figma_type = _GRADIENT_EMIT_MAP[fill_type]
+            stops = fill.get("stops", [])
+            stop_strs = []
+            for j, stop in enumerate(stops):
+                color_val = stop.get("color", "#000000")
+                resolved, token_name = resolve_style_value(color_val, tokens)
+                if resolved and isinstance(resolved, str) and resolved.startswith("#"):
+                    rgb = hex_to_figma_rgb(resolved)
+                    stop_strs.append(
+                        f'{{color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:1}}, position: {stop.get("position", 0)}}}'
+                    )
+                if token_name:
+                    refs.append((eid, f"fill.{i}.gradient.stop.{j}.color", token_name))
+
+            if stop_strs:
+                gt = gradient_transform
+                opacity = fill.get("opacity")
+                opacity_str = f", opacity: {opacity}" if opacity is not None and opacity < 1.0 else ""
+                paints.append(
+                    f'{{type: "{figma_type}", '
+                    f'gradientTransform: [[{gt[0][0]},{gt[0][1]},{gt[0][2]}],[{gt[1][0]},{gt[1][1]},{gt[1][2]}]], '
+                    f'gradientStops: [{", ".join(stop_strs)}]'
+                    f'{opacity_str}}}'
+                )
 
     if paints:
         paints_str = ", ".join(paints)
@@ -1061,28 +1171,57 @@ def _emit_effects(
     return (lines, refs)
 
 
+def _resolve_text_value(
+    style_val: Any, db_val: Any, tokens: dict[str, Any],
+) -> Any:
+    """Resolve a text style value using progressive fallback: L2 → L0.
+
+    If the IR style has a literal value, use it. If it has a token ref,
+    try to resolve it from the tokens dict. If the token can't be resolved,
+    fall back to the DB value (L0). This ensures renderers never silently
+    drop properties when token bindings exist but aren't resolvable yet.
+    """
+    if style_val is None:
+        return db_val
+    if isinstance(style_val, str) and style_val.startswith("{"):
+        resolved, _ = resolve_style_value(style_val, tokens)
+        if resolved is not None:
+            return resolved
+        return db_val
+    return style_val
+
+
 def _emit_text_props(
     var: str, element: dict[str, Any], style: dict[str, Any],
     tokens: dict[str, Any], lines: list[str],
+    db_font: dict[str, Any] | None = None,
 ) -> None:
-    family = style.get("fontFamily", "Inter")
-    if isinstance(family, str) and family.startswith("{"):
-        resolved, _ = resolve_style_value(family, tokens)
-        family = resolved if resolved and isinstance(resolved, str) else "Inter"
+    """Emit text properties with progressive fallback (L2 token → L0 DB).
+
+    db_font: raw DB font data (font_family, font_size, font_weight, etc.)
+    used as L0 fallback when IR style token refs can't be resolved.
+    """
+    if db_font is None:
+        db_font = {}
+
+    family = _resolve_text_value(
+        style.get("fontFamily"), db_font.get("font_family", "Inter"), tokens,
+    )
+    if not isinstance(family, str):
+        family = "Inter"
     family = _normalize_font_family(family)
-    weight = style.get("fontWeight")
-    if isinstance(weight, str) and weight.startswith("{"):
-        resolved, _ = resolve_style_value(weight, tokens)
-        weight = resolved
-    figma_style = font_weight_to_style(weight)
+
+    weight = _resolve_text_value(
+        style.get("fontWeight"), db_font.get("font_weight"), tokens,
+    )
+    figma_style = normalize_font_style(family, font_weight_to_style(weight))
     lines.append(f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
 
-    font_size = style.get("fontSize")
+    font_size = _resolve_text_value(
+        style.get("fontSize"), db_font.get("font_size"), tokens,
+    )
     if font_size is not None:
-        if isinstance(font_size, str) and font_size.startswith("{"):
-            pass  # token ref, skip direct set
-        else:
-            lines.append(f"{var}.fontSize = {font_size};")
+        lines.append(f"{var}.fontSize = {font_size};")
 
     text = element.get("props", {}).get("text", "")
     if text:

@@ -13,6 +13,7 @@ from dd.generate import (
     font_weight_to_style,
     generate_figma_script,
     generate_screen,
+    normalize_font_style,
     hex_to_figma_rgb,
     resolve_style_value,
 )
@@ -89,6 +90,38 @@ class TestFontWeightToStyle:
 
     def test_string_passthrough(self):
         assert font_weight_to_style("Bold") == "Bold"
+
+
+class TestNormalizeFontStyle:
+    """Verify family-aware font style normalization."""
+
+    def test_inter_semi_bold_unchanged(self):
+        assert normalize_font_style("Inter", "Semi Bold") == "Semi Bold"
+
+    def test_sf_pro_text_semibold(self):
+        assert normalize_font_style("SF Pro Text", "Semi Bold") == "Semibold"
+
+    def test_sf_pro_display_semibold(self):
+        assert normalize_font_style("SF Pro Display", "Semi Bold") == "Semibold"
+
+    def test_sf_pro_semibold(self):
+        assert normalize_font_style("SF Pro", "Semi Bold") == "Semibold"
+
+    def test_baskerville_semibold(self):
+        assert normalize_font_style("Baskerville", "Semi Bold") == "SemiBold"
+
+    def test_regular_unchanged(self):
+        assert normalize_font_style("SF Pro Text", "Regular") == "Regular"
+
+    def test_bold_unchanged(self):
+        assert normalize_font_style("SF Pro Text", "Bold") == "Bold"
+
+    def test_sf_pro_extra_bold(self):
+        assert normalize_font_style("SF Pro Text", "Extra Bold") == "Extra Bold"
+
+    def test_helvetica_no_semi_bold(self):
+        """Helvetica Neue has no Semi Bold — should stay as-is (will fail at load time, not our concern)."""
+        assert normalize_font_style("Helvetica Neue", "Semi Bold") == "Semi Bold"
 
 
 class TestCollectFonts:
@@ -526,11 +559,11 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "importComponentByKeyAsync" in script
-        assert '"abc123"' in script
+        assert "getNodeByIdAsync" in script
+        assert '"123:456"' in script
         assert "createInstance()" in script
 
     def test_mode1_skips_layout_and_visual(self):
@@ -543,6 +576,7 @@ class TestGenerateFigmaScriptFromDB:
             -1: {"bindings": []},
             -2: {
                 "component_key": "abc123",
+                "component_figma_id": "123:456",
                 "fills": json.dumps([{"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0, "a": 1}}]),
                 "bindings": [],
             },
@@ -563,7 +597,7 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "button-1": -2, "icon-1": -3}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
             -3: {"bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
@@ -577,7 +611,7 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "Save Changes" in script
@@ -592,7 +626,7 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "findOne" not in script
@@ -624,7 +658,7 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "Settings" in script
@@ -639,7 +673,7 @@ class TestGenerateFigmaScriptFromDB:
         spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "Settings" in script
@@ -1158,6 +1192,7 @@ class TestVisibilityOverrides:
             -1: {"bindings": []},
             -2: {
                 "component_key": "abc123",
+                "component_figma_id": "123:456",
                 "bindings": [],
                 "hidden_children": [
                     {"name": "Title"},
@@ -1178,7 +1213,7 @@ class TestVisibilityOverrides:
         spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
         db_visuals = {
             -1: {"bindings": []},
-            -2: {"component_key": "abc123", "bindings": [], "hidden_children": []},
+            -2: {"component_key": "abc123", "component_figma_id": "123:456", "bindings": [], "hidden_children": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".visible = false" not in script
@@ -1207,6 +1242,7 @@ class TestVisibilityOverrides:
             -1: {"bindings": []},
             -2: {
                 "component_key": "abc123",
+                "component_figma_id": "123:456",
                 "bindings": [],
                 "hidden_children": [{"name": 'icon/back "test"'}],
             },
@@ -1822,6 +1858,419 @@ class TestMode1L0Properties:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "opacity = 0.5" in script
+
+
+class TestDeferredCanary:
+    """Verify deferred section has yield, try/catch, and canary."""
+
+    def _absolute_spec(self) -> dict:
+        """Spec with absolute parent + positioned child — triggers deferred lines."""
+        return _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["header-1"],
+            },
+            "header-1": {
+                "type": "header",
+                "layout": {"position": {"x": 0, "y": 50}, "sizing": {"width": 428, "height": 111}},
+            },
+        })
+
+    def _autolayout_spec(self) -> dict:
+        """Spec with auto-layout only — no deferred lines."""
+        return _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical", "sizing": {"width": 428, "height": 926}},
+                "children": ["card-1"],
+            },
+            "card-1": {"type": "card"},
+        })
+
+    def test_canary_emitted_when_deferred_lines_present(self):
+        spec = self._absolute_spec()
+        script, _ = generate_figma_script(spec)
+        assert 'M["__canary"] = "deferred_ok"' in script
+
+    def test_canary_not_emitted_when_no_deferred_lines(self):
+        spec = self._autolayout_spec()
+        script, _ = generate_figma_script(spec)
+        assert "__canary" not in script
+
+    def test_deferred_wrapped_in_try_catch(self):
+        spec = self._absolute_spec()
+        script, _ = generate_figma_script(spec)
+        assert "try {" in script
+        assert "} catch (_e) {" in script
+        assert '"deferred_error: "' in script
+
+    def test_yield_before_deferred_section(self):
+        spec = self._absolute_spec()
+        script, _ = generate_figma_script(spec)
+        lines = script.split("\n")
+        yield_idx = next(i for i, l in enumerate(lines) if "await new Promise" in l)
+        deferred_idx = next(i for i, l in enumerate(lines) if "deferred until all children" in l)
+        assert yield_idx < deferred_idx
+
+    def test_canary_after_all_deferred_lines(self):
+        spec = self._absolute_spec()
+        script, _ = generate_figma_script(spec)
+        lines = script.split("\n")
+        canary_idx = next(i for i, l in enumerate(lines) if "__canary" in l and "deferred_ok" in l)
+        position_indices = [i for i, l in enumerate(lines) if ".x = " in l or ".y = " in l]
+        assert position_indices, "Expected position lines in deferred section"
+        assert canary_idx > max(position_indices)
+
+    def test_deferred_with_constraints_from_db(self):
+        spec = self._absolute_spec()
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"constraint_h": "MIN", "constraint_v": "MIN", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = script.split("\n")
+        constraint_lines = [l for l in lines if ".constraints = " in l]
+        assert constraint_lines, "Expected constraint lines"
+        for cl in constraint_lines:
+            assert cl.startswith("  "), f"Constraint line should be indented (inside try): {cl!r}"
+
+
+class TestUnpublishedComponentFallback:
+    """Verify Mode 1 falls back to instance figma_node_id for unpublished components."""
+
+    def test_uses_figma_node_id_when_no_component_figma_id(self):
+        """When component_figma_id is NULL, use the instance's figma_node_id to get main component."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["indicator-1"]},
+            "indicator-1": {"type": "instance"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "indicator-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "unpublished_key_abc",
+                "component_figma_id": None,
+                "figma_node_id": "2255:76359",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "importComponentByKeyAsync" not in script
+        assert "getMainComponentAsync" in script
+        assert "2255:76359" in script
+
+    def test_uses_component_figma_id_when_available(self):
+        """Normal path: component_figma_id present → use getNodeByIdAsync directly."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "published_key",
+                "component_figma_id": "123:456",
+                "figma_node_id": "999:888",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "getMainComponentAsync" not in script
+        assert "importComponentByKeyAsync" not in script
+        assert "123:456" in script
+
+    def test_fallback_creates_frame_when_no_ids(self):
+        """When both component_figma_id and figma_node_id are missing, fall back to createFrame."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["thing-1"]},
+            "thing-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "thing-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "orphan_key",
+                "component_figma_id": None,
+                "figma_node_id": None,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "createFrame()" in script
+        assert "importComponentByKeyAsync" not in script
+        assert "getMainComponentAsync" not in script
+
+
+class TestOverrideGrouping:
+    """Verify findOne calls are grouped by target to reduce tree traversals."""
+
+    def _mode1_spec_with_overrides(self, overrides: list[dict]) -> tuple[dict, dict]:
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "instance_overrides": overrides,
+            },
+        }
+        return spec, db_visuals
+
+    def test_self_overrides_no_findone(self):
+        spec, db_visuals = self._mode1_spec_with_overrides([
+            {"type": "FILLS", "child_id": ":self:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+        ])
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".fills = " in script
+        assert "findOne" not in script or script.count("findOne") == 0
+
+    def test_self_width_no_findone(self):
+        spec, db_visuals = self._mode1_spec_with_overrides([
+            {"type": "WIDTH", "child_id": ":self:width", "value": "200"},
+        ])
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".resize(200," in script
+        assert "findOne" not in script
+
+    def test_grouped_overrides_single_findone(self):
+        spec, db_visuals = self._mode1_spec_with_overrides([
+            {"type": "FILLS", "child_id": ";1334:005:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
+        ])
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        id_finds = script.count('n.id.endsWith(";1334:005")')
+        assert id_finds == 1, f"Expected 1 findOne for ;1334:005 but got {id_finds}"
+
+    def test_different_targets_separate_findone(self):
+        spec, db_visuals = self._mode1_spec_with_overrides([
+            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
+            {"type": "BOOLEAN", "child_id": ";1334:006:visible", "value": "false"},
+        ])
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'n.id.endsWith(";1334:005")' in script
+        assert 'n.id.endsWith(";1334:006")' in script
+
+    def test_findone_count_reduced(self):
+        spec, db_visuals = self._mode1_spec_with_overrides([
+            {"type": "INSTANCE_SWAP", "child_id": ";1334:005", "value": "999:111"},
+            {"type": "FILLS", "child_id": ";1334:005:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
+            {"type": "BOOLEAN", "child_id": ";1334:006:visible", "value": "false"},
+            {"type": "FILLS", "child_id": ":self:fills", "value": '[{"type":"SOLID","color":{"r":0,"g":1,"b":0}}]'},
+        ])
+        db_visuals[-2]["instance_overrides"][-1]["child_id"] = ":self:fills"
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        findone_count = script.count("findOne")
+        assert findone_count == 2, f"Expected 2 findOne calls (;1334:005 + ;1334:006) but got {findone_count}"
+
+
+class TestTokenRefL0Fallback:
+    """Verify renderer falls back to DB values when token refs can't be resolved.
+
+    Progressive fallback: L2 (token) → L0 (raw DB). When the IR style has
+    a token ref like {type.display.s32.fontSize} but the token isn't in the
+    tokens dict, the renderer must use the DB value (font_size=32) instead
+    of skipping the property entirely.
+    """
+
+    def test_font_size_falls_back_to_db_when_token_unresolvable(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {
+                "type": "text",
+                "style": {"fontSize": "{type.display.s32.fontSize}", "fontWeight": "{type.display.s32.fontWeight}"},
+                "props": {"text": "Hello"},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"font_family": "Inter", "font_size": 32.0, "font_weight": 600, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "fontSize = 32" in script, "Should fall back to DB font_size when token is unresolvable"
+
+    def test_font_size_uses_resolved_token_when_available(self):
+        spec = _make_spec(
+            {
+                "screen-1": {"type": "screen", "children": ["text-1"]},
+                "text-1": {
+                    "type": "text",
+                    "style": {"fontSize": "{type.display.s32.fontSize}"},
+                    "props": {"text": "Hello"},
+                },
+            },
+            tokens={"type.display.s32.fontSize": 32},
+        )
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"font_size": 24.0, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "fontSize = 32" in script, "Should use resolved token value (32) not DB value (24)"
+
+    def test_font_weight_falls_back_to_db(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {
+                "type": "text",
+                "style": {"fontWeight": "{type.body.fontWeight}"},
+                "props": {"text": "Hello"},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"font_weight": 700, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert '"Bold"' in script, "Should fall back to DB font_weight (700 → Bold)"
+
+    def test_literal_font_size_still_works(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {
+                "type": "text",
+                "style": {"fontSize": 18},
+                "props": {"text": "Hello"},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "fontSize = 18" in script
+
+
+class TestPerCornerRadius:
+    """Verify per-corner radius emission (asymmetric cornerRadius)."""
+
+    def test_per_corner_radius_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "corner_radius": '{"tl": 28, "tr": 28, "bl": 0, "br": 0}',
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "topLeftRadius = 28" in script
+        assert "topRightRadius = 28" in script
+        assert "bottomLeftRadius = 0" in script
+        assert "bottomRightRadius = 0" in script
+
+    def test_uniform_radius_still_works(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["card-1"]},
+            "card-1": {"type": "card"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "card-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"corner_radius": "16", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "cornerRadius = 16" in script
+        assert "topLeftRadius" not in script
+
+
+class TestFillTypeCoverage:
+    """Verify _emit_fills handles every fill type that normalize_fills produces.
+
+    This structural test prevents the 'normalize but forget to emit' gap
+    pattern. If normalize_fills adds a new type, this test fails until
+    _emit_fills handles it.
+    """
+
+    def test_solid_fill_emitted(self):
+        from dd.generate import _emit_fills
+        fills = [{"type": "solid", "color": "#FF0000"}]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "SOLID" in lines[0]
+
+    def test_gradient_linear_emitted(self):
+        from dd.generate import _emit_fills
+        fills = [{
+            "type": "gradient-linear",
+            "stops": [{"color": "#000000", "position": 0}, {"color": "#FFFFFF", "position": 1}],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+        }]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "GRADIENT_LINEAR" in lines[0]
+
+    def test_gradient_radial_emitted(self):
+        from dd.generate import _emit_fills
+        fills = [{
+            "type": "gradient-radial",
+            "stops": [{"color": "#000000", "position": 0}, {"color": "#FFFFFF", "position": 1}],
+            "gradientTransform": [[1, 0, 0.5], [0, 1, 0.5]],
+        }]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "GRADIENT_RADIAL" in lines[0]
+
+    def test_gradient_without_transform_skipped(self):
+        """Gradients without gradientTransform (supplement not run) are skipped."""
+        from dd.generate import _emit_fills
+        fills = [{
+            "type": "gradient-linear",
+            "stops": [{"color": "#000000", "position": 0}],
+            "handlePositions": [{"x": 0, "y": 0}],
+        }]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 0
+
+    def test_mixed_solid_and_gradient(self):
+        from dd.generate import _emit_fills
+        fills = [
+            {"type": "solid", "color": "#FF0000"},
+            {"type": "gradient-linear",
+             "stops": [{"color": "#000000", "position": 0}, {"color": "#FFFFFF", "position": 1}],
+             "gradientTransform": [[1, 0, 0], [0, 1, 0]]},
+        ]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "SOLID" in lines[0]
+        assert "GRADIENT_LINEAR" in lines[0]
+
+    def test_gradient_with_opacity(self):
+        from dd.generate import _emit_fills
+        fills = [{
+            "type": "gradient-linear",
+            "stops": [{"color": "#000000", "position": 0}, {"color": "#000000", "position": 1}],
+            "gradientTransform": [[0, -1, 1], [1, 0, 0]],
+            "opacity": 0.1,
+        }]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "0.1" in lines[0]
+
+    def test_all_normalize_fill_types_have_emit_handler(self):
+        """Structural coverage: every type normalize_fills can produce must be
+        handled by _emit_fills. This test fails if a new fill type is added
+        to normalize_fills without a corresponding handler in _emit_fills."""
+        from dd.generate import _GRADIENT_EMIT_MAP
+        from dd.ir import _GRADIENT_TYPE_MAP
+
+        ir_gradient_types = set(_GRADIENT_TYPE_MAP.values())
+        emit_gradient_types = set(_GRADIENT_EMIT_MAP.keys())
+        assert ir_gradient_types == emit_gradient_types, (
+            f"IR produces gradient types {ir_gradient_types} but renderer "
+            f"only handles {emit_gradient_types}"
+        )
 
 
 # ---------------------------------------------------------------------------

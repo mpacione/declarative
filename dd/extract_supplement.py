@@ -129,6 +129,31 @@ async function walkNode(node) {{
     }}
   }}
 
+  // Gradient enrichment: capture gradientTransform from Plugin API fills.
+  // The REST API stores gradientHandlePositions (3 points). The Plugin API
+  // provides gradientTransform (2x3 matrix). Both representations are needed:
+  // different renderers prefer different formats. The supplement ENRICHES the
+  // existing fills column — it preserves REST API fields while adding Plugin
+  // API fields. ORDERING: supplement must run AFTER REST extraction.
+  // If REST extraction re-runs after supplement, the enrichment is lost.
+  if (node.fills && node.fills.length > 0) {{
+    const gts = [];
+    for (let i = 0; i < node.fills.length; i++) {{
+      const f = node.fills[i];
+      if (f.gradientTransform) {{
+        gts.push({{ fillIndex: i, gradientTransform: f.gradientTransform }});
+      }}
+    }}
+    if (gts.length > 0) entry.gt = gts;
+  }}
+
+  // textAutoResize: Plugin API-only field for TEXT nodes.
+  // The REST API does not return this field. Without it, the renderer
+  // defaults to WIDTH_AND_HEIGHT which causes text to resize incorrectly.
+  if (node.type === 'TEXT' && node.textAutoResize) {{
+    entry.tar = node.textAutoResize;
+  }}
+
   if (node.layoutMode === 'GRID') {{
     if ('gridRowCount' in node) entry.gr = node.gridRowCount;
     if ('gridColumnCount' in node) entry.gc = node.gridColumnCount;
@@ -246,6 +271,11 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
         if "gcs" in fields:
             updates["grid_column_sizes"] = json.dumps(fields["gcs"]) if isinstance(fields["gcs"], list) else fields["gcs"]
 
+        # textAutoResize: Plugin API-only field for TEXT nodes.
+        # REST API does not return this. Stored as text_auto_resize column.
+        if "tar" in fields:
+            updates["text_auto_resize"] = fields["tar"]
+
         if updates:
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             values = list(updates.values()) + [figma_node_id]
@@ -253,6 +283,31 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
                 f"UPDATE nodes SET {set_clause} WHERE figma_node_id = ?",
                 values,
             )
+
+        # Gradient enrichment: merge Plugin API gradientTransform into existing
+        # fills JSON. This ENRICHES — it preserves all existing fields (including
+        # REST API gradientHandlePositions) and adds gradientTransform alongside.
+        # ORDERING: This must run after REST extraction. If REST extraction
+        # re-runs after supplement, the enrichment is lost and supplement must
+        # re-run to restore it.
+        if "gt" in fields:
+            row = conn.execute(
+                "SELECT fills FROM nodes WHERE figma_node_id = ?",
+                (figma_node_id,),
+            ).fetchone()
+            if row and row[0]:
+                try:
+                    existing_fills = json.loads(row[0])
+                    for gt_entry in fields["gt"]:
+                        idx = gt_entry["fillIndex"]
+                        if 0 <= idx < len(existing_fills):
+                            existing_fills[idx]["gradientTransform"] = gt_entry["gradientTransform"]
+                    conn.execute(
+                        "UPDATE nodes SET fills = ? WHERE figma_node_id = ?",
+                        (json.dumps(existing_fills), figma_node_id),
+                    )
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
 
         # Instance overrides — registry-driven storage
         if "ov" in fields:
