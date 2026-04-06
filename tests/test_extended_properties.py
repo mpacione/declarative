@@ -322,9 +322,9 @@ class TestInstanceOverrideExtraction:
             "200:10": {
                 "ck": "nav_key_123",
                 "ov": [
-                    {"cid": ";1835:155173", "f": ["characters"], "chars": "Meme-00001", "t": "TEXT"},
+                    {"cid": ";1835:155173", "f": ["characters"], "text_content": "Meme-00001", "t": "TEXT"},
                     {"cid": ";1334:10838", "f": ["swap"], "swapId": "1315:139154", "t": "INSTANCE"},
-                    {"cid": ";1835:25921", "f": ["visible"], "vis": False, "t": "TEXT"},
+                    {"cid": ";1835:25921", "f": ["visible"], "visible": False, "t": "TEXT"},
                 ],
             }
         }
@@ -352,7 +352,7 @@ class TestInstanceOverrideExtraction:
         supplement_data = {
             "200:10": {
                 "ov": [
-                    {"cid": ";1835:155173", "f": ["characters"], "chars": "Hello", "t": "TEXT"},
+                    {"cid": ";1835:155173", "f": ["characters"], "text_content": "Hello", "t": "TEXT"},
                 ],
             }
         }
@@ -389,7 +389,7 @@ class TestInstanceOverrideExtraction:
                 "ov": [
                     {"cid": ":self", "f": ["fills", "height", "width"], "t": "INSTANCE",
                      "fills": '[{"type":"SOLID","visible":false,"opacity":0.05}]',
-                     "w": 48, "h": 52},
+                     "width": 48, "height": 52},
                 ],
             }
         }
