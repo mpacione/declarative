@@ -260,14 +260,18 @@ If we cannot faithfully reproduce a screen from our own database, the data is un
 
 Extract screen 184 from the Dank file into the DB. Generate Figma Plugin API JavaScript from the DB. Execute it in Figma. The result must be visually indistinguishable from the original at 1:1 zoom.
 
-### Current Status
+### Current Status (2026-04-06)
 
-Screen 184 (Dank meme editor, 203 nodes, 428×926):
-- Extraction: Complete (all 203 nodes in DB with 72 columns each)
-- Classification (L1): 114 of 203 nodes classified (56% for this screen)
-- Token Bindings (L2): bindings exist for classified nodes
-- Rendering: **Structurally broken** — `generate_screen()` calls `generate_ir()` which filters through L1 classification (INNER JOIN on `screen_component_instances`), dropping 89 unclassified nodes. Tree wiring uses `parent_instance_id` (L1 relationship) instead of `parent_id` (L0 structure).
-- Root cause: The renderer reads L1 as a filter instead of reading L0 as the base with L1/L2 as progressive enrichment.
+Round-trip structurally proven on 4 screens (184, 185, 188, 238). The renderer now implements progressive fallback correctly:
+
+- **L0 → L1 → L2 fallback**: All 203+ nodes enter the IR via LEFT JOIN. L1/L2 enrich as annotations, never filter.
+- **Mode 1 instances**: Real component instances via `getNodeByIdAsync().createInstance()` with full override application (17 override types, 69,866 total overrides across all screens)
+- **Mode 2 frames**: Created from L0 properties with registry-driven visual emission
+- **Property registry** (`dd/property_registry.py`): Single source of truth for 58 Figma properties. Extraction, query (51 columns), and renderer all reference it — prevents the "extract but forget to emit" gap pattern.
+- **Override types captured**: BOOLEAN (visibility), FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN, TEXT
+- **Default clearing**: `fills=[]` and `clipsContent=false` explicitly set to override Figma's createFrame() defaults
+- **Layout sizing**: Auto-layout containers set own sizing pre-appendChild; non-auto-layout children deferred to post-appendChild
+- **Remaining gaps**: Image fills (no byte extraction), PROXY_EXECUTE position reliability (intermittent), font name normalization
 
 ### What Must Work
 

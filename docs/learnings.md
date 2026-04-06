@@ -507,3 +507,34 @@ New `instance_overrides` table tracks what properties an INSTANCE node has overr
 
 ### component_key Column
 The `component_key` field on nodes (populated from `mainComponent.key` via Plugin API) is the critical piece for Conjure screen generation. It's what `importComponentByKeyAsync()` needs to instantiate a component from a library.
+
+---
+
+## Round-Trip Renderer Learnings (2026-04-06)
+
+### Selective Property Propagation — The Systemic Pattern
+Every bug in the round-trip session (textAutoResize, layoutSizing, clipsContent, rotation, default fills, Mode 1 visibility) followed the same pattern: a property was handled at some pipeline layers but missed at others. Each layer independently decided which properties to handle, creating cascading gaps. The fix: `dd/property_registry.py` — a single authoritative list of 58 Figma properties that all layers reference. Override extraction went from 11 to 17 types (59K→70K overrides). Query went from 30 to 51 columns.
+
+### Figma Default Leak Pattern
+`figma.createFrame()` creates frames with `clipsContent=true` and a white fill `[{type:"SOLID",color:{r:1,g:1,b:1}}]`. If the original frame was transparent or non-clipping, the renderer must EXPLICITLY set `fills=[]` and `clipsContent=false`. Any Figma property with a non-null default must be cleared when the DB value differs from the default.
+
+### layoutSizing Requires Parent Context — But Not Always
+Setting `layoutSizingHorizontal` on a node that isn't a child of an auto-layout frame throws. BUT auto-layout containers (nodes with `layoutMode`) CAN set their own layoutSizing before appendChild — they define their own context. Only non-auto-layout children (text, rectangles, non-layout frames) need deferral to post-appendChild.
+
+### Figma Override Field Name Aliases
+Figma's `node.overrides[].overriddenFields` uses DIFFERENT names than the Plugin API property names:
+- `primaryAxisSizingMode` → `layoutSizingHorizontal`
+- `counterAxisSizingMode` → `layoutSizingVertical`
+The property registry stores both names so extraction checks all aliases.
+
+### Rotation: REST API = Radians, Plugin API = Degrees
+The REST API returns rotation in radians (-π to π). The Plugin API uses degrees (-180 to 180). The renderer must convert via `math.degrees()`.
+
+### Mode 1 Instances Need L0 Properties
+After `createInstance()`, the instance inherits the master's defaults. But the DB may show different rotation, opacity, or visibility. These L0 properties must be applied directly to the instance after creation — they're not "overrides" in Figma's sense, just property differences.
+
+### PROXY_EXECUTE Reliability
+Generated scripts are structurally correct but deferred position lines intermittently fail to apply. PROXY_EXECUTE returns SUCCESS but all children remain at x=0,y=0. No correlation with script size. Investigation needed — may be a WebSocket message ordering or Figma plugin runtime timeout issue.
+
+### Font Style Naming Varies by Family
+"Inter" uses "Semi Bold" (with space). "SF Pro Text" uses "Semibold" (no space). Font loading will fail with the wrong style name. Needs systematic per-family normalization.

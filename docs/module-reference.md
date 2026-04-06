@@ -1,6 +1,27 @@
 # Module Reference — Complete Capability Inventory
 
-> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture. Generated 2026-04-02 from deep code analysis.
+> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture. Updated 2026-04-06.
+
+---
+
+## Cross-Cutting: Property Registry
+
+### dd/property_registry.py — Unified Property Registry
+Single source of truth for all 58 Figma node properties. Every pipeline layer references this registry instead of maintaining ad-hoc property lists.
+
+| Function | Purpose |
+|----------|---------|
+| `PROPERTIES` | Tuple of 58 `FigmaProperty` dataclass entries |
+| `by_db_column(column)` | Look up property by DB column name |
+| `by_figma_name(name)` | Look up property by Figma Plugin API name |
+| `by_override_type(type)` | Look up property by instance override type |
+| `by_override_field(field)` | Look up property by Figma overriddenFields name |
+| `db_columns_for_visual_query()` | Column names for query_screen_visuals SELECT |
+| `overrideable_properties()` | Properties with override_fields defined |
+
+Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` (may include aliases like primaryAxisSizingMode) → `category` → `value_type` → `override_type` → `default_value`.
+
+**Used by**: extract_supplement.py (override JS generation), ir.py (query column list), generate.py (generic override dispatch).
 
 ---
 
@@ -36,15 +57,16 @@ Generates async Figma Plugin JS to walk node trees and extract 72 columns per no
 **Captures**: fills, strokes, effects (JSON), corner radius, opacity, blend mode, layout mode, padding (4 sides), item spacing, counter axis spacing, alignment, sizing modes, layout_positioning, Grid properties (6 fields), font properties (8 fields), text content, constraints, rotation, clips_content, component_key, component_figma_id. Total: 72 columns.
 
 ### dd/extract_supplement.py — Supplemental Plugin API Extraction
-Targeted extraction for Plugin API-only fields: `componentKey`, `layoutPositioning`, and Grid properties. CLI: `dd extract-supplement`.
+Registry-driven extraction for Plugin API-only fields: `componentKey`, `layoutPositioning`, Grid properties, and **all instance overrides**. CLI: `dd extract-supplement`.
 
 | Function | Purpose |
 |----------|---------|
-| `generate_supplement_script(screen_node_ids)` | Generate compact JS for batch screen extraction (only non-default values) |
-| `apply_supplement(conn, supplement_data)` | Update nodes table with supplemental data from compact format |
+| `generate_supplement_script(screen_node_ids)` | Generate JS with registry-driven override checks (~40 properties from `dd/property_registry.py`) |
+| `_build_override_js_checks()` | Generates JS code for all overrideable properties from the registry |
+| `apply_supplement(conn, supplement_data)` | Registry-driven storage: stores any override type defined in the registry |
 | `run_supplement(conn, execute_fn, batch_size, delay)` | **Orchestrator**: auto-batch, auto-retry on 64KB truncation, individual retry for failed screens |
 
-**Auto-batching**: Default 5 screens per call. On 64KB response truncation, halves batch size and retries. Falls back to individual screen extraction for persistent failures.
+**Override extraction**: Captures 17 override types (69,866 total across 204 screens): BOOLEAN, FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN, TEXT. Registry-driven — adding a property to the registry automatically adds override extraction.
 
 ### dd/extract_bindings.py — Token Binding Extraction
 Normalizes Figma node properties into token binding rows and manages binding lifecycle.
@@ -197,22 +219,20 @@ Agent-driven refinement: rename, merge, split, alias, accept, reject tokens.
 
 ## Layer 3: Composition (1 module — needs refactoring)
 
-### dd/ir.py — IR Generation (64 tests)
+### dd/ir.py — IR Generation (103 tests)
 Transforms classified screen data + token bindings into CompositionSpec.
 
 | Function | Purpose |
 |----------|---------|
 | `generate_ir(conn, screen_id)` | Main entry: query → build spec → serialize |
 | `query_screen_for_ir(conn, screen_id)` | Fetch classified nodes, bindings, tokens from DB |
-| `query_screen_visuals(conn, screen_id)` | Fetch ALL visual properties for all nodes in a screen, keyed by node_id. Renderer's DB access path. |
+| `query_screen_visuals(conn, screen_id)` | Registry-driven: SELECTs 51 columns from property registry. Returns ALL visual, layout, text properties + bindings + instance overrides + child swaps for all nodes in a screen. Renderer's DB access path. |
+| `_hoist_descendant_overrides(conn, ids, result)` | Hoists overrides from nested Mode 1 instances to their top-level ancestor, transforming `:self` to master-relative paths with deduplication. |
 | `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers. Returns `_node_id_map` (element_id → node_id). |
 | `map_node_to_element(node)` | Convert classified node to IR element (type, layout, visual, style, props) |
-| `normalize_fills(raw_json, bindings)` | Normalize Figma fills JSON to IR fill array |
-| `normalize_strokes(raw_json, bindings, node)` | Normalize Figma strokes JSON to IR stroke array |
-| `normalize_effects(raw_json, bindings)` | Normalize Figma effects JSON to IR effect array |
-| `normalize_corner_radius(raw_value)` | Normalize to number or per-corner dict |
+| `normalize_fills/strokes/effects/corner_radius` | Normalize Figma JSON to IR format with token binding overlay |
 
-**Current state**: IR is thin — no visual section. Visual data is read from DB by the generator via `query_screen_visuals` + `build_visual_from_db`. Semantic tree construction (200→20 elements) and slot filling not yet implemented.
+**Current state**: IR is thin — visual data read from DB by the generator via `query_screen_visuals` + `build_visual_from_db`. `query_screen_visuals` column list is registry-driven — automatically includes any property added to `dd/property_registry.py`.
 
 ---
 
@@ -271,24 +291,26 @@ Bridges generation pipeline to existing rebind infrastructure.
 | `generate_rebind_script(entries)` | Generate compact pipe-delimited rebind JS |
 
 ### dd/generate.py — Figma Generation (81 tests)
-Generates Figma Plugin API JavaScript from CompositionSpec. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + template visuals) for keyless types. Container types in `_FILL_WIDTH_TYPES` get `layoutSizingHorizontal="FILL"` after appendChild. Mode 1 text overrides use smart targeting: searches for TEXT nodes named Title/Label/Heading first, falls back to `findOne(TEXT)`. Supports `text_target` prop for explicit targeting and `subtitle` prop for secondary text.
+Generates Figma Plugin API JavaScript from CompositionSpec + DB visuals. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + L0 properties) for keyless types.
+
+**Key patterns:**
+- **Progressive fallback**: DB visuals → IR layout → heuristic fallback for every property
+- **Deferred positioning**: position + constraints + non-auto-layout layoutSizing set after all appendChild calls
+- **Default clearing**: fills=[], clipsContent=false explicitly set to override Figma createFrame() defaults
+- **Mode 1 L0 properties**: rotation (radians→degrees), opacity, visibility applied after createInstance()
+- **Generic override handler**: Registry-defined override types dispatched automatically via `dd/property_registry.py`
+- **17 override types**: TEXT, BOOLEAN, FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H/V, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN
 
 | Function | Purpose |
 |----------|---------|
-| `generate_figma_script(spec, db_visuals=None, page_name=None)` | Walk IR, emit JS. `db_visuals` switches visual source to DB. `page_name` creates a named page. |
-| `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script (uses DB path) |
-| `build_visual_from_db(node_visual)` | Normalize raw DB visual data to the format `_emit_visual` expects |
-| `_build_text_finder(var, text_target, subtitle)` | Build JS expression to find the right TEXT node in a Mode 1 instance |
-| `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing, alignment |
-| `_emit_visual(var, eid, visual, tokens)` | Emit fills, strokes, effects, cornerRadius, opacity |
-| `_emit_fills(var, eid, fills, tokens)` | Emit Figma paint array from IR fills |
-| `_emit_strokes(var, eid, strokes, tokens)` | Emit Figma stroke array |
-| `_emit_effects(var, eid, effects, tokens)` | Emit Figma effects array |
-| `_emit_text_props(var, element, style, tokens, lines)` | Emit fontName, fontSize, characters |
+| `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. |
+| `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script |
+| `build_visual_from_db(node_visual)` | Normalize raw DB data: fills, strokes, effects, cornerRadius, opacity, clipsContent, rotation (rad→deg), blendMode, strokeCap/Join, font data |
+| `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing (auto-layout containers only — non-auto-layout deferred) |
+| `_emit_visual(var, eid, visual, tokens)` | Emit all visual properties + default clearing |
+| `_emit_fills/strokes/effects(...)` | Specialized emitters for complex JSON properties |
+| `_emit_text_props(var, element, style, tokens, lines)` | Emit fontName, fontSize, characters, textAutoResize |
 | `collect_fonts(spec)` | Collect unique (family, style) pairs for font loading |
-| `hex_to_figma_rgb(hex_str)` | Convert hex → Figma {r, g, b} dict |
-| `resolve_style_value(value, tokens)` | Resolve token ref or pass through literal |
-| `font_weight_to_style(weight)` | Map numeric weight → Figma style name ("Semi Bold", etc.) |
 
 ### dd/export_figma_vars.py — Figma Variable Export (50 tests)
 Push tokens to Figma as variables.
