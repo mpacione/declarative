@@ -401,6 +401,8 @@ def format_js_value(value: Any, value_type: str) -> str:
     Centralizes type-aware formatting so templates don't embed quoting.
     """
     if value_type == "boolean":
+        if isinstance(value, str):
+            return "true" if value.lower() in ("true", "1") else "false"
         return "true" if value else "false"
     if value_type in ("enum", "string"):
         return f'"{_escape_js(str(value))}"'
@@ -740,13 +742,13 @@ def generate_figma_script(
                 for ov in inst_overrides:
                     grouped.setdefault(ov["target"], []).append(ov)
 
-                # Self overrides — no findOne needed
+                # Self overrides — apply directly to instance variable
                 for ov in grouped.pop(":self", []):
                     op = _emit_override_op(ov, var, node_id_vars, var, deferred_lines)
                     if op:
                         lines.append(op)
 
-                # Non-self overrides — one findOne per unique target
+                # Child overrides — one findOne per unique target
                 for target_id, ovs in grouped.items():
                     esc_target = _escape_js(target_id)
                     ops = [_emit_override_op(ov, "_c", node_id_vars, var, deferred_lines) for ov in ovs]

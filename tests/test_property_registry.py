@@ -119,6 +119,22 @@ class TestFormatJsValue:
         from dd.generate import format_js_value
         assert format_js_value(False, "boolean") == "false"
 
+    def test_boolean_string_true(self):
+        from dd.generate import format_js_value
+        assert format_js_value("true", "boolean") == "true"
+
+    def test_boolean_string_false(self):
+        from dd.generate import format_js_value
+        assert format_js_value("false", "boolean") == "false"
+
+    def test_boolean_int_0(self):
+        from dd.generate import format_js_value
+        assert format_js_value(0, "boolean") == "false"
+
+    def test_boolean_int_1(self):
+        from dd.generate import format_js_value
+        assert format_js_value(1, "boolean") == "true"
+
     def test_json_dict(self):
         from dd.generate import format_js_value
         result = format_js_value({"value": 24, "unit": "PIXELS"}, "json")
