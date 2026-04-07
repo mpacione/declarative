@@ -208,6 +208,25 @@ class TestRegistryEmitHelper:
         assert any("clipsContent = false" in l for l in lines_false)
 
 
+    def test_token_refs_collected_for_bound_properties(self):
+        from dd.renderers.figma import emit_from_registry
+        visual = {
+            "opacity": 0.5,
+            "cornerRadius": 8.0,
+            "_token_refs": {"opacity": "opacity.half", "cornerRadius": "radius.md"},
+        }
+        lines, refs = emit_from_registry("v", "e1", visual, {})
+        ref_map = {prop: token for (_, prop, token) in refs}
+        assert ref_map["opacity"] == "opacity.half"
+        assert ref_map["cornerRadius"] == "radius.md"
+
+    def test_no_token_refs_when_absent(self):
+        from dd.renderers.figma import emit_from_registry
+        visual = {"opacity": 0.5}
+        _, refs = emit_from_registry("v", "e1", visual, {})
+        assert not any(prop == "opacity" for (_, prop, _) in refs)
+
+
 class TestRegistryCompleteness:
     """Verify the registry covers all expected property categories."""
 

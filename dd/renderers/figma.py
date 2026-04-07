@@ -398,6 +398,7 @@ def emit_from_registry(
 
     lines: list[str] = []
     refs: list[tuple[str, str, str]] = []
+    token_refs_map = visual.get("_token_refs", {})
 
     for prop in PROPERTIES:
         spec = prop.emit.get(renderer)
@@ -418,6 +419,10 @@ def emit_from_registry(
             formatted = format_js_value(value, prop.value_type)
             line = spec.format(var=var, value=formatted, figma_name=prop.figma_name)
             lines.append(line)
+
+        # Collect token refs from registry-driven binding resolution
+        if prop.figma_name in token_refs_map:
+            refs.append((eid, prop.figma_name, token_refs_map[prop.figma_name]))
 
     return lines, refs
 

@@ -102,6 +102,14 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     bindings = node_visual.get("bindings", [])
     visual: dict[str, Any] = {}
     font_data: dict[str, Any] = {}
+    token_refs: dict[str, str] = {}
+
+    # Build binding lookup: property path → token name
+    binding_map = {
+        b["property"]: b["token_name"]
+        for b in bindings
+        if b.get("token_name")
+    }
 
     # Complex properties: custom normalization (need bindings or multi-column input)
     fills = normalize_fills(node_visual.get("fills"), bindings)
@@ -120,6 +128,11 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     if radius is not None:
         visual["cornerRadius"] = radius
 
+    # Token binding for cornerRadius (complex-normalized, check separately)
+    cr_token = binding_map.get("cornerRadius")
+    if cr_token:
+        token_refs["cornerRadius"] = cr_token
+
     # Registry-driven: all other properties
     for prop in PROPERTIES:
         if not prop.db_column:
@@ -135,7 +148,16 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
 
-        if prop.skip_emit_if_default and value == prop.default_value:
+        # Check for token binding via registry-declared path
+        has_binding = False
+        if prop.token_binding_path:
+            token_name = binding_map.get(prop.token_binding_path)
+            if token_name:
+                token_refs[prop.figma_name] = token_name
+                has_binding = True
+
+        # Don't skip default values when a token binding exists
+        if prop.skip_emit_if_default and value == prop.default_value and not has_binding:
             continue
 
         if prop.category == "text":
@@ -151,6 +173,9 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
 
     if font_data:
         visual["font"] = font_data
+
+    if token_refs:
+        visual["_token_refs"] = token_refs
 
     return visual
 

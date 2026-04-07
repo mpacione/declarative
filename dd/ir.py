@@ -163,13 +163,22 @@ def normalize_effects(
             hex_val = _figma_color_to_hex(color, 1.0)
             token = binding_map.get(f"effect.{i}.color")
             offset = effect.get("offset", {})
-            result.append({
+            entry = {
                 "type": "drop-shadow" if effect_type == "DROP_SHADOW" else "inner-shadow",
                 "color": f"{{{token}}}" if token else hex_val,
                 "offset": {"x": offset.get("x", 0), "y": offset.get("y", 0)},
                 "blur": effect.get("radius", 0),
                 "spread": effect.get("spread", 0),
-            })
+            }
+            # Collect token refs for non-color sub-properties
+            entry_refs: dict[str, str] = {}
+            for sub_prop in ("spread", "offsetX", "offsetY", "radius"):
+                sub_token = binding_map.get(f"effect.{i}.{sub_prop}")
+                if sub_token:
+                    entry_refs[sub_prop] = sub_token
+            if entry_refs:
+                entry["_token_refs"] = entry_refs
+            result.append(entry)
 
         elif effect_type in ("LAYER_BLUR", "BACKGROUND_BLUR"):
             result.append({

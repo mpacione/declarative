@@ -124,6 +124,30 @@ class TestNormalizeEffects:
         assert normalize_effects(None, []) == []
 
 
+    def test_spread_binding_produces_token_refs(self):
+        bindings = [{"property": "effect.0.spread", "token_name": "shadow.xs.spread", "resolved_value": "1.0"}]
+        effects = normalize_effects(SHADOW_JSON, bindings)
+        assert effects[0]["_token_refs"]["spread"] == "shadow.xs.spread"
+
+    def test_offset_bindings_produce_token_refs(self):
+        bindings = [
+            {"property": "effect.0.offsetX", "token_name": "shadow.xs.x", "resolved_value": "0"},
+            {"property": "effect.0.offsetY", "token_name": "shadow.xs.y", "resolved_value": "4"},
+        ]
+        effects = normalize_effects(SHADOW_JSON, bindings)
+        assert effects[0]["_token_refs"]["offsetX"] == "shadow.xs.x"
+        assert effects[0]["_token_refs"]["offsetY"] == "shadow.xs.y"
+
+    def test_radius_binding_produces_token_refs(self):
+        bindings = [{"property": "effect.0.radius", "token_name": "shadow.xs.blur", "resolved_value": "8"}]
+        effects = normalize_effects(SHADOW_JSON, bindings)
+        assert effects[0]["_token_refs"]["radius"] == "shadow.xs.blur"
+
+    def test_no_bindings_no_token_refs(self):
+        effects = normalize_effects(SHADOW_JSON, [])
+        assert "_token_refs" not in effects[0]
+
+
 class TestNormalizeCornerRadius:
     def test_uniform_number(self):
         assert normalize_corner_radius(8.0) == 8.0

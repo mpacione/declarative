@@ -34,6 +34,7 @@ class FigmaProperty:
     needs_json: bool = False
     skip_emit_if_default: bool = True
     emit: dict[str, Any] = field(default_factory=dict)
+    token_binding_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +54,8 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   needs_json=True,
                   emit={"figma": HANDLER}),
     FigmaProperty("strokeWeight", "stroke_weight", ("strokeWeight",), "visual", "number",
-                  emit={"figma": _UNIFORM}),
+                  emit={"figma": _UNIFORM},
+                  token_binding_path="strokeWeight"),
     FigmaProperty("strokeAlign", "stroke_align", ("strokeAlign",), "visual", "enum",
                   emit={"figma": _UNIFORM}),
     FigmaProperty("strokeCap", "stroke_cap", ("strokeCap",), "visual", "enum",
@@ -74,7 +76,8 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     # === VISUAL: Appearance ===
     FigmaProperty("opacity", "opacity", ("opacity",), "visual", "number",
                   override_type="OPACITY", default_value=1.0,
-                  emit={"figma": _UNIFORM}),
+                  emit={"figma": _UNIFORM},
+                  token_binding_path="opacity"),
     FigmaProperty("blendMode", "blend_mode", ("blendMode",), "visual", "enum",
                   default_value="PASS_THROUGH",
                   emit={"figma": _UNIFORM}),
@@ -91,7 +94,8 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     # === VISUAL: Corner Radius ===
     FigmaProperty("cornerRadius", "corner_radius", ("cornerRadius",), "visual",
                   "number_or_mixed",
-                  emit={"figma": HANDLER}),
+                  emit={"figma": HANDLER},
+                  token_binding_path="cornerRadius"),
 
     # === LAYOUT ===
     FigmaProperty("layoutMode", "layout_mode", ("layoutMode",), "layout", "enum",
@@ -122,7 +126,8 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   emit={"figma": _UNIFORM}),
     FigmaProperty("counterAxisSpacing", "counter_axis_spacing",
                   ("counterAxisSpacing",), "layout", "number",
-                  emit={"figma": _UNIFORM}),
+                  emit={"figma": _UNIFORM},
+                  token_binding_path="counterAxisSpacing"),
     FigmaProperty("layoutWrap", "layout_wrap", ("layoutWrap",), "layout", "enum",
                   emit={"figma": _UNIFORM}),
     FigmaProperty("layoutPositioning", "layout_positioning",

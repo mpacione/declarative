@@ -982,6 +982,39 @@ class TestBuildVisualFromDB:
         visual = build_visual_from_db(raw)
         assert visual["fills"][0]["color"] == "{color.primary}"
 
+    def test_token_bound_cornerRadius_produces_token_refs(self):
+        raw = {
+            "corner_radius": "8",
+            "bindings": [{"property": "cornerRadius", "token_name": "radius.md", "resolved_value": "8"}],
+        }
+        visual = build_visual_from_db(raw)
+        assert visual["cornerRadius"] == 8.0
+        assert visual["_token_refs"]["cornerRadius"] == "radius.md"
+
+    def test_token_bound_opacity_not_skipped(self):
+        """opacity=1.0 is normally skip_emit_if_default, but must NOT skip when token-bound."""
+        raw = {
+            "opacity": 1.0,
+            "bindings": [{"property": "opacity", "token_name": "opacity.full", "resolved_value": "1.0"}],
+        }
+        visual = build_visual_from_db(raw)
+        assert visual["opacity"] == 1.0
+        assert visual["_token_refs"]["opacity"] == "opacity.full"
+
+    def test_no_bindings_no_token_refs(self):
+        raw = {"corner_radius": "8", "bindings": []}
+        visual = build_visual_from_db(raw)
+        assert "_token_refs" not in visual
+
+    def test_token_bound_counterAxisSpacing(self):
+        raw = {
+            "counter_axis_spacing": 16,
+            "bindings": [{"property": "counterAxisSpacing", "token_name": "spacing.md", "resolved_value": "16"}],
+        }
+        visual = build_visual_from_db(raw)
+        assert visual["counterAxisSpacing"] == 16
+        assert visual["_token_refs"]["counterAxisSpacing"] == "spacing.md"
+
     def test_empty_input(self):
         visual = build_visual_from_db({})
         assert visual == {}
