@@ -24,7 +24,7 @@ Every renderer uses **progressive fallback**: read the highest IR level availabl
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (17 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,607 passing
+- **Tests**: 1,621 passing
 - **Branch**: `t5/architecture-vision`
 - **Round-trip**: 9 screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244) — 6 iPhone + 3 iPad
 - **Property registry**: `dd/property_registry.py` — 48 scalar properties + JSON arrays (fills/strokes/effects), with per-renderer emit patterns
@@ -47,9 +47,17 @@ Every renderer uses **progressive fallback**: read the highest IR level availabl
 - Visual properties: strokeAlign, dashPattern
 - Execution: 0.7-3.9s per screen (warm cache)
 
-### Property Registry — Table-Driven Emission (COMPLETED)
+### Property Registry — Fully Registry-Driven (COMPLETED Sessions 3-4)
 
-The registry now drives ALL 4 pipeline stages: extraction, query, overrides, AND emission. Each `FigmaProperty` has an `emit` field mapping renderer name to a string template or `None` (for complex properties with custom emit functions). The `emit_from_registry()` helper iterates registry entries and applies templates. Adding a property to the registry automatically emits it. A structural test verifies every property has an emit pattern.
+The registry now drives ALL 5 pipeline stages: extraction, query, overrides, visual builder, AND emission. Three emission categories:
+
+- **Template**: `emit={"figma": "{var}.{figma_name} = {value};"}` — uniform format, type-aware via `format_js_value()`
+- **Handler**: `emit={"figma": HANDLER}` — dispatched to `_FIGMA_HANDLERS[figma_name]` (fills, strokes, effects, cornerRadius, clipsContent)
+- **Deferred**: `emit={}` — emitted in a different pipeline phase (constraints, visible, width/height, layoutSizing, fontName)
+
+`build_visual_from_db` is registry-driven — iterates PROPERTIES, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse), bundles text into font dict, constraints into constraints dict. No manual property list to maintain.
+
+`_emit_visual` is a single delegation to `emit_from_registry`. Structural tests enforce every property is classified as template/handler/deferred with no gaps.
 
 ## Remaining Issues
 
@@ -115,7 +123,7 @@ A structural coverage test (`tests/test_property_registry.py::TestRegistryEmitCo
 10. **Unpublished component fallback** — component_figma_id → instance figma_node_id + getMainComponentAsync → Mode 2 createFrame
 11. **Progressive text fallback** — `_resolve_text_value()`: L2 token → resolved value → L0 DB value
 12. **Font normalization** — `normalize_font_style(family, style)`: per-family style names
-13. **Table-driven emission** (COMPLETED) — registry defines emit patterns per renderer via `emit` field, `emit_from_registry()` applies templates, structural test enforces coverage
+13. **Table-driven emission** (COMPLETED) — HANDLER sentinel + uniform templates + `format_js_value()` type-aware formatting, `emit_from_registry()` dispatches handlers and applies templates, `build_visual_from_db` is registry-driven, structural tests enforce template/handler/deferred classification
 
 ## Key Files
 
