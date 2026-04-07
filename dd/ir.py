@@ -96,6 +96,18 @@ def normalize_fills(
                 entry["opacity"] = paint_opacity
             result.append(entry)
 
+        elif fill_type == "IMAGE":
+            image_hash = fill.get("imageHash") or fill.get("imageRef")
+            if image_hash:
+                entry = {
+                    "type": "image",
+                    "asset_hash": image_hash,
+                    "scaleMode": (fill.get("scaleMode") or "FILL").lower(),
+                }
+                if paint_opacity < 1.0:
+                    entry["opacity"] = paint_opacity
+                result.append(entry)
+
     return result
 
 

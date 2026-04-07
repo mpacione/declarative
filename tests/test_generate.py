@@ -2310,6 +2310,34 @@ class TestFillTypeCoverage:
         assert len(lines) == 1
         assert "0.1" in lines[0]
 
+    def test_image_fill_emitted(self):
+        from dd.renderers.figma import _emit_fills
+        fills = [{"type": "image", "asset_hash": "abc123", "scaleMode": "fill"}]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "IMAGE" in lines[0]
+        assert "abc123" in lines[0]
+        assert "FILL" in lines[0]
+
+    def test_image_fill_with_opacity(self):
+        from dd.renderers.figma import _emit_fills
+        fills = [{"type": "image", "asset_hash": "xyz", "scaleMode": "fit", "opacity": 0.5}]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "FIT" in lines[0]
+        assert "0.5" in lines[0]
+
+    def test_mixed_solid_and_image_fills(self):
+        from dd.renderers.figma import _emit_fills
+        fills = [
+            {"type": "solid", "color": "#FF0000"},
+            {"type": "image", "asset_hash": "img1", "scaleMode": "fill"},
+        ]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "SOLID" in lines[0]
+        assert "IMAGE" in lines[0]
+
     def test_all_normalize_fill_types_have_emit_handler(self):
         """Structural coverage: every type normalize_fills can produce must be
         handled by _emit_fills. This test fails if a new fill type is added

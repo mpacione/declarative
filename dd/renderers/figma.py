@@ -1060,6 +1060,17 @@ def _emit_fills(
                     f'{opacity_str}}}'
                 )
 
+        elif fill_type == "image":
+            asset_hash = fill.get("asset_hash")
+            if asset_hash:
+                scale_mode = fill.get("scaleMode", "fill").upper()
+                opacity = fill.get("opacity")
+                opacity_str = f', opacity: {opacity}' if opacity is not None and opacity < 1.0 else ""
+                paints.append(
+                    f'{{type: "IMAGE", scaleMode: "{scale_mode}", '
+                    f'imageHash: "{_escape_js(asset_hash)}"{opacity_str}}}'
+                )
+
     if paints:
         paints_str = ", ".join(paints)
         return ([f"{var}.fills = [{paints_str}];"], refs)

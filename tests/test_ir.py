@@ -93,6 +93,51 @@ class TestNormalizeFills:
         fills = normalize_fills(fills_json, [])
         assert fills[0]["opacity"] == 0.5
 
+    def test_image_fill(self):
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "FILL",
+            "imageHash": "abc123def456",
+            "blendMode": "NORMAL",
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert len(fills) == 1
+        assert fills[0]["type"] == "image"
+        assert fills[0]["asset_hash"] == "abc123def456"
+        assert fills[0]["scaleMode"] == "fill"
+
+    def test_image_fill_with_opacity(self):
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "FIT",
+            "imageHash": "xyz789",
+            "opacity": 0.5,
+            "blendMode": "NORMAL",
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert fills[0]["opacity"] == 0.5
+        assert fills[0]["scaleMode"] == "fit"
+
+    def test_image_fill_invisible_skipped(self):
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "FILL",
+            "imageHash": "abc",
+            "visible": False,
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert len(fills) == 0
+
+    def test_mixed_solid_and_image_fills(self):
+        fills_json = json.dumps([
+            {"type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
+            {"type": "IMAGE", "scaleMode": "FILL", "imageHash": "img1"},
+        ])
+        fills = normalize_fills(fills_json, [])
+        assert len(fills) == 2
+        assert fills[0]["type"] == "solid"
+        assert fills[1]["type"] == "image"
+
 
 class TestNormalizeStrokes:
     def test_solid_stroke(self):

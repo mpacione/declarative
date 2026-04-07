@@ -121,7 +121,7 @@ class TestVisualDataQuality:
                 normalized = normalize_fills(raw_fills, v.get("bindings", []))
                 for fill in normalized:
                     assert "type" in fill
-                    assert "color" in fill or "stops" in fill
+                    assert "color" in fill or "stops" in fill or "asset_hash" in fill
             except Exception as e:
                 parse_failures.append((nid, str(e)))
 

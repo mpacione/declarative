@@ -262,6 +262,38 @@ CREATE TABLE patterns (
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
+-- Content-addressed asset store for images, vectors, and icons.
+-- The IR references assets by hash; renderers resolve to native format.
+CREATE TABLE assets (
+    id              INTEGER PRIMARY KEY,
+    hash            TEXT NOT NULL UNIQUE,          -- SHA-256 of content bytes (or Figma imageHash)
+    kind            TEXT NOT NULL CHECK(kind IN ('svg_path', 'svg_doc', 'raster')),
+    bytes           BLOB,                          -- raw asset data (NULL if external/deferred)
+    source_format   TEXT,                          -- 'png', 'jpg', 'svg', 'webp'
+    content_type    TEXT,                          -- MIME type
+    intrinsic_width  INTEGER,                     -- original pixel width
+    intrinsic_height INTEGER,                     -- original pixel height
+    metadata        TEXT,                          -- JSON: extra info (viewBox for SVGs, etc.)
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_assets_hash ON assets(hash);
+
+-- Links nodes to assets they reference (image fills, vector geometry, icons).
+CREATE TABLE node_asset_refs (
+    id              INTEGER PRIMARY KEY,
+    node_id         INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    asset_hash      TEXT NOT NULL REFERENCES assets(hash),
+    role            TEXT NOT NULL CHECK(role IN ('fill', 'icon', 'illustration', 'background', 'mask')),
+    scale_mode      TEXT CHECK(scale_mode IN ('fill', 'fit', 'crop', 'tile')),
+    fill_index      INTEGER,                      -- which fill slot (0-based), NULL for vector geometry
+    UNIQUE(node_id, role, fill_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_asset_refs_node ON node_asset_refs(node_id);
+CREATE INDEX IF NOT EXISTS idx_node_asset_refs_hash ON node_asset_refs(asset_hash);
+
+
 -- ============================================================
 -- COMPOSITION TABLES — the sentences
 -- ============================================================
