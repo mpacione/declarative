@@ -52,7 +52,7 @@ class TestRegistryEmitCoverage:
                 )
 
     def test_handler_properties_registered(self):
-        from dd.generate import _FIGMA_HANDLERS, _register_figma_handlers
+        from dd.renderers.figma import _FIGMA_HANDLERS, _register_figma_handlers
         _register_figma_handlers()
         for name in self._HANDLER_EMIT:
             assert name in _FIGMA_HANDLERS, (
@@ -91,74 +91,74 @@ class TestFormatJsValue:
     """Verify type-aware JS value formatting."""
 
     def test_number(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(42, "number") == "42"
         assert format_js_value(0.5, "number") == "0.5"
 
     def test_number_radians_passthrough_as_degrees(self):
         import math
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         result = format_js_value(math.pi / 4, "number_radians")
         assert abs(float(result) - 45.0) < 0.01
 
     def test_enum(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value("CENTER", "enum") == '"CENTER"'
 
     def test_string(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value("hello", "string") == '"hello"'
 
     def test_string_escapes_quotes(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value('say "hi"', "string") == '"say \\"hi\\""'
 
     def test_boolean_true(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(True, "boolean") == "true"
 
     def test_boolean_false(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(False, "boolean") == "false"
 
     def test_boolean_string_true(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value("true", "boolean") == "true"
 
     def test_boolean_string_false(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value("false", "boolean") == "false"
 
     def test_boolean_int_0(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(0, "boolean") == "false"
 
     def test_boolean_int_1(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(1, "boolean") == "true"
 
     def test_json_dict(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         result = format_js_value({"value": 24, "unit": "PIXELS"}, "json")
         assert '"value": 24' in result
         assert '"unit": "PIXELS"' in result
 
     def test_json_already_string(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value('{"value": 24}', "json") == '{"value": 24}'
 
     def test_json_array(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value([10, 5], "json_array") == "[10, 5]"
 
     def test_number_radians_converts_to_degrees(self):
         import math
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         result = format_js_value(math.pi / 2, "number_radians")
         assert abs(float(result) - 90.0) < 0.01
 
     def test_number_or_mixed(self):
-        from dd.generate import format_js_value
+        from dd.renderers.figma import format_js_value
         assert format_js_value(16, "number_or_mixed") == "16"
 
 
@@ -166,29 +166,29 @@ class TestRegistryEmitHelper:
     """Verify the registry-driven emit helper produces correct JS."""
 
     def test_emit_simple_number(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines, _ = emit_from_registry("v", "e", {"opacity": 0.5}, {})
         assert 'v.opacity = 0.5;' in lines
 
     def test_emit_simple_enum(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines, _ = emit_from_registry("v", "e", {"strokeAlign": "INSIDE"}, {})
         assert 'v.strokeAlign = "INSIDE";' in lines
 
     def test_skips_none_values(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines, _ = emit_from_registry("v", "e", {"opacity": None}, {})
         assert not any("opacity" in l for l in lines)
 
     def test_handler_properties_dispatched(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines, refs = emit_from_registry("v", "e", {
             "fills": [{"type": "solid", "color": "#FF0000"}],
         }, {})
         assert any("fills" in l for l in lines)
 
     def test_emits_multiple_properties(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines, _ = emit_from_registry("v", "e", {
             "strokeAlign": "OUTSIDE",
             "minWidth": 100,
@@ -199,7 +199,7 @@ class TestRegistryEmitHelper:
         assert 'v.layoutWrap = "WRAP";' in lines
 
     def test_clips_content_emits_js_boolean(self):
-        from dd.generate import emit_from_registry
+        from dd.renderers.figma import emit_from_registry
         lines_true, _ = emit_from_registry("v", "e", {"clipsContent": True}, {})
         assert any("clipsContent = true" in l for l in lines_true)
         lines_false, _ = emit_from_registry("v", "e", {"clipsContent": False}, {})

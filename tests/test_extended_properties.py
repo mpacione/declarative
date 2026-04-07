@@ -541,7 +541,7 @@ class TestGradientEnrichment:
 
     def test_emit_fills_produces_gradient_output(self):
         """_emit_fills should emit gradient fills with gradientTransform."""
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
 
         fills = [{
             "type": "gradient-linear",

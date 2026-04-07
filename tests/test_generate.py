@@ -7,16 +7,15 @@ import pytest
 
 from dd.catalog import seed_catalog
 from dd.db import init_db
-from dd.generate import (
-    build_visual_from_db,
+from dd.renderers.figma import (
     collect_fonts,
     font_weight_to_style,
     generate_figma_script,
     generate_screen,
     normalize_font_style,
     hex_to_figma_rgba,
-    resolve_style_value,
 )
+from dd.visual import build_visual_from_db, resolve_style_value
 
 # ---------------------------------------------------------------------------
 # Step 1: Pure helpers
@@ -892,7 +891,7 @@ class TestGenerateScreen:
         assert isinstance(result["token_variables"], dict)
 
     def test_build_rebind_script_from_result(self, db: sqlite3.Connection):
-        from dd.generate import build_rebind_script_from_result
+        from dd.renderers.figma import build_rebind_script_from_result
 
         result = generate_screen(db, screen_id=1)
         # Simulate Figma returning M dict
@@ -2195,14 +2194,14 @@ class TestFillTypeCoverage:
     """
 
     def test_solid_fill_emitted(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{"type": "solid", "color": "#FF0000"}]
         lines, _ = _emit_fills("v", "e", fills, {})
         assert len(lines) == 1
         assert "SOLID" in lines[0]
 
     def test_gradient_linear_emitted(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{
             "type": "gradient-linear",
             "stops": [{"color": "#000000", "position": 0}, {"color": "#FFFFFF", "position": 1}],
@@ -2213,7 +2212,7 @@ class TestFillTypeCoverage:
         assert "GRADIENT_LINEAR" in lines[0]
 
     def test_gradient_radial_emitted(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{
             "type": "gradient-radial",
             "stops": [{"color": "#000000", "position": 0}, {"color": "#FFFFFF", "position": 1}],
@@ -2225,7 +2224,7 @@ class TestFillTypeCoverage:
 
     def test_gradient_without_transform_skipped(self):
         """Gradients without gradientTransform (supplement not run) are skipped."""
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{
             "type": "gradient-linear",
             "stops": [{"color": "#000000", "position": 0}],
@@ -2235,7 +2234,7 @@ class TestFillTypeCoverage:
         assert len(lines) == 0
 
     def test_mixed_solid_and_gradient(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [
             {"type": "solid", "color": "#FF0000"},
             {"type": "gradient-linear",
@@ -2248,7 +2247,7 @@ class TestFillTypeCoverage:
         assert "GRADIENT_LINEAR" in lines[0]
 
     def test_gradient_with_opacity(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{
             "type": "gradient-linear",
             "stops": [{"color": "#000000", "position": 0}, {"color": "#000000", "position": 1}],
@@ -2263,7 +2262,7 @@ class TestFillTypeCoverage:
         """Structural coverage: every type normalize_fills can produce must be
         handled by _emit_fills. This test fails if a new fill type is added
         to normalize_fills without a corresponding handler in _emit_fills."""
-        from dd.generate import _GRADIENT_EMIT_MAP
+        from dd.renderers.figma import _GRADIENT_EMIT_MAP
         from dd.ir import _GRADIENT_TYPE_MAP
 
         ir_gradient_types = set(_GRADIENT_TYPE_MAP.values())
@@ -2278,7 +2277,7 @@ class TestResolveLayoutSizing:
     """Verify the pure sizing resolution function."""
 
     def test_db_value_takes_priority(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
@@ -2287,7 +2286,7 @@ class TestResolveLayoutSizing:
         assert v == "HUG"
 
     def test_text_width_and_height_gives_hug(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="WIDTH_AND_HEIGHT", is_text=True, etype="text",
@@ -2296,7 +2295,7 @@ class TestResolveLayoutSizing:
         assert v == "hug"
 
     def test_text_height_gives_fill_h_hug_v(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="HEIGHT", is_text=True, etype="text",
@@ -2305,7 +2304,7 @@ class TestResolveLayoutSizing:
         assert v == "hug"
 
     def test_text_none_auto_resize_uses_pixel_sizing(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="NONE", is_text=True, etype="text",
@@ -2314,7 +2313,7 @@ class TestResolveLayoutSizing:
         assert v == "fixed"
 
     def test_ir_string_sizing_maps(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": "fill", "height": "hug"}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
@@ -2323,7 +2322,7 @@ class TestResolveLayoutSizing:
         assert v == "hug"
 
     def test_pixel_sizing_gives_fixed(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
@@ -2332,7 +2331,7 @@ class TestResolveLayoutSizing:
         assert v == "fixed"
 
     def test_fill_width_type_gives_fill(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="card",
@@ -2340,7 +2339,7 @@ class TestResolveLayoutSizing:
         assert h == "fill"
 
     def test_text_without_auto_resize_gets_fill(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=True, etype="text",
@@ -2348,7 +2347,7 @@ class TestResolveLayoutSizing:
         assert h == "fill"
 
     def test_db_overrides_text_reconciliation(self):
-        from dd.generate import _resolve_layout_sizing
+        from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h="FIXED", db_sizing_v="FIXED",
             text_auto_resize="WIDTH_AND_HEIGHT", is_text=True, etype="text",
@@ -2509,27 +2508,27 @@ class TestHexToFigmaRgba:
     """Verify hex_to_figma_rgba preserves alpha channel."""
 
     def test_6_digit_hex(self):
-        from dd.generate import hex_to_figma_rgba
+        from dd.renderers.figma import hex_to_figma_rgba
         result = hex_to_figma_rgba("#FF0000")
         assert result == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
     def test_8_digit_hex_opaque(self):
-        from dd.generate import hex_to_figma_rgba
+        from dd.renderers.figma import hex_to_figma_rgba
         result = hex_to_figma_rgba("#FF0000FF")
         assert result == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
     def test_8_digit_hex_transparent(self):
-        from dd.generate import hex_to_figma_rgba
+        from dd.renderers.figma import hex_to_figma_rgba
         result = hex_to_figma_rgba("#00000000")
         assert result == {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0}
 
     def test_8_digit_hex_semi_transparent(self):
-        from dd.generate import hex_to_figma_rgba
+        from dd.renderers.figma import hex_to_figma_rgba
         result = hex_to_figma_rgba("#00000080")
         assert result["a"] == round(128 / 255.0, 4)
 
     def test_gradient_stop_alpha_emitted(self):
-        from dd.generate import _emit_fills
+        from dd.renderers.figma import _emit_fills
         fills = [{
             "type": "gradient-linear",
             "gradientTransform": [[1, 0, 0], [0, 1, 0]],
@@ -2544,7 +2543,7 @@ class TestHexToFigmaRgba:
         assert "a:0.0" in js or "a:0" in js
 
     def test_shadow_color_alpha_emitted(self):
-        from dd.generate import _emit_effects
+        from dd.renderers.figma import _emit_effects
         effects = [{
             "type": "drop-shadow",
             "color": "#00000040",

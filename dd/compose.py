@@ -8,7 +8,7 @@ import json
 import sqlite3
 from typing import Any
 
-from dd.generate import generate_figma_script
+from dd.renderers.figma import generate_figma_script
 from dd.templates import query_templates
 
 _DIRECTION_MAP = {

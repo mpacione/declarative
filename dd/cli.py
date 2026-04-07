@@ -311,7 +311,7 @@ def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    from dd.generate import generate_screen
+    from dd.renderers.figma import generate_screen
 
     conn = get_connection(db_path)
     result = generate_screen(conn, screen_id)

@@ -12,10 +12,8 @@ import sqlite3
 
 import pytest
 
-from dd.generate import (
-    build_visual_from_db,
-    generate_screen,
-)
+from dd.renderers.figma import generate_screen
+from dd.visual import build_visual_from_db
 from dd.ir import (
     build_composition_spec,
     normalize_effects,

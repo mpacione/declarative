@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from dd.generate import generate_figma_script, generate_screen
+from dd.renderers.figma import generate_figma_script, generate_screen
 from dd.ir import (
     build_composition_spec,
     generate_ir,

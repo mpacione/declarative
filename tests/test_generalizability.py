@@ -18,7 +18,7 @@ from dd.compose import (
     validate_components,
 )
 from dd.db import init_db
-from dd.generate import generate_figma_script
+from dd.renderers.figma import generate_figma_script
 from dd.templates import query_templates
 
 
