@@ -132,14 +132,22 @@ def normalize_font_style(family: str, style: str) -> str:
     return style
 
 
-def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
-    """Collect unique (family, style) pairs from text elements in the spec."""
-    seen = set()
-    result = []
+def collect_fonts(
+    spec: dict[str, Any],
+    db_visuals: dict[int, dict[str, Any]] | None = None,
+) -> list[tuple[str, str]]:
+    """Collect unique (family, style) pairs from text elements.
+
+    Reads from IR style (L2) with DB font data (L0) fallback.
+    Incorporates font_style (Italic/Oblique) from DB when present.
+    """
+    seen: set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
 
     tokens = spec.get("tokens", {})
+    node_id_map = spec.get("_node_id_map", {})
 
-    for element in spec.get("elements", {}).values():
+    for eid, element in spec.get("elements", {}).items():
         etype = element.get("type", "")
         if etype not in _TEXT_TYPES:
             continue
@@ -152,6 +160,21 @@ def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
             resolved_family, _ = resolve_style_value(family, tokens)
             family = resolved_family if resolved_family and isinstance(resolved_family, str) else "Inter"
 
+        # DB fallback for family and weight
+        db_font_style = None
+        if db_visuals is not None:
+            nid = node_id_map.get(eid)
+            if nid:
+                nv = db_visuals.get(nid, {})
+                font = nv.get("font") or nv
+                if not family or family == "Inter":
+                    db_fam = font.get("font_family")
+                    if db_fam:
+                        family = db_fam
+                if weight is None:
+                    weight = font.get("font_weight")
+                db_font_style = font.get("font_style")
+
         family = _normalize_font_family(family)
 
         if isinstance(weight, str) and weight.startswith("{"):
@@ -159,6 +182,11 @@ def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
             weight = resolved_weight
 
         figma_style = normalize_font_style(family, font_weight_to_style(weight))
+
+        if db_font_style and db_font_style != "Regular":
+            if "Italic" not in figma_style and "Oblique" not in figma_style:
+                figma_style = f"{figma_style} {db_font_style}"
+
         key = (family, figma_style)
         if key not in seen:
             seen.add(key)
@@ -565,7 +593,7 @@ def generate_figma_script(
     elements = spec.get("elements", {})
     root_id = spec.get("root", "")
 
-    fonts = collect_fonts(spec)
+    fonts = collect_fonts(spec, db_visuals=db_visuals)
     walk_order = _walk_elements(spec)
     all_token_refs: list[tuple[str, str, str]] = []
 
@@ -875,20 +903,12 @@ def generate_figma_script(
             else:
                 # Position deferred — Figma recalculates position when
                 # children are added to HUG frames with CENTER constraints.
-                # DB-first: use authoritative DB x/y, IR position as fallback.
+                # Position comes from the IR (parent-relative coordinates).
+                # DB stores absolute canvas coordinates — NOT usable directly.
+                # The IR converts absolute → parent-relative at build time
+                # (see compiler-architecture.md Section 4.1: Spatial Encoding).
                 position = element.get("layout", {}).get("position")
-                db_x = None
-                db_y = None
-                if db_visuals is not None:
-                    nid = spec.get("_node_id_map", {}).get(eid)
-                    if nid:
-                        nv = db_visuals.get(nid, {})
-                        db_x = nv.get("x")
-                        db_y = nv.get("y")
-                if db_x is not None and db_y is not None:
-                    deferred_lines.append(f"{var}.x = {db_x};")
-                    deferred_lines.append(f"{var}.y = {db_y};")
-                elif position:
+                if position:
                     deferred_lines.append(f"{var}.x = {position.get('x', 0)};")
                     deferred_lines.append(f"{var}.y = {position.get('y', 0)};")
 

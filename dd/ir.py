@@ -451,10 +451,10 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         registry_cols.append("component_key")
     if "figma_node_id" not in registry_cols and "figma_node_id" in node_cols:
         registry_cols.append("figma_node_id")
-    # Positional columns (structural, not in registry)
-    for pos_col in ("x", "y"):
-        if pos_col not in registry_cols and pos_col in node_cols:
-            registry_cols.append(pos_col)
+    # Note: x/y are NOT included here. Position is spatial encoding
+    # (absolute canvas coords in DB, parent-relative in IR). Renderers
+    # read position from the IR, not from the visual dict.
+    # See compiler-architecture.md Section 4.1.
 
     col_list = ", ".join(f"n.{c}" for c in registry_cols)
 
