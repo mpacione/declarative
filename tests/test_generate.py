@@ -1454,7 +1454,7 @@ class TestNodeTypeDispatch:
         script, _ = generate_figma_script(spec)
         assert "figma.createEllipse()" in script
 
-    def test_vector_type_skipped(self):
+    def test_vector_type_skipped_without_asset(self):
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1468,6 +1468,65 @@ class TestNodeTypeDispatch:
         })
         script, _ = generate_figma_script(spec)
         assert "vector" not in script.lower() or "createVector" not in script
+
+    def test_vector_with_asset_creates_vector(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["vector-1"],
+                "_node_id_map": {"vector-1": 42},
+            },
+            "vector-1": {
+                "type": "vector",
+                "layout": {"sizing": {"width": 20, "height": 20}},
+            },
+        })
+        spec["_node_id_map"] = {"vector-1": 42}
+        db_visuals = {
+            42: {
+                "fills": "[]",
+                "strokes": "[]",
+                "effects": "[]",
+                "bindings": [],
+                "_asset_refs": [
+                    {"asset_hash": "vec_abc", "role": "icon", "kind": "svg_path",
+                     "svg_data": "M 0 0 L 10 0 L 10 10 Z"},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "figma.createVector()" in script
+        assert "vectorPaths" in script
+        assert "M 0 0 L 10 0 L 10 10 Z" in script
+
+    def test_boolean_operation_with_asset_creates_vector(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["bool-1"],
+            },
+            "bool-1": {
+                "type": "boolean_operation",
+                "layout": {"sizing": {"width": 24, "height": 24}},
+            },
+        })
+        spec["_node_id_map"] = {"bool-1": 99}
+        db_visuals = {
+            99: {
+                "fills": "[]",
+                "strokes": "[]",
+                "effects": "[]",
+                "bindings": [],
+                "_asset_refs": [
+                    {"asset_hash": "bool_xyz", "role": "icon", "kind": "svg_path",
+                     "svg_data": "M 5 0 L 10 10 L 0 10 Z"},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "figma.createVector()" in script
 
     def test_group_type_skipped(self):
         spec = _make_spec({

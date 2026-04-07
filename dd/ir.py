@@ -643,6 +643,40 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         if has_overrides and len(instance_ids) > 1:
             _hoist_descendant_overrides(conn, instance_ids, result)
 
+    # Attach asset refs (vector paths, image assets) when the tables exist
+    has_asset_refs = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='node_asset_refs'"
+    ).fetchone()
+    if has_asset_refs:
+        placeholders = ",".join("?" for _ in node_ids)
+        asset_cursor = conn.execute(
+            f"SELECT nar.node_id, nar.asset_hash, nar.role, nar.fill_index, "
+            f"a.kind, a.metadata "
+            f"FROM node_asset_refs nar "
+            f"JOIN assets a ON nar.asset_hash = a.hash "
+            f"WHERE nar.node_id IN ({placeholders})",
+            node_ids,
+        )
+        for row in asset_cursor.fetchall():
+            nid = row[0]
+            if nid in result:
+                ref_entry: dict[str, Any] = {
+                    "asset_hash": row[1],
+                    "role": row[2],
+                    "kind": row[4],
+                }
+                if row[3] is not None:
+                    ref_entry["fill_index"] = row[3]
+                metadata_json = row[5]
+                if metadata_json:
+                    metadata = json.loads(metadata_json)
+                    svg_data = metadata.get("svg_data")
+                    if svg_data:
+                        ref_entry["svg_data"] = svg_data
+                if "_asset_refs" not in result[nid]:
+                    result[nid]["_asset_refs"] = []
+                result[nid]["_asset_refs"].append(ref_entry)
+
     return result
 
 

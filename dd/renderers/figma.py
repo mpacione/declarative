@@ -37,8 +37,11 @@ _NODE_CREATE_MAP = {
     "line": "figma.createLine()",
 }
 
-# Node types that cannot be created in Figma — skip silently
+# Node types that cannot be created in Figma — skip silently (unless asset-backed)
 _SKIP_NODE_TYPES = frozenset({"vector", "boolean_operation", "group"})
+
+# Vector-capable node types that can be rendered when they have asset data
+_VECTOR_TYPES = frozenset({"vector", "boolean_operation"})
 
 _WEIGHT_TO_STYLE = {
     100: "Thin",
@@ -713,11 +716,25 @@ def generate_figma_script(
             mode1_eids.add(eid)
         else:
             # Mode 2: create from L0 properties
-            if etype in _SKIP_NODE_TYPES:
+            # Check for asset-backed vector nodes before skipping
+            has_vector_asset = False
+            if etype in _VECTOR_TYPES and db_visuals is not None:
+                node_id = spec.get("_node_id_map", {}).get(eid)
+                if node_id:
+                    visual_data = db_visuals.get(node_id, {})
+                    asset_refs = visual_data.get("_asset_refs", [])
+                    has_vector_asset = any(
+                        ref.get("kind") in ("svg_path", "svg_doc")
+                        for ref in asset_refs
+                    )
+
+            if etype in _SKIP_NODE_TYPES and not has_vector_asset:
                 skipped_eids.add(eid)
                 continue
 
-            if is_text:
+            if has_vector_asset:
+                lines.append(f"const {var} = figma.createVector();")
+            elif is_text:
                 lines.append(f"const {var} = figma.createText();")
             elif etype in _NODE_CREATE_MAP:
                 lines.append(f"const {var} = {_NODE_CREATE_MAP[etype]};")
@@ -752,6 +769,11 @@ def generate_figma_script(
             visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
             lines.extend(visual_lines)
             all_token_refs.extend(visual_refs)
+
+            # Emit vector paths for asset-backed vector nodes
+            if has_vector_asset:
+                _emit_vector_paths(var, raw_visual, lines)
+
             # Clear default white fill on frames that should be transparent.
             # figma.createFrame() gets a default white fill; if the DB has no
             # fills (NULL or []), the original was transparent — clear it.
@@ -1000,6 +1022,24 @@ _GRADIENT_EMIT_MAP = {
     "gradient-angular": "GRADIENT_ANGULAR",
     "gradient-diamond": "GRADIENT_DIAMOND",
 }
+
+
+def _emit_vector_paths(
+    var: str, raw_visual: dict[str, Any], lines: list[str]
+) -> None:
+    """Emit vectorPaths assignment from asset ref SVG data."""
+    asset_refs = raw_visual.get("_asset_refs", [])
+    svg_paths = [
+        ref["svg_data"]
+        for ref in asset_refs
+        if ref.get("kind") in ("svg_path", "svg_doc") and ref.get("svg_data")
+    ]
+    if svg_paths:
+        path_entries = ", ".join(
+            f'{{windingRule: "NONZERO", data: "{_escape_js(p)}"}}'
+            for p in svg_paths
+        )
+        lines.append(f"{var}.vectorPaths = [{path_entries}];")
 
 
 def _emit_fills(
