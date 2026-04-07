@@ -12,18 +12,21 @@ Single source of truth for all 58 Figma node properties. Every pipeline layer re
 | Function | Purpose |
 |----------|---------|
 | `PROPERTIES` | Tuple of 48 `FigmaProperty` dataclass entries |
+| `HANDLER` | Sentinel value for handler-emitted properties (see emit field) |
 | `by_db_column(column)` | Look up property by DB column name |
 | `by_figma_name(name)` | Look up property by Figma Plugin API name |
 | `by_override_type(type)` | Look up property by instance override type |
 | `by_override_field(field)` | Look up property by Figma overriddenFields name |
-| `db_columns_for_visual_query()` | Column names for query_screen_visuals SELECT |
 | `overrideable_properties()` | Properties with override_fields defined |
 
-Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` → `category` → `value_type` → `override_type` → `default_value` → `emit` (per-renderer emit patterns).
+Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` → `category` → `value_type` → `override_type` → `default_value` → `emit`.
 
-The `emit` field is a dict mapping renderer name to a string template (e.g., `'{var}.opacity = {value};'`) or `None` for complex properties handled by custom emit functions.
+The `emit` field classifies each property's emission category:
+- **Template** (`{"figma": "{var}.{figma_name} = {value};"}`) — simple scalar, type-aware formatting via `format_js_value()`
+- **Handler** (`{"figma": HANDLER}`) — complex, dispatched to renderer's handler function
+- **Deferred** (`{}` empty) — emitted in a different pipeline phase
 
-**Used by**: extract_supplement.py (override JS generation), ir.py (query column list), generate.py (emit_from_registry, override dispatch).
+**Used by**: extract_supplement.py (override JS generation), ir.py (query column list), generate.py (build_visual_from_db, emit_from_registry, override dispatch).
 
 ---
 
@@ -307,11 +310,15 @@ Generates Figma Plugin API JavaScript from CompositionSpec + DB visuals. Mode 1 
 |----------|---------|
 | `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. |
 | `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script |
-| `build_visual_from_db(node_visual)` | Normalize raw DB data: fills, strokes, effects, cornerRadius, opacity, clipsContent, rotation (rad→deg), blendMode, strokeCap/Join, font data |
+| `build_visual_from_db(node_visual)` | Registry-driven: iterates PROPERTIES to map db_column → figma_name, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse), bundles text into font dict, constraints into constraints dict |
+| `emit_from_registry(var, eid, visual, tokens)` | Registry-driven emission: dispatches HANDLER properties to `_FIGMA_HANDLERS`, formats template properties via `format_js_value()`. Returns (lines, token_refs) |
+| `format_js_value(value, value_type)` | Type-aware JS value formatter: boolean→true/false, enum/string→"quoted", json→serialized, number→string |
 | `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing (auto-layout containers only — non-auto-layout deferred) |
-| `_emit_visual(var, eid, visual, tokens)` | Emit all visual properties + default clearing |
-| `_emit_fills/strokes/effects(...)` | Specialized emitters for complex JSON properties |
-| `_emit_text_props(var, element, style, tokens, lines)` | Emit fontName, fontSize, characters, textAutoResize |
+| `_emit_visual(var, eid, visual, tokens)` | Delegates to `emit_from_registry` — all logic in registry |
+| `_emit_fills/strokes/effects(...)` | Handler functions for complex JSON paint/effect arrays |
+| `_emit_corner_radius_figma(...)` | Handler for uniform (number) vs per-corner (dict) radius |
+| `_emit_clips_content_figma(...)` | Handler for JS boolean emission + always-emit behavior |
+| `_emit_text_props(var, element, style, tokens, lines)` | Emit fontName, fontSize, characters, text alignment, decoration, spacing (progressive fallback) |
 | `collect_fonts(spec)` | Collect unique (family, style) pairs for font loading |
 
 ### dd/export_figma_vars.py — Figma Variable Export (50 tests)

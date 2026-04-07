@@ -14,7 +14,7 @@ Each property maps:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 
 # Sentinel: property is emitted by a handler function registered in the renderer.
@@ -34,7 +34,6 @@ class FigmaProperty:
     needs_json: bool = False
     skip_emit_if_default: bool = True
     emit: dict[str, Any] = field(default_factory=dict)
-    db_transform: Callable | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -224,26 +223,6 @@ def by_override_field(field_name: str) -> FigmaProperty | None:
     return _OVERRIDE_FIELD_MAP.get(field_name)
 
 
-def db_columns_for_visual_query() -> list[str]:
-    """Return DB column names needed by query_screen_visuals.
-
-    Includes all columns with visual, layout, size, and text data.
-    Excludes structural columns (id, parent_id, sort_order, etc.)
-    and columns handled via separate joins (component_key, bindings).
-    """
-    exclude = {"width", "height", "x", "y"}  # geometry handled via IR sizing
-    return [
-        p.db_column for p in PROPERTIES
-        if p.db_column and p.db_column not in exclude
-        and p.category in ("visual", "layout", "text")
-    ]
-
-
 def overrideable_properties() -> list[FigmaProperty]:
     """Return properties that can appear in Figma's overriddenFields."""
     return [p for p in PROPERTIES if p.override_fields]
-
-
-def override_types() -> list[str]:
-    """Return all override_type values defined in the registry."""
-    return [p.override_type for p in PROPERTIES if p.override_type]

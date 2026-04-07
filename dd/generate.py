@@ -190,8 +190,6 @@ def _apply_db_transform(value: Any, prop: Any) -> Any:
             return parsed if parsed else None
         except (json.JSONDecodeError, TypeError):
             return None
-    if prop.db_transform is not None:
-        return prop.db_transform(value)
     return value
 
 
