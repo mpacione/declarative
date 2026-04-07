@@ -226,7 +226,20 @@ Full mask pipeline implemented end-to-end:
 - **Renderer** (`renderers/figma.py`): GROUP nodes with mask children no longer skipped. Check walks group's children for `is_mask` in visual data. Non-mask groups still skipped as before.
 - **Emission**: `{var}.isMask = true;` emitted for mask nodes via standard `_UNIFORM` template
 
-### Fix 3: L0 Completeness — REMAINING
-Phase B: Missing properties (booleanOperation, cornerSmoothing, arcData). Phase C: Structural completeness test against canonical Figma property list.
+### Fix 3B: Missing Properties — COMPLETE
+Three L0 properties added end-to-end:
+- **booleanOperation** (`boolean_operation TEXT`): UNION, INTERSECT, SUBTRACT, EXCLUDE on BOOLEAN_OPERATION nodes. Enum via `_UNIFORM` template.
+- **cornerSmoothing** (`corner_smoothing REAL`): iOS-style smooth corners (0-1 float). Number via `_UNIFORM` template.
+- **arcData** (`arc_data TEXT`): JSON `{startingAngle, endingAngle, innerRadius}` on ELLIPSE nodes. HANDLER emission for structured JS object.
 
-### Test Count: 1,754 passing
+All three: schema column + Plugin API extraction + REST API extraction + parse/insert + property registry + renderer emission.
+
+### Fix 3C: Structural Completeness Test — COMPLETE
+New `tests/test_structural_completeness.py` (6 tests):
+- **`TestRegistryCompleteness`**: Every canonical Figma visual property has a registry entry or documented exclusion. Prevents silent data loss.
+- **`TestDBSchemaAlignment`**: Every DB column maps to registry or is structural. No orphan columns. No phantom registry entries.
+- **`TestExtractionAlignment`**: Plugin API extraction script captures all required visual properties.
+
+Documented exclusions with reasons: per-side stroke weights (separate columns), vector geometry (asset pipeline), grid layout (future), component key (structural).
+
+### Test Count: 1,773 passing
