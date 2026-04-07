@@ -2292,8 +2292,8 @@ class TestResolveLayoutSizing:
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="WIDTH_AND_HEIGHT", is_text=True, etype="text",
         )
-        assert h == "HUG"
-        assert v == "HUG"
+        assert h == "hug"
+        assert v == "hug"
 
     def test_text_height_gives_fill_h_hug_v(self):
         from dd.generate import _resolve_layout_sizing
@@ -2301,8 +2301,8 @@ class TestResolveLayoutSizing:
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="HEIGHT", is_text=True, etype="text",
         )
-        assert h == "FILL"
-        assert v == "HUG"
+        assert h == "fill"
+        assert v == "hug"
 
     def test_text_none_auto_resize_uses_pixel_sizing(self):
         from dd.generate import _resolve_layout_sizing
@@ -2310,8 +2310,8 @@ class TestResolveLayoutSizing:
             elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize="NONE", is_text=True, etype="text",
         )
-        assert h == "FIXED"
-        assert v == "FIXED"
+        assert h == "fixed"
+        assert v == "fixed"
 
     def test_ir_string_sizing_maps(self):
         from dd.generate import _resolve_layout_sizing
@@ -2319,8 +2319,8 @@ class TestResolveLayoutSizing:
             elem_sizing={"width": "fill", "height": "hug"}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
         )
-        assert h == "FILL"
-        assert v == "HUG"
+        assert h == "fill"
+        assert v == "hug"
 
     def test_pixel_sizing_gives_fixed(self):
         from dd.generate import _resolve_layout_sizing
@@ -2328,8 +2328,8 @@ class TestResolveLayoutSizing:
             elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
         )
-        assert h == "FIXED"
-        assert v == "FIXED"
+        assert h == "fixed"
+        assert v == "fixed"
 
     def test_fill_width_type_gives_fill(self):
         from dd.generate import _resolve_layout_sizing
@@ -2337,7 +2337,7 @@ class TestResolveLayoutSizing:
             elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="card",
         )
-        assert h == "FILL"
+        assert h == "fill"
 
     def test_text_without_auto_resize_gets_fill(self):
         from dd.generate import _resolve_layout_sizing
@@ -2345,7 +2345,7 @@ class TestResolveLayoutSizing:
             elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=True, etype="text",
         )
-        assert h == "FILL"
+        assert h == "fill"
 
     def test_db_overrides_text_reconciliation(self):
         from dd.generate import _resolve_layout_sizing
