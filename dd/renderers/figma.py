@@ -260,6 +260,87 @@ def _emit_override_op(
     return ""
 
 
+def _collect_swap_targets_from_tree(
+    node: dict[str, Any] | None,
+    targets: set[str],
+) -> None:
+    """Walk override tree and collect all swap target IDs for pre-fetching."""
+    if node is None:
+        return
+    swap = node.get("swap")
+    if swap:
+        targets.add(swap)
+    for child in node.get("children", []):
+        _collect_swap_targets_from_tree(child, targets)
+
+
+def _emit_override_tree(
+    node: dict[str, Any],
+    instance_var: str,
+    node_id_vars: dict[str, str],
+    lines: list[str],
+    deferred_lines: list[str],
+) -> None:
+    """Walk override tree in pre-order, emitting JS mutations.
+
+    Pre-order traversal ensures swaps happen before property overrides
+    on descendants of the swapped subtree. At each tree node:
+    1. Emit swap (if any) — creates the new subtree
+    2. Emit property overrides — modifies the (possibly swapped) node
+    3. Recurse into children — deeper overrides after parent mutations
+    """
+    target = node["target"]
+    swap = node.get("swap")
+    properties = node.get("properties", [])
+
+    if target == ":self":
+        # Self swap
+        if swap:
+            ov = {"property": "instance_swap", "value": swap}
+            op = _emit_override_op(ov, instance_var, node_id_vars, instance_var, deferred_lines)
+            if op:
+                lines.append(op)
+        # Self property overrides — apply directly to instance variable
+        for prop in properties:
+            op = _emit_override_op(prop, instance_var, node_id_vars, instance_var, deferred_lines)
+            if op:
+                lines.append(op)
+    else:
+        # Child target — find the node, then apply swap + properties
+        esc_target = _escape_js(target)
+        find_expr = f'{instance_var}.findOne(n => n.id.endsWith("{esc_target}"))'
+
+        # Collect all operations (swap first, then properties)
+        ops: list[str] = []
+        if swap:
+            ov = {"property": "instance_swap", "value": swap}
+            op = _emit_override_op(ov, "_c", node_id_vars, instance_var, deferred_lines)
+            if op:
+                ops.append(op)
+        for prop in properties:
+            op = _emit_override_op(prop, "_c", node_id_vars, instance_var, deferred_lines)
+            if op:
+                ops.append(op)
+
+        if ops:
+            if len(ops) == 1:
+                lines.append(
+                    f'{{ const _c = {find_expr}; '
+                    f"if (_c) {{ {ops[0]} }} }}"
+                )
+            else:
+                lines.append(
+                    f'{{ const _c = {find_expr}; if (_c) {{'
+                )
+                for op in ops:
+                    lines.append(f"  {op}")
+                lines.append("} }")
+
+    # Recurse into children (guaranteed to come after parent)
+    for child in node.get("children", []):
+        _emit_override_tree(child, instance_var, node_id_vars, lines, deferred_lines)
+
+
 # ---------------------------------------------------------------------------
 # JS helpers
 # ---------------------------------------------------------------------------
@@ -506,10 +587,27 @@ def _emit_composition_children(
 # Script generation
 # ---------------------------------------------------------------------------
 
+def calculate_canvas_layout(
+    screen_sizes: list[tuple[float, float]],
+    gap: float = 80,
+) -> list[tuple[float, float]]:
+    """Calculate canvas positions for multiple screens in a horizontal row.
+
+    Returns list of (x, y) positions, one per screen.
+    """
+    positions: list[tuple[float, float]] = []
+    x = 0.0
+    for i, (w, _h) in enumerate(screen_sizes):
+        positions.append((x, 0.0))
+        x += w + gap
+    return positions
+
+
 def generate_figma_script(
     spec: dict[str, Any],
     db_visuals: dict[int, dict[str, Any]] | None = None,
     page_name: str | None = None,
+    canvas_position: tuple[float, float] | None = None,
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
 
@@ -556,11 +654,7 @@ def generate_figma_script(
             figma_id = vis.get("component_figma_id")
             if figma_id:
                 needed_node_ids.add(figma_id)
-            for cs in vis.get("child_swaps", []):
-                needed_node_ids.add(cs["swap_target_id"])
-            for ov in vis.get("instance_overrides", []):
-                if ov.get("type") == "INSTANCE_SWAP" and ov.get("value"):
-                    needed_node_ids.add(ov["value"])
+            _collect_swap_targets_from_tree(vis.get("override_tree"), needed_node_ids)
 
     if needed_node_ids:
         lines.append("// Pre-fetch component nodes (deduplicated)")
@@ -652,49 +746,12 @@ def generate_figma_script(
                     f"if (_h) _h.visible = false; }}"
                 )
 
-            # Instance overrides + child swaps: replay mutations from DB.
-            # Grouped by target_id to minimize findOne tree traversals.
-            inst_overrides = raw_visual.get("instance_overrides", []) if (db_visuals is not None and raw_visual) else []
-            child_swaps = raw_visual.get("child_swaps", []) if (db_visuals is not None and raw_visual) else []
-            # Convert child_swaps to override format for unified grouping
-            for cs in child_swaps:
-                inst_overrides.append({
-                    "target": cs["child_id"],
-                    "property": "instance_swap",
-                    "value": cs["swap_target_id"],
-                })
-
-            if inst_overrides:
-                from collections import OrderedDict
-                grouped: OrderedDict[str, list[dict]] = OrderedDict()
-                for ov in inst_overrides:
-                    grouped.setdefault(ov["target"], []).append(ov)
-
-                # Self overrides — apply directly to instance variable
-                for ov in grouped.pop(":self", []):
-                    op = _emit_override_op(ov, var, node_id_vars, var, deferred_lines)
-                    if op:
-                        lines.append(op)
-
-                # Child overrides — one findOne per unique target
-                for target_id, ovs in grouped.items():
-                    esc_target = _escape_js(target_id)
-                    ops = [_emit_override_op(ov, "_c", node_id_vars, var, deferred_lines) for ov in ovs]
-                    ops = [op for op in ops if op]
-                    if not ops:
-                        continue
-                    if len(ops) == 1:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); '
-                            f"if (_c) {{ {ops[0]} }} }}"
-                        )
-                    else:
-                        lines.append(
-                            f'{{ const _c = {var}.findOne(n => n.id.endsWith("{esc_target}")); if (_c) {{'
-                        )
-                        for op in ops:
-                            lines.append(f"  {op}")
-                        lines.append("} }")
+            # Instance overrides via override tree. The tree encodes
+            # dependency ordering: pre-order traversal ensures swaps
+            # happen before property overrides on swapped descendants.
+            override_tree = raw_visual.get("override_tree") if (db_visuals is not None and raw_visual) else None
+            if override_tree:
+                _emit_override_tree(override_tree, var, node_id_vars, lines, deferred_lines)
 
             # L0 visual properties on the instance itself (rotation, opacity).
             # These differ from the master's defaults but aren't captured as
@@ -879,6 +936,11 @@ def generate_figma_script(
             lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
             lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
+
+        if canvas_position is not None:
+            cx, cy = canvas_position
+            lines.append(f"{var_map[root_id]}.x = {cx};")
+            lines.append(f"{var_map[root_id]}.y = {cy};")
 
     # Emit deferred position + constraints (after all children are appended)
     if deferred_lines:

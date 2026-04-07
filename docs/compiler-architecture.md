@@ -58,13 +58,15 @@ Inspired by MLIR (Multi-Level Intermediate Representation, LLVM project). Core p
 
 The DB `nodes` table IS Level 0. Not a serialization of L0 — the table itself is the scene graph.
 
-- 72 columns per node
+- 74 columns per node
 - `parent_id` column defines the tree structure
 - `sort_order` defines z-ordering within each parent
 - Every visual, layout, font, constraint, and transform property
 - Every node type: FRAME, RECTANGLE, TEXT, INSTANCE, GROUP, VECTOR, ELLIPSE, etc.
 - `visible`, `clips_content`, `rotation`, `blend_mode`
+- `fill_geometry`, `stroke_geometry` for vector path data (SVG paths)
 - `component_key` for INSTANCE nodes (reference to master component)
+- **Content-addressed asset registry**: `assets` table (hash, kind, metadata) + `node_asset_refs` junction table linking nodes to raster images, SVG vectors, and icons
 
 **86,761 nodes** in the Dank extraction. This is a complete, lossless copy of the Figma file's node tree.
 
@@ -228,10 +230,35 @@ For each node, walking the L0 `parent_id` tree:
    - FRAME → `figma.createFrame()` + apply layout, fills, strokes, effects, constraints from raw DB columns
    - TEXT → `figma.createText()` + apply font, content from raw DB columns
    - RECTANGLE → `figma.createRectangle()` + apply fills from raw DB columns
-   - VECTOR, ELLIPSE, GROUP → create appropriate element type from L0 data
+   - VECTOR/BOOLEAN_OPERATION → check `_asset_refs` for SVG path data; if present, `figma.createVector()` + `vectorPaths`; if not, skip (graceful degradation)
+   - IMAGE fills → emit `{type: "IMAGE", scaleMode, imageHash}` paint entries
    - Sets `visible`, `clipsContent`, `rotation`, `constraints` from raw DB values
 
 4. **Apply visibility and overrides**: Hidden children, instance property overrides, blend modes.
+
+### Override Tree
+
+Instance overrides are stored in the visual dict as a nested `override_tree` rather than flat lists. The tree structure encodes dependency ordering: swaps appear as parent nodes, property overrides on swapped children appear as descendants. This nesting is semantic — it reflects the component slot tree, not renderer-specific concerns.
+
+**Why a tree?** A flat list of overrides cannot express ordering dependencies. When an instance swap replaces a child subtree, any property overrides targeting nodes inside that child must be applied AFTER the swap. A flat `OrderedDict` grouped by insertion order gets this wrong when swaps and property overrides interleave. The tree makes the dependency explicit: pre-order traversal naturally produces correct imperative ordering (swap first, then override descendants). Declarative renderers can map the tree directly to nested props.
+
+Built by `build_override_tree()` in `dd/ir.py`, consumed by all renderers. The Figma renderer walks it via `_emit_override_tree()` (recursive pre-order).
+
+### Synthetic Node Filtering
+
+Figma inserts implementation artifact nodes with parenthesized names — `(Auto Layout spacer)`, `(Adjust Auto Layout Spacing)`. These are platform internals, not design content. They are filtered at the composition spec boundary (`build_composition_spec` in `dd/ir.py`) so all renderers benefit. L0 stays lossless — the nodes remain in the DB, only excluded from the spec output.
+
+**System chrome is NOT synthetic.** iOS status bars, keyboards, Safari chrome are design content placed intentionally by designers. A keyboard on a login screen communicates "this is the typing state." Filtering it would make the design incomplete. Only platform IMPLEMENTATION artifacts (Figma internal spacers) are synthetic.
+
+Detection: `is_synthetic_node(name)` in `dd/classify_rules.py`. Filtering includes transitive closure — children of synthetic nodes are also excluded.
+
+### Asset Registry
+
+Non-property design data (raster images, SVG vector paths, icons) stored in a content-addressed `assets` table. Nodes reference assets via `node_asset_refs` junction table with role classification (fill, icon, illustration, background, mask).
+
+- **Raster assets**: Keyed by Figma `imageHash`. Emitted as IMAGE paint entries.
+- **Vector assets**: SVG path data from `fillGeometry`/`strokeGeometry`. Hashed via SHA-256 for deduplication. Emitted as `vectorPaths` assignments.
+- **Resolution**: `AssetResolver` ABC decouples renderers from storage. `SqliteAssetResolver` reads from the local DB. Future backends (cloud, CDN) implement the same interface.
 
 The result is a Figma file that isn't just visually identical to the original — it's structurally equivalent. Components are real components. Tokens are live variables. Naming preserves semantic intent. A designer can open the reproduced file and work with it normally.
 
@@ -372,7 +399,7 @@ docs/
   research/                  # Research artifacts (Mitosis, Ghost, formats, etc.)
   archive/                   # Superseded documents
 
-tests/                       # 1,657 tests
+tests/                       # 1,747 tests
 ```
 
 ---

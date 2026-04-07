@@ -16,6 +16,7 @@ from dd.renderers.figma import (
     normalize_font_style,
     hex_to_figma_rgba,
 )
+from dd.ir import build_override_tree
 from dd.visual import build_visual_from_db, resolve_style_value
 
 # ---------------------------------------------------------------------------
@@ -859,6 +860,80 @@ def _seed_gen_screen(db: sqlite3.Connection) -> None:
         "VALUES (1, 10, 'fill.0.color', 1, '#FAFAFA', '#FAFAFA', 'bound')"
     )
     db.commit()
+
+
+class TestCanvasPositioning:
+    """Verify screens can be positioned at specific canvas coordinates."""
+
+    def test_canvas_position_sets_root_xy(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+        }})
+        script, _ = generate_figma_script(spec, canvas_position=(500, 200))
+        assert ".x = 500;" in script
+        assert ".y = 200;" in script
+
+    def test_screen_name_used_for_root_frame(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "_original_name": "iPhone 13 Pro Max - 8",
+            "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+        }})
+        script, _ = generate_figma_script(spec)
+        assert '.name = "iPhone 13 Pro Max - 8";' in script
+
+    def test_no_canvas_position_omits_root_xy(self):
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+        }})
+        script, _ = generate_figma_script(spec)
+        # Root frame should NOT have x/y set (defaults to 0,0)
+        lines = script.split("\n")
+        root_var_line = [l for l in lines if "figma.createFrame()" in l][0]
+        root_var = root_var_line.split("const ")[1].split(" =")[0]
+        # Check no x/y assignment immediately after root creation
+        assert f"{root_var}.x = " not in script or f"{root_var}.x = 0" not in script
+
+
+class TestCalculateCanvasLayout:
+    """Verify canvas layout calculation for multiple screens."""
+
+    def test_single_screen(self):
+        from dd.renderers.figma import calculate_canvas_layout
+        positions = calculate_canvas_layout([(428, 926)])
+        assert positions == [(0, 0)]
+
+    def test_multiple_screens_horizontal(self):
+        from dd.renderers.figma import calculate_canvas_layout
+        positions = calculate_canvas_layout([
+            (428, 926), (428, 926), (428, 926),
+        ])
+        assert positions[0] == (0, 0)
+        assert positions[1][0] > 428  # second screen is to the right
+        assert positions[1][1] == 0   # same row
+        assert positions[2][0] > positions[1][0]  # third is further right
+
+    def test_gap_between_screens(self):
+        from dd.renderers.figma import calculate_canvas_layout
+        positions = calculate_canvas_layout([(100, 200), (100, 200)], gap=50)
+        assert positions[0] == (0, 0)
+        assert positions[1] == (150, 0)  # 100 width + 50 gap
+
+    def test_custom_gap(self):
+        from dd.renderers.figma import calculate_canvas_layout
+        positions = calculate_canvas_layout([(200, 400), (300, 400)], gap=100)
+        assert positions[1] == (300, 0)  # 200 + 100
+
+    def test_mixed_sizes(self):
+        from dd.renderers.figma import calculate_canvas_layout
+        positions = calculate_canvas_layout([
+            (428, 926), (834, 1194), (1536, 1152),
+        ], gap=80)
+        assert positions[0] == (0, 0)
+        assert positions[1] == (508, 0)    # 428 + 80
+        assert positions[2] == (1422, 0)   # 508 + 834 + 80
 
 
 class TestGenerateScreen:
@@ -1787,11 +1862,11 @@ class TestLayoutSizingFromDB:
                 "component_key": "abc",
                 "component_figma_id": "123:456",
                 "bindings": [],
-                "instance_overrides": [{
+                "override_tree": build_override_tree([{
                     "target": ";1334:005",
                     "property": "layoutSizingHorizontal",
                     "value": "HUG",
-                }],
+                }], []),
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
@@ -1813,11 +1888,11 @@ class TestLayoutSizingFromDB:
                 "component_key": "abc",
                 "component_figma_id": "123:456",
                 "bindings": [],
-                "instance_overrides": [{
+                "override_tree": build_override_tree([{
                     "target": ";1334:005",
                     "property": "layoutSizingVertical",
                     "value": "FILL",
-                }],
+                }], []),
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
@@ -2131,7 +2206,7 @@ class TestOverrideGrouping:
                 "component_key": "abc",
                 "component_figma_id": "123:456",
                 "bindings": [],
-                "instance_overrides": overrides,
+                "override_tree": build_override_tree(overrides, []),
             },
         }
         return spec, db_visuals
@@ -2181,6 +2256,41 @@ class TestOverrideGrouping:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         findone_count = script.count("findOne")
         assert findone_count == 2, f"Expected 2 findOne calls (;1334:005 + ;1334:006) but got {findone_count}"
+
+    def test_swap_emitted_before_descendant_override(self):
+        """Instance swap on a target must emit BEFORE property overrides on descendants.
+
+        This is the bug that caused wrong icon colors: swap replaces the subtree,
+        so property overrides on descendants must come after the swap.
+        """
+        overrides = [
+            {"target": ";1334:10838;2054:27785", "property": "strokes", "value": '[{"type":"SOLID"}]'},
+        ]
+        child_swaps = [
+            {"child_id": ";1334:10838", "swap_target_id": "999:111"},
+        ]
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["header-1"]},
+            "header-1": {"type": "header"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc",
+                "component_figma_id": "123:456",
+                "bindings": [],
+                "override_tree": build_override_tree(overrides, child_swaps),
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        swap_pos = script.find("swapComponent")
+        strokes_pos = script.find(".strokes =")
+        assert swap_pos > 0, "Expected swapComponent in output"
+        assert strokes_pos > 0, "Expected strokes override in output"
+        assert swap_pos < strokes_pos, (
+            f"Swap (pos {swap_pos}) must come before strokes override (pos {strokes_pos})"
+        )
 
 
 class TestTokenRefL0Fallback:
@@ -2592,9 +2702,9 @@ class TestOverrideEmissionRegistryDriven:
                 "component_key": "abc123",
                 "component_figma_id": "999:1",
                 "bindings": [],
-                "instance_overrides": [
+                "override_tree": build_override_tree([
                     {"target": ":self", "property": "cornerRadius", "value": "10"},
-                ],
+                ], []),
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
@@ -2612,9 +2722,9 @@ class TestOverrideEmissionRegistryDriven:
                 "component_key": "abc123",
                 "component_figma_id": "999:1",
                 "bindings": [],
-                "instance_overrides": [
+                "override_tree": build_override_tree([
                     {"target": ":self", "property": "effects", "value": '[{"type":"DROP_SHADOW"}]'},
-                ],
+                ], []),
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
@@ -2633,9 +2743,9 @@ class TestOverrideEmissionRegistryDriven:
                 "component_key": "abc123",
                 "component_figma_id": "999:1",
                 "bindings": [],
-                "instance_overrides": [
+                "override_tree": build_override_tree([
                     {"target": ";1334:10837", "property": "fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
-                ],
+                ], []),
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)

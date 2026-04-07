@@ -13,7 +13,7 @@ from dd.classify import (
     run_classification,
 )
 from dd.classify_heuristics import classify_heuristics
-from dd.classify_rules import is_system_chrome, parse_component_name
+from dd.classify_rules import is_synthetic_node, is_system_chrome, parse_component_name
 from dd.classify_skeleton import extract_skeleton
 from dd.db import init_db
 from dd.types import ClassificationSource
@@ -241,6 +241,39 @@ class TestSystemChrome:
         assert is_system_chrome("icon/back") is False
         assert is_system_chrome("card/sheet") is False
         assert is_system_chrome("nav/top-nav") is False
+
+
+class TestSyntheticNode:
+    """Verify synthetic node detection — platform artifacts not designer content."""
+
+    def test_auto_layout_spacer(self):
+        assert is_synthetic_node("(Auto Layout spacer)") is True
+
+    def test_adjust_auto_layout_spacing(self):
+        assert is_synthetic_node("(Adjust Auto Layout Spacing)") is True
+
+    def test_other_parenthesized_names(self):
+        assert is_synthetic_node("(Some Future Figma Internal)") is True
+
+    def test_system_chrome_is_not_synthetic(self):
+        assert is_synthetic_node("ios/status-bar") is False
+        assert is_synthetic_node("Home Indicator") is False
+        assert is_synthetic_node("shift") is False
+        assert is_synthetic_node("Keyboard Layout") is False
+
+    def test_real_components_not_synthetic(self):
+        assert is_synthetic_node("button/primary") is False
+        assert is_synthetic_node("icon/back") is False
+        assert is_synthetic_node("Frame 413") is False
+        assert is_synthetic_node("iPhone 13 Pro Max - 8") is False
+
+    def test_parenthesized_substring_not_synthetic(self):
+        assert is_synthetic_node("my (custom) frame") is False
+        assert is_synthetic_node("(") is False
+        assert is_synthetic_node("()") is True  # edge: empty parens is synthetic
+
+    def test_empty_name_not_synthetic(self):
+        assert is_synthetic_node("") is False
 
 
 # ---------------------------------------------------------------------------

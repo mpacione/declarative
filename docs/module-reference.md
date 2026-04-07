@@ -1,6 +1,6 @@
 # Module Reference — Complete Capability Inventory
 
-> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture. Updated 2026-04-06.
+> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture. Updated 2026-04-07.
 
 ---
 
@@ -11,7 +11,7 @@ Single source of truth for all 58 Figma node properties. Every pipeline layer re
 
 | Function | Purpose |
 |----------|---------|
-| `PROPERTIES` | Tuple of 48 `FigmaProperty` dataclass entries |
+| `PROPERTIES` | Tuple of 48 `FigmaProperty` dataclass entries (with `token_binding_path` for binding awareness) |
 | `HANDLER` | Sentinel value for handler-emitted properties (see emit field) |
 | `by_db_column(column)` | Look up property by DB column name |
 | `by_figma_name(name)` | Look up property by Figma Plugin API name |
@@ -19,7 +19,7 @@ Single source of truth for all 58 Figma node properties. Every pipeline layer re
 | `by_override_field(field)` | Look up property by Figma overriddenFields name |
 | `overrideable_properties()` | Properties with override_fields defined |
 
-Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` → `category` → `value_type` → `override_type` → `default_value` → `emit`.
+Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` → `category` → `value_type` → `override_type` → `default_value` → `emit` → `token_binding_path`.
 
 The `emit` field classifies each property's emission category:
 - **Template** (`{"figma": "{var}.{figma_name} = {value};"}`) — simple scalar, type-aware formatting via `format_js_value()`
@@ -49,7 +49,7 @@ Coordinates screen extraction + component extraction + binding extraction. Entry
 | `complete_run(conn, run_id)` | Finalize extraction run |
 | `process_components(conn, file_id, component_data)` | Extract components via `extract_components` module |
 
-### dd/extract_screens.py — Plugin API Screen Extraction (29 tests)
+### dd/extract_screens.py — Plugin API Screen Extraction (36 tests)
 Generates async Figma Plugin JS to walk node trees and extract 72 columns per node. Uses `getNodeByIdAsync` and `getMainComponentAsync` (Figma's async API).
 
 | Function | Purpose |
@@ -59,7 +59,7 @@ Generates async Figma Plugin JS to walk node trees and extract 72 columns per no
 | `compute_is_semantic(nodes)` | Tag nodes as semantic vs. structural noise |
 | `insert_nodes(conn, screen_id, nodes)` | Batch insert into `nodes` table with UPSERT |
 
-**Captures**: fills, strokes, effects (JSON), corner radius, opacity, blend mode, layout mode, padding (4 sides), item spacing, counter axis spacing, alignment, sizing modes, layout_positioning, Grid properties (6 fields), font properties (8 fields), text content, constraints, rotation, clips_content, component_key, component_figma_id. Total: 72 columns.
+**Captures**: fills, strokes, effects (JSON), corner radius, opacity, blend mode, layout mode, padding (4 sides), item spacing, counter axis spacing, alignment, sizing modes, layout_positioning, Grid properties (6 fields), font properties (8 fields), text content, constraints, rotation, clips_content, fillGeometry, strokeGeometry, component_key, component_figma_id. Total: 74 columns.
 
 ### dd/extract_supplement.py — Supplemental Plugin API Extraction
 Registry-driven extraction for Plugin API-only fields: `componentKey`, `layoutPositioning`, Grid properties, and **all instance overrides**. CLI: `dd extract-supplement`.
@@ -124,8 +124,23 @@ Converts Figma properties to normalized binding rows with hierarchical property 
 | `normalize_paragraph_spacing(node)` | paragraphSpacing | same |
 | `normalize_font_style(node)` | fontStyle (skips "Regular") | same |
 
-### dd/figma_api.py — Figma API Bridge (27 tests)
-REST API wrapper + MCP bridge for Figma file access.
+### dd/figma_api.py — Figma API Bridge (32 tests)
+REST API wrapper + MCP bridge for Figma file access. Includes `_reconstruct_logical_dimensions()` for AABB→logical dimension conversion on rotated nodes, and fillGeometry/strokeGeometry extraction.
+
+### dd/extract_assets.py — Asset Extraction & Resolution (20 tests)
+Content-addressed asset pipeline for raster images and SVG vector paths.
+
+| Function | Purpose |
+|----------|---------|
+| `extract_image_hashes_from_db(conn)` | Scan fills JSON for IMAGE type, return unique hashes |
+| `store_asset(conn, hash, kind, ...)` | INSERT OR IGNORE into assets table |
+| `link_node_asset(conn, node_id, asset_hash, role, fill_index)` | Link node to asset via node_asset_refs |
+| `process_vector_geometry(conn)` | Hash fill/stroke geometry from nodes, create svg_path assets with links |
+| `AssetResolver` (ABC) | Abstract interface: `resolve(hash)` → asset dict, `resolve_batch(hashes)` → dict of assets |
+| `SqliteAssetResolver` | Local DB implementation — queries assets table with metadata JSON parsing |
+
+**Asset kinds**: `raster` (Figma IMAGE fills), `svg_path` (vector geometry paths), `svg_doc` (full SVG documents).
+**Content addressing**: SHA-256 of `"{windingRule}:{path}"` concatenated with `;`. Identical paths share one asset row.
 
 ---
 
@@ -158,6 +173,7 @@ Single file containing every heuristic rule. Referenced by `classify_heuristics.
 | Function | Purpose |
 |----------|---------|
 | `is_system_chrome(name)` | Detect iOS/Safari/Android system UI (excluded from IR) |
+| `is_synthetic_node(name)` | Detect platform implementation artifacts — parenthesized Figma internal names like `(Auto Layout spacer)`, `(Adjust Auto Layout Spacing)`. Does NOT match system chrome (keyboards, status bars are design content). |
 | `is_generic_name(name)` | Detect auto-generated names ("Frame N", "Group N") |
 | `rule_header(node, screen_width)` | Full-width, top position, horizontal layout → header |
 | `rule_bottom_nav(node, screen_width, screen_height)` | Full-width, bottom position → bottom-nav |
@@ -225,17 +241,18 @@ Agent-driven refinement: rename, merge, split, alias, accept, reject tokens.
 
 ## Layer 3: Composition (1 module — needs refactoring)
 
-### dd/ir.py — IR Generation (103 tests)
+### dd/ir.py — IR Generation (110+ tests)
 Transforms classified screen data + token bindings into CompositionSpec.
 
 | Function | Purpose |
 |----------|---------|
 | `generate_ir(conn, screen_id)` | Main entry: query → build spec → serialize |
 | `query_screen_for_ir(conn, screen_id)` | Fetch classified nodes, bindings, tokens from DB |
-| `query_screen_visuals(conn, screen_id)` | Registry-driven: SELECTs all registry columns + x/y. Returns visual, layout, text properties + bindings + decomposed instance overrides (`{target, property, value}`) + child swaps. Renderer's DB access path. |
+| `query_screen_visuals(conn, screen_id)` | Registry-driven: SELECTs all registry columns + x/y. Returns visual, layout, text properties + bindings + decomposed instance overrides + `_asset_refs` (from node_asset_refs JOIN assets). Builds `override_tree` (nested tree replacing flat overrides + child_swaps). Renderer's DB access path. |
 | `decompose_override(property_type, property_name)` | Splits composite DB `property_name` into `(target, figma_property_name)` using suffix knowledge from extraction. |
 | `_hoist_descendant_overrides(conn, ids, result)` | Hoists overrides from nested Mode 1 instances to their top-level ancestor, transforming `:self` to master-relative paths with deduplication. |
-| `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers. Returns `_node_id_map` (element_id → node_id). |
+| `build_override_tree(instance_overrides, child_swaps)` | Converts flat override lists + child_swaps into nested tree structure. Tree nesting encodes dependency ordering (swaps before descendant property overrides). Semicolon-delimited paths parsed, intermediate ancestors created. |
+| `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers. Filters synthetic nodes (parenthesized Figma internals) and their children via transitive closure. Propagates `screen_name` as `_original_name` on root element. Returns `_node_id_map` (element_id → node_id). |
 | `map_node_to_element(node)` | Convert classified node to IR element (type, layout, visual, style, props) |
 | `normalize_fills/strokes/effects/corner_radius` | Normalize Figma JSON to IR format with token binding overlay |
 
@@ -302,7 +319,7 @@ Renderer-agnostic visual dict builder and layout sizing resolution. Any renderer
 
 | Function | Purpose |
 |----------|---------|
-| `build_visual_from_db(node_visual)` | Registry-driven: maps db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict (hex colors, numeric weights, radians). |
+| `build_visual_from_db(node_visual)` | Registry-driven: maps db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict (hex colors, numeric weights, radians). Populates `_token_refs` sidecar from bindings via `token_binding_path`. |
 | `_apply_db_transform(value, prop)` | Universal transforms only — int→bool, JSON string parse. No renderer-specific transforms. |
 | `resolve_style_value(value, tokens)` | Resolve token references (`"{color.primary}"` → hex value). |
 | `_resolve_layout_sizing(...)` | Pure function: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING`) > IR sizing > type heuristic. Returns semantic lowercase ("fill", "hug", "fixed"). |
@@ -315,6 +332,9 @@ Generates Figma Plugin API JavaScript. All platform-specific transforms live her
 - **Deferred positioning**: position + constraints set after all appendChild calls
 - **Default clearing**: fills=[], clipsContent=false to override Figma createFrame() defaults
 - **42 override types**: Decomposed at query time into `{target, property, value}`. `_emit_override_op` uses `format_js_value` for generic properties.
+- **Vector-aware skip**: VECTOR/BOOLEAN_OPERATION nodes check `_asset_refs` — render with `createVector()` + `vectorPaths` if asset data present, skip if not
+- **IMAGE fill emission**: `imageHash` + `scaleMode` paint entries for raster assets
+- **Rotation sign**: REST API radians → Plugin API degrees with sign negation (`-math.degrees(value)`)
 
 | Function | Purpose |
 |----------|---------|
@@ -326,7 +346,10 @@ Generates Figma Plugin API JavaScript. All platform-specific transforms live her
 | `font_weight_to_style(weight)` | Numeric 600 → Figma style name "Semi Bold". |
 | `normalize_font_style(family, style)` | Per-family style naming (SF Pro → "Semibold", Inter → "Semi Bold"). |
 | `collect_fonts(spec, db_visuals)` | Collect (family, style) pairs for `loadFontAsync` preamble. |
+| `_emit_override_tree(tree, var, lines, ...)` | Recursive pre-order walk of override tree. Emits swaps before descendant property overrides. Correct ordering for imperative renderers. |
+| `_collect_swap_targets_from_tree(tree)` | Collect component IDs from override tree swap nodes for pre-fetch preamble (`getNodeByIdAsync` deduplication). |
 | `_emit_layout/visual/fills/strokes/effects/text_props` | Figma JS emission for each property category. |
+| `_emit_vector_paths(var, raw_visual, lines)` | Emit `vectorPaths` from asset ref SVG data for vector nodes. |
 
 ### dd/generate.py — Backward-Compatible Re-exports
 Thin wrapper re-exporting from `dd.visual` and `dd.renderers.figma`. Existing imports continue to work. New code should import from the specific modules directly.
@@ -409,7 +432,7 @@ Token export to W3C Design Token Community Group format.
 | Binding-token consistency | WARNING | Bound binding values match token values |
 
 ### dd/db.py — Database Management
-Schema initialization from `schema.sql`, connection management, WAL mode.
+Schema initialization from `schema.sql`, connection management, WAL mode. Schema includes 74 node columns + `assets` table (content-addressed) + `node_asset_refs` junction table.
 
 ### dd/cli.py — CLI Commands (19 tests)
 Entry points: extract, cluster, accept-all, validate, export, push, status, classify, generate-ir, seed-catalog, maintenance.

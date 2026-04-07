@@ -57,6 +57,27 @@ def is_system_chrome(name: str) -> bool:
     return False
 
 
+def is_synthetic_node(name: str) -> bool:
+    """Check if a node is a platform implementation artefact with no visual intent.
+
+    Synthetic nodes are internal mechanics of the source platform that
+    should be excluded from the composition spec. Examples: Figma's
+    auto-layout spacers, spacing adjustment overlays.
+
+    NOT system chrome — keyboards, status bars, Safari chrome are real
+    design content that designers place intentionally on the canvas.
+    L0 stores synthetic nodes; the IR filters them.
+
+    Parenthesized names are Figma's convention for internal nodes.
+    """
+    stripped = name.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("(") and stripped.endswith(")"):
+        return True
+    return False
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Name parsing
 # ═══════════════════════════════════════════════════════════════════════════

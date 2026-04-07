@@ -10,7 +10,7 @@ import json
 import sqlite3
 from typing import Any
 
-from dd.classify_rules import is_system_chrome
+from dd.classify_rules import is_synthetic_node, is_system_chrome
 from dd.color import rgba_to_hex
 
 # ---------------------------------------------------------------------------
@@ -643,6 +643,18 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         if has_overrides and len(instance_ids) > 1:
             _hoist_descendant_overrides(conn, instance_ids, result)
 
+        # Build override trees from the flat lists.
+        # This replaces instance_overrides + child_swaps with a single
+        # nested structure where nesting encodes dependency ordering.
+        for inst_id in instance_ids:
+            vis = result.get(inst_id)
+            if vis is None:
+                continue
+            ovs = vis.pop("instance_overrides", [])
+            swaps = vis.pop("child_swaps", [])
+            if ovs or swaps:
+                vis["override_tree"] = build_override_tree(ovs, swaps)
+
     # Attach asset refs (vector paths, image assets) when the tables exist
     has_asset_refs = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='node_asset_refs'"
@@ -678,6 +690,89 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                 result[nid]["_asset_refs"].append(ref_entry)
 
     return result
+
+
+def build_override_tree(
+    instance_overrides: list[dict[str, Any]],
+    child_swaps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a nested override tree from flat overrides and child swaps.
+
+    The tree mirrors the component instance's slot/child structure.
+    Nesting encodes dependency: a swap at a parent node must happen before
+    property overrides on its descendants. Pre-order traversal of the tree
+    gives correct ordering for imperative renderers. Declarative renderers
+    map the tree directly to nested props.
+
+    Target paths are semicolon-delimited Figma node IDs (;pageId:nodeId).
+    Parent of ";A;B" is ";A". Parent of ";A" is ":self" (root).
+    """
+    # Collect all data by target
+    target_data: dict[str, dict[str, Any]] = {}
+    for ov in instance_overrides:
+        t = ov["target"]
+        target_data.setdefault(t, {"properties": [], "swap": None})
+        target_data[t]["properties"].append({
+            "property": ov["property"],
+            "value": ov["value"],
+        })
+
+    for cs in child_swaps:
+        t = cs["child_id"]
+        target_data.setdefault(t, {"properties": [], "swap": None})
+        target_data[t]["swap"] = cs["swap_target_id"]
+
+    # Build root node
+    root_data = target_data.pop(":self", {"properties": [], "swap": None})
+    root: dict[str, Any] = {
+        "target": ":self",
+        "swap": root_data["swap"],
+        "properties": root_data["properties"],
+        "children": [],
+    }
+
+    if not target_data:
+        return root
+
+    # Ensure all intermediate ancestor paths exist as nodes.
+    # Target ";A;B;C" implies ";A;B" and ";A" exist in the tree
+    # even if they have no explicit overrides.
+    all_targets = set(target_data.keys())
+    for target in list(all_targets):
+        segments = target.split(";")
+        # segments[0] is empty (leading ";"), real segments start at [1]
+        for i in range(2, len(segments)):
+            ancestor = ";".join(segments[:i])
+            if ancestor and ancestor not in all_targets:
+                target_data[ancestor] = {"properties": [], "swap": None}
+                all_targets.add(ancestor)
+
+    # Create tree nodes
+    nodes: dict[str, dict[str, Any]] = {}
+    for target, data in target_data.items():
+        nodes[target] = {
+            "target": target,
+            "swap": data["swap"],
+            "properties": data["properties"],
+            "children": [],
+        }
+
+    # Wire parent→child relationships
+    all_nodes: dict[str, dict[str, Any]] = {":self": root}
+    # Process shallowest first so parents exist before children
+    for target in sorted(nodes.keys(), key=lambda t: t.count(";")):
+        node = nodes[target]
+        last_semi = target.rfind(";")
+        if last_semi <= 0:
+            parent_target = ":self"
+        else:
+            parent_target = target[:last_semi]
+
+        parent = all_nodes.get(parent_target, root)
+        parent["children"].append(node)
+        all_nodes[target] = node
+
+    return root
 
 
 def _hoist_descendant_overrides(
@@ -1014,9 +1109,33 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     Builds the flat element map, assigns IDs, wires parent→children
     relationships, and collects referenced tokens.
     """
-    nodes = data.get("nodes", [])
-    if not nodes:
+    raw_nodes = data.get("nodes", [])
+    if not raw_nodes:
         return {"version": "1.0", "root": "", "elements": {}, "tokens": {}, "_node_id_map": {}}
+
+    # Filter synthetic nodes (platform artefacts like Figma auto-layout spacers).
+    # L0 stays lossless (nodes remain in DB); the composition spec excludes them.
+    synthetic_node_ids: set[int] = set()
+    for node in raw_nodes:
+        name = node.get("name", "")
+        if is_synthetic_node(name):
+            synthetic_node_ids.add(node["node_id"])
+
+    # Also exclude children of synthetic nodes (transitive closure)
+    if synthetic_node_ids:
+        node_by_id = {n["node_id"]: n for n in raw_nodes}
+        changed = True
+        while changed:
+            changed = False
+            for node in raw_nodes:
+                if node["node_id"] in synthetic_node_ids:
+                    continue
+                parent_id = node.get("parent_id")
+                if parent_id in synthetic_node_ids:
+                    synthetic_node_ids.add(node["node_id"])
+                    changed = True
+
+    nodes = [n for n in raw_nodes if n["node_id"] not in synthetic_node_ids]
 
     type_counters: dict[str, int] = {}
     node_id_to_element_id: dict[int, str] = {}
@@ -1118,7 +1237,7 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     root_id = "screen-1"
-    elements[root_id] = {
+    root_element: dict[str, Any] = {
         "type": "screen",
         "layout": {
             "direction": "absolute",
@@ -1126,6 +1245,10 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         },
         "children": root_ids,
     }
+    screen_name = data.get("screen_name")
+    if screen_name:
+        root_element["_original_name"] = screen_name
+    elements[root_id] = root_element
 
     element_id_to_node_id = {eid: nid for nid, eid in node_id_to_element_id.items()}
 

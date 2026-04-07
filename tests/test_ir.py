@@ -9,6 +9,7 @@ from dd.catalog import seed_catalog
 from dd.db import init_db
 from dd.ir import (
     build_composition_spec,
+    build_override_tree,
     build_semantic_tree,
     filter_system_chrome,
     generate_ir,
@@ -542,6 +543,12 @@ class TestBuildCompositionSpec:
         assert "children" in header
         assert len(header["children"]) >= 1  # icon child
 
+    def test_root_screen_has_original_name(self, db: sqlite3.Connection):
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        root = spec["elements"][spec["root"]]
+        assert root.get("_original_name") == "Settings"
+
     def test_tokens_populated(self, db: sqlite3.Connection):
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
@@ -662,16 +669,76 @@ class TestBuildCompositionSpec:
         rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
         assert spec["elements"][rect_eid].get("_original_name") == "image 319"
 
-    def test_ir_includes_system_chrome_instances(self, db: sqlite3.Connection):
-        """System chrome nodes ARE in the IR (needed for round-trip).
+    def test_synthetic_nodes_excluded_from_spec(self, db: sqlite3.Connection):
+        """Synthetic nodes (platform artifacts) should not appear in the spec.
 
-        The semantic path (generate_ir(semantic=True)) filters them post-build
-        via filter_system_chrome(). The structural IR includes everything.
+        Parenthesized names like (Auto Layout spacer) are Figma-internal
+        artifacts that should be filtered at spec assembly time.
+        """
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, parent_id) "
+            "VALUES (16, 1, 'sp1', '(Auto Layout spacer)', 'RECTANGLE', 2, 4, -8990, 7060, 44, 4, 13)"
+        )
+        db.commit()
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 16 not in node_ids  # spacer excluded
+
+        element_names = [
+            el.get("_original_name", "")
+            for el in spec["elements"].values()
+        ]
+        assert "(Auto Layout spacer)" not in element_names
+
+    def test_synthetic_nodes_remain_in_db(self, db: sqlite3.Connection):
+        """Synthetic nodes stay in the DB (L0 is lossless) even though excluded from spec."""
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, parent_id) "
+            "VALUES (17, 1, 'sp2', '(Adjust Auto Layout Spacing)', 'FRAME', 2, 5, -8990, 7060, 60, 4, 13)"
+        )
+        db.commit()
+        row = db.execute("SELECT id FROM nodes WHERE id = 17").fetchone()
+        assert row is not None  # node exists in DB
+
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 17 not in node_ids  # but excluded from spec
+
+    def test_synthetic_node_children_excluded(self, db: sqlite3.Connection):
+        """Children of synthetic nodes should also be excluded from the spec."""
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, parent_id) "
+            "VALUES (18, 1, 'sp3', '(Auto Layout spacer)', 'RECTANGLE', 2, 6, -8990, 7060, 44, 4, 13)"
+        )
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, parent_id) "
+            "VALUES (19, 1, 'sp3c', 'spacer-child', 'RECTANGLE', 3, 0, -8990, 7060, 44, 4, 18)"
+        )
+        db.commit()
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 18 not in node_ids
+        assert 19 not in node_ids
+
+    def test_system_chrome_included_in_spec(self, db: sqlite3.Connection):
+        """System chrome (keyboards, status bars) IS design content.
+
+        Designers place these intentionally on the canvas. A login screen
+        mockup with a visible keyboard needs the keyboard rendered.
+        System chrome is NOT synthetic — only platform implementation
+        artefacts (spacers, spacing adjusters) are synthetic.
         """
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         node_ids = set(spec["_node_id_map"].values())
-        assert 15 in node_ids  # iOS/StatusBar — included for round-trip
+        assert 15 in node_ids  # iOS/StatusBar — design content, included
 
     def test_children_of_non_autolayout_parent_have_position(self, db: sqlite3.Connection):
         """Children of parents with no layout_mode get absolute position.
@@ -843,6 +910,116 @@ class TestGenerateIRCLI:
 
         from dd.cli import main
         main(["generate-ir", "--db", db_path, "--screen", "1"])
+
+
+# ---------------------------------------------------------------------------
+# Override tree tests
+# ---------------------------------------------------------------------------
+
+class TestBuildOverrideTree:
+    """Verify build_override_tree assembles flat overrides into a nested tree."""
+
+    def test_empty_inputs(self):
+        tree = build_override_tree([], [])
+        assert tree["target"] == ":self"
+        assert tree["swap"] is None
+        assert tree["properties"] == []
+        assert tree["children"] == []
+
+    def test_self_overrides_at_root(self):
+        overrides = [
+            {"target": ":self", "property": "cornerRadius", "value": 12},
+            {"target": ":self", "property": "visible", "value": True},
+        ]
+        tree = build_override_tree(overrides, [])
+        assert len(tree["properties"]) == 2
+        props = {p["property"] for p in tree["properties"]}
+        assert props == {"cornerRadius", "visible"}
+
+    def test_single_depth_children(self):
+        overrides = [
+            {"target": ";1334:10838", "property": "fills", "value": "[...]"},
+            {"target": ";1334:10839", "property": "visible", "value": False},
+        ]
+        tree = build_override_tree(overrides, [])
+        assert len(tree["children"]) == 2
+        targets = {c["target"] for c in tree["children"]}
+        assert targets == {";1334:10838", ";1334:10839"}
+
+    def test_nested_override_becomes_child_of_parent(self):
+        overrides = [
+            {"target": ";1334:10838", "property": "visible", "value": True},
+            {"target": ";1334:10838;2054:27785", "property": "strokes", "value": "[...]"},
+        ]
+        tree = build_override_tree(overrides, [])
+        assert len(tree["children"]) == 1
+        parent_node = tree["children"][0]
+        assert parent_node["target"] == ";1334:10838"
+        assert len(parent_node["children"]) == 1
+        child_node = parent_node["children"][0]
+        assert child_node["target"] == ";1334:10838;2054:27785"
+        assert child_node["properties"][0]["property"] == "strokes"
+
+    def test_child_swaps_become_swap_field(self):
+        child_swaps = [
+            {"child_id": ";1334:10838", "swap_target_id": "5601:12345"},
+        ]
+        tree = build_override_tree([], child_swaps)
+        assert len(tree["children"]) == 1
+        child = tree["children"][0]
+        assert child["swap"] == "5601:12345"
+
+    def test_swap_and_property_on_same_target(self):
+        overrides = [
+            {"target": ";1334:10838", "property": "visible", "value": True},
+        ]
+        child_swaps = [
+            {"child_id": ";1334:10838", "swap_target_id": "5601:12345"},
+        ]
+        tree = build_override_tree(overrides, child_swaps)
+        child = tree["children"][0]
+        assert child["swap"] == "5601:12345"
+        assert len(child["properties"]) == 1
+
+    def test_swap_before_descendant_in_tree_structure(self):
+        """Swap on parent and property override on descendant form correct nesting."""
+        overrides = [
+            {"target": ";1334:10838;2054:27785", "property": "strokes", "value": "[...]"},
+        ]
+        child_swaps = [
+            {"child_id": ";1334:10838", "swap_target_id": "5601:12345"},
+        ]
+        tree = build_override_tree(overrides, child_swaps)
+        parent_node = tree["children"][0]
+        assert parent_node["target"] == ";1334:10838"
+        assert parent_node["swap"] == "5601:12345"
+        child_node = parent_node["children"][0]
+        assert child_node["target"] == ";1334:10838;2054:27785"
+        assert child_node["properties"][0]["property"] == "strokes"
+
+    def test_intermediate_ancestors_created(self):
+        """Target ;A;B;C creates intermediate ;A;B even without explicit overrides."""
+        overrides = [
+            {"target": ";100:1;200:2;300:3", "property": "fills", "value": "[...]"},
+        ]
+        tree = build_override_tree(overrides, [])
+        depth1 = tree["children"][0]
+        assert depth1["target"] == ";100:1"
+        assert depth1["properties"] == []
+        assert depth1["swap"] is None
+        depth2 = depth1["children"][0]
+        assert depth2["target"] == ";100:1;200:2"
+        assert depth2["properties"] == []
+        depth3 = depth2["children"][0]
+        assert depth3["target"] == ";100:1;200:2;300:3"
+        assert len(depth3["properties"]) == 1
+
+    def test_self_swap(self):
+        child_swaps = [
+            {"child_id": ":self", "swap_target_id": "5601:99999"},
+        ]
+        tree = build_override_tree([], child_swaps)
+        assert tree["swap"] == "5601:99999"
 
 
 # ---------------------------------------------------------------------------
@@ -1316,6 +1493,26 @@ class TestQueryScreenVisuals:
         assert result[10].get("component_figma_id") is None
 
 
+def _collect_swaps_from_tree(tree: dict) -> list[dict]:
+    """Extract flat child_swap list from an override tree for test assertions."""
+    swaps = []
+    if tree.get("swap") and tree["target"] != ":self":
+        swaps.append({"child_id": tree["target"], "swap_target_id": tree["swap"]})
+    for child in tree.get("children", []):
+        swaps.extend(_collect_swaps_from_tree(child))
+    return swaps
+
+
+def _collect_overrides_from_tree(tree: dict) -> list[dict]:
+    """Extract flat override list from an override tree for test assertions."""
+    overrides = []
+    for prop in tree.get("properties", []):
+        overrides.append({"target": tree["target"], **prop})
+    for child in tree.get("children", []):
+        overrides.extend(_collect_overrides_from_tree(child))
+    return overrides
+
+
 class TestDeepChildSwaps:
     """Verify child_swaps captures swapped instances at any nesting depth."""
 
@@ -1413,7 +1610,8 @@ class TestDeepChildSwaps:
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]
-        child_swaps = nav_visual.get("child_swaps", [])
+        tree = nav_visual.get("override_tree", {})
+        child_swaps = _collect_swaps_from_tree(tree)
 
         # Should find the overridden icon swap
         swap_ids = [cs["child_id"] for cs in child_swaps]
@@ -1431,7 +1629,8 @@ class TestDeepChildSwaps:
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]
-        child_swaps = nav_visual.get("child_swaps", [])
+        tree = nav_visual.get("override_tree", {})
+        child_swaps = _collect_swaps_from_tree(tree)
 
         # Both overridden (node 103) and non-overridden (node 104) are included
         swap_ids = [cs["child_id"] for cs in child_swaps]
@@ -1443,7 +1642,8 @@ class TestDeepChildSwaps:
         result = query_screen_visuals(db, screen_id=1)
 
         nav_visual = result[100]
-        child_swaps = nav_visual.get("child_swaps", [])
+        tree = nav_visual.get("override_tree", {})
+        child_swaps = _collect_swaps_from_tree(tree)
         icon_swap = next(cs for cs in child_swaps if ";1334:003" in cs["child_id"])
         assert icon_swap["swap_target_id"] == "1315:139115"
 
@@ -1549,8 +1749,9 @@ class TestDescendantOverrideHoisting:
     def test_top_level_keeps_own_overrides(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         own_overrides = [
-            ov for ov in nav.get("instance_overrides", [])
+            ov for ov in overrides
             if ov["target"] == ";1835:001" and ov["property"] == "visible"
         ]
         assert len(own_overrides) == 1
@@ -1559,7 +1760,7 @@ class TestDescendantOverrideHoisting:
     def test_self_visibility_hoisted_with_master_relative_path(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         hoisted = [
             ov for ov in overrides
             if ov["target"] == ";2036:002" and ov["property"] == "visible"
@@ -1573,7 +1774,7 @@ class TestDescendantOverrideHoisting:
     def test_self_fills_hoisted_with_master_relative_path(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         hoisted = [
             ov for ov in overrides
             if ov["target"] == ";2036:002" and ov["property"] == "fills"
@@ -1586,7 +1787,7 @@ class TestDescendantOverrideHoisting:
     def test_deep_child_override_hoisted_unchanged(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         deep_vis = [
             ov for ov in overrides
             if ov["target"] == ";2036:002;1334:003" and ov["property"] == "visible"
@@ -1600,7 +1801,7 @@ class TestDescendantOverrideHoisting:
     def test_deep_text_override_hoisted_unchanged(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         text_ovs = [
             ov for ov in overrides
             if ov["target"] == ";2036:002;1334:005" and ov["property"] == "characters"
@@ -1611,7 +1812,7 @@ class TestDescendantOverrideHoisting:
     def test_total_override_count_on_ancestor(self, db: sqlite3.Connection):
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         # 1 own override + 4 hoisted from button = 5 total
         assert len(overrides) == 5, (
             f"Expected 5 total overrides (1 own + 4 hoisted), got {len(overrides)}: "
@@ -1630,7 +1831,7 @@ class TestDescendantOverrideHoisting:
 
         result = query_screen_visuals(db, screen_id=1)
         nav = result[100]
-        overrides = nav.get("instance_overrides", [])
+        overrides = _collect_overrides_from_tree(nav.get("override_tree", {}))
         vis_overrides = [
             ov for ov in overrides
             if ov["target"] == ";2036:002" and ov["property"] == "visible"

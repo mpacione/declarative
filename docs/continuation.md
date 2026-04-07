@@ -20,15 +20,16 @@ The round-trip (Figma → DB → Figma) is the existential proof that the compil
 
 Every renderer uses **progressive fallback**: read the highest IR level available, fall back to lower levels for missing data. L0 is always the safety net.
 
-## Current State (2026-04-07, Session 5)
+## Current State (2026-04-07, Session 7)
 
-- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
+- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes (74 columns), 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,657 passing
+- **Tests**: 1,747 passing
 - **Cross-platform reference**: `docs/cross-platform-value-formats.md` — value formats for Figma, CSS, SwiftUI, Flutter, Android
-- **Branch**: `t5/architecture-vision`
-- **Round-trip**: 9+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad
-- **Property registry**: `dd/property_registry.py` — 48 properties with per-renderer emit patterns (HANDLER/template/deferred)
+- **Branch**: `compiler/multi-backend-architecture`
+- **Round-trip**: 11+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad
+- **Property registry**: `dd/property_registry.py` — 48 properties with per-renderer emit patterns (HANDLER/template/deferred) + `token_binding_path` for binding awareness
+- **Asset registry**: `dd/extract_assets.py` — content-addressed store for raster + SVG assets, `AssetResolver` ABC
 - **textAutoResize**: 12,114 of 13,279 TEXT nodes (91% coverage)
 - **gradientTransform**: 2,784 gradient fills (234 remaining on 3 screens)
 
@@ -67,11 +68,27 @@ Overrides are decomposed at query time in `query_screen_visuals` from composite 
 
 Previously, `_OVERRIDE_SUFFIX_MAP` (7 entries) + a registry fallback failed for 33 of 42 override types when self-targeting. Self-targeting overrides for cornerRadius, effects, strokes, padding, and 29 other types were silently dropped. Now all 42 types are correctly applied.
 
-## Remaining Issues
+## Session 6 Fixes (2026-04-07) — Visual Fidelity Stress Test
 
-### Issue 3: Image Fills — NOT YET ADDRESSED
+Four root causes identified and resolved:
 
-IMAGE fills render as gray rectangles. 877 IMAGE fills across 204 screens, only 17 unique image hashes. For same-file reproduction, `figma.getImageByHash(imageRef)` should work directly since images already exist in the file. For cross-file, requires byte extraction and `figma.createImage(bytes)`.
+### Issue D: Rotation Sign + AABB Dimensions — RESOLVED (`243507b`)
+REST API provides rotation in radians; Plugin API expects degrees with opposite sign. Fixed `format_js_value()` to negate: `-math.degrees(value)`. Also fixed Mode 1 instance rotation path. Added `_reconstruct_logical_dimensions()` to convert axis-aligned bounding box back to pre-rotation dimensions via trigonometric inversion.
+
+### Issue B: Layout Sizing Extraction — RESOLVED (`405bf0f`)
+`layoutSizingH`/`layoutSizingV` were gated behind `layoutMode != NONE`, dropping sizing for children of auto-layout parents that don't have their own layout. Moved extraction before the early return. Added `layoutWrap` default to `NO_WRAP` when REST API omits it. Migration `007_layout_defaults_backfill.sql`.
+
+### Issue A: Token Binding Resolution — RESOLVED (`e83d3fc`)
+Registry-driven approach: added `token_binding_path` field to `FigmaProperty`. `build_visual_from_db()` populates `_token_refs` sidecar dict from bindings. `emit_from_registry()` collects refs for variable rebinding. Anti-fragile: new properties get binding support by adding one field.
+
+### Issue C: Asset Registry — RESOLVED (`3db082b` + `594e2ee` + `d4944e0`)
+Full content-addressed asset pipeline:
+- **Schema**: `assets` + `node_asset_refs` tables (migration 008)
+- **IR**: IMAGE branch in `normalize_fills()`, `_asset_refs` in `query_screen_visuals()`
+- **Extraction**: `fillGeometry`/`strokeGeometry` from both REST + Plugin APIs (migration 009)
+- **Processing**: `process_vector_geometry()` hashes SVG paths, stores as `svg_path` assets
+- **Rendering**: VECTOR/BOOLEAN_OPERATION render via `createVector()` + `vectorPaths`; IMAGE fills emit `imageHash` paint
+- **Abstraction**: `AssetResolver` ABC with `SqliteAssetResolver` implementation
 
 ### 17 Properties Emission Gap — RESOLVED (Session 3)
 
@@ -126,27 +143,31 @@ Three categories: HANDLER (callable dispatch for fills/strokes/effects/cornerRad
 14. **Override decomposition at query time** (COMPLETED) — `decompose_override()` splits composite `property_name` into `(target, property)` using `override_suffix_for_type()`. `_emit_override_op` uses `format_js_value` for generic properties. `_OVERRIDE_SUFFIX_MAP` and `_resolve_override_target` deleted.
 15. **Position from IR** (COMPLETED) — deferred positioning reads parent-relative coordinates from IR (DB stores absolute canvas coordinates). See compiler-architecture.md Section 4.1.
 16. **Renderer architecture split** (COMPLETED) — `dd/generate.py` split into `dd/visual.py` (shared, 210 lines) + `dd/renderers/figma.py` (Figma-specific, 1,294 lines) + re-export wrapper. LLVM/Mitosis/Style Dictionary pattern: shared IR → per-target backend.
+17. **Override tree** (COMPLETED) — Flat `instance_overrides` + `child_swaps` replaced with nested `override_tree` in visual dict. Tree nesting encodes dependency ordering (swaps before descendant overrides). Pre-order traversal gives correct imperative ordering. Override dependencies are semantic, owned by the IR.
+18. **System chrome is design content** (COMPLETED) — Keyboards, status bars, Safari chrome are intentional design content. Only platform implementation artifacts (Figma internal spacers with parenthesized names) are synthetic and filtered.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `dd/property_registry.py` | **Single source of truth** for 48 properties — HANDLER/template/deferred emit, db_column mapping |
-| `dd/visual.py` | **Shared infrastructure** (renderer-agnostic) — `build_visual_from_db`, `_resolve_layout_sizing`, `resolve_style_value` |
-| `dd/renderers/figma.py` | **Figma renderer** — JS emission, `hex_to_figma_rgba`, `font_weight_to_style`, `format_js_value`, `emit_from_registry` |
+| `dd/property_registry.py` | **Single source of truth** for 48 properties — HANDLER/template/deferred emit, db_column mapping, token_binding_path |
+| `dd/visual.py` | **Shared infrastructure** (renderer-agnostic) — `build_visual_from_db`, `_resolve_layout_sizing`, `resolve_style_value`, `_token_refs` sidecar |
+| `dd/renderers/figma.py` | **Figma renderer** — JS emission, `hex_to_figma_rgba`, `font_weight_to_style`, `format_js_value`, `emit_from_registry`, vector/image rendering |
+| `dd/extract_assets.py` | **Asset pipeline** — image hash extraction, asset CRUD, vector geometry processing, `AssetResolver` ABC + `SqliteAssetResolver` |
 | `dd/generate.py` | Backward-compatible re-exports (thin wrapper — import from `dd.visual` or `dd.renderers.figma` directly) |
-| `dd/ir.py` | IR generation, registry-driven query_screen_visuals, override decomposition |
+| `dd/ir.py` | IR generation, registry-driven query_screen_visuals (incl. _asset_refs), override decomposition |
+| `dd/figma_api.py` | REST API extraction — node conversion, AABB→logical dimension reconstruction, fillGeometry/strokeGeometry |
 | `dd/extract_supplement.py` | Registry-driven override extraction, `override_suffix_for_type` |
-| `dd/extract_screens.py` | Plugin API node extraction |
+| `dd/extract_screens.py` | Plugin API node extraction (incl. vector geometry) |
 | `docs/compiler-architecture.md` | Authoritative architecture spec (includes renderer value transforms) |
 | `docs/cross-platform-value-formats.md` | Cross-platform property format reference (Figma, CSS, SwiftUI, Flutter, Android) |
-| `schema.sql` | DB schema (72 columns + instance_overrides + figma_node_id index) |
+| `schema.sql` | DB schema (74 columns + instance_overrides + assets + node_asset_refs) |
 
 ## Environment
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/ --tb=short          # 1,657 tests
+python -m pytest tests/ --tb=short          # 1,747 tests
 ```
 
 ## Reference Screens
@@ -162,3 +183,39 @@ python -m pytest tests/ --tb=short          # 1,657 tests
 | 259 | iPad Pro 12.9" - 38 | 2255:76230 | 422 | 2.6s | iPad — unpublished component fallback works |
 | 253 | iPad Pro 12.9" - 35 | 2255:73824 | 463 | 3.9s | iPad — text sizes fixed |
 | 244 | iPad Pro 12.9" - 40 | 2255:77763 | 624 | 3.0s | iPad — largest screen, keyboard |
+
+## Session 7 — Visual Fidelity Stress Test Batch 2 (2026-04-07)
+
+### Screen Naming Fix
+Root frame in generated scripts now uses actual screen name (e.g., "iPhone 13 Pro Max - 79") instead of "screen-1". Fixed by propagating `screen_name` from `query_screen_for_ir` data through `build_composition_spec` as `_original_name` on the root screen element. The renderer already reads `_original_name` — no renderer changes needed.
+
+### Rendered Screens
+10 screens rendered on "Round-Trip Stress Test" page via PROXY_EXECUTE (port 9230):
+- Batch 1: 184, 185, 186, 150, 118
+- Batch 2: 238 (color picker), 237, 232, 244 (iPad, 624 nodes), 209
+
+### Three Systemic Issues Identified
+
+**Issue 1: Masked Images Not Rendering (Frame 413, Screen 209)**
+Root cause: `isMask` not part of the pipeline. Not extracted, not stored, not emitted. GROUP nodes unconditionally skipped via `_SKIP_NODE_TYPES`. Mask groups and all their children (mask shape + masked content) are discarded entirely.
+
+**Issue 2: Auto Layout Spacer Visible (Frame 275, Screen 209)**
+Root cause: 132 Figma-internal nodes (`(Auto Layout spacer)`, `(Adjust Auto Layout Spacing)`) extracted and rendered as real rectangles. `createRectangle()` applies default grey fill. No filtering at any pipeline stage catches parenthesized-name internal nodes.
+
+**Issue 3: Vector Icon Wrong Color in Toolbar (Screen 209)**
+Root cause: Override ordering bug. Instance swap on a child icon emitted AFTER strokes override on the icon's nested vector. `swapComponent()` replaces the subtree, destroying the overridden vector. New icon gets default colors. Caused by `instance_overrides` (from DB) being grouped before `child_swaps` (appended after) in an `OrderedDict` with insertion-order iteration.
+
+### Fix 2: Synthetic Node Filtering — COMPLETE
+New `is_synthetic_node(name)` in `dd/classify_rules.py` detects parenthesized Figma internal names: `(Auto Layout spacer)`, `(Adjust Auto Layout Spacing)`. `build_composition_spec()` in `dd/ir.py` filters synthetic nodes and their children (transitive closure). 132 nodes affected (66 spacers + 66 spacing adjusters). L0 stays lossless — nodes remain in DB, filtering at IR spec boundary only.
+
+**Key distinction**: System chrome (iOS status bars, keyboards, Safari chrome) is **design content**, NOT synthetic. Designers place these intentionally. Only platform IMPLEMENTATION artifacts (Figma internal spacers) are synthetic. `is_synthetic_node()` must NOT match system chrome patterns.
+
+### Fix 1: Override Tree — COMPLETE
+New `build_override_tree(instance_overrides, child_swaps)` in `dd/ir.py` converts flat override lists + child_swaps into a nested tree structure. Tree nesting encodes dependency ordering — swaps before descendant property overrides. `query_screen_visuals()` builds the tree after hoisting, stores as `override_tree` in visual dict. Old `instance_overrides` and `child_swaps` keys replaced by single `override_tree`.
+
+New `_emit_override_tree()` in `dd/renderers/figma.py`: recursive pre-order walk. New `_collect_swap_targets_from_tree()` for pre-fetch preamble. Pre-order traversal = correct ordering for imperative renderers; direct mapping for declarative renderers. Override dependencies are semantic (component slot tree), not renderer-specific — the IR owns the nesting structure.
+
+### Fix 3: L0 Completeness — REMAINING
+Phase A: Mask support (is_mask column, extract from both APIs, emit in renderer, stop unconditionally skipping GROUPs). Phase B: Missing properties (booleanOperation, cornerSmoothing, arcData). Phase C: Structural completeness test against canonical Figma property list.
+
+### Test Count: 1,747 passing
