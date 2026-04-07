@@ -564,3 +564,12 @@ The property registry was driving extraction, query, and overrides but NOT emiss
 Fix (LLVM TableGen pattern): three emission categories — Template (uniform `"{var}.{figma_name} = {value};"`, type-aware via `format_js_value()`), Handler (`HANDLER` sentinel → dispatch dict), Deferred (empty emit dict). `build_visual_from_db` also made registry-driven — iterates PROPERTIES with `_apply_db_transform` instead of maintaining manual mappings. `_emit_visual` reduced to single `emit_from_registry` delegation. Structural tests enforce every property is classified as template/handler/deferred.
 
 Key lesson: naive Python string formatting for JS emission produces invalid code (Python `True` vs JS `true`, Python dicts with single quotes). The formatter must be type-aware — read `value_type` from the registry and format accordingly.
+
+### Alpha Channel Lost at the Final Mile
+`hex_to_figma_rgb()` explicitly dropped alpha from 8-digit hex, then three emit functions hardcoded `a:1`. Gradient stops and shadow colors lost their alpha — gradients rendered opaque, shadows rendered as solid black. Fix: `hex_to_figma_rgba()` preserves alpha. The data was correct through the entire pipeline (extraction → DB → IR → normalization) — it was only lost in the last conversion step before JS emission. Lesson: when a round-trip produces wrong output, check the final mile first.
+
+### textAutoResize and layoutSizing Are Interdependent
+In Figma, setting `layoutSizing=FIXED` on a text node implicitly overrides `textAutoResize`. These are two separate API properties that must be set consistently. The sizing heuristic was a 35-line if/elif cascade that didn't account for this interaction. Fix: `_TEXT_AUTO_RESIZE_SIZING` lookup table + `_resolve_layout_sizing` pure function. `WIDTH_AND_HEIGHT` → HUG/HUG, `HEIGHT` → FILL/HUG. The function takes all inputs and returns the sizing decision — no side effects, no DB lookups, testable in isolation.
+
+### Inter Variable vs Inter — Subtle Font Width Difference
+`"Inter Variable"` (Figma's variable font) renders slightly narrower than `"Inter"` (static font) at the same weight. Our font normalization converts `"Inter Variable"` → `"Inter"` for Plugin API compatibility. This causes text that fits at 66px in the original to wrap in the reproduction. Known minor fidelity gap — not fixable without variable font support in the generation pipeline.

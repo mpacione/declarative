@@ -24,7 +24,7 @@ Every renderer uses **progressive fallback**: read the highest IR level availabl
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,637 passing
+- **Tests**: 1,656 passing
 - **Branch**: `t5/architecture-vision`
 - **Round-trip**: 9+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad
 - **Property registry**: `dd/property_registry.py` — 48 properties with per-renderer emit patterns (HANDLER/template/deferred)
