@@ -263,44 +263,6 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
 # Override grouping helpers
 # ---------------------------------------------------------------------------
 
-# Suffix map: override_type → child_id suffix to strip for target resolution
-_OVERRIDE_SUFFIX_MAP = {
-    "FILLS": ":fills",
-    "BOOLEAN": ":visible",
-    "WIDTH": ":width",
-    "HEIGHT": ":height",
-    "OPACITY": ":opacity",
-    "LAYOUT_SIZING_H": ":layoutSizingH",
-    "LAYOUT_SIZING_V": ":layoutSizingV",
-}
-
-
-def _resolve_override_target(ov: dict[str, Any]) -> str:
-    """Extract the Figma node target_id from an override's child_id.
-
-    Strips property-specific suffixes (:fills, :visible, :width, etc.)
-    to get the raw node identifier. INSTANCE_SWAP and TEXT have no suffix.
-    For unknown types, uses registry figma_name as the suffix.
-    """
-    child_id = ov["child_id"]
-    ov_type = ov["type"]
-
-    suffix = _OVERRIDE_SUFFIX_MAP.get(ov_type)
-    if suffix:
-        return child_id.replace(suffix, "")
-
-    if ov_type in ("TEXT", "INSTANCE_SWAP"):
-        return child_id
-
-    from dd.property_registry import by_override_type
-    prop = by_override_type(ov_type)
-    if prop:
-        s = f":{prop.figma_name}"
-        if child_id.endswith(s):
-            return child_id[:-len(s)]
-    return child_id
-
-
 def _emit_override_op(
     ov: dict[str, Any],
     target_var: str,
@@ -308,60 +270,50 @@ def _emit_override_op(
     parent_var: str,
     deferred_lines: list[str],
 ) -> str:
-    """Emit JS for a single override operation on target_var (no findOne wrapper).
+    """Emit JS for a single override operation on target_var.
 
-    Returns a JS statement string. For deferred operations (LAYOUT_SIZING on :self),
-    appends to deferred_lines instead and returns empty string.
+    Overrides use decomposed format: {target, property, value}.
+    Most properties use registry-driven format_js_value. Special cases:
+    - characters: needs font loading
+    - instance_swap: needs swapComponent
+    - width/height: needs resize() with both dimensions
+    - layoutSizing on :self: must be deferred
     """
-    ov_type = ov["type"]
-    ov_value = ov.get("value", "")
+    prop_name = ov["property"]
+    value = ov.get("value", "")
     is_self = (target_var == parent_var)
 
-    if ov_type == "TEXT" and ov_value:
+    if not value:
+        return ""
+
+    if prop_name == "characters":
         return (
             f'if ({target_var}.type === "TEXT") {{ '
             f'await figma.loadFontAsync({target_var}.fontName); '
-            f'{target_var}.characters = "{_escape_js(ov_value)}"; }}'
+            f'{target_var}.characters = "{_escape_js(value)}"; }}'
         )
-    if ov_type == "BOOLEAN":
-        vis_val = "true" if ov_value == "true" else "false"
-        return f"{target_var}.visible = {vis_val};"
-    if ov_type == "INSTANCE_SWAP" and ov_value:
-        comp_expr = node_id_vars.get(ov_value, f'await figma.getNodeByIdAsync("{_escape_js(ov_value)}")')
+    if prop_name == "instance_swap":
+        comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')
         return (
             f'if ({target_var}.type === "INSTANCE") {{ '
             f"const _comp = {comp_expr}; "
             f"if (_comp) {target_var}.swapComponent(_comp); }}"
         )
-    if ov_type == "FILLS" and ov_value:
-        return f"{target_var}.fills = {ov_value};"
-    if ov_type == "WIDTH" and ov_value:
+    if prop_name == "width":
         h_ref = f"{parent_var}.height" if is_self else f"{target_var}.height"
-        return f"{target_var}.resize({ov_value}, {h_ref});"
-    if ov_type == "HEIGHT" and ov_value:
+        return f"{target_var}.resize({value}, {h_ref});"
+    if prop_name == "height":
         w_ref = f"{parent_var}.width" if is_self else f"{target_var}.width"
-        return f"{target_var}.resize({w_ref}, {ov_value});"
-    if ov_type == "OPACITY" and ov_value:
-        return f"{target_var}.opacity = {ov_value};"
-    if ov_type == "LAYOUT_SIZING_H" and ov_value:
-        if is_self:
-            deferred_lines.append(f'{parent_var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";')
-            return ""
-        return f'{target_var}.layoutSizingHorizontal = "{_escape_js(ov_value)}";'
-    if ov_type == "LAYOUT_SIZING_V" and ov_value:
-        if is_self:
-            deferred_lines.append(f'{parent_var}.layoutSizingVertical = "{_escape_js(ov_value)}";')
-            return ""
-        return f'{target_var}.layoutSizingVertical = "{_escape_js(ov_value)}";'
+        return f"{target_var}.resize({w_ref}, {value});"
+    if prop_name in ("layoutSizingHorizontal", "layoutSizingVertical") and is_self:
+        deferred_lines.append(f'{target_var}.{prop_name} = {format_js_value(value, "enum")};')
+        return ""
 
-    if ov_value:
-        from dd.property_registry import by_override_type
-        prop = by_override_type(ov_type)
-        if prop:
-            fn = prop.figma_name
-            if prop.value_type in ("number", "number_radians", "json_array", "boolean"):
-                return f"{target_var}.{fn} = {ov_value};"
-            return f'{target_var}.{fn} = "{_escape_js(ov_value)}";'
+    from dd.property_registry import by_figma_name
+    prop = by_figma_name(prop_name)
+    if prop:
+        formatted = format_js_value(value, prop.value_type)
+        return f"{target_var}.{prop.figma_name} = {formatted};"
     return ""
 
 
@@ -749,8 +701,8 @@ def generate_figma_script(
             # Convert child_swaps to override format for unified grouping
             for cs in child_swaps:
                 inst_overrides.append({
-                    "type": "INSTANCE_SWAP",
-                    "child_id": cs["child_id"],
+                    "target": cs["child_id"],
+                    "property": "instance_swap",
                     "value": cs["swap_target_id"],
                 })
 
@@ -758,8 +710,7 @@ def generate_figma_script(
                 from collections import OrderedDict
                 grouped: OrderedDict[str, list[dict]] = OrderedDict()
                 for ov in inst_overrides:
-                    target = _resolve_override_target(ov)
-                    grouped.setdefault(target, []).append(ov)
+                    grouped.setdefault(ov["target"], []).append(ov)
 
                 # Self overrides — no findOne needed
                 for ov in grouped.pop(":self", []):
@@ -923,9 +874,21 @@ def generate_figma_script(
                     lines.append(f'{var}.layoutSizingVertical = "FIXED";')
             else:
                 # Position deferred — Figma recalculates position when
-                # children are added to HUG frames with CENTER constraints
+                # children are added to HUG frames with CENTER constraints.
+                # DB-first: use authoritative DB x/y, IR position as fallback.
                 position = element.get("layout", {}).get("position")
-                if position:
+                db_x = None
+                db_y = None
+                if db_visuals is not None:
+                    nid = spec.get("_node_id_map", {}).get(eid)
+                    if nid:
+                        nv = db_visuals.get(nid, {})
+                        db_x = nv.get("x")
+                        db_y = nv.get("y")
+                if db_x is not None and db_y is not None:
+                    deferred_lines.append(f"{var}.x = {db_x};")
+                    deferred_lines.append(f"{var}.y = {db_y};")
+                elif position:
                     deferred_lines.append(f"{var}.x = {position.get('x', 0)};")
                     deferred_lines.append(f"{var}.y = {position.get('y', 0)};")
 

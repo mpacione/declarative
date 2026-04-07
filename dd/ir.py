@@ -395,6 +395,33 @@ def _build_props(node: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Override decomposition
+# ---------------------------------------------------------------------------
+
+def decompose_override(property_type: str, property_name: str) -> tuple[str, str]:
+    """Decompose a DB override into (target, figma_property_name).
+
+    The DB stores overrides as composite property_name = "{target}{suffix}".
+    This function splits them using the same suffix knowledge that extraction
+    used to construct them — no second map to maintain.
+
+    Returns (target, property) where:
+      target: ":self" or ";1334:10837" (Figma node path)
+      property: "fills", "cornerRadius", "characters", "instance_swap", etc.
+    """
+    from dd.extract_supplement import override_suffix_for_type
+
+    suffix, figma_name = override_suffix_for_type(property_type)
+
+    if suffix and property_name.endswith(suffix):
+        target = property_name[:-len(suffix)]
+        return target, figma_name
+    if not suffix:
+        return property_name, figma_name
+    return property_name, figma_name
+
+
+# ---------------------------------------------------------------------------
 # Query layer
 # ---------------------------------------------------------------------------
 
@@ -424,6 +451,10 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         registry_cols.append("component_key")
     if "figma_node_id" not in registry_cols and "figma_node_id" in node_cols:
         registry_cols.append("figma_node_id")
+    # Positional columns (structural, not in registry)
+    for pos_col in ("x", "y"):
+        if pos_col not in registry_cols and pos_col in node_cols:
+            registry_cols.append(pos_col)
 
     col_list = ", ".join(f"n.{c}" for c in registry_cols)
 
@@ -511,9 +542,10 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                 if node_id in result:
                     if "instance_overrides" not in result[node_id]:
                         result[node_id]["instance_overrides"] = []
+                    target, prop = decompose_override(row[1], row[2])
                     result[node_id]["instance_overrides"].append({
-                        "type": row[1],
-                        "child_id": row[2],
+                        "target": target,
+                        "property": prop,
                         "value": row[3],
                     })
 
@@ -659,31 +691,27 @@ def _hoist_descendant_overrides(
         if "instance_overrides" not in result[ancestor_id]:
             result[ancestor_id]["instance_overrides"] = []
 
-        # Build set of existing (type, child_id) to deduplicate
+        # Build set of existing (property, target) to deduplicate
         existing = {
-            (ov["type"], ov["child_id"])
+            (ov["property"], ov["target"])
             for ov in result[ancestor_id]["instance_overrides"]
         }
 
         for ov in nested_overrides:
-            child_id = ov["child_id"]
-            if child_id.startswith(":self"):
-                # Transform :self → master-relative path
-                # :self → ;2036:002, :self:fills → ;2036:002:fills
-                suffix = child_id[5:]  # strip ":self"
-                new_child_id = master_relative + suffix
+            target = ov["target"]
+            if target == ":self":
+                new_target = master_relative
             else:
-                # Already a master-relative path, pass through
-                new_child_id = child_id
+                new_target = target
 
-            key = (ov["type"], new_child_id)
+            key = (ov["property"], new_target)
             if key in existing:
                 continue  # already reported by parent's own overrides
 
             existing.add(key)
             result[ancestor_id]["instance_overrides"].append({
-                "type": ov["type"],
-                "child_id": new_child_id,
+                "target": new_target,
+                "property": ov["property"],
                 "value": ov["value"],
             })
 

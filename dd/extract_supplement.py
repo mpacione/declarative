@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from dd.property_registry import PROPERTIES, overrideable_properties
+from dd.property_registry import PROPERTIES, by_db_column, by_figma_name, overrideable_properties
 
 
 def _build_override_js_checks() -> str:
@@ -222,6 +222,27 @@ for _prop in PROPERTIES:
             _prop.db_column.upper(),
             f":{_prop.figma_name}",
         )
+
+
+# Reverse mapping: property_type → (suffix, figma_name)
+# Built from _OVERRIDE_KEY_MAP for use by query-time decomposition.
+_TYPE_TO_SUFFIX: dict[str, tuple[str, str]] = {}
+for _db_col, (_ov_type, _suffix) in _OVERRIDE_KEY_MAP.items():
+    # Find the figma_name for this db_column
+    _prop = by_db_column(_db_col) if _db_col != "text_content" else by_figma_name("characters")
+    _figma = _prop.figma_name if _prop else _db_col
+    _TYPE_TO_SUFFIX[_ov_type] = (_suffix, _figma)
+# INSTANCE_SWAP is special — no suffix, not from registry
+_TYPE_TO_SUFFIX["INSTANCE_SWAP"] = ("", "instance_swap")
+
+
+def override_suffix_for_type(property_type: str) -> tuple[str, str]:
+    """Return (suffix, figma_property_name) for a given override type.
+
+    Uses the same data source as extraction (_OVERRIDE_KEY_MAP) —
+    no second list to maintain.
+    """
+    return _TYPE_TO_SUFFIX.get(property_type, ("", property_type))
 
 
 def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[str, Any]]) -> dict[str, int]:

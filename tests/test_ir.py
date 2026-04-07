@@ -1482,7 +1482,7 @@ class TestDescendantOverrideHoisting:
         nav = result[100]
         own_overrides = [
             ov for ov in nav.get("instance_overrides", [])
-            if ov["child_id"] == ";1835:001:visible"
+            if ov["target"] == ";1835:001" and ov["property"] == "visible"
         ]
         assert len(own_overrides) == 1
         assert own_overrides[0]["value"] == "false"
@@ -1493,11 +1493,11 @@ class TestDescendantOverrideHoisting:
         overrides = nav.get("instance_overrides", [])
         hoisted = [
             ov for ov in overrides
-            if ov["child_id"] == ";2036:002:visible" and ov["type"] == "BOOLEAN"
+            if ov["target"] == ";2036:002" and ov["property"] == "visible"
         ]
         assert len(hoisted) == 1, (
-            f"Expected :self:visible on button to be hoisted as ;2036:002:visible, "
-            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+            f"Expected :self:visible on button to be hoisted as target=;2036:002, "
+            f"got overrides: {[(ov['target'], ov['property']) for ov in overrides]}"
         )
         assert hoisted[0]["value"] == "true"
 
@@ -1507,11 +1507,11 @@ class TestDescendantOverrideHoisting:
         overrides = nav.get("instance_overrides", [])
         hoisted = [
             ov for ov in overrides
-            if ov["child_id"] == ";2036:002:fills" and ov["type"] == "FILLS"
+            if ov["target"] == ";2036:002" and ov["property"] == "fills"
         ]
         assert len(hoisted) == 1, (
-            f"Expected :self:fills on button to be hoisted as ;2036:002:fills, "
-            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+            f"Expected :self:fills on button to be hoisted as target=;2036:002, "
+            f"got overrides: {[(ov['target'], ov['property']) for ov in overrides]}"
         )
 
     def test_deep_child_override_hoisted_unchanged(self, db: sqlite3.Connection):
@@ -1520,11 +1520,11 @@ class TestDescendantOverrideHoisting:
         overrides = nav.get("instance_overrides", [])
         deep_vis = [
             ov for ov in overrides
-            if ov["child_id"] == ";2036:002;1334:003:visible"
+            if ov["target"] == ";2036:002;1334:003" and ov["property"] == "visible"
         ]
         assert len(deep_vis) == 1, (
             f"Expected deep child visibility override to be hoisted unchanged, "
-            f"got overrides: {[ov['child_id'] for ov in overrides]}"
+            f"got overrides: {[(ov['target'], ov['property']) for ov in overrides]}"
         )
         assert deep_vis[0]["value"] == "false"
 
@@ -1534,7 +1534,7 @@ class TestDescendantOverrideHoisting:
         overrides = nav.get("instance_overrides", [])
         text_ovs = [
             ov for ov in overrides
-            if ov["child_id"] == ";2036:002;1334:005" and ov["type"] == "TEXT"
+            if ov["target"] == ";2036:002;1334:005" and ov["property"] == "characters"
         ]
         assert len(text_ovs) == 1
         assert text_ovs[0]["value"] == "Hello"
@@ -1546,11 +1546,11 @@ class TestDescendantOverrideHoisting:
         # 1 own override + 4 hoisted from button = 5 total
         assert len(overrides) == 5, (
             f"Expected 5 total overrides (1 own + 4 hoisted), got {len(overrides)}: "
-            f"{[(ov['type'], ov['child_id']) for ov in overrides]}"
+            f"{[(ov['target'], ov['property']) for ov in overrides]}"
         )
 
     def test_dedup_skips_overrides_already_on_ancestor(self, db: sqlite3.Connection):
-        """If ancestor already has an override for the same (type, child_id),
+        """If ancestor already has an override for the same (property, target),
         the hoisted version should be skipped to avoid double-applying."""
         # Add a direct override on nav that matches what would be hoisted from button
         db.execute(
@@ -1564,7 +1564,7 @@ class TestDescendantOverrideHoisting:
         overrides = nav.get("instance_overrides", [])
         vis_overrides = [
             ov for ov in overrides
-            if ov["child_id"] == ";2036:002:visible"
+            if ov["target"] == ";2036:002" and ov["property"] == "visible"
         ]
         # Should be exactly 1 (the ancestor's own), not 2
         assert len(vis_overrides) == 1

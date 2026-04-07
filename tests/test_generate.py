@@ -1681,8 +1681,8 @@ class TestLayoutSizingFromDB:
                 "component_figma_id": "123:456",
                 "bindings": [],
                 "instance_overrides": [{
-                    "type": "LAYOUT_SIZING_H",
-                    "child_id": ";1334:005:layoutSizingH",
+                    "target": ";1334:005",
+                    "property": "layoutSizingHorizontal",
                     "value": "HUG",
                 }],
             },
@@ -1707,8 +1707,8 @@ class TestLayoutSizingFromDB:
                 "component_figma_id": "123:456",
                 "bindings": [],
                 "instance_overrides": [{
-                    "type": "LAYOUT_SIZING_V",
-                    "child_id": ";1334:005:layoutSizingV",
+                    "target": ";1334:005",
+                    "property": "layoutSizingVertical",
                     "value": "FILL",
                 }],
             },
@@ -2026,7 +2026,7 @@ class TestOverrideGrouping:
 
     def test_self_overrides_no_findone(self):
         spec, db_visuals = self._mode1_spec_with_overrides([
-            {"type": "FILLS", "child_id": ":self:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+            {"target": ":self", "property": "fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
         ])
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".fills = " in script
@@ -2034,7 +2034,7 @@ class TestOverrideGrouping:
 
     def test_self_width_no_findone(self):
         spec, db_visuals = self._mode1_spec_with_overrides([
-            {"type": "WIDTH", "child_id": ":self:width", "value": "200"},
+            {"target": ":self", "property": "width", "value": "200"},
         ])
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".resize(200," in script
@@ -2042,8 +2042,8 @@ class TestOverrideGrouping:
 
     def test_grouped_overrides_single_findone(self):
         spec, db_visuals = self._mode1_spec_with_overrides([
-            {"type": "FILLS", "child_id": ";1334:005:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
-            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
+            {"target": ";1334:005", "property": "fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+            {"target": ";1334:005", "property": "visible", "value": "true"},
         ])
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         id_finds = script.count('n.id.endsWith(";1334:005")')
@@ -2051,8 +2051,8 @@ class TestOverrideGrouping:
 
     def test_different_targets_separate_findone(self):
         spec, db_visuals = self._mode1_spec_with_overrides([
-            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
-            {"type": "BOOLEAN", "child_id": ";1334:006:visible", "value": "false"},
+            {"target": ";1334:005", "property": "visible", "value": "true"},
+            {"target": ";1334:006", "property": "visible", "value": "false"},
         ])
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert 'n.id.endsWith(";1334:005")' in script
@@ -2060,13 +2060,12 @@ class TestOverrideGrouping:
 
     def test_findone_count_reduced(self):
         spec, db_visuals = self._mode1_spec_with_overrides([
-            {"type": "INSTANCE_SWAP", "child_id": ";1334:005", "value": "999:111"},
-            {"type": "FILLS", "child_id": ";1334:005:fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
-            {"type": "BOOLEAN", "child_id": ";1334:005:visible", "value": "true"},
-            {"type": "BOOLEAN", "child_id": ";1334:006:visible", "value": "false"},
-            {"type": "FILLS", "child_id": ":self:fills", "value": '[{"type":"SOLID","color":{"r":0,"g":1,"b":0}}]'},
+            {"target": ";1334:005", "property": "instance_swap", "value": "999:111"},
+            {"target": ";1334:005", "property": "fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+            {"target": ";1334:005", "property": "visible", "value": "true"},
+            {"target": ";1334:006", "property": "visible", "value": "false"},
+            {"target": ":self", "property": "fills", "value": '[{"type":"SOLID","color":{"r":0,"g":1,"b":0}}]'},
         ])
-        db_visuals[-2]["instance_overrides"][-1]["child_id"] = ":self:fills"
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         findone_count = script.count("findOne")
         assert findone_count == 2, f"Expected 2 findOne calls (;1334:005 + ;1334:006) but got {findone_count}"
@@ -2271,6 +2270,154 @@ class TestFillTypeCoverage:
             f"IR produces gradient types {ir_gradient_types} but renderer "
             f"only handles {emit_gradient_types}"
         )
+
+
+class TestOverrideDecomposition:
+    """Verify override decomposition at query time."""
+
+    def test_decompose_fills_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("FILLS", ":self:fills")
+        assert target == ":self"
+        assert prop == "fills"
+
+    def test_decompose_fills_child(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("FILLS", ";1334:10837:fills")
+        assert target == ";1334:10837"
+        assert prop == "fills"
+
+    def test_decompose_corner_radius_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("CORNER_RADIUS", ":self:cornerRadius")
+        assert target == ":self"
+        assert prop == "cornerRadius"
+
+    def test_decompose_effects_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("EFFECTS", ":self:effects")
+        assert target == ":self"
+        assert prop == "effects"
+
+    def test_decompose_padding_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("PADDING_LEFT", ":self:paddingLeft")
+        assert target == ":self"
+        assert prop == "paddingLeft"
+
+    def test_decompose_text_child(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("TEXT", ";1334:10837")
+        assert target == ";1334:10837"
+        assert prop == "characters"
+
+    def test_decompose_text_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("TEXT", ":self")
+        assert target == ":self"
+        assert prop == "characters"
+
+    def test_decompose_instance_swap(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("INSTANCE_SWAP", ";1334:005")
+        assert target == ";1334:005"
+        assert prop == "instance_swap"
+
+    def test_decompose_instance_swap_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("INSTANCE_SWAP", ":self")
+        assert target == ":self"
+        assert prop == "instance_swap"
+
+    def test_decompose_boolean_child(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("BOOLEAN", ";1334:10836:visible")
+        assert target == ";1334:10836"
+        assert prop == "visible"
+
+    def test_decompose_item_spacing_self(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("ITEM_SPACING", ":self:itemSpacing")
+        assert target == ":self"
+        assert prop == "itemSpacing"
+
+    def test_decompose_strokes_child(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("STROKES", ";1334:10836:strokes")
+        assert target == ";1334:10836"
+        assert prop == "strokes"
+
+    def test_decompose_layout_sizing_h(self):
+        from dd.ir import decompose_override
+        target, prop = decompose_override("LAYOUT_SIZING_H", ":self:layoutSizingH")
+        assert target == ":self"
+        assert prop == "layoutSizingHorizontal"
+
+
+class TestOverrideEmissionRegistryDriven:
+    """Verify registry-driven override emission with decomposed overrides."""
+
+    def test_corner_radius_self_override_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["inst-1"]},
+            "inst-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "inst-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "component_figma_id": "999:1",
+                "bindings": [],
+                "instance_overrides": [
+                    {"target": ":self", "property": "cornerRadius", "value": "10"},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "cornerRadius = 10" in script
+
+    def test_effects_self_override_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["inst-1"]},
+            "inst-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "inst-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "component_figma_id": "999:1",
+                "bindings": [],
+                "instance_overrides": [
+                    {"target": ":self", "property": "effects", "value": '[{"type":"DROP_SHADOW"}]'},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "effects" in script
+        assert "DROP_SHADOW" in script
+
+    def test_fills_child_override_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["inst-1"]},
+            "inst-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "inst-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": "abc123",
+                "component_figma_id": "999:1",
+                "bindings": [],
+                "instance_overrides": [
+                    {"target": ";1334:10837", "property": "fills", "value": '[{"type":"SOLID","color":{"r":1,"g":0,"b":0}}]'},
+                ],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "1334:10837" in script
+        assert "fills" in script
 
 
 class TestEmitMissingVisualProperties:
