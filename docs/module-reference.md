@@ -11,7 +11,7 @@ Single source of truth for all 58 Figma node properties. Every pipeline layer re
 
 | Function | Purpose |
 |----------|---------|
-| `PROPERTIES` | Tuple of 58 `FigmaProperty` dataclass entries |
+| `PROPERTIES` | Tuple of 48 `FigmaProperty` dataclass entries |
 | `by_db_column(column)` | Look up property by DB column name |
 | `by_figma_name(name)` | Look up property by Figma Plugin API name |
 | `by_override_type(type)` | Look up property by instance override type |
@@ -19,9 +19,11 @@ Single source of truth for all 58 Figma node properties. Every pipeline layer re
 | `db_columns_for_visual_query()` | Column names for query_screen_visuals SELECT |
 | `overrideable_properties()` | Properties with override_fields defined |
 
-Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` (may include aliases like primaryAxisSizingMode) → `category` → `value_type` → `override_type` → `default_value`.
+Each `FigmaProperty` maps: `figma_name` → `db_column` → `override_fields` → `category` → `value_type` → `override_type` → `default_value` → `emit` (per-renderer emit patterns).
 
-**Used by**: extract_supplement.py (override JS generation), ir.py (query column list), generate.py (generic override dispatch).
+The `emit` field is a dict mapping renderer name to a string template (e.g., `'{var}.opacity = {value};'`) or `None` for complex properties handled by custom emit functions.
+
+**Used by**: extract_supplement.py (override JS generation), ir.py (query column list), generate.py (emit_from_registry, override dispatch).
 
 ---
 

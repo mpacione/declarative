@@ -2273,6 +2273,312 @@ class TestFillTypeCoverage:
         )
 
 
+class TestEmitMissingVisualProperties:
+    """Verify emission of visual properties previously extracted but not emitted."""
+
+    def test_stroke_align_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"stroke_align": "INSIDE", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'strokeAlign = "INSIDE"' in script
+
+    def test_stroke_align_not_emitted_when_default(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "strokeAlign" not in script
+
+    def test_dash_pattern_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"dash_pattern": "[10, 5]", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "dashPattern = [10, 5]" in script
+
+    def test_dash_pattern_not_emitted_when_empty(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"dash_pattern": "[]", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "dashPattern" not in script
+
+
+class TestEmitMissingLayoutProperties:
+    """Verify emission of layout properties previously extracted but not emitted."""
+
+    def test_counter_axis_spacing_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container", "layout": {"direction": "vertical"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"counter_axis_spacing": 12, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "counterAxisSpacing = 12" in script
+
+    def test_layout_wrap_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container", "layout": {"direction": "horizontal"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"layout_wrap": "WRAP", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutWrap = "WRAP"' in script
+
+    def test_layout_positioning_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"layout_positioning": "ABSOLUTE", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'layoutPositioning = "ABSOLUTE"' in script
+
+    def test_layout_wrap_not_emitted_when_null(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "layoutWrap" not in script
+        assert "layoutPositioning" not in script
+        assert "counterAxisSpacing" not in script
+
+
+class TestEmitMissingSizeProperties:
+    """Verify emission of size constraint properties."""
+
+    def test_min_width_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"min_width": 100, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "minWidth = 100" in script
+
+    def test_max_width_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"max_width": 500, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "maxWidth = 500" in script
+
+    def test_min_max_height_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"min_height": 50, "max_height": 300, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "minHeight = 50" in script
+        assert "maxHeight = 300" in script
+
+    def test_size_constraints_not_emitted_when_null(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "minWidth" not in script
+        assert "maxWidth" not in script
+        assert "minHeight" not in script
+        assert "maxHeight" not in script
+
+
+class TestEmitMissingTextProperties:
+    """Verify emission of text properties previously extracted but not emitted."""
+
+    def test_text_align_horizontal_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"text_align": "CENTER", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAlignHorizontal = "CENTER"' in script
+
+    def test_text_align_vertical_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"text_align_v": "BOTTOM", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textAlignVertical = "BOTTOM"' in script
+
+    def test_text_decoration_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"text_decoration": "UNDERLINE", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textDecoration = "UNDERLINE"' in script
+
+    def test_text_case_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"text_case": "UPPER", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'textCase = "UPPER"' in script
+
+    def test_line_height_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"line_height": '{"value": 24, "unit": "PIXELS"}', "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "lineHeight" in script
+        assert "24" in script
+
+    def test_letter_spacing_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"letter_spacing": '{"value": 0.5, "unit": "PIXELS"}', "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "letterSpacing" in script
+        assert "0.5" in script
+
+    def test_paragraph_spacing_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"paragraph_spacing": 8, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "paragraphSpacing = 8" in script
+
+    def test_font_style_italic_emitted(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "font_family": "Inter",
+                "font_weight": 400,
+                "font_style": "Italic",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "Italic" in script
+
+    def test_text_props_not_emitted_when_null(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "Hello"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "textAlignHorizontal" not in script
+        assert "textAlignVertical" not in script
+        assert "textDecoration" not in script
+        assert "textCase" not in script
+        assert "paragraphSpacing" not in script
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

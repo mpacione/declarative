@@ -20,14 +20,14 @@ The round-trip (Figma → DB → Figma) is the existential proof that the compil
 
 Every renderer uses **progressive fallback**: read the highest IR level available, fall back to lower levels for missing data. L0 is always the safety net.
 
-## Current State (2026-04-06, Session 2)
+## Current State (2026-04-06, Session 3)
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (17 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,573 passing
+- **Tests**: 1,607 passing
 - **Branch**: `t5/architecture-vision`
 - **Round-trip**: 9 screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244) — 6 iPhone + 3 iPad
-- **Property registry**: `dd/property_registry.py` — 48 scalar properties + JSON arrays (fills/strokes/effects)
+- **Property registry**: `dd/property_registry.py` — 48 scalar properties + JSON arrays (fills/strokes/effects), with per-renderer emit patterns
 
 ### What the Round-Trip Produces
 - Real component instances via getNodeByIdAsync (L1 → Mode 1)
@@ -39,13 +39,17 @@ Every renderer uses **progressive fallback**: read the highest IR level availabl
 - Per-corner radius emission (topLeftRadius, etc.)
 - Deferred position + constraints with canary verification
 - Font normalization: family-aware style names (SF Pro → "Semibold", Inter → "Semi Bold")
+- Table-driven emission: registry defines emit patterns per renderer, `emit_from_registry()` iterates them
+- All 48 properties now emitted (was 31, 17 gap closed)
+- Text properties: textAlignHorizontal/Vertical, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, fontStyle
+- Layout properties: counterAxisSpacing, layoutWrap, layoutPositioning
+- Size constraints: minWidth, maxWidth, minHeight, maxHeight
+- Visual properties: strokeAlign, dashPattern
 - Execution: 0.7-3.9s per screen (warm cache)
 
-### Property Registry — Current Limitation
+### Property Registry — Table-Driven Emission (COMPLETED)
 
-The registry currently drives extraction, query, and override dispatch — but **NOT emission**. The emit functions (`_emit_layout`, `_emit_visual`, `_emit_text_props`) each maintain their own hardcoded property lists that don't reference the registry. This is why 17 of 48 properties are extracted but never emitted.
-
-**Next step**: Extend the registry to drive emission (table-driven code generation). See "Planned: Table-Driven Emission" below.
+The registry now drives ALL 4 pipeline stages: extraction, query, overrides, AND emission. Each `FigmaProperty` has an `emit` field mapping renderer name to a string template or `None` (for complex properties with custom emit functions). The `emit_from_registry()` helper iterates registry entries and applies templates. Adding a property to the registry automatically emits it. A structural test verifies every property has an emit pattern.
 
 ## Remaining Issues
 
@@ -58,18 +62,16 @@ IMAGE fills render as gray rectangles. Requires:
 
 65 image fills across 9 target screens.
 
-### 17 Properties Extracted But Not Emitted
+### 17 Properties Emission Gap — RESOLVED (Session 3)
 
-Cross-reference analysis identified 17 properties that flow through extraction → DB → query but are never emitted by the Figma renderer:
+All 17 properties that were previously extracted but not emitted are now emitted:
 
-**LAYOUT (3)**: `counterAxisSpacing`, `layoutWrap`, `layoutPositioning`
-**TEXT (8)**: `textAlignHorizontal`, `textAlignVertical`, `textDecoration`, `textCase`, `lineHeight`, `letterSpacing`, `paragraphSpacing`, `fontStyle`
-**SIZE (4)**: `minWidth`, `maxWidth`, `minHeight`, `maxHeight`
-**VISUAL (2)**: `strokeAlign`, `dashPattern`
+**LAYOUT (3)**: `counterAxisSpacing`, `layoutWrap`, `layoutPositioning` — via `build_visual_from_db` + `emit_from_registry`
+**TEXT (8)**: `textAlignHorizontal`, `textAlignVertical`, `textDecoration`, `textCase`, `lineHeight`, `letterSpacing`, `paragraphSpacing`, `fontStyle` — via `_emit_text_props` (progressive fallback from db_font)
+**SIZE (4)**: `minWidth`, `maxWidth`, `minHeight`, `maxHeight` — via `build_visual_from_db` + `emit_from_registry`
+**VISUAL (2)**: `strokeAlign`, `dashPattern` — via `build_visual_from_db` + `emit_from_registry`
 
-Root cause: Each emit function independently decides which properties to handle. The registry prevents gaps at the extraction/query/override layers but has no connection to the emission layer.
-
-**Fix**: Table-driven emission — extend the registry with emit patterns so the renderer reads from the table instead of maintaining ad-hoc lists.
+The fix has two layers: (1) `build_visual_from_db` now passes through all 17 properties, (2) `_emit_visual` delegates to `emit_from_registry()` which reads emit patterns from the property registry. The structural test in `tests/test_property_registry.py` ensures no future property can be added without an emit pattern.
 
 ### Gradient Fills — Partially Resolved
 
@@ -82,41 +84,22 @@ The emit code handles gradients, and supplement extraction captures `gradientTra
 
 Supplement extraction now captures `textAutoResize` from Plugin API. But the DB has not been fully re-extracted — most TEXT nodes still have NULL. Requires supplement re-run.
 
-## Planned: Table-Driven Emission (Next Session)
+## Table-Driven Emission — COMPLETED (Session 3)
 
-The property registry should drive ALL pipeline stages, including emission. Currently it drives 3 of 4:
+The property registry now drives ALL 4 pipeline stages:
 
 ```
-FigmaProperty today:
+FigmaProperty:
   figma_name → db_column → override_fields → value_type → override_type
-  Used by: extraction ✅, query ✅, overrides ✅, emission ❌
+  + emit: { "figma": '{var}.strokeAlign = "{value}";' }
+  Used by: extraction ✅, query ✅, overrides ✅, emission ✅
 ```
 
-The plan (inspired by LLVM TableGen):
+Simple properties use string templates with `{var}`/`{value}` placeholders. Complex properties (fills, strokes, effects, cornerRadius, fontName) use `emit={"figma": None}` and are handled by custom emit functions.
 
-```
-FigmaProperty extended:
-  figma_name → db_column → override_fields → value_type → override_type
-  + emit: { "figma": pattern_or_fn, "react": pattern_or_fn, "swift": pattern_or_fn }
-```
+The `emit_from_registry(var, visual, renderer="figma")` helper iterates all registry entries, applies matching templates, and returns JS lines. `_emit_visual` delegates to this helper for all simple properties, keeping only `clipsContent` (boolean true/false special case) and complex properties as custom logic.
 
-For simple properties (most of the 17 gaps), the emit pattern is a string template:
-```python
-emit={"figma": '{var}.{figma_name} = "{value}";'}
-```
-
-For complex properties (fills, fontName, cornerRadius), the emit field references a custom function:
-```python
-emit={"figma": emit_fills_figma}
-```
-
-Benefits:
-- Adding a property → all renderers automatically emit it
-- Adding a renderer → it reads all existing properties from the table
-- No M×N gap possible — the table IS the source of truth
-- Cross-reference test verifies every property has an emit pattern for every registered renderer
-
-This is the architectural equivalent of LLVM's TableGen: instruction descriptions defined once, backends generated from them.
+A structural coverage test (`tests/test_property_registry.py::TestRegistryEmitCoverage`) verifies every registry property has an emit pattern for the "figma" renderer, excluding explicitly deferred properties (constraints, width/height, layoutSizing).
 
 ## Key Architectural Decisions
 
@@ -132,7 +115,7 @@ This is the architectural equivalent of LLVM's TableGen: instruction description
 10. **Unpublished component fallback** — component_figma_id → instance figma_node_id + getMainComponentAsync → Mode 2 createFrame
 11. **Progressive text fallback** — `_resolve_text_value()`: L2 token → resolved value → L0 DB value
 12. **Font normalization** — `normalize_font_style(family, style)`: per-family style names
-13. **Table-driven emission** (PLANNED) — registry defines emit patterns per renderer, eliminates hardcoded property lists
+13. **Table-driven emission** (COMPLETED) — registry defines emit patterns per renderer via `emit` field, `emit_from_registry()` applies templates, structural test enforces coverage
 
 ## Key Files
 

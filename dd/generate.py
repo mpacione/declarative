@@ -8,6 +8,7 @@ Visual data source: DB path via query_screen_visuals() → build_visual_from_db(
   → _emit_visual pipeline. The IR does not carry visual data (thin IR).
 """
 
+import json
 import math
 import re
 import sqlite3
@@ -221,6 +222,19 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     if stroke_join and stroke_join != "MITER":
         visual["strokeJoin"] = stroke_join
 
+    stroke_align = node_visual.get("stroke_align")
+    if stroke_align:
+        visual["strokeAlign"] = stroke_align
+
+    dash_pattern = node_visual.get("dash_pattern")
+    if dash_pattern and dash_pattern != "[]":
+        try:
+            parsed = json.loads(dash_pattern) if isinstance(dash_pattern, str) else dash_pattern
+            if parsed:
+                visual["dashPattern"] = parsed
+        except (ValueError, TypeError):
+            pass
+
     font_data: dict[str, Any] = {}
     for fk in ("font_family", "font_size", "font_weight", "font_style",
                "line_height", "letter_spacing", "text_align",
@@ -231,6 +245,26 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
             font_data[fk] = val
     if font_data:
         visual["font"] = font_data
+
+    for size_key, visual_key in (
+        ("min_width", "minWidth"), ("max_width", "maxWidth"),
+        ("min_height", "minHeight"), ("max_height", "maxHeight"),
+    ):
+        val = node_visual.get(size_key)
+        if val is not None:
+            visual[visual_key] = val
+
+    counter_axis_spacing = node_visual.get("counter_axis_spacing")
+    if counter_axis_spacing is not None and counter_axis_spacing != 0:
+        visual["counterAxisSpacing"] = counter_axis_spacing
+
+    layout_wrap = node_visual.get("layout_wrap")
+    if layout_wrap:
+        visual["layoutWrap"] = layout_wrap
+
+    layout_positioning = node_visual.get("layout_positioning")
+    if layout_positioning:
+        visual["layoutPositioning"] = layout_positioning
 
     constraint_h = node_visual.get("constraint_h")
     constraint_v = node_visual.get("constraint_v")
@@ -399,6 +433,40 @@ def _build_text_finder(
         f'{var}.findOne(n => n.type === "TEXT" && {_TITLE_NAMES_RE}.test(n.name))'
         f' || {var}.findOne(n => n.type === "TEXT")'
     )
+
+
+def emit_from_registry(
+    var: str,
+    visual: dict[str, Any],
+    renderer: str = "figma",
+) -> list[str]:
+    """Emit simple scalar properties from the visual dict, driven by the registry.
+
+    Iterates registry entries that have a string template in their emit dict
+    for the given renderer. Skips complex properties (emit=None) and properties
+    not present in the visual dict.
+
+    Template placeholders: {var}, {value}, {figma_name}
+    """
+    from dd.property_registry import PROPERTIES
+
+    lines: list[str] = []
+    for prop in PROPERTIES:
+        template = prop.emit.get(renderer)
+        if template is None:
+            continue
+        if not isinstance(template, str):
+            continue
+
+        figma_key = prop.figma_name
+        value = visual.get(figma_key)
+        if value is None:
+            continue
+
+        line = template.format(var=var, value=value, figma_name=figma_key)
+        lines.append(line)
+
+    return lines
 
 
 _DIRECTION_MAP = {"horizontal": "HORIZONTAL", "vertical": "VERTICAL"}
@@ -993,33 +1061,13 @@ def _emit_visual(
                 val = radius.get(corner_key, 0)
                 lines.append(f"{var}.{figma_prop} = {val};")
 
-    opacity = visual.get("opacity")
-    if opacity is not None:
-        lines.append(f"{var}.opacity = {opacity};")
-
     clips = visual.get("clipsContent")
     if clips is True:
         lines.append(f"{var}.clipsContent = true;")
     elif clips is False:
-        # Figma's default for createFrame() is clipsContent=true.
-        # Must explicitly clear when original doesn't clip.
         lines.append(f"{var}.clipsContent = false;")
 
-    rotation = visual.get("rotation")
-    if rotation is not None:
-        lines.append(f"{var}.rotation = {rotation};")
-
-    blend_mode = visual.get("blendMode")
-    if blend_mode:
-        lines.append(f'{var}.blendMode = "{blend_mode}";')
-
-    stroke_cap = visual.get("strokeCap")
-    if stroke_cap:
-        lines.append(f'{var}.strokeCap = "{stroke_cap}";')
-
-    stroke_join = visual.get("strokeJoin")
-    if stroke_join:
-        lines.append(f'{var}.strokeJoin = "{stroke_join}";')
+    lines.extend(emit_from_registry(var, visual, renderer="figma"))
 
     # Constraints are NOT emitted here — they must be set AFTER position
     # in the post-appendChild block. Constraints like "CENTER" auto-calculate
@@ -1215,6 +1263,12 @@ def _emit_text_props(
         style.get("fontWeight"), db_font.get("font_weight"), tokens,
     )
     figma_style = normalize_font_style(family, font_weight_to_style(weight))
+
+    db_font_style = db_font.get("font_style")
+    if db_font_style and db_font_style != "Regular":
+        if "Italic" not in figma_style and "Oblique" not in figma_style:
+            figma_style = f"{figma_style} {db_font_style}"
+
     lines.append(f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
 
     font_size = _resolve_text_value(
@@ -1226,6 +1280,52 @@ def _emit_text_props(
     text = element.get("props", {}).get("text", "")
     if text:
         lines.append(f'{var}.characters = "{_escape_js(text)}";')
+
+    text_align_h = db_font.get("text_align")
+    if text_align_h:
+        lines.append(f'{var}.textAlignHorizontal = "{text_align_h}";')
+
+    text_align_v = db_font.get("text_align_v")
+    if text_align_v:
+        lines.append(f'{var}.textAlignVertical = "{text_align_v}";')
+
+    text_decoration = db_font.get("text_decoration")
+    if text_decoration:
+        lines.append(f'{var}.textDecoration = "{text_decoration}";')
+
+    text_case = db_font.get("text_case")
+    if text_case:
+        lines.append(f'{var}.textCase = "{text_case}";')
+
+    line_height = db_font.get("line_height")
+    if line_height is not None:
+        if isinstance(line_height, str):
+            try:
+                lh = json.loads(line_height)
+            except (ValueError, TypeError):
+                lh = None
+        else:
+            lh = line_height
+        if isinstance(lh, dict) and "value" in lh:
+            unit = lh.get("unit", "PIXELS")
+            lines.append(f'{var}.lineHeight = {{value: {lh["value"]}, unit: "{unit}"}};')
+
+    letter_spacing = db_font.get("letter_spacing")
+    if letter_spacing is not None:
+        if isinstance(letter_spacing, str):
+            try:
+                ls = json.loads(letter_spacing)
+            except (ValueError, TypeError):
+                ls = None
+        else:
+            ls = letter_spacing
+        if isinstance(ls, dict) and "value" in ls:
+            unit = ls.get("unit", "PIXELS")
+            lines.append(f'{var}.letterSpacing = {{value: {ls["value"]}, unit: "{unit}"}};')
+
+    paragraph_spacing = db_font.get("paragraph_spacing")
+    if paragraph_spacing is not None:
+        lines.append(f"{var}.paragraphSpacing = {paragraph_spacing};")
 
 
 # ---------------------------------------------------------------------------
