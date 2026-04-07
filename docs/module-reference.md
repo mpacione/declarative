@@ -312,9 +312,12 @@ Generates Figma Plugin API JavaScript from CompositionSpec + DB visuals. Mode 1 
 |----------|---------|
 | `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. Overrides use decomposed `{target, property, value}` format. |
 | `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script |
-| `build_visual_from_db(node_visual)` | Registry-driven: iterates PROPERTIES to map db_column → figma_name, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse), bundles text into font dict, constraints into constraints dict |
-| `emit_from_registry(var, eid, visual, tokens)` | Registry-driven emission: dispatches HANDLER properties to `_FIGMA_HANDLERS`, formats template properties via `format_js_value()`. Returns (lines, token_refs) |
-| `format_js_value(value, value_type)` | Type-aware JS value formatter: boolean→true/false, enum/string→"quoted", json→serialized, number→string |
+| `build_visual_from_db(node_visual)` | **Shared infrastructure** (renderer-agnostic): iterates PROPERTIES to map db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict with hex colors, numeric weights, radians. |
+| `_apply_db_transform(value, prop)` | **Shared**: universal transforms only — int→bool, JSON string parse. No renderer-specific transforms (radians→degrees is in `format_js_value`). |
+| `_resolve_layout_sizing(elem_sizing, db_sizing_h, db_sizing_v, text_auto_resize, is_text, etype)` | **Shared**: pure function for layout sizing. Priority: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING` table) > IR sizing > type heuristic. |
+| `emit_from_registry(var, eid, visual, tokens)` | **Figma renderer**: dispatches HANDLER properties to `_FIGMA_HANDLERS`, formats template properties via `format_js_value()`. Returns (lines, token_refs). |
+| `format_js_value(value, value_type)` | **Figma renderer**: type-aware JS formatting. boolean→true/false, enum/string→"quoted", json→serialized, number_radians→degrees, number→string. |
+| `hex_to_figma_rgba(hex_str)` | **Figma renderer**: hex color → `{r, g, b, a}` floats (0-1). Preserves alpha from 8-digit hex. |
 | `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing (auto-layout containers only — non-auto-layout deferred) |
 | `_emit_visual(var, eid, visual, tokens)` | Delegates to `emit_from_registry` — all logic in registry |
 | `_emit_fills/strokes/effects(...)` | Handler functions for complex JSON paint/effect arrays |

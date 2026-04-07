@@ -20,11 +20,11 @@ The round-trip (Figma → DB → Figma) is the existential proof that the compil
 
 Every renderer uses **progressive fallback**: read the highest IR level available, fall back to lower levels for missing data. L0 is always the safety net.
 
-## Current State (2026-04-06, Session 4)
+## Current State (2026-04-07, Session 5)
 
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,656 passing
+- **Tests**: 1,657 passing
 - **Cross-platform reference**: `docs/cross-platform-value-formats.md` — value formats for Figma, CSS, SwiftUI, Flutter, Android
 - **Branch**: `t5/architecture-vision`
 - **Round-trip**: 9+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad

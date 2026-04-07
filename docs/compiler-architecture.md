@@ -280,7 +280,7 @@ Round-trip structurally proven on 4 screens (184, 185, 188, 238). The renderer n
 - **L0 → L1 → L2 fallback**: All 203+ nodes enter the IR via LEFT JOIN. L1/L2 enrich as annotations, never filter.
 - **Mode 1 instances**: Real component instances via `getNodeByIdAsync().createInstance()` with full override application (17 override types, 69,866 total overrides across all screens)
 - **Mode 2 frames**: Created from L0 properties with registry-driven visual emission
-- **Property registry** (`dd/property_registry.py`): Single source of truth for 58 Figma properties. Extraction, query (51 columns), and renderer all reference it — prevents the "extract but forget to emit" gap pattern.
+- **Property registry** (`dd/property_registry.py`): Single source of truth for 48 Figma properties. Extraction, query (51 columns), and renderer all reference it — prevents the "extract but forget to emit" gap pattern.
 - **Override types captured**: BOOLEAN (visibility), FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN, TEXT
 - **Default clearing**: `fills=[]` and `clipsContent=false` explicitly set to override Figma's createFrame() defaults
 - **Layout sizing**: Auto-layout containers set own sizing pre-appendChild; non-auto-layout children deferred to post-appendChild
@@ -366,7 +366,7 @@ docs/
   research/                  # Research artifacts (Mitosis, Ghost, formats, etc.)
   archive/                   # Superseded documents
 
-tests/                       # 1,475 tests
+tests/                       # 1,657 tests
 ```
 
 ---
