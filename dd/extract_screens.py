@@ -80,6 +80,9 @@ def generate_extraction_script(screen_node_id: str) -> str:
     if ('rotation' in node && node.rotation !== 0) entry.rotation = node.rotation;
     if ('clipsContent' in node) entry.clips_content = node.clipsContent ? 1 : 0;
 
+    // Mask
+    if ('isMask' in node && node.isMask) entry.is_mask = 1;
+
     // Constraints
     if ('constraints' in node) {
       entry.constraint_h = node.constraints?.horizontal;
@@ -270,6 +273,10 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
         if "clips_content" in node:
             cleaned["clips_content"] = 1 if node["clips_content"] else 0
 
+        # Mask
+        if "is_mask" in node and node["is_mask"]:
+            cleaned["is_mask"] = 1
+
         # Constraints
         for field in ["constraint_h", "constraint_v"]:
             if field in node:
@@ -451,7 +458,7 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "stroke_bottom_weight", "stroke_left_weight",
             "stroke_align", "stroke_cap", "stroke_join", "dash_pattern",
             "fill_geometry", "stroke_geometry",
-            "rotation", "clips_content",
+            "rotation", "clips_content", "is_mask",
             "constraint_h", "constraint_v",
             "font_family", "font_weight", "font_size", "font_style",
             "line_height", "letter_spacing", "paragraph_spacing",

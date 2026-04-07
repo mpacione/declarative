@@ -785,7 +785,17 @@ def generate_figma_script(
                         for ref in asset_refs
                     )
 
-            if etype in _SKIP_NODE_TYPES and not has_vector_asset:
+            # Groups with mask children must be rendered (not skipped)
+            has_mask_child = False
+            if etype == "group" and db_visuals is not None:
+                node_id_map = spec.get("_node_id_map", {})
+                for child_eid in element.get("children", []):
+                    child_nid = node_id_map.get(child_eid)
+                    if child_nid and db_visuals.get(child_nid, {}).get("is_mask"):
+                        has_mask_child = True
+                        break
+
+            if etype in _SKIP_NODE_TYPES and not has_vector_asset and not has_mask_child:
                 skipped_eids.add(eid)
                 continue
 

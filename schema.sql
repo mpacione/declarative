@@ -379,6 +379,9 @@ CREATE TABLE nodes (
     rotation        REAL,                        -- Degrees
     clips_content   INTEGER,                     -- 1 = clips children to frame bounds
 
+    -- Mask
+    is_mask         INTEGER,                     -- 1 = this node acts as a clipping mask for subsequent siblings
+
     -- Constraints (for non-auto-layout children)
     constraint_h    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE
     constraint_v    TEXT,                        -- MIN, CENTER, MAX, STRETCH, SCALE

@@ -270,6 +270,10 @@ def _add_visual_properties(node: dict, api_node: dict) -> None:
     if "clipsContent" in api_node:
         node["clips_content"] = 1 if api_node["clipsContent"] else 0
 
+    # Mask
+    if api_node.get("isMask"):
+        node["is_mask"] = 1
+
     # Constraints
     constraints = api_node.get("constraints")
     if constraints:

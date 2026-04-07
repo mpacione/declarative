@@ -925,3 +925,100 @@ def test_complete_run_with_failures():
     assert summary["status"] == "failed"
     assert summary["completed"] == 1
     assert summary["failed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Mask extraction tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_extraction_script_captures_is_mask():
+    """The extraction JS must read node.isMask so we can store it."""
+    script = generate_extraction_script("1:1")
+    assert "isMask" in script
+
+
+@pytest.mark.unit
+def test_parse_extraction_response_preserves_is_mask():
+    """is_mask field preserved through parse when present."""
+    response = [
+        {
+            "figma_node_id": "200:1",
+            "parent_idx": None,
+            "name": "Mask Group",
+            "node_type": "GROUP",
+            "depth": 0,
+            "sort_order": 0,
+            "x": 0, "y": 0, "width": 100, "height": 100,
+            "visible": True,
+        },
+        {
+            "figma_node_id": "200:2",
+            "parent_idx": 0,
+            "name": "Mask Shape",
+            "node_type": "ELLIPSE",
+            "depth": 1,
+            "sort_order": 0,
+            "x": 0, "y": 0, "width": 100, "height": 100,
+            "visible": True,
+            "is_mask": 1,
+        },
+        {
+            "figma_node_id": "200:3",
+            "parent_idx": 0,
+            "name": "Photo",
+            "node_type": "RECTANGLE",
+            "depth": 1,
+            "sort_order": 1,
+            "x": 0, "y": 0, "width": 100, "height": 100,
+            "visible": True,
+        },
+    ]
+    parsed = parse_extraction_response(response)
+    assert parsed[1].get("is_mask") == 1
+    assert parsed[0].get("is_mask") is None  # Group itself is not a mask
+    assert parsed[2].get("is_mask") is None  # Photo is not a mask
+
+
+@pytest.mark.unit
+def test_insert_nodes_stores_is_mask(db):
+    """is_mask column round-trips through DB insertion."""
+    conn = db
+    # Seed a file and screen
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('f1', 'Test')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:1', 'S1', 100, 100)")
+    conn.commit()
+
+    nodes = [
+        {
+            "figma_node_id": "300:1",
+            "name": "Group",
+            "node_type": "GROUP",
+            "depth": 0,
+            "sort_order": 0,
+            "is_semantic": 0,
+            "x": 0, "y": 0, "width": 100, "height": 100,
+            "visible": 1,
+        },
+        {
+            "figma_node_id": "300:2",
+            "parent_idx": 0,
+            "name": "Mask",
+            "node_type": "ELLIPSE",
+            "depth": 1,
+            "sort_order": 0,
+            "is_semantic": 0,
+            "x": 0, "y": 0, "width": 100, "height": 100,
+            "visible": 1,
+            "is_mask": 1,
+        },
+    ]
+    node_ids = insert_nodes(conn, 1, nodes)
+    assert len(node_ids) == 2
+
+    row = conn.execute("SELECT is_mask FROM nodes WHERE id = ?", (node_ids[1],)).fetchone()
+    assert row[0] == 1
+
+    row0 = conn.execute("SELECT is_mask FROM nodes WHERE id = ?", (node_ids[0],)).fetchone()
+    assert row0[0] is None or row0[0] == 0

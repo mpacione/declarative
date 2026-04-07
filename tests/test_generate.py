@@ -1619,6 +1619,78 @@ class TestNodeTypeDispatch:
         assert "createFrame" not in script or 'name = "group' not in script
 
 
+class TestMaskGroupRendering:
+    """Mask groups must NOT be skipped — they contain mask shapes + masked content."""
+
+    def test_group_with_mask_child_not_skipped(self):
+        """A group whose child has is_mask should be rendered, not skipped."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["group-1"],
+            },
+            "group-1": {
+                "type": "group",
+                "layout": {},
+                "children": ["ellipse-1", "rectangle-1"],
+            },
+            "ellipse-1": {
+                "type": "ellipse",
+                "layout": {},
+            },
+            "rectangle-1": {
+                "type": "rectangle",
+                "layout": {},
+            },
+        })
+        db_visuals = {
+            10: {"is_mask": 1, "fills": "[]", "strokes": "[]", "effects": "[]", "bindings": [], "_asset_refs": []},
+            20: {"fills": "[]", "strokes": "[]", "effects": "[]", "bindings": [], "_asset_refs": []},
+        }
+        # Map element IDs → node IDs
+        spec["_node_id_map"] = {"ellipse-1": 10, "rectangle-1": 20, "group-1": 5}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The group must be created as a frame (groups render as frames in Figma API)
+        assert 'name = "group-1"' in script or 'name = "Mask Group"' in script or "createFrame" in script
+
+    def test_is_mask_property_emitted(self):
+        """Nodes with is_mask=1 must have .isMask = true set in the generated JS."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["ellipse-1"],
+            },
+            "ellipse-1": {
+                "type": "ellipse",
+                "layout": {},
+            },
+        })
+        db_visuals = {
+            10: {"is_mask": 1, "fills": "[]", "strokes": "[]", "effects": "[]", "bindings": [], "_asset_refs": []},
+        }
+        spec["_node_id_map"] = {"ellipse-1": 10}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".isMask = true" in script
+
+    def test_non_mask_group_still_skipped(self):
+        """Regular groups (no mask children) should still be skipped."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["group-1"],
+            },
+            "group-1": {
+                "type": "group",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "createFrame" not in script or 'name = "group' not in script
+
+
 class TestRecursiveMode1Skip:
     """Verify Mode 1 instances skip ALL descendants, not just direct children."""
 

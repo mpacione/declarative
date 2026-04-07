@@ -1492,6 +1492,22 @@ class TestQueryScreenVisuals:
         # component_figma_id not in result when registry doesn't exist
         assert result[10].get("component_figma_id") is None
 
+    def test_includes_is_mask(self, db: sqlite3.Connection):
+        """is_mask column flows through query_screen_visuals when present."""
+        # Add a mask node
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, is_mask) "
+            "VALUES (12, 1, 'm1', 'Mask Shape', 'ELLIPSE', 2, 2, "
+            "0, 0, 100, 100, 1)"
+        )
+        db.commit()
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[12]["is_mask"] == 1
+        # Non-mask nodes should have is_mask as None or 0
+        assert result[10].get("is_mask") in (None, 0)
+
 
 def _collect_swaps_from_tree(tree: dict) -> list[dict]:
     """Extract flat child_swap list from an override tree for test assertions."""

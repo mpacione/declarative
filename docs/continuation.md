@@ -215,7 +215,18 @@ New `build_override_tree(instance_overrides, child_swaps)` in `dd/ir.py` convert
 
 New `_emit_override_tree()` in `dd/renderers/figma.py`: recursive pre-order walk. New `_collect_swap_targets_from_tree()` for pre-fetch preamble. Pre-order traversal = correct ordering for imperative renderers; direct mapping for declarative renderers. Override dependencies are semantic (component slot tree), not renderer-specific — the IR owns the nesting structure.
 
-### Fix 3: L0 Completeness — REMAINING
-Phase A: Mask support (is_mask column, extract from both APIs, emit in renderer, stop unconditionally skipping GROUPs). Phase B: Missing properties (booleanOperation, cornerSmoothing, arcData). Phase C: Structural completeness test against canonical Figma property list.
+### Fix 3A: Mask Support — COMPLETE
+Full mask pipeline implemented end-to-end:
+- **Schema**: `is_mask INTEGER` column added to `nodes` table
+- **Plugin API extraction** (`extract_screens.py`): reads `node.isMask`, stores as `is_mask = 1`
+- **REST API extraction** (`figma_api.py`): reads `isMask` from REST response
+- **Parse** (`extract_screens.py`): `is_mask` preserved through `parse_extraction_response` and `insert_nodes`
+- **Property registry** (`property_registry.py`): `isMask` registered as boolean visual property with `_UNIFORM` emit template
+- **Visual pipeline**: `query_screen_visuals` → `build_visual_from_db` → `emit_from_registry` — registry-driven, no manual wiring
+- **Renderer** (`renderers/figma.py`): GROUP nodes with mask children no longer skipped. Check walks group's children for `is_mask` in visual data. Non-mask groups still skipped as before.
+- **Emission**: `{var}.isMask = true;` emitted for mask nodes via standard `_UNIFORM` template
 
-### Test Count: 1,747 passing
+### Fix 3: L0 Completeness — REMAINING
+Phase B: Missing properties (booleanOperation, cornerSmoothing, arcData). Phase C: Structural completeness test against canonical Figma property list.
+
+### Test Count: 1,754 passing

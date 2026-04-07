@@ -90,6 +90,9 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     FigmaProperty("rotation", "rotation", ("rotation",), "visual", "number_radians",
                   default_value=0,
                   emit={"figma": _UNIFORM}),
+    FigmaProperty("isMask", "is_mask", ("isMask",), "visual", "boolean",
+                  default_value=False,
+                  emit={"figma": _UNIFORM}),
 
     # === VISUAL: Corner Radius ===
     FigmaProperty("cornerRadius", "corner_radius", ("cornerRadius",), "visual",

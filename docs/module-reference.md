@@ -7,11 +7,11 @@
 ## Cross-Cutting: Property Registry
 
 ### dd/property_registry.py — Unified Property Registry
-Single source of truth for all 58 Figma node properties. Every pipeline layer references this registry instead of maintaining ad-hoc property lists.
+Single source of truth for all Figma node properties. Every pipeline layer references this registry instead of maintaining ad-hoc property lists.
 
 | Function | Purpose |
 |----------|---------|
-| `PROPERTIES` | Tuple of 48 `FigmaProperty` dataclass entries (with `token_binding_path` for binding awareness) |
+| `PROPERTIES` | Tuple of `FigmaProperty` dataclass entries (with `token_binding_path` for binding awareness). Includes `isMask` boolean property for mask nodes. |
 | `HANDLER` | Sentinel value for handler-emitted properties (see emit field) |
 | `by_db_column(column)` | Look up property by DB column name |
 | `by_figma_name(name)` | Look up property by Figma Plugin API name |

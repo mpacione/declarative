@@ -63,7 +63,7 @@ The DB `nodes` table IS Level 0. Not a serialization of L0 — the table itself 
 - `sort_order` defines z-ordering within each parent
 - Every visual, layout, font, constraint, and transform property
 - Every node type: FRAME, RECTANGLE, TEXT, INSTANCE, GROUP, VECTOR, ELLIPSE, etc.
-- `visible`, `clips_content`, `rotation`, `blend_mode`
+- `visible`, `clips_content`, `rotation`, `blend_mode`, `is_mask`
 - `fill_geometry`, `stroke_geometry` for vector path data (SVG paths)
 - `component_key` for INSTANCE nodes (reference to master component)
 - **Content-addressed asset registry**: `assets` table (hash, kind, metadata) + `node_asset_refs` junction table linking nodes to raster images, SVG vectors, and icons
