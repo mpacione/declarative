@@ -539,8 +539,12 @@ After `createInstance()`, the instance inherits the master's defaults. But the D
 ### Font Style Naming — FIXED (2026-04-06 Session 2)
 `normalize_font_style(family, style)` maps per-family: SF Pro Text/Display/Pro → "Semibold" (no space), Baskerville → "SemiBold" (camelCase), Inter → "Semi Bold" (with space). Verified against `figma.listAvailableFontsAsync()` ground truth.
 
-### Override Grouping Eliminates Duplicate findOne Calls
-Each Mode 1 instance had separate `findOne` calls per override, even when multiple overrides targeted the same child node. Grouping by `_resolve_override_target()` and emitting one `findOne` per unique target reduced calls from 113→71 (screen 184), 190→106 (screen 238). Child swaps are merged into the same grouping for further deduplication.
+### Override Decomposition at Query Time Fixes 33 Silently-Dropped Types
+Override `property_name` in the DB is a composite `{target}{suffix}` (e.g., `:self:cornerRadius`). The renderer must split target from property to group overrides. Originally, `_OVERRIDE_SUFFIX_MAP` (7 entries) tried to do this at emit time, but 33 of 42 override types weren't in the map. Self-targeting overrides for cornerRadius, effects, strokes, padding were silently dropped — `findOne(n => n.id.endsWith(":self:cornerRadius"))` matched nothing.
+
+Fix: decompose at query time using `override_suffix_for_type()` from `extract_supplement.py` — the same code that created the composite string. One source of suffix truth, no second map. Overrides now use `{target, property, value}` format. Grouping is trivial: `group by target`. `_emit_override_op` reuses `format_js_value` for generic properties.
+
+Key lesson: when a pipeline stage encodes information (target+suffix → composite string), the stage that decodes it must use the same encoding knowledge. A hardcoded second map will always drift.
 
 ### Gradient Fill Emission Requires Two Data Formats
 The REST API stores `gradientHandlePositions` (3 points). The Plugin API needs `gradientTransform` (2x3 matrix). These are different parameterizations of the same gradient. The solution: store BOTH in the `fills` column. Supplement extraction enriches existing fills with `gradientTransform` from the Plugin API. **ORDERING RISK**: supplement must run AFTER REST extraction. If REST re-runs after supplement, the enrichment (gradientTransform) is lost and supplement must re-run.

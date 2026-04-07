@@ -20,55 +20,57 @@ The round-trip (Figma → DB → Figma) is the existential proof that the compil
 
 Every renderer uses **progressive fallback**: read the highest IR level available, fall back to lower levels for missing data. L0 is always the safety net.
 
-## Current State (2026-04-06, Session 3)
+## Current State (2026-04-06, Session 4)
 
-- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (17 types), 182,871 bindings, 388 tokens, 338 screens
+- **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
-- **Tests**: 1,621 passing
+- **Tests**: 1,637 passing
 - **Branch**: `t5/architecture-vision`
-- **Round-trip**: 9 screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244) — 6 iPhone + 3 iPad
-- **Property registry**: `dd/property_registry.py` — 48 scalar properties + JSON arrays (fills/strokes/effects), with per-renderer emit patterns
+- **Round-trip**: 9+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad
+- **Property registry**: `dd/property_registry.py` — 48 properties with per-renderer emit patterns (HANDLER/template/deferred)
+- **textAutoResize**: 12,114 of 13,279 TEXT nodes (91% coverage)
+- **gradientTransform**: 2,784 gradient fills (234 remaining on 3 screens)
 
 ### What the Round-Trip Produces
 - Real component instances via getNodeByIdAsync (L1 → Mode 1)
 - Unpublished component fallback: getMainComponentAsync when registry has no figma_node_id
 - Deep nested instance swaps at any depth (recursive CTE)
-- 17 override types grouped by target (37-44% findOne reduction)
+- 42 override types decomposed at query time, grouped by target
+- All override types correctly applied including self-targeting (cornerRadius, effects, strokes, padding — previously 33 types silently dropped)
 - Gradient fill emission through IR (GRADIENT_LINEAR/RADIAL/ANGULAR/DIAMOND)
 - Progressive text fallback: L2 token → L0 DB value for fontSize/fontFamily/fontWeight
 - Per-corner radius emission (topLeftRadius, etc.)
-- Deferred position + constraints with canary verification
+- Deferred position + constraints with canary verification, DB-first position fallback
 - Font normalization: family-aware style names (SF Pro → "Semibold", Inter → "Semi Bold")
-- Table-driven emission: registry defines emit patterns per renderer, `emit_from_registry()` iterates them
-- All 48 properties now emitted (was 31, 17 gap closed)
+- Registry-driven emission: `emit_from_registry()` dispatches HANDLER + template properties
+- Registry-driven `build_visual_from_db`: no manual property list
+- All 48 properties emitted, all 42 override types applied
 - Text properties: textAlignHorizontal/Vertical, textDecoration, textCase, lineHeight, letterSpacing, paragraphSpacing, fontStyle
 - Layout properties: counterAxisSpacing, layoutWrap, layoutPositioning
 - Size constraints: minWidth, maxWidth, minHeight, maxHeight
 - Visual properties: strokeAlign, dashPattern
-- Execution: 0.7-3.9s per screen (warm cache)
 
 ### Property Registry — Fully Registry-Driven (COMPLETED Sessions 3-4)
 
-The registry now drives ALL 5 pipeline stages: extraction, query, overrides, visual builder, AND emission. Three emission categories:
+The registry drives ALL pipeline stages: extraction, query, overrides, visual builder, emission, AND override application. Three emission categories:
 
 - **Template**: `emit={"figma": "{var}.{figma_name} = {value};"}` — uniform format, type-aware via `format_js_value()`
 - **Handler**: `emit={"figma": HANDLER}` — dispatched to `_FIGMA_HANDLERS[figma_name]` (fills, strokes, effects, cornerRadius, clipsContent)
 - **Deferred**: `emit={}` — emitted in a different pipeline phase (constraints, visible, width/height, layoutSizing, fontName)
 
-`build_visual_from_db` is registry-driven — iterates PROPERTIES, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse), bundles text into font dict, constraints into constraints dict. No manual property list to maintain.
+`build_visual_from_db` is registry-driven — iterates PROPERTIES, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse). `_emit_visual` is a single delegation to `emit_from_registry`. `_emit_override_op` uses `format_js_value` for generic properties.
 
-`_emit_visual` is a single delegation to `emit_from_registry`. Structural tests enforce every property is classified as template/handler/deferred with no gaps.
+### Override Decomposition (COMPLETED Session 4)
+
+Overrides are decomposed at query time in `query_screen_visuals` from composite `{target}{suffix}` to structured `{target, property, value}`. The decomposition uses `override_suffix_for_type()` from `extract_supplement.py` — the same suffix knowledge that created the composite string during extraction. No second suffix map to maintain.
+
+Previously, `_OVERRIDE_SUFFIX_MAP` (7 entries) + a registry fallback failed for 33 of 42 override types when self-targeting. Self-targeting overrides for cornerRadius, effects, strokes, padding, and 29 other types were silently dropped. Now all 42 types are correctly applied.
 
 ## Remaining Issues
 
 ### Issue 3: Image Fills — NOT YET ADDRESSED
 
-IMAGE fills render as gray rectangles. Requires:
-1. Plugin API extraction: `figma.getImageByHash(hash).getBytesAsync()`
-2. New `image_data` table (hash → bytes)
-3. Rendering: `figma.createImage(bytes)`
-
-65 image fills across 9 target screens.
+IMAGE fills render as gray rectangles. 877 IMAGE fills across 204 screens, only 17 unique image hashes. For same-file reproduction, `figma.getImageByHash(imageRef)` should work directly since images already exist in the file. For cross-file, requires byte extraction and `figma.createImage(bytes)`.
 
 ### 17 Properties Emission Gap — RESOLVED (Session 3)
 
@@ -99,23 +101,19 @@ The property registry now drives ALL 4 pipeline stages:
 ```
 FigmaProperty:
   figma_name → db_column → override_fields → value_type → override_type
-  + emit: { "figma": '{var}.strokeAlign = "{value}";' }
-  Used by: extraction ✅, query ✅, overrides ✅, emission ✅
+  + emit: { "figma": HANDLER } or { "figma": "{var}.{figma_name} = {value};" }
+  Used by: extraction ✅, query ✅, overrides ✅, visual builder ✅, emission ✅
 ```
 
-Simple properties use string templates with `{var}`/`{value}` placeholders. Complex properties (fills, strokes, effects, cornerRadius, fontName) use `emit={"figma": None}` and are handled by custom emit functions.
-
-The `emit_from_registry(var, visual, renderer="figma")` helper iterates all registry entries, applies matching templates, and returns JS lines. `_emit_visual` delegates to this helper for all simple properties, keeping only `clipsContent` (boolean true/false special case) and complex properties as custom logic.
-
-A structural coverage test (`tests/test_property_registry.py::TestRegistryEmitCoverage`) verifies every registry property has an emit pattern for the "figma" renderer, excluding explicitly deferred properties (constraints, width/height, layoutSizing).
+Three categories: HANDLER (callable dispatch for fills/strokes/effects/cornerRadius/clipsContent), template (uniform `{var}.{figma_name} = {value};` with type-aware `format_js_value`), deferred (empty dict — constraints, visible, width/height, layoutSizing, fontName). `emit_from_registry` dispatches both handlers and templates. `_emit_override_op` reuses `format_js_value` for generic override application.
 
 ## Key Architectural Decisions
 
 1. **Progressive fallback** (L2→L1→L0) — renderers read highest level available
 2. **LEFT JOIN on L1** — all nodes enter IR, L1/L2 as annotations
 3. **Deferred position + constraints** — set after all children appended, with canary verification
-4. **Override grouping by target** — one findOne per unique child_id, 37-44% reduction
-5. **Self-overrides** — `:self` marker for overrides targeting the instance itself
+4. **Override decomposition at query time** — composite `{target}{suffix}` split into `{target, property, value}` using `override_suffix_for_type()` from the same source that created the composite. No second suffix map. All 42 override types correctly handled.
+5. **Self-overrides** — `:self` marker for overrides targeting the instance itself. Decomposition ensures self-targeting overrides group correctly regardless of property type.
 6. **Pre-fetch preamble** — deduplicated `getNodeByIdAsync` calls
 7. **Override hoisting** — nested Mode 1 overrides transformed and hoisted to ancestor
 8. **Default clearing** — fills=[], clipsContent=false to override Figma's createFrame() defaults
@@ -124,6 +122,8 @@ A structural coverage test (`tests/test_property_registry.py::TestRegistryEmitCo
 11. **Progressive text fallback** — `_resolve_text_value()`: L2 token → resolved value → L0 DB value
 12. **Font normalization** — `normalize_font_style(family, style)`: per-family style names
 13. **Table-driven emission** (COMPLETED) — HANDLER sentinel + uniform templates + `format_js_value()` type-aware formatting, `emit_from_registry()` dispatches handlers and applies templates, `build_visual_from_db` is registry-driven, structural tests enforce template/handler/deferred classification
+14. **Override decomposition at query time** (COMPLETED) — `decompose_override()` splits composite `property_name` into `(target, property)` using `override_suffix_for_type()`. `_emit_override_op` uses `format_js_value` for generic properties. `_OVERRIDE_SUFFIX_MAP` and `_resolve_override_target` deleted.
+15. **DB-first position fallback** (COMPLETED) — deferred positioning prefers DB `x`/`y` from `query_screen_visuals` over IR `element.layout.position`
 
 ## Key Files
 

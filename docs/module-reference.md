@@ -68,10 +68,11 @@ Registry-driven extraction for Plugin API-only fields: `componentKey`, `layoutPo
 |----------|---------|
 | `generate_supplement_script(screen_node_ids)` | Generate JS with registry-driven override checks (~40 properties from `dd/property_registry.py`) |
 | `_build_override_js_checks()` | Generates JS code for all overrideable properties from the registry |
+| `override_suffix_for_type(property_type)` | Returns `(suffix, figma_name)` for a given override type. Single source of suffix knowledge — used by `decompose_override()` in ir.py |
 | `apply_supplement(conn, supplement_data)` | Registry-driven storage: stores any override type defined in the registry |
 | `run_supplement(conn, execute_fn, batch_size, delay)` | **Orchestrator**: auto-batch, auto-retry on 64KB truncation, individual retry for failed screens |
 
-**Override extraction**: Captures 17 override types (69,866 total across 204 screens): BOOLEAN, FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN, TEXT. Registry-driven — adding a property to the registry automatically adds override extraction.
+**Override extraction**: Captures 42 override types (69,866 total across 204 screens). Registry-driven — adding a property to the registry with `override_fields` automatically adds override extraction. Override `property_name` in DB is composite `{target}{suffix}`, decomposed at query time by `decompose_override()` in `ir.py`.
 
 ### dd/extract_bindings.py — Token Binding Extraction
 Normalizes Figma node properties into token binding rows and manages binding lifecycle.
@@ -231,7 +232,8 @@ Transforms classified screen data + token bindings into CompositionSpec.
 |----------|---------|
 | `generate_ir(conn, screen_id)` | Main entry: query → build spec → serialize |
 | `query_screen_for_ir(conn, screen_id)` | Fetch classified nodes, bindings, tokens from DB |
-| `query_screen_visuals(conn, screen_id)` | Registry-driven: SELECTs 51 columns from property registry. Returns ALL visual, layout, text properties + bindings + instance overrides + child swaps for all nodes in a screen. Renderer's DB access path. |
+| `query_screen_visuals(conn, screen_id)` | Registry-driven: SELECTs all registry columns + x/y. Returns visual, layout, text properties + bindings + decomposed instance overrides (`{target, property, value}`) + child swaps. Renderer's DB access path. |
+| `decompose_override(property_type, property_name)` | Splits composite DB `property_name` into `(target, figma_property_name)` using suffix knowledge from extraction. |
 | `_hoist_descendant_overrides(conn, ids, result)` | Hoists overrides from nested Mode 1 instances to their top-level ancestor, transforming `:self` to master-relative paths with deduplication. |
 | `build_composition_spec(data)` | Assemble flat element map, wire parent→children, inject containers. Returns `_node_id_map` (element_id → node_id). |
 | `map_node_to_element(node)` | Convert classified node to IR element (type, layout, visual, style, props) |
@@ -304,11 +306,11 @@ Generates Figma Plugin API JavaScript from CompositionSpec + DB visuals. Mode 1 
 - **Default clearing**: fills=[], clipsContent=false explicitly set to override Figma createFrame() defaults
 - **Mode 1 L0 properties**: rotation (radians→degrees), opacity, visibility applied after createInstance()
 - **Generic override handler**: Registry-defined override types dispatched automatically via `dd/property_registry.py`
-- **17 override types**: TEXT, BOOLEAN, FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H/V, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN
+- **42 override types**: All registry properties with `override_fields` automatically captured. Decomposed at query time into `{target, property, value}`. `_emit_override_op` uses `format_js_value` for generic properties, with special cases for TEXT (font loading), INSTANCE_SWAP (swapComponent), width/height (resize), layoutSizing (deferred)
 
 | Function | Purpose |
 |----------|---------|
-| `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. |
+| `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. Overrides use decomposed `{target, property, value}` format. |
 | `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script |
 | `build_visual_from_db(node_visual)` | Registry-driven: iterates PROPERTIES to map db_column → figma_name, applies `_apply_db_transform` (radians→degrees, int→bool, JSON parse), bundles text into font dict, constraints into constraints dict |
 | `emit_from_registry(var, eid, visual, tokens)` | Registry-driven emission: dispatches HANDLER properties to `_FIGMA_HANDLERS`, formats template properties via `format_js_value()`. Returns (lines, token_refs) |
