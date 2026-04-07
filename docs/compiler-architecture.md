@@ -199,6 +199,19 @@ This means renderers never fail — they degrade gracefully from semantic (token
 | **SwiftUI** | L2 → L1 → L0 | Hardcoded Swift values | Native SwiftUI with token constants, falling back to literals |
 | **LLM/Prompt** | L3 → L2 → L1 | Component types | Compact YAML with token refs and semantic types |
 
+### Renderer Value Transforms
+
+The IR stores values in **ground truth format** (lossless from extraction). Each renderer transforms values to its platform's native format at emit time. No transformation is universal — even radians→degrees is only needed by some platforms (Flutter uses radians natively).
+
+The shared `build_visual_from_db` produces a **renderer-agnostic visual dict**: hex colors, numeric font weights, radians for rotation, semantic strings for alignment/sizing. Each renderer applies its own transforms:
+
+- **Figma**: hex→`{r,g,b,a}`, weight→style name `"Semi Bold"`, rad→deg, `"start"`→`"MIN"`
+- **React/CSS**: hex→`rgba()`, weight stays numeric, rad→deg, `"start"`→`"flex-start"`
+- **SwiftUI**: hex→`Color()`, weight→`.semibold`, rad→either, `"start"`→`.leading`
+- **Flutter**: hex→`Color(0xAARRGGBB)`, weight→`FontWeight.w600`, keep rad, `"start"`→`.start`
+
+See `docs/cross-platform-value-formats.md` for the complete reference table.
+
 ### Figma Renderer (Reproduction)
 
 The Figma renderer produces a **semantically equivalent design file** — not a flat photocopy of rectangles with hex colors, but a working Figma file with real components, live design token variables, proper naming, and correct hierarchy. It reads all IR levels via progressive fallback.

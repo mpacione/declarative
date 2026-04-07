@@ -573,3 +573,15 @@ In Figma, setting `layoutSizing=FIXED` on a text node implicitly overrides `text
 
 ### Inter Variable vs Inter — Subtle Font Width Difference
 `"Inter Variable"` (Figma's variable font) renders slightly narrower than `"Inter"` (static font) at the same weight. Our font normalization converts `"Inter Variable"` → `"Inter"` for Plugin API compatibility. This causes text that fits at 66px in the original to wrap in the reproduction. Known minor fidelity gap — not fixable without variable font support in the generation pipeline.
+
+### No Value Transform Is Universal — IR Must Be Renderer-Agnostic
+Cross-platform analysis (Figma, React/CSS, SwiftUI, Flutter, Android) revealed that **every** value transform is platform-specific:
+- Rotation: Figma/CSS/Android use degrees, Flutter/Canvas use radians. IR stores radians (ground truth).
+- Colors: Figma uses `{r,g,b,a}` floats, CSS uses hex/rgba(), Flutter uses packed `0xAARRGGBB` (alpha FIRST). IR stores hex.
+- Font weight: Figma uses style names ("Semi Bold"), CSS/Android use numeric, SwiftUI uses enum. IR stores numeric.
+- Line height: Figma uses `{value, unit}`, CSS uses unitless multiplier, SwiftUI `.lineSpacing()` is **additive only** (not total). IR stores {value, unit}.
+
+The `build_visual_from_db` function must produce a renderer-agnostic visual dict. Each renderer transforms from that dict to its native format. See `docs/cross-platform-value-formats.md` for the complete reference table.
+
+### getNodeByIdAsync Works with Instance-Prefixed IDs (Undocumented)
+Tested: `figma.getNodeByIdAsync("I5587:579466;2036:28290")` returns the correct node inside a component instance. O(1) lookup vs O(n) `findOne` tree walk. However, this is undocumented observed behavior — the Figma docs don't guarantee it. Recorded as a future optimization path but not adopted for stability. See also `setProperties()` for component properties (TEXT, BOOLEAN, INSTANCE_SWAP, VARIANT) — batch API, zero tree walks, but requires the component to define properties (this design system doesn't use them).

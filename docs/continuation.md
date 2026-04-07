@@ -25,6 +25,7 @@ Every renderer uses **progressive fallback**: read the highest IR level availabl
 - **DB**: `Dank-EXP-02.declarative.db` — 86,761 nodes, 69,866 instance overrides (42 types), 182,871 bindings, 388 tokens, 338 screens
 - **Figma file**: `drxXOUOdYEBBQ09mrXJeYu` (Dank Experimental)
 - **Tests**: 1,656 passing
+- **Cross-platform reference**: `docs/cross-platform-value-formats.md` — value formats for Figma, CSS, SwiftUI, Flutter, Android
 - **Branch**: `t5/architecture-vision`
 - **Round-trip**: 9+ screens reproduced (184, 185, 186, 188, 222, 238, 259, 253, 244, 172, 317) — iPhone + iPad
 - **Property registry**: `dd/property_registry.py` — 48 properties with per-renderer emit patterns (HANDLER/template/deferred)
@@ -129,19 +130,20 @@ Three categories: HANDLER (callable dispatch for fills/strokes/effects/cornerRad
 
 | File | Purpose |
 |------|---------|
-| `dd/property_registry.py` | **Single source of truth** for 48 Figma properties (emission extension planned) |
-| `dd/ir.py` | IR generation, registry-driven query_screen_visuals |
-| `dd/generate.py` | Figma renderer — override grouping, gradient emission, text fallback |
-| `dd/extract_supplement.py` | Registry-driven override + gradient + textAutoResize extraction |
+| `dd/property_registry.py` | **Single source of truth** for 48 properties — HANDLER/template/deferred emit, db_column mapping |
+| `dd/ir.py` | IR generation, registry-driven query_screen_visuals, override decomposition |
+| `dd/generate.py` | Figma renderer — registry-driven emission, `_resolve_layout_sizing`, `format_js_value`, `hex_to_figma_rgba` |
+| `dd/extract_supplement.py` | Registry-driven override extraction, `override_suffix_for_type` |
 | `dd/extract_screens.py` | Plugin API node extraction |
-| `docs/compiler-architecture.md` | Authoritative architecture spec |
-| `schema.sql` | DB schema (72 columns + instance_overrides) |
+| `docs/compiler-architecture.md` | Authoritative architecture spec (includes renderer value transforms) |
+| `docs/cross-platform-value-formats.md` | Cross-platform property format reference (Figma, CSS, SwiftUI, Flutter, Android) |
+| `schema.sql` | DB schema (72 columns + instance_overrides + figma_node_id index) |
 
 ## Environment
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/ --tb=short          # 1,573 tests
+python -m pytest tests/ --tb=short          # 1,656 tests
 ```
 
 ## Reference Screens
