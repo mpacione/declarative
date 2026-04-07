@@ -95,9 +95,11 @@ class TestFormatJsValue:
         assert format_js_value(42, "number") == "42"
         assert format_js_value(0.5, "number") == "0.5"
 
-    def test_number_radians(self):
+    def test_number_radians_passthrough_as_degrees(self):
+        import math
         from dd.generate import format_js_value
-        assert format_js_value(45.0, "number_radians") == "45.0"
+        result = format_js_value(math.pi / 4, "number_radians")
+        assert abs(float(result) - 45.0) < 0.01
 
     def test_enum(self):
         from dd.generate import format_js_value
@@ -148,6 +150,12 @@ class TestFormatJsValue:
     def test_json_array(self):
         from dd.generate import format_js_value
         assert format_js_value([10, 5], "json_array") == "[10, 5]"
+
+    def test_number_radians_converts_to_degrees(self):
+        import math
+        from dd.generate import format_js_value
+        result = format_js_value(math.pi / 2, "number_radians")
+        assert abs(float(result) - 90.0) < 0.01
 
     def test_number_or_mixed(self):
         from dd.generate import format_js_value

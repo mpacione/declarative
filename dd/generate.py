@@ -57,7 +57,23 @@ _WEIGHT_TO_STYLE = {
 
 
 # ---------------------------------------------------------------------------
-# Pure helpers
+# Figma renderer — platform-specific value transforms
+# ---------------------------------------------------------------------------
+# These functions convert from the renderer-agnostic visual dict format
+# to Figma Plugin API native format. Other renderers (React, SwiftUI,
+# Flutter) would have their own format_{lang}_value, color converters,
+# font mappers, etc. See docs/cross-platform-value-formats.md.
+#
+# Figma-specific transforms:
+#   hex_to_figma_rgba     — hex string → {r,g,b,a} floats
+#   font_weight_to_style  — numeric 600 → "Semi Bold"
+#   normalize_font_style  — per-family Figma style naming
+#   _normalize_font_family — "Inter Variable" → "Inter"
+#   collect_fonts         — Figma loadFontAsync preamble
+#   format_js_value       — Python → JS literal (radians → degrees here)
+#   _CONSTRAINT_MAP       — REST API → Plugin API constraint names
+#   _ALIGNMENT_MAP        — semantic → Figma enum
+#   _SIZING_MAP           — semantic → Figma enum
 # ---------------------------------------------------------------------------
 
 def hex_to_figma_rgba(hex_str: str) -> dict[str, float]:
@@ -137,7 +153,11 @@ def collect_fonts(
     spec: dict[str, Any],
     db_visuals: dict[int, dict[str, Any]] | None = None,
 ) -> list[tuple[str, str]]:
-    """Collect unique (family, style) pairs from text elements.
+    """Collect unique (family, style) pairs for Figma Plugin API font loading.
+
+    Figma-renderer-specific: applies font family normalization ("Inter Variable"
+    → "Inter") and weight→style conversion (600 → "Semi Bold"). Other renderers
+    use different font formats (CSS: numeric weight, SwiftUI: enum).
 
     Reads from IR style (L2) with DB font data (L0) fallback.
     Incorporates font_style (Italic/Oblique) from DB when present.
@@ -197,7 +217,16 @@ def collect_fonts(
 
 
 # ---------------------------------------------------------------------------
-# DB → normalized visual (Phase 1: renderer reads DB instead of IR)
+# Shared infrastructure (renderer-agnostic)
+# ---------------------------------------------------------------------------
+# build_visual_from_db — produces renderer-agnostic visual dict
+#   Colors: hex strings (not {r,g,b,a} — that's Figma-specific)
+#   Font weights: numeric (not style names — that's Figma-specific)
+#   Rotation: radians (not degrees — Flutter uses radians)
+#   Booleans: Python bool (universal)
+#   JSON: parsed objects (universal)
+# _apply_db_transform — universal transforms only (JSON parse, int→bool)
+# _resolve_layout_sizing — pure sizing logic with text reconciliation
 # ---------------------------------------------------------------------------
 
 # Properties requiring custom normalization (need bindings or multi-column input)
@@ -205,12 +234,15 @@ _COMPLEX_NORMALIZE = frozenset({"fills", "strokes", "effects", "cornerRadius"})
 
 
 def _apply_db_transform(value: Any, prop: Any) -> Any:
-    """Apply DB-to-visual transform based on value_type.
+    """Apply universal DB-to-visual transforms based on value_type.
 
-    Handles radians→degrees, int→bool, JSON string parsing.
+    Only universal transforms here (all renderers need these):
+    - int→bool: DB stores 0/1, all renderers need booleans
+    - JSON parse: DB stores JSON as text, all renderers need objects
+
+    Renderer-specific transforms (e.g., radians→degrees for Figma)
+    happen at emit time in format_js_value / format_{lang}_value.
     """
-    if prop.value_type == "number_radians":
-        return math.degrees(value)
     if prop.value_type == "boolean":
         return bool(value)
     if prop.needs_json and isinstance(value, str):
@@ -409,7 +441,9 @@ def format_js_value(value: Any, value_type: str) -> str:
         return f'"{_escape_js(str(value))}"'
     if value_type in ("json", "json_array"):
         return json.dumps(value) if not isinstance(value, str) else value
-    # number, number_radians, number_or_mixed
+    if value_type == "number_radians":
+        return str(math.degrees(value))
+    # number, number_or_mixed
     return str(value)
 
 

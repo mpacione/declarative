@@ -1037,10 +1037,10 @@ class TestBuildVisualFromDB:
 
     # --- rotation ---
 
-    def test_rotation_nonzero(self):
+    def test_rotation_nonzero_stores_radians(self):
         import math
         visual = build_visual_from_db({"rotation": math.radians(45), "bindings": []})
-        assert abs(visual["rotation"] - 45.0) < 0.01
+        assert abs(visual["rotation"] - math.radians(45)) < 0.001
 
     def test_rotation_excluded_when_zero(self):
         visual = build_visual_from_db({"rotation": 0, "bindings": []})
