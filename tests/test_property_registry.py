@@ -12,6 +12,8 @@ class TestRegistryEmitCoverage:
         "cornerRadius",                  # uniform vs per-corner
         "fontFamily", "fontWeight",      # combined into fontName
         "characters",                    # text content
+        "clipsContent",                  # boolean true/false + Figma default clearing
+        "visible",                       # handled in main loop
     })
 
     # Properties emitted in deferred/special sections (not main emit block)

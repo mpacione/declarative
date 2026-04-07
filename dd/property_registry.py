@@ -74,10 +74,10 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   emit={"figma": '{var}.blendMode = "{value}";'}),
     FigmaProperty("visible", "visible", ("visible",), "visual", "boolean",
                   override_type="BOOLEAN", default_value=True,
-                  emit={"figma": "{var}.visible = {value};"}),
+                  emit={"figma": None}),  # Custom: handled in main loop (element.visible check)
     FigmaProperty("clipsContent", "clips_content", ("clipsContent",), "visual", "boolean",
                   default_value=True,
-                  emit={"figma": "{var}.clipsContent = {value};"}),
+                  emit={"figma": None}),  # Custom: true/false JS booleans + Figma default clearing
     FigmaProperty("rotation", "rotation", ("rotation",), "visual", "number_radians",
                   default_value=0,
                   emit={"figma": "{var}.rotation = {value};"}),
