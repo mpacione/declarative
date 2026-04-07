@@ -75,6 +75,13 @@ def generate_extraction_script(screen_node_id: str) -> str:
     // Vector geometry (VECTOR, BOOLEAN_OPERATION, ELLIPSE, LINE, etc.)
     if ('fillGeometry' in node && node.fillGeometry?.length) entry.fill_geometry = JSON.stringify(node.fillGeometry);
     if ('strokeGeometry' in node && node.strokeGeometry?.length) entry.stroke_geometry = JSON.stringify(node.strokeGeometry);
+    if ('booleanOperation' in node) entry.boolean_operation = node.booleanOperation;
+
+    // Corner smoothing (iOS-style smooth corners)
+    if ('cornerSmoothing' in node && node.cornerSmoothing > 0) entry.corner_smoothing = node.cornerSmoothing;
+
+    // Arc data (partial arcs on ELLIPSE nodes)
+    if ('arcData' in node) entry.arc_data = JSON.stringify(node.arcData);
 
     // Transform + clipping
     if ('rotation' in node && node.rotation !== 0) entry.rotation = node.rotation;
@@ -267,6 +274,22 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
                 else:
                     cleaned[field] = value
 
+        # Boolean operation type
+        if "boolean_operation" in node:
+            cleaned["boolean_operation"] = node["boolean_operation"]
+
+        # Corner smoothing
+        if "corner_smoothing" in node and node["corner_smoothing"] is not None:
+            cleaned["corner_smoothing"] = float(node["corner_smoothing"])
+
+        # Arc data
+        if "arc_data" in node:
+            value = node["arc_data"]
+            if isinstance(value, dict):
+                cleaned["arc_data"] = json.dumps(value)
+            else:
+                cleaned["arc_data"] = value
+
         # Transform + clipping
         if "rotation" in node and node["rotation"] is not None:
             cleaned["rotation"] = float(node["rotation"])
@@ -457,7 +480,8 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "stroke_weight", "stroke_top_weight", "stroke_right_weight",
             "stroke_bottom_weight", "stroke_left_weight",
             "stroke_align", "stroke_cap", "stroke_join", "dash_pattern",
-            "fill_geometry", "stroke_geometry",
+            "fill_geometry", "stroke_geometry", "boolean_operation",
+            "corner_smoothing", "arc_data",
             "rotation", "clips_content", "is_mask",
             "constraint_h", "constraint_v",
             "font_family", "font_weight", "font_size", "font_style",

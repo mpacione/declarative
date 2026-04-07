@@ -1691,6 +1691,80 @@ class TestMaskGroupRendering:
         assert "createFrame" not in script or 'name = "group' not in script
 
 
+class TestFix3BPropertyEmission:
+    """Verify booleanOperation, cornerSmoothing, and arcData are emitted in generated JS."""
+
+    def test_corner_smoothing_emitted(self):
+        """cornerSmoothing emitted as float on frame nodes."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["frame-1"],
+            },
+            "frame-1": {
+                "type": "frame",
+                "layout": {},
+            },
+        })
+        db_visuals = {
+            10: {"corner_smoothing": 0.6, "fills": "[]", "strokes": "[]", "effects": "[]",
+                 "bindings": [], "_asset_refs": []},
+        }
+        spec["_node_id_map"] = {"frame-1": 10}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".cornerSmoothing = 0.6" in script
+
+    def test_boolean_operation_emitted(self):
+        """booleanOperation emitted on asset-backed boolean operation nodes."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["boolean_operation-1"],
+            },
+            "boolean_operation-1": {
+                "type": "boolean_operation",
+                "layout": {},
+            },
+        })
+        db_visuals = {
+            10: {
+                "boolean_operation": "UNION",
+                "fills": "[]", "strokes": "[]", "effects": "[]",
+                "bindings": [],
+                "_asset_refs": [{"asset_hash": "abc", "role": "icon", "kind": "svg_path",
+                                 "svg_data": "M 0 0 L 10 10"}],
+            },
+        }
+        spec["_node_id_map"] = {"boolean_operation-1": 10}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert '.booleanOperation = "UNION"' in script
+
+    def test_arc_data_emitted(self):
+        """arcData emitted as JSON object on ellipse nodes."""
+        import json
+        arc = {"startingAngle": 0.0, "endingAngle": 3.14, "innerRadius": 0.5}
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["ellipse-1"],
+            },
+            "ellipse-1": {
+                "type": "ellipse",
+                "layout": {},
+            },
+        })
+        db_visuals = {
+            10: {"arc_data": json.dumps(arc), "fills": "[]", "strokes": "[]", "effects": "[]",
+                 "bindings": [], "_asset_refs": []},
+        }
+        spec["_node_id_map"] = {"ellipse-1": 10}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".arcData = " in script
+
+
 class TestRecursiveMode1Skip:
     """Verify Mode 1 instances skip ALL descendants, not just direct children."""
 

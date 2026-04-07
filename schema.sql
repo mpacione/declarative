@@ -374,6 +374,13 @@ CREATE TABLE nodes (
     -- Vector geometry (VECTOR, BOOLEAN_OPERATION, ELLIPSE, LINE, etc.)
     fill_geometry   TEXT,                        -- JSON array: [{path:"M...", windingRule:"NONZERO"}]
     stroke_geometry TEXT,                        -- JSON array: [{path:"M...", windingRule:"EVENODD"}]
+    boolean_operation TEXT,                      -- UNION, INTERSECT, SUBTRACT, EXCLUDE (BOOLEAN_OPERATION nodes)
+
+    -- Corner smoothing (iOS-style smooth corners, 0-1 float)
+    corner_smoothing REAL,                       -- 0 = standard, 0.6 = iOS default, 1 = full smooth
+
+    -- Arc data (ELLIPSE nodes with partial arcs)
+    arc_data        TEXT,                        -- JSON: {startingAngle, endingAngle, innerRadius}
 
     -- Transform
     rotation        REAL,                        -- Degrees

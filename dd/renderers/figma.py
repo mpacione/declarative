@@ -441,6 +441,21 @@ def _emit_clips_content_figma(
     return [], []
 
 
+def _emit_arc_data_figma(
+    var: str, eid: str, value: Any, tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit arcData as a JS object with startingAngle, endingAngle, innerRadius."""
+    if not isinstance(value, dict):
+        return [], []
+    parts = []
+    for key in ("startingAngle", "endingAngle", "innerRadius"):
+        if key in value:
+            parts.append(f"{key}: {value[key]}")
+    if not parts:
+        return [], []
+    return [f"{var}.arcData = {{{', '.join(parts)}}};"], []
+
+
 # Handler dispatch: figma_name → callable(var, eid, value, tokens) → (lines, refs)
 # Registered here to avoid circular imports (handlers defined in this file,
 # registry in property_registry.py).
@@ -457,6 +472,7 @@ def _register_figma_handlers() -> None:
         "effects": _emit_effects,
         "cornerRadius": _emit_corner_radius_figma,
         "clipsContent": _emit_clips_content_figma,
+        "arcData": _emit_arc_data_figma,
     })
 
 

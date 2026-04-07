@@ -1508,6 +1508,46 @@ class TestQueryScreenVisuals:
         # Non-mask nodes should have is_mask as None or 0
         assert result[10].get("is_mask") in (None, 0)
 
+    def test_includes_corner_smoothing(self, db: sqlite3.Connection):
+        """cornerSmoothing flows through query_screen_visuals."""
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, corner_smoothing) "
+            "VALUES (13, 1, 'cs1', 'Smooth Card', 'FRAME', 2, 3, "
+            "0, 0, 200, 100, 0.6)"
+        )
+        db.commit()
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[13]["corner_smoothing"] == pytest.approx(0.6)
+
+    def test_includes_boolean_operation(self, db: sqlite3.Connection):
+        """booleanOperation flows through query_screen_visuals."""
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, boolean_operation) "
+            "VALUES (14, 1, 'bo1', 'Union Shape', 'BOOLEAN_OPERATION', 2, 4, "
+            "0, 0, 50, 50, 'UNION')"
+        )
+        db.commit()
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[14]["boolean_operation"] == "UNION"
+
+    def test_includes_arc_data(self, db: sqlite3.Connection):
+        """arcData flows through query_screen_visuals."""
+        arc_json = json.dumps({"startingAngle": 0.0, "endingAngle": 6.28, "innerRadius": 0.5})
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, arc_data) "
+            "VALUES (15, 1, 'ad1', 'Donut', 'ELLIPSE', 2, 5, "
+            "0, 0, 50, 50, ?)", (arc_json,)
+        )
+        db.commit()
+        result = query_screen_visuals(db, screen_id=1)
+        assert result[15]["arc_data"] == arc_json
+
 
 def _collect_swaps_from_tree(tree: dict) -> list[dict]:
     """Extract flat child_swap list from an override tree for test assertions."""

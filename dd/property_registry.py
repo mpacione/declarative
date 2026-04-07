@@ -93,6 +93,14 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     FigmaProperty("isMask", "is_mask", ("isMask",), "visual", "boolean",
                   default_value=False,
                   emit={"figma": _UNIFORM}),
+    FigmaProperty("cornerSmoothing", "corner_smoothing", ("cornerSmoothing",), "visual", "number",
+                  default_value=0,
+                  emit={"figma": _UNIFORM}),
+    FigmaProperty("booleanOperation", "boolean_operation", ("booleanOperation",), "visual", "enum",
+                  emit={"figma": _UNIFORM}),
+    FigmaProperty("arcData", "arc_data", ("arcData",), "visual", "json",
+                  needs_json=True,
+                  emit={"figma": HANDLER}),
 
     # === VISUAL: Corner Radius ===
     FigmaProperty("cornerRadius", "corner_radius", ("cornerRadius",), "visual",

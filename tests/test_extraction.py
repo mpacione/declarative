@@ -1,5 +1,6 @@
 """Unit tests for the extraction pipeline modules."""
 
+import json
 
 import pytest
 
@@ -1022,3 +1023,111 @@ def test_insert_nodes_stores_is_mask(db):
 
     row0 = conn.execute("SELECT is_mask FROM nodes WHERE id = ?", (node_ids[0],)).fetchone()
     assert row0[0] is None or row0[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# Fix 3B: booleanOperation, cornerSmoothing, arcData extraction tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_extraction_script_captures_boolean_operation():
+    """Plugin API extraction must read booleanOperation for BOOLEAN_OPERATION nodes."""
+    script = generate_extraction_script("1:1")
+    assert "booleanOperation" in script
+
+
+@pytest.mark.unit
+def test_extraction_script_captures_corner_smoothing():
+    """Plugin API extraction must read cornerSmoothing."""
+    script = generate_extraction_script("1:1")
+    assert "cornerSmoothing" in script
+
+
+@pytest.mark.unit
+def test_extraction_script_captures_arc_data():
+    """Plugin API extraction must read arcData for ELLIPSE nodes."""
+    script = generate_extraction_script("1:1")
+    assert "arcData" in script
+
+
+@pytest.mark.unit
+def test_parse_preserves_boolean_operation():
+    """booleanOperation round-trips through parse."""
+    response = [{
+        "figma_node_id": "400:1", "parent_idx": None, "name": "Union",
+        "node_type": "BOOLEAN_OPERATION", "depth": 0, "sort_order": 0,
+        "x": 0, "y": 0, "width": 50, "height": 50, "visible": True,
+        "boolean_operation": "UNION",
+    }]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["boolean_operation"] == "UNION"
+
+
+@pytest.mark.unit
+def test_parse_preserves_corner_smoothing():
+    """cornerSmoothing round-trips through parse."""
+    response = [{
+        "figma_node_id": "400:2", "parent_idx": None, "name": "Card",
+        "node_type": "FRAME", "depth": 0, "sort_order": 0,
+        "x": 0, "y": 0, "width": 200, "height": 100, "visible": True,
+        "corner_smoothing": 0.6,
+    }]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["corner_smoothing"] == pytest.approx(0.6)
+
+
+@pytest.mark.unit
+def test_parse_preserves_arc_data():
+    """arcData round-trips through parse as JSON."""
+    arc = {"startingAngle": 0.0, "endingAngle": 3.14, "innerRadius": 0.5}
+    response = [{
+        "figma_node_id": "400:3", "parent_idx": None, "name": "Arc",
+        "node_type": "ELLIPSE", "depth": 0, "sort_order": 0,
+        "x": 0, "y": 0, "width": 50, "height": 50, "visible": True,
+        "arc_data": json.dumps(arc),
+    }]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["arc_data"] == json.dumps(arc)
+
+
+@pytest.mark.unit
+def test_insert_nodes_stores_3b_properties(db):
+    """booleanOperation, cornerSmoothing, arcData round-trip through DB."""
+    conn = db
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('f1', 'Test')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:1', 'S1', 100, 100)")
+    conn.commit()
+
+    arc = json.dumps({"startingAngle": 0.0, "endingAngle": 6.28, "innerRadius": 0.5})
+    nodes = [
+        {
+            "figma_node_id": "500:1", "name": "Union", "node_type": "BOOLEAN_OPERATION",
+            "depth": 0, "sort_order": 0, "is_semantic": 0,
+            "x": 0, "y": 0, "width": 50, "height": 50, "visible": 1,
+            "boolean_operation": "UNION",
+        },
+        {
+            "figma_node_id": "500:2", "parent_idx": 0, "name": "Card", "node_type": "FRAME",
+            "depth": 1, "sort_order": 0, "is_semantic": 0,
+            "x": 0, "y": 0, "width": 200, "height": 100, "visible": 1,
+            "corner_smoothing": 0.6,
+        },
+        {
+            "figma_node_id": "500:3", "parent_idx": 0, "name": "Arc", "node_type": "ELLIPSE",
+            "depth": 1, "sort_order": 1, "is_semantic": 0,
+            "x": 0, "y": 0, "width": 50, "height": 50, "visible": 1,
+            "arc_data": arc,
+        },
+    ]
+    node_ids = insert_nodes(conn, 1, nodes)
+    assert len(node_ids) == 3
+
+    row = conn.execute("SELECT boolean_operation FROM nodes WHERE id = ?", (node_ids[0],)).fetchone()
+    assert row[0] == "UNION"
+
+    row = conn.execute("SELECT corner_smoothing FROM nodes WHERE id = ?", (node_ids[1],)).fetchone()
+    assert abs(row[0] - 0.6) < 0.01
+
+    row = conn.execute("SELECT arc_data FROM nodes WHERE id = ?", (node_ids[2],)).fetchone()
+    assert row[0] == arc

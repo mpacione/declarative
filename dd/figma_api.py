@@ -264,6 +264,20 @@ def _add_visual_properties(node: dict, api_node: dict) -> None:
     if stroke_geom:
         node["stroke_geometry"] = json.dumps(stroke_geom)
 
+    # Boolean operation type
+    if api_node.get("booleanOperation"):
+        node["boolean_operation"] = api_node["booleanOperation"]
+
+    # Corner smoothing (iOS-style)
+    cs = api_node.get("cornerSmoothing")
+    if cs is not None and cs > 0:
+        node["corner_smoothing"] = cs
+
+    # Arc data
+    arc = api_node.get("arcData")
+    if arc:
+        node["arc_data"] = json.dumps(arc)
+
     # Transform
     if api_node.get("rotation") is not None:
         node["rotation"] = api_node["rotation"]
