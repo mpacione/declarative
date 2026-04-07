@@ -117,6 +117,143 @@ class TestLinkNodeAsset:
         assert row["fill_index"] == 0
 
 
+class TestProcessVectorGeometry:
+    """Verify extracting vector geometry from nodes into content-addressed assets."""
+
+    def test_creates_assets_from_fill_geometry(self):
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order, fill_geometry) "
+            "VALUES (1, '1:1', 'Arrow', 'VECTOR', 1, 0, ?)",
+            (json.dumps([{"path": "M 0 0 L 24 12 L 0 24 Z", "windingRule": "NONZERO"}]),)
+        )
+        count = process_vector_geometry(conn)
+        assert count == 1
+
+        asset = conn.execute("SELECT hash, kind, metadata FROM assets").fetchone()
+        assert asset["kind"] == "svg_path"
+        metadata = json.loads(asset["metadata"])
+        assert "M 0 0 L 24 12 L 0 24 Z" in metadata["svg_data"]
+
+        ref = conn.execute("SELECT asset_hash, role FROM node_asset_refs WHERE node_id=1").fetchone()
+        assert ref["role"] == "icon"
+        assert ref["asset_hash"] == asset["hash"]
+
+    def test_creates_assets_from_stroke_geometry(self):
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order, stroke_geometry) "
+            "VALUES (1, '1:1', 'Outline', 'VECTOR', 1, 0, ?)",
+            (json.dumps([{"path": "M 1 1 L 23 1 L 23 23 Z", "windingRule": "EVENODD"}]),)
+        )
+        count = process_vector_geometry(conn)
+        assert count == 1
+
+        ref = conn.execute("SELECT role FROM node_asset_refs WHERE node_id=1").fetchone()
+        assert ref["role"] == "icon"
+
+    def test_skips_nodes_without_geometry(self):
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order) "
+            "VALUES (1, '1:1', 'Box', 'RECTANGLE', 1, 0)"
+        )
+        count = process_vector_geometry(conn)
+        assert count == 0
+
+    def test_identical_paths_share_asset(self):
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        path_json = json.dumps([{"path": "M 0 0 L 10 10", "windingRule": "NONZERO"}])
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order, fill_geometry) "
+            "VALUES (1, '1:1', 'Icon1', 'VECTOR', 1, 0, ?)",
+            (path_json,)
+        )
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, depth, sort_order, fill_geometry) "
+            "VALUES (1, '1:2', 'Icon2', 'VECTOR', 1, 1, ?)",
+            (path_json,)
+        )
+        count = process_vector_geometry(conn)
+        assert count == 2
+
+        asset_count = conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0]
+        assert asset_count == 1
+
+        ref_count = conn.execute("SELECT COUNT(*) FROM node_asset_refs").fetchone()[0]
+        assert ref_count == 2
+
+
+class TestAssetResolver:
+    """Verify the abstract AssetResolver contract and SQLite implementation."""
+
+    def test_sqlite_resolver_resolves_raster_asset(self):
+        from dd.extract_assets import SqliteAssetResolver, store_asset
+        conn = init_db(":memory:")
+        store_asset(conn, hash="img123", kind="raster", content_type="image/png")
+        resolver = SqliteAssetResolver(conn)
+        asset = resolver.resolve("img123")
+        assert asset is not None
+        assert asset["hash"] == "img123"
+        assert asset["kind"] == "raster"
+        assert asset["content_type"] == "image/png"
+
+    def test_sqlite_resolver_resolves_svg_path_with_metadata(self):
+        from dd.extract_assets import SqliteAssetResolver, store_asset
+        conn = init_db(":memory:")
+        store_asset(conn, hash="vec456", kind="svg_path")
+        conn.execute(
+            "UPDATE assets SET metadata = ? WHERE hash = 'vec456'",
+            (json.dumps({"svg_data": "M 0 0 L 10 10"}),),
+        )
+        resolver = SqliteAssetResolver(conn)
+        asset = resolver.resolve("vec456")
+        assert asset is not None
+        assert asset["kind"] == "svg_path"
+        assert asset["svg_data"] == "M 0 0 L 10 10"
+
+    def test_sqlite_resolver_returns_none_for_missing(self):
+        from dd.extract_assets import SqliteAssetResolver
+        conn = init_db(":memory:")
+        resolver = SqliteAssetResolver(conn)
+        assert resolver.resolve("nonexistent") is None
+
+    def test_sqlite_resolver_resolve_batch(self):
+        from dd.extract_assets import SqliteAssetResolver, store_asset
+        conn = init_db(":memory:")
+        store_asset(conn, hash="a1", kind="raster")
+        store_asset(conn, hash="a2", kind="svg_path")
+        resolver = SqliteAssetResolver(conn)
+        results = resolver.resolve_batch(["a1", "a2", "missing"])
+        assert "a1" in results
+        assert "a2" in results
+        assert "missing" not in results
+
+
 class TestAssetRefsInVisuals:
     """Verify asset refs are surfaced through query_screen_visuals."""
 

@@ -140,6 +140,75 @@ def test_extraction_script_captures_layout_positioning():
     assert "layoutPositioning" in script
 
 
+def test_extraction_script_captures_vector_geometry():
+    script = generate_extraction_script("1:1")
+    assert "fillGeometry" in script
+    assert "strokeGeometry" in script
+
+
+def test_parse_vector_geometry():
+    response = [
+        {
+            "figma_node_id": "1:20",
+            "name": "Arrow",
+            "node_type": "VECTOR",
+            "fill_geometry": [
+                {"path": "M 0 0 L 24 12 L 0 24 Z", "windingRule": "NONZERO"}
+            ],
+            "stroke_geometry": [
+                {"path": "M 1 1 L 23 12 L 1 23 Z", "windingRule": "EVENODD"}
+            ],
+        }
+    ]
+    parsed = parse_extraction_response(response)
+    fg = json.loads(parsed[0]["fill_geometry"])
+    assert len(fg) == 1
+    assert fg[0]["path"] == "M 0 0 L 24 12 L 0 24 Z"
+    sg = json.loads(parsed[0]["stroke_geometry"])
+    assert sg[0]["windingRule"] == "EVENODD"
+
+
+def test_parse_vector_geometry_already_json_string():
+    response = [
+        {
+            "figma_node_id": "1:21",
+            "name": "Icon",
+            "node_type": "VECTOR",
+            "fill_geometry": json.dumps([
+                {"path": "M 5 0 L 10 10 L 0 10 Z", "windingRule": "NONZERO"}
+            ]),
+        }
+    ]
+    parsed = parse_extraction_response(response)
+    fg = json.loads(parsed[0]["fill_geometry"])
+    assert fg[0]["path"] == "M 5 0 L 10 10 L 0 10 Z"
+
+
+def test_insert_nodes_with_vector_geometry():
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test File')")
+    conn.execute("INSERT INTO screens (file_id, figma_node_id, name, width, height) VALUES (1, '1:0', 'Screen', 375, 667)")
+
+    nodes = [
+        {
+            "figma_node_id": "1:22",
+            "name": "Arrow Vector",
+            "node_type": "VECTOR",
+            "parent_idx": None,
+            "depth": 0,
+            "sort_order": 0,
+            "is_semantic": 0,
+            "fill_geometry": json.dumps([{"path": "M 0 0 L 24 12 L 0 24 Z", "windingRule": "NONZERO"}]),
+        },
+    ]
+    node_ids = insert_nodes(conn, 1, nodes)
+    assert len(node_ids) == 1
+
+    row = conn.execute("SELECT fill_geometry FROM nodes WHERE id = ?", (node_ids[0],)).fetchone()
+    fg = json.loads(row[0])
+    assert fg[0]["path"] == "M 0 0 L 24 12 L 0 24 Z"
+
+
 def test_extraction_script_captures_grid_properties():
     script = generate_extraction_script("1:1")
     assert "gridRowCount" in script

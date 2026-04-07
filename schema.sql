@@ -371,6 +371,10 @@ CREATE TABLE nodes (
     stroke_join     TEXT,                        -- MITER, BEVEL, ROUND
     dash_pattern    TEXT,                        -- JSON array: [10, 5] for 10px dash, 5px gap
 
+    -- Vector geometry (VECTOR, BOOLEAN_OPERATION, ELLIPSE, LINE, etc.)
+    fill_geometry   TEXT,                        -- JSON array: [{path:"M...", windingRule:"NONZERO"}]
+    stroke_geometry TEXT,                        -- JSON array: [{path:"M...", windingRule:"EVENODD"}]
+
     -- Transform
     rotation        REAL,                        -- Degrees
     clips_content   INTEGER,                     -- 1 = clips children to frame bounds

@@ -256,6 +256,14 @@ def _add_visual_properties(node: dict, api_node: dict) -> None:
     if dash:
         node["dash_pattern"] = json.dumps(dash)
 
+    # Vector geometry (SVG path data for VECTOR, BOOLEAN_OPERATION, etc.)
+    fill_geom = api_node.get("fillGeometry")
+    if fill_geom:
+        node["fill_geometry"] = json.dumps(fill_geom)
+    stroke_geom = api_node.get("strokeGeometry")
+    if stroke_geom:
+        node["stroke_geometry"] = json.dumps(stroke_geom)
+
     # Transform
     if api_node.get("rotation") is not None:
         node["rotation"] = api_node["rotation"]

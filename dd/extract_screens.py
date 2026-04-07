@@ -72,6 +72,10 @@ def generate_extraction_script(screen_node_id: str) -> str:
     if ('strokeJoin' in node && node.strokeJoin !== figma.mixed) entry.stroke_join = node.strokeJoin;
     if ('dashPattern' in node && node.dashPattern?.length) entry.dash_pattern = JSON.stringify(node.dashPattern);
 
+    // Vector geometry (VECTOR, BOOLEAN_OPERATION, ELLIPSE, LINE, etc.)
+    if ('fillGeometry' in node && node.fillGeometry?.length) entry.fill_geometry = JSON.stringify(node.fillGeometry);
+    if ('strokeGeometry' in node && node.strokeGeometry?.length) entry.stroke_geometry = JSON.stringify(node.strokeGeometry);
+
     // Transform + clipping
     if ('rotation' in node && node.rotation !== 0) entry.rotation = node.rotation;
     if ('clipsContent' in node) entry.clips_content = node.clipsContent ? 1 : 0;
@@ -250,6 +254,15 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
                 cleaned["dash_pattern"] = json.dumps(value)
             else:
                 cleaned["dash_pattern"] = value
+
+        # Vector geometry
+        for field in ["fill_geometry", "stroke_geometry"]:
+            if field in node:
+                value = node[field]
+                if isinstance(value, (list, dict)):
+                    cleaned[field] = json.dumps(value)
+                else:
+                    cleaned[field] = value
 
         # Transform + clipping
         if "rotation" in node and node["rotation"] is not None:
@@ -437,6 +450,7 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "stroke_weight", "stroke_top_weight", "stroke_right_weight",
             "stroke_bottom_weight", "stroke_left_weight",
             "stroke_align", "stroke_cap", "stroke_join", "dash_pattern",
+            "fill_geometry", "stroke_geometry",
             "rotation", "clips_content",
             "constraint_h", "constraint_v",
             "font_family", "font_weight", "font_size", "font_style",

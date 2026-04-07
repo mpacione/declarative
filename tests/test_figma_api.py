@@ -527,6 +527,82 @@ class TestConvertNodeTree:
         assert "effects" not in result[0] or result[0].get("effects") is None
 
 
+class TestVectorGeometryExtraction:
+    """Vector geometry (fillGeometry/strokeGeometry) captured from REST API."""
+
+    def test_fill_geometry_captured_as_json(self):
+        api_node = {
+            "id": "100:30", "name": "Arrow", "type": "VECTOR",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 24, "height": 24},
+            "fills": [{"type": "SOLID", "color": {"r": 0, "g": 0, "b": 0, "a": 1}}],
+            "strokes": [], "effects": [],
+            "fillGeometry": [
+                {"path": "M 0 0 L 24 12 L 0 24 Z", "windingRule": "NONZERO"}
+            ],
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        fg = json.loads(result[0]["fill_geometry"])
+        assert len(fg) == 1
+        assert fg[0]["path"] == "M 0 0 L 24 12 L 0 24 Z"
+        assert fg[0]["windingRule"] == "NONZERO"
+
+    def test_stroke_geometry_captured_as_json(self):
+        api_node = {
+            "id": "100:31", "name": "Outline", "type": "VECTOR",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 24, "height": 24},
+            "fills": [], "strokes": [{"type": "SOLID", "color": {"r": 0, "g": 0, "b": 0, "a": 1}}],
+            "effects": [],
+            "strokeGeometry": [
+                {"path": "M 1 1 L 23 1 L 23 23 L 1 23 Z", "windingRule": "EVENODD"}
+            ],
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        sg = json.loads(result[0]["stroke_geometry"])
+        assert len(sg) == 1
+        assert sg[0]["windingRule"] == "EVENODD"
+
+    def test_both_geometries_captured(self):
+        api_node = {
+            "id": "100:32", "name": "Complex", "type": "BOOLEAN_OPERATION",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 24, "height": 24},
+            "fills": [{"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0, "a": 1}}],
+            "strokes": [{"type": "SOLID", "color": {"r": 0, "g": 0, "b": 0, "a": 1}}],
+            "effects": [],
+            "fillGeometry": [{"path": "M 0 0 L 24 24", "windingRule": "NONZERO"}],
+            "strokeGeometry": [{"path": "M 0 0 L 24 0", "windingRule": "NONZERO"}],
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        assert "fill_geometry" in result[0]
+        assert "stroke_geometry" in result[0]
+
+    def test_empty_geometry_omitted(self):
+        api_node = {
+            "id": "100:33", "name": "Rect", "type": "RECTANGLE",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 100, "height": 50},
+            "fills": [], "strokes": [], "effects": [],
+            "fillGeometry": [],
+            "strokeGeometry": [],
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        assert "fill_geometry" not in result[0]
+        assert "stroke_geometry" not in result[0]
+
+    def test_absent_geometry_omitted(self):
+        api_node = {
+            "id": "100:34", "name": "Frame", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 100, "height": 50},
+            "fills": [], "strokes": [], "effects": [],
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        assert "fill_geometry" not in result[0]
+        assert "stroke_geometry" not in result[0]
+
+
 class TestRotationDimensionReconstruction:
     """AABB dimensions from REST API must be converted to logical (pre-rotation) dims."""
 
