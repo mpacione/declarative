@@ -124,15 +124,18 @@ Three categories: HANDLER (callable dispatch for fills/strokes/effects/cornerRad
 12. **Font normalization** — `normalize_font_style(family, style)`: per-family style names
 13. **Table-driven emission** (COMPLETED) — HANDLER sentinel + uniform templates + `format_js_value()` type-aware formatting, `emit_from_registry()` dispatches handlers and applies templates, `build_visual_from_db` is registry-driven, structural tests enforce template/handler/deferred classification
 14. **Override decomposition at query time** (COMPLETED) — `decompose_override()` splits composite `property_name` into `(target, property)` using `override_suffix_for_type()`. `_emit_override_op` uses `format_js_value` for generic properties. `_OVERRIDE_SUFFIX_MAP` and `_resolve_override_target` deleted.
-15. **DB-first position fallback** (COMPLETED) — deferred positioning prefers DB `x`/`y` from `query_screen_visuals` over IR `element.layout.position`
+15. **Position from IR** (COMPLETED) — deferred positioning reads parent-relative coordinates from IR (DB stores absolute canvas coordinates). See compiler-architecture.md Section 4.1.
+16. **Renderer architecture split** (COMPLETED) — `dd/generate.py` split into `dd/visual.py` (shared, 210 lines) + `dd/renderers/figma.py` (Figma-specific, 1,294 lines) + re-export wrapper. LLVM/Mitosis/Style Dictionary pattern: shared IR → per-target backend.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `dd/property_registry.py` | **Single source of truth** for 48 properties — HANDLER/template/deferred emit, db_column mapping |
+| `dd/visual.py` | **Shared infrastructure** (renderer-agnostic) — `build_visual_from_db`, `_resolve_layout_sizing`, `resolve_style_value` |
+| `dd/renderers/figma.py` | **Figma renderer** — JS emission, `hex_to_figma_rgba`, `font_weight_to_style`, `format_js_value`, `emit_from_registry` |
+| `dd/generate.py` | Backward-compatible re-exports (thin wrapper — import from `dd.visual` or `dd.renderers.figma` directly) |
 | `dd/ir.py` | IR generation, registry-driven query_screen_visuals, override decomposition |
-| `dd/generate.py` | Figma renderer — registry-driven emission, `_resolve_layout_sizing`, `format_js_value`, `hex_to_figma_rgba` |
 | `dd/extract_supplement.py` | Registry-driven override extraction, `override_suffix_for_type` |
 | `dd/extract_screens.py` | Plugin API node extraction |
 | `docs/compiler-architecture.md` | Authoritative architecture spec (includes renderer value transforms) |
@@ -143,7 +146,7 @@ Three categories: HANDLER (callable dispatch for fills/strokes/effects/cornerRad
 
 ```bash
 source .venv/bin/activate
-python -m pytest tests/ --tb=short          # 1,656 tests
+python -m pytest tests/ --tb=short          # 1,657 tests
 ```
 
 ## Reference Screens

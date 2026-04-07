@@ -297,34 +297,39 @@ Bridges generation pipeline to existing rebind infrastructure.
 | `build_template_rebind_entries(template_entries, figma_node_map)` | Convert template boundVariable data + M dict to rebind entries |
 | `generate_rebind_script(entries)` | Generate compact pipe-delimited rebind JS |
 
-### dd/generate.py — Figma Generation (81 tests)
-Generates Figma Plugin API JavaScript from CompositionSpec + DB visuals. Mode 1 (component instances via getNodeByIdAsync) for keyed components, Mode 2 (createFrame + L0 properties) for keyless types.
-
-**Key patterns:**
-- **Progressive fallback**: DB visuals → IR layout → heuristic fallback for every property
-- **Deferred positioning**: position + constraints + non-auto-layout layoutSizing set after all appendChild calls
-- **Default clearing**: fills=[], clipsContent=false explicitly set to override Figma createFrame() defaults
-- **Mode 1 L0 properties**: rotation (radians→degrees), opacity, visibility applied after createInstance()
-- **Generic override handler**: Registry-defined override types dispatched automatically via `dd/property_registry.py`
-- **42 override types**: All registry properties with `override_fields` automatically captured. Decomposed at query time into `{target, property, value}`. `_emit_override_op` uses `format_js_value` for generic properties, with special cases for TEXT (font loading), INSTANCE_SWAP (swapComponent), width/height (resize), layoutSizing (deferred)
+### dd/visual.py — Shared Visual Infrastructure
+Renderer-agnostic visual dict builder and layout sizing resolution. Any renderer imports from here.
 
 | Function | Purpose |
 |----------|---------|
-| `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. `db_visuals` drives visual/layout from DB. Overrides use decomposed `{target, property, value}` format. |
+| `build_visual_from_db(node_visual)` | Registry-driven: maps db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict (hex colors, numeric weights, radians). |
+| `_apply_db_transform(value, prop)` | Universal transforms only — int→bool, JSON string parse. No renderer-specific transforms. |
+| `resolve_style_value(value, tokens)` | Resolve token references (`"{color.primary}"` → hex value). |
+| `_resolve_layout_sizing(...)` | Pure function: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING`) > IR sizing > type heuristic. Returns semantic lowercase ("fill", "hug", "fixed"). |
+
+### dd/renderers/figma.py — Figma Plugin API Renderer
+Generates Figma Plugin API JavaScript. All platform-specific transforms live here.
+
+**Key patterns:**
+- **Progressive fallback**: DB visuals → IR layout → heuristic fallback for every property
+- **Deferred positioning**: position + constraints set after all appendChild calls
+- **Default clearing**: fills=[], clipsContent=false to override Figma createFrame() defaults
+- **42 override types**: Decomposed at query time into `{target, property, value}`. `_emit_override_op` uses `format_js_value` for generic properties.
+
+| Function | Purpose |
+|----------|---------|
+| `generate_figma_script(spec, db_visuals, page_name)` | Walk IR, emit JS. Main entry point. |
 | `generate_screen(conn, screen_id)` | Orchestrate: generate_ir → query_screen_visuals → generate_figma_script |
-| `build_visual_from_db(node_visual)` | **Shared infrastructure** (renderer-agnostic): iterates PROPERTIES to map db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict with hex colors, numeric weights, radians. |
-| `_apply_db_transform(value, prop)` | **Shared**: universal transforms only — int→bool, JSON string parse. No renderer-specific transforms (radians→degrees is in `format_js_value`). |
-| `_resolve_layout_sizing(elem_sizing, db_sizing_h, db_sizing_v, text_auto_resize, is_text, etype)` | **Shared**: pure function for layout sizing. Priority: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING` table) > IR sizing > type heuristic. |
-| `emit_from_registry(var, eid, visual, tokens)` | **Figma renderer**: dispatches HANDLER properties to `_FIGMA_HANDLERS`, formats template properties via `format_js_value()`. Returns (lines, token_refs). |
-| `format_js_value(value, value_type)` | **Figma renderer**: type-aware JS formatting. boolean→true/false, enum/string→"quoted", json→serialized, number_radians→degrees, number→string. |
-| `hex_to_figma_rgba(hex_str)` | **Figma renderer**: hex color → `{r, g, b, a}` floats (0-1). Preserves alpha from 8-digit hex. |
-| `_emit_layout(var, eid, layout, tokens)` | Emit layoutMode, padding, sizing (auto-layout containers only — non-auto-layout deferred) |
-| `_emit_visual(var, eid, visual, tokens)` | Delegates to `emit_from_registry` — all logic in registry |
-| `_emit_fills/strokes/effects(...)` | Handler functions for complex JSON paint/effect arrays |
-| `_emit_corner_radius_figma(...)` | Handler for uniform (number) vs per-corner (dict) radius |
-| `_emit_clips_content_figma(...)` | Handler for JS boolean emission + always-emit behavior |
-| `_emit_text_props(var, element, style, tokens, lines)` | Emit fontName, fontSize, characters, text alignment, decoration, spacing (progressive fallback) |
-| `collect_fonts(spec)` | Collect unique (family, style) pairs for font loading |
+| `format_js_value(value, value_type)` | Type-aware JS formatting: boolean→true/false, enum→"quoted", number_radians→degrees, json→serialized. |
+| `hex_to_figma_rgba(hex_str)` | Hex color → `{r, g, b, a}` floats (0-1). Preserves alpha. |
+| `emit_from_registry(var, eid, visual, tokens)` | Registry dispatch: HANDLER → `_FIGMA_HANDLERS`, template → `format_js_value`. |
+| `font_weight_to_style(weight)` | Numeric 600 → Figma style name "Semi Bold". |
+| `normalize_font_style(family, style)` | Per-family style naming (SF Pro → "Semibold", Inter → "Semi Bold"). |
+| `collect_fonts(spec, db_visuals)` | Collect (family, style) pairs for `loadFontAsync` preamble. |
+| `_emit_layout/visual/fills/strokes/effects/text_props` | Figma JS emission for each property category. |
+
+### dd/generate.py — Backward-Compatible Re-exports
+Thin wrapper re-exporting from `dd.visual` and `dd.renderers.figma`. Existing imports continue to work. New code should import from the specific modules directly.
 
 ### dd/export_figma_vars.py — Figma Variable Export (50 tests)
 Push tokens to Figma as variables.

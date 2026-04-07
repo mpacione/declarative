@@ -346,8 +346,13 @@ Constrained decoding for LLM structured output. Token-level masking guarantees v
 
 ```
 dd/                          # Python source
+  property_registry.py       # Single source of truth: 48 properties with emit patterns
+  visual.py                  # Shared infrastructure (renderer-agnostic visual dict)
+  renderers/
+    __init__.py              # Renderer package
+    figma.py                 # Figma Plugin API renderer (JS emission)
+  generate.py                # Backward-compatible re-exports
   ir.py                      # IR generation, query_screen_visuals, build_composition_spec
-  generate.py                # Figma renderer (generate_figma_script, generate_screen)
   compose.py                 # Prompt composition (compose_screen, build_template_visuals)
   templates.py               # Template extraction (extract_templates, query_templates)
   classify.py                # Classification (L1)
@@ -361,6 +366,7 @@ dd/                          # Python source
 schema.sql                   # DB schema (L0 scene graph + L1/L2 tables)
 docs/
   compiler-architecture.md   # THIS document — the authoritative spec
+  cross-platform-value-formats.md  # Renderer value format reference
   module-reference.md        # Complete API reference
   continuation.md            # Current state and next steps
   research/                  # Research artifacts (Mitosis, Ghost, formats, etc.)
