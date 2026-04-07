@@ -98,8 +98,9 @@ class TestFormatJsValue:
     def test_number_radians_passthrough_as_degrees(self):
         import math
         from dd.renderers.figma import format_js_value
+        # REST API positive rad (CCW) → Plugin API negative degrees (CW)
         result = format_js_value(math.pi / 4, "number_radians")
-        assert abs(float(result) - 45.0) < 0.01
+        assert abs(float(result) - (-45.0)) < 0.01
 
     def test_enum(self):
         from dd.renderers.figma import format_js_value
@@ -154,8 +155,9 @@ class TestFormatJsValue:
     def test_number_radians_converts_to_degrees(self):
         import math
         from dd.renderers.figma import format_js_value
+        # REST API positive rad (CCW) → Plugin API negative degrees (CW)
         result = format_js_value(math.pi / 2, "number_radians")
-        assert abs(float(result) - 90.0) < 0.01
+        assert abs(float(result) - (-90.0)) < 0.01
 
     def test_number_or_mixed(self):
         from dd.renderers.figma import format_js_value

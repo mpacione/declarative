@@ -10,6 +10,7 @@ from dd.db import init_db
 from dd.renderers.figma import (
     collect_fonts,
     font_weight_to_style,
+    format_js_value,
     generate_figma_script,
     generate_screen,
     normalize_font_style,
@@ -1097,7 +1098,8 @@ class TestEmitVisualAdditiveProperties:
             -2: {"rotation": __import__('math').radians(45), "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "rotation = 45.0" in script or "rotation = 44.99" in script
+        # REST API +rad (CCW) → Plugin API negative degrees (CW convention)
+        assert "rotation = -45.0" in script or "rotation = -44.99" in script
 
     def test_no_rotation_when_zero(self):
         spec = _make_spec({
@@ -1111,6 +1113,18 @@ class TestEmitVisualAdditiveProperties:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "rotation" not in script
+
+    def test_rotation_sign_negated_for_plugin_api(self):
+        """REST API positive radians (CCW) must become negative degrees (CW) for Plugin API."""
+        import math
+        # REST API stores +π/2 rad (CCW) → Plugin API expects -90° (CW)
+        assert float(format_js_value(math.pi / 2, "number_radians")) == pytest.approx(-90.0)
+        # REST API stores -π/2 rad (CW) → Plugin API expects +90° (CW)
+        assert float(format_js_value(-math.pi / 2, "number_radians")) == pytest.approx(90.0)
+        # REST API stores +π rad → Plugin API expects -180°
+        assert float(format_js_value(math.pi, "number_radians")) == pytest.approx(-180.0)
+        # REST API stores -π/4 rad → Plugin API expects +45°
+        assert float(format_js_value(-math.pi / 4, "number_radians")) == pytest.approx(45.0)
 
     def test_emit_constraints(self):
         spec = _make_spec({
@@ -1794,7 +1808,11 @@ class TestMode1L0Properties:
     """Verify Mode 1 instances apply L0 visual properties from DB."""
 
     def test_rotation_applied_to_mode1_instance(self):
-        """A Mode 1 instance with rotation in DB should have rotation set."""
+        """A Mode 1 instance with rotation in DB should have rotation set.
+
+        REST API stores -π/2 rad (CW rotation). Plugin API sign convention
+        is opposite, so the emitted value must be +90°.
+        """
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1810,11 +1828,12 @@ class TestMode1L0Properties:
                 "component_key": "abc",
                 "component_figma_id": "123:456",
                 "bindings": [],
-                "rotation": -1.5707963267948966,  # -90 degrees in radians
+                "rotation": -1.5707963267948966,  # -90 degrees in radians (REST API)
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "rotation = -90" in script or "rotation = -90.0" in script
+        # REST API -rad → Plugin API positive degrees (sign negated)
+        assert "rotation = 90" in script or "rotation = 90.0" in script
 
     def test_no_rotation_when_zero(self):
         spec = _make_spec({

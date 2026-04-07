@@ -321,7 +321,7 @@ def format_js_value(value: Any, value_type: str) -> str:
     if value_type in ("json", "json_array"):
         return json.dumps(value) if not isinstance(value, str) else value
     if value_type == "number_radians":
-        return str(math.degrees(value))
+        return str(-math.degrees(value))
     # number, number_or_mixed
     return str(value)
 
@@ -694,7 +694,7 @@ def generate_figma_script(
             if db_visuals is not None and raw_visual:
                 inst_rotation = raw_visual.get("rotation")
                 if inst_rotation is not None and inst_rotation != 0:
-                    lines.append(f"{var}.rotation = {math.degrees(inst_rotation)};")
+                    lines.append(f"{var}.rotation = {-math.degrees(inst_rotation)};")
                 inst_opacity = raw_visual.get("opacity")
                 if inst_opacity is not None and inst_opacity < 1.0:
                     lines.append(f"{var}.opacity = {inst_opacity};")

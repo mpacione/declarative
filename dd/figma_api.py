@@ -5,6 +5,7 @@ into the dict format expected by parse_extraction_response().
 """
 
 import json
+import math
 import time
 from typing import Any
 
@@ -144,11 +145,53 @@ def convert_node_tree(
     return result
 
 
+def _reconstruct_logical_dimensions(
+    bbox_w: float, bbox_h: float, rotation_rad: float
+) -> tuple[float, float]:
+    """Convert AABB dimensions back to logical (pre-rotation) dimensions.
+
+    The REST API returns absoluteBoundingBox (axis-aligned bounding box),
+    which is the post-rotation envelope.  For a rectangle (w, h) rotated
+    by θ the AABB is:
+        aabb_w = |w·cos θ| + |h·sin θ|
+        aabb_h = |w·sin θ| + |h·cos θ|
+
+    Inverting gives logical (w, h) when cos(2θ) ≠ 0.
+    """
+    EPSILON = 1e-6
+    if abs(rotation_rad) < EPSILON:
+        return bbox_w, bbox_h
+
+    c = abs(math.cos(rotation_rad))
+    s = abs(math.sin(rotation_rad))
+    det = c * c - s * s  # cos(2θ)
+
+    if abs(det) < EPSILON:
+        return bbox_w, bbox_h
+
+    w = round((bbox_w * c - bbox_h * s) / det, 2)
+    h = round((bbox_h * c - bbox_w * s) / det, 2)
+
+    if w < 0 or h < 0:
+        return bbox_w, bbox_h
+
+    return w, h
+
+
 def _convert_single_node(
     api_node: dict, parent_idx: int | None, depth: int, sort_order: int
 ) -> dict:
     """Convert a single REST API node dict to extraction format."""
     bbox = api_node.get("absoluteBoundingBox")
+
+    bbox_w = bbox["width"] if bbox else None
+    bbox_h = bbox["height"] if bbox else None
+
+    rotation_rad = api_node.get("rotation")
+    if rotation_rad and bbox_w is not None and bbox_h is not None:
+        bbox_w, bbox_h = _reconstruct_logical_dimensions(
+            bbox_w, bbox_h, rotation_rad
+        )
 
     node: dict[str, Any] = {
         "figma_node_id": api_node["id"],
@@ -159,8 +202,8 @@ def _convert_single_node(
         "sort_order": sort_order,
         "x": bbox["x"] if bbox else None,
         "y": bbox["y"] if bbox else None,
-        "width": bbox["width"] if bbox else None,
-        "height": bbox["height"] if bbox else None,
+        "width": bbox_w,
+        "height": bbox_h,
     }
 
     _add_visual_properties(node, api_node)

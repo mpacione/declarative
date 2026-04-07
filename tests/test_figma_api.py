@@ -495,6 +495,73 @@ class TestConvertNodeTree:
         assert "effects" not in result[0] or result[0].get("effects") is None
 
 
+class TestRotationDimensionReconstruction:
+    """AABB dimensions from REST API must be converted to logical (pre-rotation) dims."""
+
+    def test_90_degree_rotation_swaps_width_height(self):
+        import math
+        api_node = {
+            "id": "100:1", "name": "bar", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 32, "height": 6},
+            "rotation": math.pi / 2,  # 90° in radians
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["width"] == pytest.approx(6, abs=0.5)
+        assert node["height"] == pytest.approx(32, abs=0.5)
+
+    def test_negative_90_degree_rotation_swaps_width_height(self):
+        import math
+        api_node = {
+            "id": "100:2", "name": "bar2", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 5, "height": 16},
+            "rotation": -math.pi / 2,
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["width"] == pytest.approx(16, abs=0.5)
+        assert node["height"] == pytest.approx(5, abs=0.5)
+
+    def test_180_degree_preserves_dimensions(self):
+        import math
+        api_node = {
+            "id": "100:3", "name": "flipped", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 10, "height": 20},
+            "rotation": math.pi,
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["width"] == pytest.approx(10, abs=0.5)
+        assert node["height"] == pytest.approx(20, abs=0.5)
+
+    def test_no_rotation_preserves_dimensions(self):
+        api_node = {
+            "id": "100:4", "name": "normal", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 100, "height": 50},
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["width"] == 100
+        assert node["height"] == 50
+
+    def test_near_zero_rotation_treated_as_zero(self):
+        """Floating-point epsilon rotations (e.g., 6.12e-17) should not swap dims."""
+        api_node = {
+            "id": "100:5", "name": "epsilon", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 24, "height": 24},
+            "rotation": 6.123234262925839e-17,
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["width"] == 24
+        assert node["height"] == 24
+
+
 @pytest.mark.unit
 class TestExtractTopLevelFrames:
     """extract_top_level_frames pulls frame metadata from file JSON."""
