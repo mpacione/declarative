@@ -266,7 +266,13 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
         if "layout_positioning" in node:
             cleaned["layout_positioning"] = node["layout_positioning"]
 
-        # Auto-layout properties
+        # Layout sizing: how this node sizes within its PARENT's layout context.
+        # Valid on any node inside an auto-layout parent, not just containers.
+        for field in ["layout_sizing_h", "layout_sizing_v"]:
+            if field in node:
+                cleaned[field] = node[field]
+
+        # Auto-layout properties (container-level)
         if "layout_mode" in node:
             cleaned["layout_mode"] = node["layout_mode"]
             for field in ["padding_top", "padding_right", "padding_bottom", "padding_left",
@@ -274,7 +280,7 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
                           "min_width", "max_width", "min_height", "max_height"]:
                 if field in node:
                     cleaned[field] = float(node[field]) if node[field] is not None else None
-            for field in ["primary_align", "counter_align", "layout_sizing_h", "layout_sizing_v",
+            for field in ["primary_align", "counter_align",
                           "layout_wrap"]:
                 if field in node:
                     cleaned[field] = node[field]

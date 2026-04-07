@@ -273,6 +273,38 @@ class TestConvertNodeTree:
         result = convert_node_tree(api_node)
         assert "layout_mode" not in result[0]
 
+    def test_layout_sizing_captured_without_layout_mode(self):
+        """layoutSizingH/V describe how a node sizes in its parent's layout,
+        and must be captured even when the node itself has layoutMode=NONE."""
+        api_node = {
+            "id": "100:99", "name": "Child", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 340, "height": 22},
+            "fills": [], "strokes": [], "effects": [],
+            "layoutMode": "NONE",
+            "layoutSizingHorizontal": "FILL",
+            "layoutSizingVertical": "FIXED",
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert "layout_mode" not in node
+        assert node["layout_sizing_h"] == "FILL"
+        assert node["layout_sizing_v"] == "FIXED"
+
+    def test_layout_wrap_defaults_to_no_wrap(self):
+        """When layoutMode is set but layoutWrap is absent, default to NO_WRAP."""
+        api_node = {
+            "id": "100:98", "name": "Row", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 400, "height": 50},
+            "fills": [], "strokes": [], "effects": [],
+            "layoutMode": "HORIZONTAL",
+            "itemSpacing": 8,
+            "children": [],
+        }
+        result = convert_node_tree(api_node)
+        node = result[0]
+        assert node["layout_wrap"] == "NO_WRAP"
+
     def test_uniform_corner_radius(self):
         api_node = {
             "id": "100:10",

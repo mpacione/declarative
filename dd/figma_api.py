@@ -285,10 +285,21 @@ def _add_corner_radius(node: dict, api_node: dict) -> None:
 
 
 def _add_layout_properties(node: dict, api_node: dict) -> None:
-    # layoutPositioning is on the CHILD, not the parent — capture regardless of parent's layoutMode
+    # layoutPositioning is on the CHILD, not the parent — capture regardless
     lp = api_node.get("layoutPositioning")
     if lp:
         node["layout_positioning"] = lp
+
+    # layoutSizingH/V describe how this node sizes within its PARENT's layout
+    # context — valid on any node inside an auto-layout parent, not just
+    # auto-layout containers themselves.
+    for api_key, db_key in (
+        ("layoutSizingHorizontal", "layout_sizing_h"),
+        ("layoutSizingVertical", "layout_sizing_v"),
+    ):
+        value = api_node.get(api_key)
+        if value is not None:
+            node[db_key] = value
 
     layout_mode = api_node.get("layoutMode")
     if not layout_mode or layout_mode == "NONE":
@@ -305,8 +316,6 @@ def _add_layout_properties(node: dict, api_node: dict) -> None:
         "counterAxisSpacing": "counter_axis_spacing",
         "primaryAxisAlignItems": "primary_align",
         "counterAxisAlignItems": "counter_align",
-        "layoutSizingHorizontal": "layout_sizing_h",
-        "layoutSizingVertical": "layout_sizing_v",
         "layoutWrap": "layout_wrap",
         "minWidth": "min_width",
         "maxWidth": "max_width",
@@ -318,6 +327,10 @@ def _add_layout_properties(node: dict, api_node: dict) -> None:
         value = api_node.get(api_key)
         if value is not None:
             node[db_key] = value
+
+    # Apply known defaults for REST API omitted values
+    if "layout_wrap" not in node:
+        node["layout_wrap"] = "NO_WRAP"
 
     # Grid layout properties
     if layout_mode == "GRID":

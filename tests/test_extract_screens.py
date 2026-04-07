@@ -464,6 +464,23 @@ def test_parse_extraction_response_auto_layout():
     assert parsed[0]["layout_sizing_h"] == "HUG"
 
 
+def test_parse_extraction_response_sizing_without_layout_mode():
+    """layout_sizing_h/v should be preserved even without layout_mode."""
+    response = [
+        {
+            "figma_node_id": "1:99",
+            "name": "Non-layout child",
+            "node_type": "FRAME",
+            "layout_sizing_h": "FILL",
+            "layout_sizing_v": "FIXED",
+        }
+    ]
+    parsed = parse_extraction_response(response)
+    assert parsed[0]["layout_sizing_h"] == "FILL"
+    assert parsed[0]["layout_sizing_v"] == "FIXED"
+    assert "layout_mode" not in parsed[0]
+
+
 def test_update_screen_status():
     conn = init_db(":memory:")
 
