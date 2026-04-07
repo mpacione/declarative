@@ -41,6 +41,10 @@ class TestExtendedSchemaColumns:
         "min_height": "REAL",
         "max_height": "REAL",
         "component_key": "TEXT",
+        "is_mask": "INTEGER",
+        "boolean_operation": "TEXT",
+        "corner_smoothing": "REAL",
+        "arc_data": "TEXT",
     }
 
     def test_all_new_columns_exist(self, db):

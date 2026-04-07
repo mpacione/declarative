@@ -235,6 +235,6 @@ class TestRegistryCompleteness:
         assert categories == {"visual", "layout", "size", "text", "constraint"}
 
     def test_property_count(self):
-        assert len(PROPERTIES) >= 48, (
-            f"Expected at least 48 properties, got {len(PROPERTIES)}"
+        assert len(PROPERTIES) >= 52, (
+            f"Expected at least 52 properties, got {len(PROPERTIES)}"
         )
