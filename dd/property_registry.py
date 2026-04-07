@@ -14,7 +14,12 @@ Each property maps:
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
+
+
+# Sentinel: property is emitted by a handler function registered in the renderer.
+# The renderer's _FIGMA_HANDLERS dict maps figma_name → callable.
+HANDLER = object()
 
 
 @dataclass(frozen=True)
@@ -28,69 +33,71 @@ class FigmaProperty:
     default_value: Any = None
     needs_json: bool = False
     skip_emit_if_default: bool = True
-    emit: dict[str, str | None] = field(default_factory=dict)
+    emit: dict[str, Any] = field(default_factory=dict)
+    db_transform: Callable | None = None
 
 
 # ---------------------------------------------------------------------------
 # Registry definition
 # ---------------------------------------------------------------------------
 
+_UNIFORM = "{var}.{figma_name} = {value};"  # type-aware formatting by emit_from_registry
+
 PROPERTIES: tuple[FigmaProperty, ...] = (
     # === VISUAL: Fills ===
-    # Complex: custom _emit_fills handles SOLID + GRADIENT types
     FigmaProperty("fills", "fills", ("fills",), "visual", "json_array",
                   override_type="FILLS", default_value="[]", needs_json=True,
-                  emit={"figma": None}),
+                  emit={"figma": HANDLER}),
 
     # === VISUAL: Strokes ===
-    # Complex: custom _emit_strokes handles paint array + strokeWeight
     FigmaProperty("strokes", "strokes", ("strokes",), "visual", "json_array",
                   needs_json=True,
-                  emit={"figma": None}),
+                  emit={"figma": HANDLER}),
     FigmaProperty("strokeWeight", "stroke_weight", ("strokeWeight",), "visual", "number",
-                  emit={"figma": '{var}.strokeWeight = {value};'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("strokeAlign", "stroke_align", ("strokeAlign",), "visual", "enum",
-                  emit={"figma": '{var}.strokeAlign = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("strokeCap", "stroke_cap", ("strokeCap",), "visual", "enum",
-                  emit={"figma": '{var}.strokeCap = "{value}";'}),
+                  default_value="NONE",
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("strokeJoin", "stroke_join", ("strokeJoin",), "visual", "enum",
-                  emit={"figma": '{var}.strokeJoin = "{value}";'}),
+                  default_value="MITER",
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("dashPattern", "dash_pattern", ("dashPattern",), "visual", "json_array",
                   needs_json=True,
-                  emit={"figma": "{var}.dashPattern = {value};"}),
+                  emit={"figma": _UNIFORM}),
 
     # === VISUAL: Effects ===
-    # Complex: custom _emit_effects handles shadow + blur types
     FigmaProperty("effects", "effects", ("effects",), "visual", "json_array",
                   needs_json=True,
-                  emit={"figma": None}),
+                  emit={"figma": HANDLER}),
 
     # === VISUAL: Appearance ===
     FigmaProperty("opacity", "opacity", ("opacity",), "visual", "number",
                   override_type="OPACITY", default_value=1.0,
-                  emit={"figma": "{var}.opacity = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("blendMode", "blend_mode", ("blendMode",), "visual", "enum",
                   default_value="PASS_THROUGH",
-                  emit={"figma": '{var}.blendMode = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
+    # Deferred: handled in main generation loop (element.visible), not _emit_visual
     FigmaProperty("visible", "visible", ("visible",), "visual", "boolean",
-                  override_type="BOOLEAN", default_value=True,
-                  emit={"figma": None}),  # Custom: handled in main loop (element.visible check)
+                  override_type="BOOLEAN", default_value=True),
     FigmaProperty("clipsContent", "clips_content", ("clipsContent",), "visual", "boolean",
-                  default_value=True,
-                  emit={"figma": None}),  # Custom: true/false JS booleans + Figma default clearing
+                  default_value=True, skip_emit_if_default=False,
+                  emit={"figma": HANDLER}),
     FigmaProperty("rotation", "rotation", ("rotation",), "visual", "number_radians",
                   default_value=0,
-                  emit={"figma": "{var}.rotation = {value};"}),
+                  emit={"figma": _UNIFORM}),
 
     # === VISUAL: Corner Radius ===
-    # Complex: uniform (number) vs per-corner (dict) formats
     FigmaProperty("cornerRadius", "corner_radius", ("cornerRadius",), "visual",
                   "number_or_mixed",
-                  emit={"figma": None}),
+                  emit={"figma": HANDLER}),
 
     # === LAYOUT ===
     FigmaProperty("layoutMode", "layout_mode", ("layoutMode",), "layout", "enum",
-                  emit={"figma": '{var}.layoutMode = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
+    # Deferred: conditional on parent auto-layout context
     FigmaProperty("layoutSizingHorizontal", "layout_sizing_h",
                   ("layoutSizingHorizontal", "primaryAxisSizingMode"), "layout", "enum",
                   override_type="LAYOUT_SIZING_H"),
@@ -99,81 +106,78 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   override_type="LAYOUT_SIZING_V"),
     FigmaProperty("primaryAxisAlignItems", "primary_align",
                   ("primaryAxisAlignItems",), "layout", "enum",
-                  emit={"figma": '{var}.primaryAxisAlignItems = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("counterAxisAlignItems", "counter_align",
                   ("counterAxisAlignItems",), "layout", "enum",
-                  emit={"figma": '{var}.counterAxisAlignItems = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("paddingTop", "padding_top", ("paddingTop",), "layout", "number",
-                  emit={"figma": "{var}.paddingTop = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("paddingRight", "padding_right", ("paddingRight",), "layout", "number",
-                  emit={"figma": "{var}.paddingRight = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("paddingBottom", "padding_bottom", ("paddingBottom",), "layout", "number",
-                  emit={"figma": "{var}.paddingBottom = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("paddingLeft", "padding_left", ("paddingLeft",), "layout", "number",
-                  emit={"figma": "{var}.paddingLeft = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("itemSpacing", "item_spacing", ("itemSpacing",), "layout", "number",
                   override_type="ITEM_SPACING",
-                  emit={"figma": "{var}.itemSpacing = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("counterAxisSpacing", "counter_axis_spacing",
                   ("counterAxisSpacing",), "layout", "number",
-                  emit={"figma": "{var}.counterAxisSpacing = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("layoutWrap", "layout_wrap", ("layoutWrap",), "layout", "enum",
-                  emit={"figma": '{var}.layoutWrap = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("layoutPositioning", "layout_positioning",
                   ("layoutPositioning",), "layout", "enum",
-                  emit={"figma": '{var}.layoutPositioning = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
 
     # === SIZE ===
+    # Deferred: resize() call in main loop
     FigmaProperty("width", "width", ("width",), "size", "number",
                   override_type="WIDTH"),
     FigmaProperty("height", "height", ("height",), "size", "number",
                   override_type="HEIGHT"),
     FigmaProperty("minWidth", "min_width", ("minWidth",), "size", "number",
-                  emit={"figma": "{var}.minWidth = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("maxWidth", "max_width", ("maxWidth",), "size", "number",
-                  emit={"figma": "{var}.maxWidth = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("minHeight", "min_height", ("minHeight",), "size", "number",
-                  emit={"figma": "{var}.minHeight = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("maxHeight", "max_height", ("maxHeight",), "size", "number",
-                  emit={"figma": "{var}.maxHeight = {value};"}),
+                  emit={"figma": _UNIFORM}),
 
     # === TEXT ===
-    # Complex: characters handled by text content emission
+    # Deferred: handled by _emit_text_props (progressive fallback, fontName composition)
     FigmaProperty("characters", "text_content", ("characters",), "text", "string",
-                  override_type="TEXT",
-                  emit={"figma": None}),
+                  override_type="TEXT"),
     FigmaProperty("fontSize", "font_size", ("fontSize",), "text", "number",
-                  emit={"figma": "{var}.fontSize = {value};"}),
-    # Complex: fontFamily + fontWeight + fontStyle combined into fontName object
-    FigmaProperty("fontFamily", "font_family", ("fontName",), "text", "string",
-                  emit={"figma": None}),
-    FigmaProperty("fontWeight", "font_weight", ("fontWeight",), "text", "number",
-                  emit={"figma": None}),
+                  emit={"figma": _UNIFORM}),
+    FigmaProperty("fontFamily", "font_family", ("fontName",), "text", "string"),
+    FigmaProperty("fontWeight", "font_weight", ("fontWeight",), "text", "number"),
     FigmaProperty("fontStyle", "font_style", (), "text", "string",
-                  emit={"figma": '{var}.fontStyle = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("textAlignHorizontal", "text_align",
                   ("textAlignHorizontal",), "text", "enum",
-                  emit={"figma": '{var}.textAlignHorizontal = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("textAlignVertical", "text_align_v",
                   ("textAlignVertical",), "text", "enum",
-                  emit={"figma": '{var}.textAlignVertical = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("textAutoResize", "text_auto_resize",
                   ("textAutoResize",), "text", "enum",
-                  emit={"figma": '{var}.textAutoResize = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("textDecoration", "text_decoration",
                   ("textDecoration",), "text", "enum",
-                  emit={"figma": '{var}.textDecoration = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("textCase", "text_case", ("textCase",), "text", "enum",
-                  emit={"figma": '{var}.textCase = "{value}";'}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("lineHeight", "line_height", ("lineHeight",), "text", "json",
                   needs_json=True,
-                  emit={"figma": "{var}.lineHeight = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("letterSpacing", "letter_spacing", ("letterSpacing",), "text", "json",
                   needs_json=True,
-                  emit={"figma": "{var}.letterSpacing = {value};"}),
+                  emit={"figma": _UNIFORM}),
     FigmaProperty("paragraphSpacing", "paragraph_spacing",
                   ("paragraphSpacing",), "text", "number",
-                  emit={"figma": "{var}.paragraphSpacing = {value};"}),
+                  emit={"figma": _UNIFORM}),
 
     # === CONSTRAINTS ===
     # Deferred: emitted in post-appendChild section, not main emit block

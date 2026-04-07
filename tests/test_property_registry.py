@@ -4,45 +4,66 @@ from dd.property_registry import PROPERTIES, by_db_column, by_figma_name
 
 
 class TestRegistryEmitCoverage:
-    """Every property must declare how it is emitted by each registered renderer."""
+    """Every property must be classified: template, handler, or deferred."""
 
-    # Properties handled by custom emit functions (not string templates)
-    _COMPLEX_EMIT = frozenset({
+    # Properties with HANDLER sentinel — dispatched to _FIGMA_HANDLERS
+    _HANDLER_EMIT = frozenset({
         "fills", "strokes", "effects",  # JSON array emitters
         "cornerRadius",                  # uniform vs per-corner
-        "fontFamily", "fontWeight",      # combined into fontName
-        "characters",                    # text content
-        "clipsContent",                  # boolean true/false + Figma default clearing
-        "visible",                       # handled in main loop
+        "clipsContent",                  # JS boolean + always-emit
     })
 
-    # Properties emitted in deferred/special sections (not main emit block)
+    # Properties emitted in deferred/special sections (empty emit dict)
     _DEFERRED_EMIT = frozenset({
         "constraints.horizontal", "constraints.vertical",  # deferred after position
         "width", "height",              # resize() call
         "layoutSizingHorizontal", "layoutSizingVertical",  # conditional on context
+        "visible",                       # main generation loop
+        "characters",                    # _emit_text_props
+        "fontFamily", "fontWeight",      # combined into fontName in _emit_text_props
     })
 
-    def test_every_property_has_figma_emit_pattern(self):
-        missing = []
+    def test_every_property_classified(self):
+        """Every property must be template, handler, or deferred."""
+        from dd.property_registry import HANDLER
+        unclassified = []
         for prop in PROPERTIES:
-            if prop.figma_name in self._COMPLEX_EMIT:
+            emit = prop.emit
+            if not emit:
+                if prop.figma_name not in self._DEFERRED_EMIT:
+                    unclassified.append(prop.figma_name)
                 continue
-            if prop.figma_name in self._DEFERRED_EMIT:
+            spec = emit.get("figma")
+            if spec is HANDLER:
                 continue
-            emit = getattr(prop, "emit", {})
-            if "figma" not in emit:
-                missing.append(prop.figma_name)
-        assert not missing, (
-            f"Properties missing figma emit pattern: {missing}"
+            if isinstance(spec, str):
+                continue
+            unclassified.append(prop.figma_name)
+        assert not unclassified, (
+            f"Properties not classified as template/handler/deferred: {unclassified}"
         )
 
-    def test_complex_properties_have_none_emit(self):
+    def test_handler_properties_have_handler_sentinel(self):
+        from dd.property_registry import HANDLER
         for prop in PROPERTIES:
-            if prop.figma_name in self._COMPLEX_EMIT:
-                emit = getattr(prop, "emit", {})
-                assert emit.get("figma") is None, (
-                    f"{prop.figma_name} is complex but has a string emit pattern"
+            if prop.figma_name in self._HANDLER_EMIT:
+                assert prop.emit.get("figma") is HANDLER, (
+                    f"{prop.figma_name} should use HANDLER sentinel"
+                )
+
+    def test_handler_properties_registered(self):
+        from dd.generate import _FIGMA_HANDLERS, _register_figma_handlers
+        _register_figma_handlers()
+        for name in self._HANDLER_EMIT:
+            assert name in _FIGMA_HANDLERS, (
+                f"{name} is HANDLER but has no entry in _FIGMA_HANDLERS"
+            )
+
+    def test_deferred_properties_have_empty_emit(self):
+        for prop in PROPERTIES:
+            if prop.figma_name in self._DEFERRED_EMIT:
+                assert not prop.emit, (
+                    f"{prop.figma_name} is deferred but has emit={prop.emit}"
                 )
 
 
@@ -66,39 +87,99 @@ class TestRegistryLookups:
         assert by_figma_name("nonexistent") is None
 
 
+class TestFormatJsValue:
+    """Verify type-aware JS value formatting."""
+
+    def test_number(self):
+        from dd.generate import format_js_value
+        assert format_js_value(42, "number") == "42"
+        assert format_js_value(0.5, "number") == "0.5"
+
+    def test_number_radians(self):
+        from dd.generate import format_js_value
+        assert format_js_value(45.0, "number_radians") == "45.0"
+
+    def test_enum(self):
+        from dd.generate import format_js_value
+        assert format_js_value("CENTER", "enum") == '"CENTER"'
+
+    def test_string(self):
+        from dd.generate import format_js_value
+        assert format_js_value("hello", "string") == '"hello"'
+
+    def test_string_escapes_quotes(self):
+        from dd.generate import format_js_value
+        assert format_js_value('say "hi"', "string") == '"say \\"hi\\""'
+
+    def test_boolean_true(self):
+        from dd.generate import format_js_value
+        assert format_js_value(True, "boolean") == "true"
+
+    def test_boolean_false(self):
+        from dd.generate import format_js_value
+        assert format_js_value(False, "boolean") == "false"
+
+    def test_json_dict(self):
+        from dd.generate import format_js_value
+        result = format_js_value({"value": 24, "unit": "PIXELS"}, "json")
+        assert '"value": 24' in result
+        assert '"unit": "PIXELS"' in result
+
+    def test_json_already_string(self):
+        from dd.generate import format_js_value
+        assert format_js_value('{"value": 24}', "json") == '{"value": 24}'
+
+    def test_json_array(self):
+        from dd.generate import format_js_value
+        assert format_js_value([10, 5], "json_array") == "[10, 5]"
+
+    def test_number_or_mixed(self):
+        from dd.generate import format_js_value
+        assert format_js_value(16, "number_or_mixed") == "16"
+
+
 class TestRegistryEmitHelper:
     """Verify the registry-driven emit helper produces correct JS."""
 
     def test_emit_simple_number(self):
         from dd.generate import emit_from_registry
-        lines = emit_from_registry("v", {"opacity": 0.5}, renderer="figma")
+        lines, _ = emit_from_registry("v", "e", {"opacity": 0.5}, {})
         assert 'v.opacity = 0.5;' in lines
 
     def test_emit_simple_enum(self):
         from dd.generate import emit_from_registry
-        lines = emit_from_registry("v", {"strokeAlign": "INSIDE"}, renderer="figma")
+        lines, _ = emit_from_registry("v", "e", {"strokeAlign": "INSIDE"}, {})
         assert 'v.strokeAlign = "INSIDE";' in lines
 
     def test_skips_none_values(self):
         from dd.generate import emit_from_registry
-        lines = emit_from_registry("v", {"opacity": None}, renderer="figma")
+        lines, _ = emit_from_registry("v", "e", {"opacity": None}, {})
         assert not any("opacity" in l for l in lines)
 
-    def test_skips_complex_properties(self):
+    def test_handler_properties_dispatched(self):
         from dd.generate import emit_from_registry
-        lines = emit_from_registry("v", {"fills": [{"type": "solid"}]}, renderer="figma")
-        assert not any("fills" in l for l in lines)
+        lines, refs = emit_from_registry("v", "e", {
+            "fills": [{"type": "solid", "color": "#FF0000"}],
+        }, {})
+        assert any("fills" in l for l in lines)
 
     def test_emits_multiple_properties(self):
         from dd.generate import emit_from_registry
-        lines = emit_from_registry("v", {
+        lines, _ = emit_from_registry("v", "e", {
             "strokeAlign": "OUTSIDE",
             "minWidth": 100,
             "layoutWrap": "WRAP",
-        }, renderer="figma")
+        }, {})
         assert 'v.strokeAlign = "OUTSIDE";' in lines
         assert 'v.minWidth = 100;' in lines
         assert 'v.layoutWrap = "WRAP";' in lines
+
+    def test_clips_content_emits_js_boolean(self):
+        from dd.generate import emit_from_registry
+        lines_true, _ = emit_from_registry("v", "e", {"clipsContent": True}, {})
+        assert any("clipsContent = true" in l for l in lines_true)
+        lines_false, _ = emit_from_registry("v", "e", {"clipsContent": False}, {})
+        assert any("clipsContent = false" in l for l in lines_false)
 
 
 class TestRegistryCompleteness:

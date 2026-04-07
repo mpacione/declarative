@@ -171,16 +171,45 @@ def collect_fonts(spec: dict[str, Any]) -> list[tuple[str, str]]:
 # DB → normalized visual (Phase 1: renderer reads DB instead of IR)
 # ---------------------------------------------------------------------------
 
+# Properties requiring custom normalization (need bindings or multi-column input)
+_COMPLEX_NORMALIZE = frozenset({"fills", "strokes", "effects", "cornerRadius"})
+
+
+def _apply_db_transform(value: Any, prop: Any) -> Any:
+    """Apply DB-to-visual transform based on value_type.
+
+    Handles radians→degrees, int→bool, JSON string parsing.
+    """
+    if prop.value_type == "number_radians":
+        return math.degrees(value)
+    if prop.value_type == "boolean":
+        return bool(value)
+    if prop.needs_json and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if parsed else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if prop.db_transform is not None:
+        return prop.db_transform(value)
+    return value
+
+
 def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     """Normalize raw DB visual data to the format _emit_visual expects.
 
-    Takes a dict from query_screen_visuals() (raw Figma JSON strings +
-    scalar columns + bindings list) and produces the same normalized
-    visual dict that the IR's _build_visual() produces.
+    Registry-driven: iterates PROPERTIES to map db_column → figma_name,
+    applies transforms based on value_type, bundles text into font dict,
+    constraints into constraints dict. Complex properties (fills, strokes,
+    effects, cornerRadius) use custom normalization functions.
     """
+    from dd.property_registry import PROPERTIES
+
     bindings = node_visual.get("bindings", [])
     visual: dict[str, Any] = {}
+    font_data: dict[str, Any] = {}
 
+    # Complex properties: custom normalization (need bindings or multi-column input)
     fills = normalize_fills(node_visual.get("fills"), bindings)
     if fills:
         visual["fills"] = fills
@@ -197,84 +226,37 @@ def build_visual_from_db(node_visual: dict[str, Any]) -> dict[str, Any]:
     if radius is not None:
         visual["cornerRadius"] = radius
 
-    opacity = node_visual.get("opacity")
-    if opacity is not None and opacity < 1.0:
-        visual["opacity"] = opacity
+    # Registry-driven: all other properties
+    for prop in PROPERTIES:
+        if not prop.db_column:
+            continue
+        if prop.figma_name in _COMPLEX_NORMALIZE:
+            continue
 
-    clips = node_visual.get("clips_content")
-    if clips is not None:
-        visual["clipsContent"] = bool(clips)
+        value = node_visual.get(prop.db_column)
+        if value is None:
+            continue
 
-    rotation = node_visual.get("rotation")
-    if rotation is not None and rotation != 0:
-        # DB stores radians (REST API), Figma Plugin API uses degrees
-        visual["rotation"] = math.degrees(rotation)
+        value = _apply_db_transform(value, prop)
+        if value is None:
+            continue
 
-    blend_mode = node_visual.get("blend_mode")
-    if blend_mode and blend_mode != "PASS_THROUGH":
-        visual["blendMode"] = blend_mode
+        if prop.skip_emit_if_default and value == prop.default_value:
+            continue
 
-    stroke_cap = node_visual.get("stroke_cap")
-    if stroke_cap and stroke_cap != "NONE":
-        visual["strokeCap"] = stroke_cap
+        if prop.category == "text":
+            font_data[prop.db_column] = value
+            continue
 
-    stroke_join = node_visual.get("stroke_join")
-    if stroke_join and stroke_join != "MITER":
-        visual["strokeJoin"] = stroke_join
+        if prop.category == "constraint":
+            key = prop.figma_name.split(".")[-1]
+            visual.setdefault("constraints", {})[key] = value
+            continue
 
-    stroke_align = node_visual.get("stroke_align")
-    if stroke_align:
-        visual["strokeAlign"] = stroke_align
+        visual[prop.figma_name] = value
 
-    dash_pattern = node_visual.get("dash_pattern")
-    if dash_pattern and dash_pattern != "[]":
-        try:
-            parsed = json.loads(dash_pattern) if isinstance(dash_pattern, str) else dash_pattern
-            if parsed:
-                visual["dashPattern"] = parsed
-        except (ValueError, TypeError):
-            pass
-
-    font_data: dict[str, Any] = {}
-    for fk in ("font_family", "font_size", "font_weight", "font_style",
-               "line_height", "letter_spacing", "text_align",
-               "text_align_v", "text_decoration", "text_case",
-               "paragraph_spacing"):
-        val = node_visual.get(fk)
-        if val is not None:
-            font_data[fk] = val
     if font_data:
         visual["font"] = font_data
-
-    for size_key, visual_key in (
-        ("min_width", "minWidth"), ("max_width", "maxWidth"),
-        ("min_height", "minHeight"), ("max_height", "maxHeight"),
-    ):
-        val = node_visual.get(size_key)
-        if val is not None:
-            visual[visual_key] = val
-
-    counter_axis_spacing = node_visual.get("counter_axis_spacing")
-    if counter_axis_spacing is not None and counter_axis_spacing != 0:
-        visual["counterAxisSpacing"] = counter_axis_spacing
-
-    layout_wrap = node_visual.get("layout_wrap")
-    if layout_wrap:
-        visual["layoutWrap"] = layout_wrap
-
-    layout_positioning = node_visual.get("layout_positioning")
-    if layout_positioning:
-        visual["layoutPositioning"] = layout_positioning
-
-    constraint_h = node_visual.get("constraint_h")
-    constraint_v = node_visual.get("constraint_v")
-    if constraint_h or constraint_v:
-        constraints: dict[str, str] = {}
-        if constraint_h:
-            constraints["horizontal"] = constraint_h
-        if constraint_v:
-            constraints["vertical"] = constraint_v
-        visual["constraints"] = constraints
 
     return visual
 
@@ -435,38 +417,115 @@ def _build_text_finder(
     )
 
 
+def format_js_value(value: Any, value_type: str) -> str:
+    """Format a Python value as a JS literal based on the property's value_type.
+
+    Centralizes type-aware formatting so templates don't embed quoting.
+    """
+    if value_type == "boolean":
+        return "true" if value else "false"
+    if value_type in ("enum", "string"):
+        return f'"{_escape_js(str(value))}"'
+    if value_type in ("json", "json_array"):
+        return json.dumps(value) if not isinstance(value, str) else value
+    # number, number_radians, number_or_mixed
+    return str(value)
+
+
+# Corner key → Figma Plugin API property name
+_CORNER_MAP = {
+    "tl": "topLeftRadius", "tr": "topRightRadius",
+    "bl": "bottomLeftRadius", "br": "bottomRightRadius",
+}
+
+
+def _emit_corner_radius_figma(
+    var: str, eid: str, value: Any, tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit cornerRadius — uniform (number) or per-corner (dict)."""
+    lines: list[str] = []
+    if isinstance(value, (int, float)):
+        lines.append(f"{var}.cornerRadius = {int(value)};")
+    elif isinstance(value, dict):
+        for corner_key, figma_prop in _CORNER_MAP.items():
+            lines.append(f"{var}.{figma_prop} = {value.get(corner_key, 0)};")
+    return lines, []
+
+
+def _emit_clips_content_figma(
+    var: str, eid: str, value: Any, tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit clipsContent with JS boolean literals (not Python True/False)."""
+    if value is True:
+        return [f"{var}.clipsContent = true;"], []
+    if value is False:
+        return [f"{var}.clipsContent = false;"], []
+    return [], []
+
+
+# Handler dispatch: figma_name → callable(var, eid, value, tokens) → (lines, refs)
+# Registered here to avoid circular imports (handlers defined in this file,
+# registry in property_registry.py).
+_FIGMA_HANDLERS: dict[str, Any] = {}
+
+
+def _register_figma_handlers() -> None:
+    """Register handler functions for HANDLER-sentinel properties."""
+    if _FIGMA_HANDLERS:
+        return  # already registered
+    _FIGMA_HANDLERS.update({
+        "fills": _emit_fills,
+        "strokes": _emit_strokes,
+        "effects": _emit_effects,
+        "cornerRadius": _emit_corner_radius_figma,
+        "clipsContent": _emit_clips_content_figma,
+    })
+
+
 def emit_from_registry(
     var: str,
+    eid: str,
     visual: dict[str, Any],
+    tokens: dict[str, Any],
     renderer: str = "figma",
-) -> list[str]:
-    """Emit simple scalar properties from the visual dict, driven by the registry.
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit properties from the visual dict, driven by the registry.
 
-    Iterates registry entries that have a string template in their emit dict
-    for the given renderer. Skips complex properties (emit=None) and properties
-    not present in the visual dict.
+    Three emit categories:
+    - HANDLER sentinel → dispatch to _FIGMA_HANDLERS[figma_name]
+    - String template → type-aware formatting via format_js_value
+    - Empty/missing emit dict → deferred, skip
 
-    Template placeholders: {var}, {value}, {figma_name}
+    Returns (lines, token_refs).
     """
-    from dd.property_registry import PROPERTIES
+    from dd.property_registry import PROPERTIES, HANDLER
+
+    _register_figma_handlers()
 
     lines: list[str] = []
+    refs: list[tuple[str, str, str]] = []
+
     for prop in PROPERTIES:
-        template = prop.emit.get(renderer)
-        if template is None:
-            continue
-        if not isinstance(template, str):
+        spec = prop.emit.get(renderer)
+        if spec is None:
             continue
 
-        figma_key = prop.figma_name
-        value = visual.get(figma_key)
+        value = visual.get(prop.figma_name)
         if value is None:
             continue
 
-        line = template.format(var=var, value=value, figma_name=figma_key)
-        lines.append(line)
+        if spec is HANDLER:
+            handler = _FIGMA_HANDLERS.get(prop.figma_name)
+            if handler:
+                out_lines, out_refs = handler(var, eid, value, tokens)
+                lines.extend(out_lines)
+                refs.extend(out_refs)
+        elif isinstance(spec, str):
+            formatted = format_js_value(value, prop.value_type)
+            line = spec.format(var=var, value=formatted, figma_name=prop.figma_name)
+            lines.append(line)
 
-    return lines
+    return lines, refs
 
 
 _DIRECTION_MAP = {"horizontal": "HORIZONTAL", "vertical": "VERTICAL"}
@@ -1028,52 +1087,14 @@ def _emit_layout(
 def _emit_visual(
     var: str, eid: str, visual: dict[str, Any], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma JS for visual properties (fills, strokes, effects, radius, opacity)."""
-    lines: list[str] = []
-    refs: list[tuple[str, str, str]] = []
+    """Emit Figma JS for all visual properties, driven by the registry.
 
-    fills = visual.get("fills", [])
-    if fills:
-        fill_lines, fill_refs = _emit_fills(var, eid, fills, tokens)
-        lines.extend(fill_lines)
-        refs.extend(fill_refs)
-
-    strokes = visual.get("strokes", [])
-    if strokes:
-        stroke_lines, stroke_refs = _emit_strokes(var, eid, strokes, tokens)
-        lines.extend(stroke_lines)
-        refs.extend(stroke_refs)
-
-    effects = visual.get("effects", [])
-    if effects:
-        effect_lines, effect_refs = _emit_effects(var, eid, effects, tokens)
-        lines.extend(effect_lines)
-        refs.extend(effect_refs)
-
-    radius = visual.get("cornerRadius")
-    if radius is not None:
-        if isinstance(radius, (int, float)):
-            lines.append(f"{var}.cornerRadius = {int(radius)};")
-        elif isinstance(radius, dict):
-            _CORNER_MAP = {"tl": "topLeftRadius", "tr": "topRightRadius",
-                           "bl": "bottomLeftRadius", "br": "bottomRightRadius"}
-            for corner_key, figma_prop in _CORNER_MAP.items():
-                val = radius.get(corner_key, 0)
-                lines.append(f"{var}.{figma_prop} = {val};")
-
-    clips = visual.get("clipsContent")
-    if clips is True:
-        lines.append(f"{var}.clipsContent = true;")
-    elif clips is False:
-        lines.append(f"{var}.clipsContent = false;")
-
-    lines.extend(emit_from_registry(var, visual, renderer="figma"))
-
-    # Constraints are NOT emitted here — they must be set AFTER position
-    # in the post-appendChild block. Constraints like "CENTER" auto-calculate
-    # position, so they must come after explicit x/y is set.
-
-    return (lines, refs)
+    Delegates entirely to emit_from_registry which dispatches HANDLER
+    properties (fills, strokes, effects, cornerRadius, clipsContent) to
+    their handler functions and formats template properties via
+    format_js_value.
+    """
+    return emit_from_registry(var, eid, visual, tokens, renderer="figma")
 
 
 # IR gradient type → Figma Plugin API type
