@@ -14,7 +14,7 @@ from dd.generate import (
     generate_figma_script,
     generate_screen,
     normalize_font_style,
-    hex_to_figma_rgb,
+    hex_to_figma_rgba,
     resolve_style_value,
 )
 
@@ -23,29 +23,31 @@ from dd.generate import (
 # ---------------------------------------------------------------------------
 
 class TestHexToFigmaRgb:
-    """Verify hex color → Figma RGB {r,g,b} conversion."""
+    """Verify hex color → Figma RGBA {r,g,b,a} conversion."""
 
     def test_black(self):
-        assert hex_to_figma_rgb("#000000") == {"r": 0.0, "g": 0.0, "b": 0.0}
+        assert hex_to_figma_rgba("#000000") == {"r": 0.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
     def test_white(self):
-        assert hex_to_figma_rgb("#FFFFFF") == {"r": 1.0, "g": 1.0, "b": 1.0}
+        assert hex_to_figma_rgba("#FFFFFF") == {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
 
     def test_red(self):
-        assert hex_to_figma_rgb("#FF0000") == {"r": 1.0, "g": 0.0, "b": 0.0}
+        assert hex_to_figma_rgba("#FF0000") == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
     def test_mixed(self):
-        result = hex_to_figma_rgb("#80C040")
+        result = hex_to_figma_rgba("#80C040")
         assert abs(result["r"] - 0.502) < 0.01
         assert abs(result["g"] - 0.7529) < 0.01
         assert abs(result["b"] - 0.2510) < 0.01
+        assert result["a"] == 1.0
 
     def test_lowercase(self):
-        assert hex_to_figma_rgb("#ff0000") == {"r": 1.0, "g": 0.0, "b": 0.0}
+        assert hex_to_figma_rgba("#ff0000") == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
 
-    def test_eight_digit_drops_alpha(self):
-        result = hex_to_figma_rgb("#FF000080")
-        assert result == {"r": 1.0, "g": 0.0, "b": 0.0}
+    def test_eight_digit_preserves_alpha(self):
+        result = hex_to_figma_rgba("#FF000080")
+        assert result["r"] == 1.0
+        assert result["a"] == round(128 / 255.0, 4)
 
 
 class TestResolveStyleValue:
@@ -2272,6 +2274,89 @@ class TestFillTypeCoverage:
         )
 
 
+class TestResolveLayoutSizing:
+    """Verify the pure sizing resolution function."""
+
+    def test_db_value_takes_priority(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={}, db_sizing_h="FILL", db_sizing_v="HUG",
+            text_auto_resize=None, is_text=False, etype="container",
+        )
+        assert h == "FILL"
+        assert v == "HUG"
+
+    def test_text_width_and_height_gives_hug(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize="WIDTH_AND_HEIGHT", is_text=True, etype="text",
+        )
+        assert h == "HUG"
+        assert v == "HUG"
+
+    def test_text_height_gives_fill_h_hug_v(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize="HEIGHT", is_text=True, etype="text",
+        )
+        assert h == "FILL"
+        assert v == "HUG"
+
+    def test_text_none_auto_resize_uses_pixel_sizing(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 66, "height": 21}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize="NONE", is_text=True, etype="text",
+        )
+        assert h == "FIXED"
+        assert v == "FIXED"
+
+    def test_ir_string_sizing_maps(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": "fill", "height": "hug"}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize=None, is_text=False, etype="container",
+        )
+        assert h == "FILL"
+        assert v == "HUG"
+
+    def test_pixel_sizing_gives_fixed(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize=None, is_text=False, etype="container",
+        )
+        assert h == "FIXED"
+        assert v == "FIXED"
+
+    def test_fill_width_type_gives_fill(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize=None, is_text=False, etype="card",
+        )
+        assert h == "FILL"
+
+    def test_text_without_auto_resize_gets_fill(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize=None, is_text=True, etype="text",
+        )
+        assert h == "FILL"
+
+    def test_db_overrides_text_reconciliation(self):
+        from dd.generate import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={}, db_sizing_h="FIXED", db_sizing_v="FIXED",
+            text_auto_resize="WIDTH_AND_HEIGHT", is_text=True, etype="text",
+        )
+        assert h == "FIXED"
+        assert v == "FIXED"
+
+
 class TestOverrideDecomposition:
     """Verify override decomposition at query time."""
 
@@ -2418,6 +2503,59 @@ class TestOverrideEmissionRegistryDriven:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "1334:10837" in script
         assert "fills" in script
+
+
+class TestHexToFigmaRgba:
+    """Verify hex_to_figma_rgba preserves alpha channel."""
+
+    def test_6_digit_hex(self):
+        from dd.generate import hex_to_figma_rgba
+        result = hex_to_figma_rgba("#FF0000")
+        assert result == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
+
+    def test_8_digit_hex_opaque(self):
+        from dd.generate import hex_to_figma_rgba
+        result = hex_to_figma_rgba("#FF0000FF")
+        assert result == {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}
+
+    def test_8_digit_hex_transparent(self):
+        from dd.generate import hex_to_figma_rgba
+        result = hex_to_figma_rgba("#00000000")
+        assert result == {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0}
+
+    def test_8_digit_hex_semi_transparent(self):
+        from dd.generate import hex_to_figma_rgba
+        result = hex_to_figma_rgba("#00000080")
+        assert result["a"] == round(128 / 255.0, 4)
+
+    def test_gradient_stop_alpha_emitted(self):
+        from dd.generate import _emit_fills
+        fills = [{
+            "type": "gradient-linear",
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#00000000", "position": 1.0},
+            ],
+        }]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        js = lines[0]
+        assert "a:0.0" in js or "a:0" in js
+
+    def test_shadow_color_alpha_emitted(self):
+        from dd.generate import _emit_effects
+        effects = [{
+            "type": "drop-shadow",
+            "color": "#00000040",
+            "offset": {"x": 0, "y": 4},
+            "blur": 8,
+            "spread": 0,
+        }]
+        lines, _ = _emit_effects("v", "e", effects, {})
+        assert len(lines) == 1
+        js = lines[0]
+        assert "a:0.251" in js or "a:0.25" in js
 
 
 class TestEmitMissingVisualProperties:

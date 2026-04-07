@@ -60,16 +60,17 @@ _WEIGHT_TO_STYLE = {
 # Pure helpers
 # ---------------------------------------------------------------------------
 
-def hex_to_figma_rgb(hex_str: str) -> dict[str, float]:
-    """Convert hex color string to Figma RGB dict {r, g, b} (0.0-1.0).
+def hex_to_figma_rgba(hex_str: str) -> dict[str, float]:
+    """Convert hex color string to Figma RGBA dict {r, g, b, a} (0.0-1.0).
 
-    Handles 6-digit (#FF0000) and 8-digit (#FF000080) hex. Alpha is dropped.
+    Handles 6-digit (#FF0000 → a=1.0) and 8-digit (#FF000080 → a from last 2 digits).
     """
     h = hex_str.lstrip("#")
     r = int(h[0:2], 16) / 255.0
     g = int(h[2:4], 16) / 255.0
     b = int(h[4:6], 16) / 255.0
-    return {"r": round(r, 4), "g": round(g, 4), "b": round(b, 4)}
+    a = int(h[6:8], 16) / 255.0 if len(h) >= 8 else 1.0
+    return {"r": round(r, 4), "g": round(g, 4), "b": round(b, 4), "a": round(a, 4)}
 
 
 def resolve_style_value(
@@ -508,6 +509,73 @@ def emit_from_registry(
     return lines, refs
 
 
+# textAutoResize → (default layoutSizingH, default layoutSizingV)
+# None means "don't override — fall through to IR/heuristic sizing"
+_TEXT_AUTO_RESIZE_SIZING: dict[str, tuple[str | None, str | None]] = {
+    "WIDTH_AND_HEIGHT": ("HUG", "HUG"),
+    "HEIGHT":           ("FILL", "HUG"),
+    "NONE":             (None, None),
+    "TRUNCATE":         (None, None),
+}
+
+
+def _resolve_layout_sizing(
+    elem_sizing: dict[str, Any],
+    db_sizing_h: str | None,
+    db_sizing_v: str | None,
+    text_auto_resize: str | None,
+    is_text: bool,
+    etype: str,
+) -> tuple[str | None, str | None]:
+    """Determine layoutSizing for an auto-layout child.
+
+    Pure function — no side effects, no DB lookups, no JS emission.
+    Priority per axis: DB > text reconciliation > IR sizing > type heuristic.
+    Returns (horizontal, vertical) sizing strings, or None to skip.
+    """
+    h = _resolve_one_axis(
+        db_value=db_sizing_h,
+        text_override=_TEXT_AUTO_RESIZE_SIZING.get(text_auto_resize, (None, None))[0] if text_auto_resize else None,
+        ir_value=elem_sizing.get("width"),
+        is_text=is_text,
+        etype=etype,
+        is_horizontal=True,
+    )
+    v = _resolve_one_axis(
+        db_value=db_sizing_v,
+        text_override=_TEXT_AUTO_RESIZE_SIZING.get(text_auto_resize, (None, None))[1] if text_auto_resize else None,
+        ir_value=elem_sizing.get("height"),
+        is_text=is_text,
+        etype=etype,
+        is_horizontal=False,
+    )
+    return h, v
+
+
+def _resolve_one_axis(
+    db_value: str | None,
+    text_override: str | None,
+    ir_value: Any,
+    is_text: bool,
+    etype: str,
+    is_horizontal: bool,
+) -> str | None:
+    """Resolve layoutSizing for one axis. Returns Figma enum or None."""
+    if db_value:
+        return db_value
+    if text_override:
+        return text_override
+    if isinstance(ir_value, str):
+        return _SIZING_MAP.get(ir_value)
+    if isinstance(ir_value, (int, float)):
+        return "FIXED"
+    if is_text and is_horizontal:
+        return "FILL"
+    if is_horizontal and etype in _FILL_WIDTH_TYPES:
+        return "FILL"
+    return None
+
+
 _DIRECTION_MAP = {"horizontal": "HORIZONTAL", "vertical": "VERTICAL"}
 
 _SIZING_MAP = {"fill": "FILL", "hug": "HUG", "fixed": "FIXED"}
@@ -870,38 +938,24 @@ def generate_figma_script(
             parent_is_autolayout = parent_direction in ("horizontal", "vertical")
             if parent_is_autolayout:
                 elem_sizing = element.get("layout", {}).get("sizing", {})
-                wants_fill = elem_sizing.get("width") == "fill"
-                # Read layout sizing from DB when available (authoritative source)
                 db_sizing_h = None
                 db_sizing_v = None
+                text_auto_resize = None
                 if db_visuals is not None:
                     nid = spec.get("_node_id_map", {}).get(eid)
                     if nid:
                         nv = db_visuals.get(nid, {})
                         db_sizing_h = nv.get("layout_sizing_h")
                         db_sizing_v = nv.get("layout_sizing_v")
-                # Horizontal sizing: DB > IR sizing dict > heuristic fallback
-                if db_sizing_h:
-                    lines.append(f'{var}.layoutSizingHorizontal = "{db_sizing_h}";')
-                elif isinstance(elem_sizing.get("width"), str):
-                    mapped = _SIZING_MAP.get(elem_sizing["width"])
-                    if mapped:
-                        lines.append(f'{var}.layoutSizingHorizontal = "{mapped}";')
-                elif isinstance(elem_sizing.get("width"), (int, float)):
-                    lines.append(f'{var}.layoutSizingHorizontal = "FIXED";')
-                elif is_text and eid not in mode1_eids:
-                    lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
-                elif etype in _FILL_WIDTH_TYPES or wants_fill:
-                    lines.append(f'{var}.layoutSizingHorizontal = "FILL";')
-                # Vertical sizing: DB > IR sizing dict
-                if db_sizing_v:
-                    lines.append(f'{var}.layoutSizingVertical = "{db_sizing_v}";')
-                elif isinstance(elem_sizing.get("height"), str):
-                    mapped = _SIZING_MAP.get(elem_sizing["height"])
-                    if mapped:
-                        lines.append(f'{var}.layoutSizingVertical = "{mapped}";')
-                elif isinstance(elem_sizing.get("height"), (int, float)):
-                    lines.append(f'{var}.layoutSizingVertical = "FIXED";')
+                        text_auto_resize = nv.get("text_auto_resize")
+                sizing_h, sizing_v = _resolve_layout_sizing(
+                    elem_sizing, db_sizing_h, db_sizing_v,
+                    text_auto_resize, is_text, etype,
+                )
+                if sizing_h:
+                    lines.append(f'{var}.layoutSizingHorizontal = "{sizing_h}";')
+                if sizing_v:
+                    lines.append(f'{var}.layoutSizingVertical = "{sizing_v}";')
             else:
                 # Position deferred — Figma recalculates position when
                 # children are added to HUG frames with CENTER constraints.
@@ -1109,7 +1163,7 @@ def _emit_fills(
             color_val = fill.get("color", "")
             resolved, token_name = resolve_style_value(color_val, tokens)
             if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-                rgb = hex_to_figma_rgb(resolved)
+                rgb = hex_to_figma_rgba(resolved)
                 paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
                 opacity = fill.get("opacity")
                 if opacity is not None and opacity < 1.0:
@@ -1129,9 +1183,9 @@ def _emit_fills(
                 color_val = stop.get("color", "#000000")
                 resolved, token_name = resolve_style_value(color_val, tokens)
                 if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-                    rgb = hex_to_figma_rgb(resolved)
+                    rgb = hex_to_figma_rgba(resolved)
                     stop_strs.append(
-                        f'{{color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:1}}, position: {stop.get("position", 0)}}}'
+                        f'{{color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:{rgb["a"]}}}, position: {stop.get("position", 0)}}}'
                     )
                 if token_name:
                     refs.append((eid, f"fill.{i}.gradient.stop.{j}.color", token_name))
@@ -1167,7 +1221,7 @@ def _emit_strokes(
         color_val = stroke.get("color", "")
         resolved, token_name = resolve_style_value(color_val, tokens)
         if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-            rgb = hex_to_figma_rgb(resolved)
+            rgb = hex_to_figma_rgba(resolved)
             paints.append(f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}')
         if token_name:
             refs.append((eid, f"stroke.{i}.color", token_name))
@@ -1201,10 +1255,10 @@ def _emit_effects(
             figma_type = "DROP_SHADOW" if effect_type == "drop-shadow" else "INNER_SHADOW"
 
             if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-                rgb = hex_to_figma_rgb(resolved)
+                rgb = hex_to_figma_rgba(resolved)
                 effect_objs.append(
                     f'{{type: "{figma_type}", visible: true, blendMode: "NORMAL", '
-                    f'color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:1}}, '
+                    f'color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:{rgb["a"]}}}, '
                     f'offset: {{x:{offset["x"]},y:{offset["y"]}}}, '
                     f'radius: {blur}, spread: {spread}}}'
                 )
