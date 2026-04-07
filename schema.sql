@@ -554,6 +554,7 @@ CREATE INDEX idx_nodes_type ON nodes(node_type);
 CREATE INDEX idx_nodes_semantic ON nodes(screen_id, is_semantic) WHERE is_semantic = 1;
 CREATE INDEX idx_nodes_component ON nodes(component_id) WHERE component_id IS NOT NULL;
 CREATE INDEX idx_nodes_path ON nodes(path);                    -- materialized path lookups
+CREATE INDEX idx_nodes_figma_node_id ON nodes(figma_node_id);  -- supplement extraction lookups
 
 -- Binding lookups (composite indexes for common query patterns)
 CREATE INDEX idx_bindings_token ON node_token_bindings(token_id) WHERE token_id IS NOT NULL;

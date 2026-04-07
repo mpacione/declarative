@@ -73,16 +73,16 @@ All 17 properties that were previously extracted but not emitted are now emitted
 
 The fix has two layers: (1) `build_visual_from_db` now passes through all 17 properties, (2) `_emit_visual` delegates to `emit_from_registry()` which reads emit patterns from the property registry. The structural test in `tests/test_property_registry.py` ensures no future property can be added without an emit pattern.
 
-### Gradient Fills — Partially Resolved
+### Gradient Fills — Mostly Resolved (Session 3)
 
-The emit code handles gradients, and supplement extraction captures `gradientTransform`. However:
-- 2,338 nodes now have `gradientTransform` in the DB (after supplement re-run)
-- 29 screens failed supplement extraction (complex screens hitting Plugin API limits)
-- Gradient fills on those 29 screens remain without `gradientTransform`
+Full supplement re-extraction via PROXY_EXECUTE (204/204 screens, 0 failures):
+- 2,784 nodes now have `gradientTransform` (up from 2,340)
+- Only 234 gradient fills remain without gradientTransform (across 3 screens)
+- Remaining gaps are likely inherited fills from component instances where the Plugin API doesn't expose gradientTransform on the override
 
-### textAutoResize — Extraction Gap
+### textAutoResize — Resolved (Session 3)
 
-Supplement extraction now captures `textAutoResize` from Plugin API. But the DB has not been fully re-extracted — most TEXT nodes still have NULL. Requires supplement re-run.
+Full supplement re-extraction captured textAutoResize for 12,114 of 13,279 TEXT nodes (91% coverage, up from 1). The remaining 1,165 are likely inherited TEXT nodes inside component instances.
 
 ## Table-Driven Emission — COMPLETED (Session 3)
 
