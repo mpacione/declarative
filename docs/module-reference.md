@@ -322,18 +322,20 @@ Renderer-agnostic visual dict builder and layout sizing resolution. Any renderer
 | `build_visual_from_db(node_visual)` | Registry-driven: maps db_column → figma_name, applies `_apply_db_transform` (int→bool, JSON parse). Produces renderer-agnostic visual dict (hex colors, numeric weights, radians). Populates `_token_refs` sidecar from bindings via `token_binding_path`. |
 | `_apply_db_transform(value, prop)` | Universal transforms only — int→bool, JSON string parse. No renderer-specific transforms. |
 | `resolve_style_value(value, tokens)` | Resolve token references (`"{color.primary}"` → hex value). |
-| `_resolve_layout_sizing(...)` | Pure function: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING`) > IR sizing > type heuristic. Returns semantic lowercase ("fill", "hug", "fixed"). |
+| `_resolve_layout_sizing(...)` | Pure function: DB > text reconciliation (`_TEXT_AUTO_RESIZE_SIZING`) > IR sizing > platform default (FIXED). No heuristic inference. Returns semantic lowercase ("fill", "hug", "fixed"). Ground-truth sizing from DB extraction (79,833 nodes). |
 
 ### dd/renderers/figma.py — Figma Plugin API Renderer
 Generates Figma Plugin API JavaScript. All platform-specific transforms live here.
 
 **Key patterns:**
-- **Progressive fallback**: DB visuals → IR layout → heuristic fallback for every property
-- **Deferred positioning**: position + constraints set after all appendChild calls
+- **Three-phase rendering**: Materialize (create nodes, intrinsic properties) → Compose (appendChild, layoutSizing) → Hydrate (text characters, position/constraints). Each phase has single responsibility. Eliminates Figma Plugin API ordering bugs structurally.
+- **Progressive fallback**: DB visuals → IR layout → platform default for every property
+- **layoutSizing at lowering**: Emitted post-appendChild when parent context is known. Never during frame creation. IR stores sizing intent unconditionally.
 - **Default clearing**: fills=[], clipsContent=false to override Figma createFrame() defaults
 - **42 override types**: Decomposed at query time into `{target, property, value}`. `_emit_override_op` uses `format_js_value` for generic properties.
 - **Vector-aware skip**: VECTOR/BOOLEAN_OPERATION nodes check `_asset_refs` — render with `createVector()` + `vectorPaths` if asset data present, skip if not
 - **IMAGE fill emission**: `imageHash` + `scaleMode` paint entries for raster assets
+- **Font style ground-truth**: `db_font_style` from Plugin API used directly, normalized per family via bidirectional `normalize_font_style`
 - **Rotation sign**: REST API radians → Plugin API degrees with sign negation (`-math.degrees(value)`)
 
 | Function | Purpose |

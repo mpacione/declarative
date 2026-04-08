@@ -916,6 +916,135 @@ class TestUnclassifiedParentWiring:
         assert len(root["children"]) == 1
 
 
+class TestDBParentChainTreeWiring:
+    """Tree structure always uses DB parent_id, never SCI parent_instance_id.
+
+    SCI parent_instance_id can skip intermediate unclassified INSTANCE nodes,
+    flattening the hierarchy. DB parent_id is ground truth from Figma.
+    Separating concerns (tree from DB, classification from SCI) eliminates
+    an entire class of bugs. See project_session8_plan.md.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        """Model the Frame 427 keyboard bug: classified children with SCI
+        parent_instance_id pointing to a distant ancestor, skipping over
+        intermediate unclassified INSTANCE nodes."""
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'iPad', 1024, 1366)"
+        )
+        # Tree: iPad frame → keyboard (unclassified INSTANCE) → row (unclassified FRAME) → key (classified)
+        nodes = [
+            # iPad frame (root, depth 0)
+            (100, 1, "ipad", "iPad Pro", "FRAME", 0, 0, 0, 0, 1024, 1366, None, None, None),
+            # Keyboard container (unclassified INSTANCE, depth 1)
+            (101, 1, "kb", "ios/keyboard-ipad", "INSTANCE", 1, 0, 0, 1000, 1024, 366, "VERTICAL", 0, 100),
+            # Keyboard row (unclassified FRAME, depth 2)
+            (102, 1, "row1", "keyboard-row-1", "FRAME", 2, 0, 0, 1000, 1024, 48, "HORIZONTAL", 4, 101),
+            # Key buttons (classified INSTANCEs, depth 3) — DB parent = row, SCI parent = iPad
+            (103, 1, "k1", "key/Q", "INSTANCE", 3, 0, 0, 1000, 44, 48, None, None, 102),
+            (104, 1, "k2", "key/W", "INSTANCE", 3, 1, 48, 1000, 44, 48, None, None, 102),
+            (105, 1, "k3", "key/E", "INSTANCE", 3, 2, 96, 1000, 44, 48, None, None, 102),
+        ]
+        conn.executemany(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, layout_mode, item_spacing, parent_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            nodes,
+        )
+        # Only classify the key buttons — keyboard and row are unclassified
+        ipad_sci = conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source, parent_instance_id) "
+            "VALUES (1, 100, 'container', 1.0, 'formal', NULL)"
+        ).lastrowid
+        # Keys classified with SCI parent_instance_id pointing to iPad (skipping keyboard+row)
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source, parent_instance_id) "
+            "VALUES (1, 103, 'button', 1.0, 'formal', ?)",
+            (ipad_sci,),
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source, parent_instance_id) "
+            "VALUES (1, 104, 'button', 1.0, 'formal', ?)",
+            (ipad_sci,),
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, classification_source, parent_instance_id) "
+            "VALUES (1, 105, 'button', 1.0, 'formal', ?)",
+            (ipad_sci,),
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_keys_are_children_of_row_not_ipad(self, db):
+        """Keys must be children of keyboard row (DB parent_id=102), not iPad frame.
+
+        Before this fix, SCI parent_instance_id would wire keys directly under
+        iPad, skipping the keyboard container and row — losing auto-layout context.
+        """
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        row_eid = next(eid for eid, nid in node_id_map.items() if nid == 102)
+        row_el = spec["elements"][row_eid]
+
+        assert "children" in row_el
+        key_nids = {node_id_map[c] for c in row_el["children"]}
+        assert key_nids == {103, 104, 105}
+
+    def test_keyboard_contains_row(self, db):
+        """Keyboard INSTANCE contains row FRAME via DB parent_id."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        kb_eid = next(eid for eid, nid in node_id_map.items() if nid == 101)
+        kb_el = spec["elements"][kb_eid]
+
+        assert "children" in kb_el
+        child_nids = {node_id_map[c] for c in kb_el["children"]}
+        assert 102 in child_nids
+
+    def test_row_preserves_autolayout(self, db):
+        """Keyboard row's auto-layout (HORIZONTAL, gap=4) is preserved in tree."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        row_eid = next(eid for eid, nid in node_id_map.items() if nid == 102)
+        row_el = spec["elements"][row_eid]
+
+        assert row_el["layout"]["direction"] == "horizontal"
+        assert row_el["layout"]["gap"] == 4
+
+    def test_ipad_root_has_keyboard_not_keys(self, db):
+        """iPad frame's direct child should be the keyboard, not individual keys."""
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_id_map = spec["_node_id_map"]
+
+        ipad_eid = next(eid for eid, nid in node_id_map.items() if nid == 100)
+        ipad_el = spec["elements"][ipad_eid]
+
+        assert "children" in ipad_el
+        child_nids = {node_id_map[c] for c in ipad_el["children"]}
+        # iPad should have keyboard (101) as child, NOT keys (103, 104, 105)
+        assert 101 in child_nids
+        assert 103 not in child_nids
+        assert 104 not in child_nids
+        assert 105 not in child_nids
+
+
 class TestGenerateIR:
     """Verify generate_ir() end-to-end wrapper."""
 

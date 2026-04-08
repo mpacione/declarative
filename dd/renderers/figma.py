@@ -121,14 +121,19 @@ def normalize_font_style(family: str, style: str) -> str:
     - Inter: "Semi Bold" (space)
     - SF Pro Text/Display/Pro: "Semibold" (no space)
     - Baskerville: "SemiBold" (camelCase)
+
+    Handles both directions: weight-derived "Semi Bold" → family form,
+    and DB-extracted "SemiBold" (from a different family) → target form.
     """
-    if "Semi Bold" not in style:
+    # Canonicalize all semibold variants to "Semi Bold" first
+    canonical = style.replace("SemiBold", "Semi Bold").replace("Semibold", "Semi Bold")
+    if "Semi Bold" not in canonical:
         return style
     if family in _SEMIBOLD_NO_SPACE:
-        return style.replace("Semi Bold", "Semibold")
+        return canonical.replace("Semi Bold", "Semibold")
     if family in _SEMIBOLD_CAMEL:
-        return style.replace("Semi Bold", "SemiBold")
-    return style
+        return canonical.replace("Semi Bold", "SemiBold")
+    return canonical
 
 
 def collect_fonts(
@@ -184,11 +189,10 @@ def collect_fonts(
             resolved_weight, _ = resolve_style_value(weight, tokens)
             weight = resolved_weight
 
-        figma_style = normalize_font_style(family, font_weight_to_style(weight))
-
-        if db_font_style and db_font_style != "Regular":
-            if "Italic" not in figma_style and "Oblique" not in figma_style:
-                figma_style = f"{figma_style} {db_font_style}"
+        if db_font_style:
+            figma_style = normalize_font_style(family, db_font_style)
+        else:
+            figma_style = normalize_font_style(family, font_weight_to_style(weight))
 
         key = (family, figma_style)
         if key not in seen:
@@ -628,6 +632,25 @@ def generate_figma_script(
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
 
+    Uses three-phase rendering to eliminate Figma Plugin API ordering bugs:
+
+      Phase 1 (Materialize): Create all nodes, set intrinsic properties
+        (fills, strokes, effects, font, fontSize, resize for FIXED dims).
+        No appendChild — nodes exist independently.
+
+      Phase 2 (Compose): Wire tree (appendChild), set layoutSizing.
+        All nodes have dimensions, so auto-layout resolves correctly.
+        HUG parents compute width from FIXED children before FILL children
+        need to know their container width.
+
+      Phase 3 (Hydrate): Set text characters, position, constraints.
+        Text reflows at correct container widths. Position set after all
+        children are attached and sized.
+
+    This ordering eliminates the vertical text bug where FILL text children
+    appended to HUG parents before FIXED siblings establish width, causing
+    text to wrap at ~0px. See compiler-architecture.md.
+
     When page_name is provided, creates a new Figma page with that name
     and places the screen there instead of on the current page.
 
@@ -642,19 +665,14 @@ def generate_figma_script(
     walk_order = _walk_elements(spec)
     all_token_refs: list[tuple[str, str, str]] = []
 
-    lines: list[str] = []
+    preamble: list[str] = []
 
     # Always load Inter Regular — Figma's default font for createText()
     all_fonts = [("Inter", "Regular")] + [f for f in fonts if f != ("Inter", "Regular")]
     for family, style in all_fonts:
-        lines.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
+        preamble.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
 
-    lines.append("const M = {};")
-
-    # Position + constraints are deferred to after ALL children are appended.
-    # Figma recalculates position when children are added to HUG/auto-layout
-    # frames with CENTER constraints, so x/y must be set last.
-    deferred_lines: list[str] = []
+    preamble.append("const M = {};")
 
     # Pre-fetch all unique Figma node IDs needed for createInstance/swapComponent.
     # Batching into a single preamble avoids redundant async lookups (50→27 calls
@@ -674,16 +692,21 @@ def generate_figma_script(
             _collect_swap_targets_from_tree(vis.get("override_tree"), needed_node_ids)
 
     if needed_node_ids:
-        lines.append("// Pre-fetch component nodes (deduplicated)")
+        preamble.append("// Pre-fetch component nodes (deduplicated)")
         node_id_vars: dict[str, str] = {}
         for i, nid in enumerate(sorted(needed_node_ids)):
             var_name = f"_p{i}"
             node_id_vars[nid] = var_name
-            lines.append(f'const {var_name} = await figma.getNodeByIdAsync("{_escape_js(nid)}");')
+            preamble.append(f'const {var_name} = await figma.getNodeByIdAsync("{_escape_js(nid)}");')
     else:
         node_id_vars = {}
 
-    lines.append("")
+    preamble.append("")
+
+    # Three output phases
+    phase1_lines: list[str] = []  # Materialize: create nodes + intrinsic properties
+    phase2_lines: list[str] = []  # Compose: appendChild + layoutSizing
+    phase3_lines: list[str] = []  # Hydrate: text.characters + position + constraints
 
     var_map: dict[str, str] = {}
     mode1_eids: set = set()
@@ -692,6 +715,13 @@ def generate_figma_script(
     # Deferred GROUP creation: children are created first, then grouped.
     # Maps group_eid → {"parent_eid": str, "children_vars": [str], "element": dict}
     group_deferred: dict[str, dict] = {}
+    # Text characters collected for Phase 3
+    text_characters: list[tuple[str, str]] = []  # (var, escaped_text)
+
+    # -----------------------------------------------------------------------
+    # Phase 1: Materialize — create all nodes with intrinsic properties
+    # -----------------------------------------------------------------------
+    phase1_lines.append("// Phase 1: Materialize — create nodes, set intrinsic properties")
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
         # Skip descendants of Mode 1 elements (they come from the instance)
@@ -724,11 +754,11 @@ def generate_figma_script(
         if use_mode1:
             if component_figma_id:
                 node_expr = node_id_vars.get(component_figma_id, f'await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")')
-                lines.append(
+                phase1_lines.append(
                     f'const {var} = ({node_expr}).createInstance();'
                 )
             elif instance_figma_node_id:
-                lines.append(
+                phase1_lines.append(
                     f'const {var} = (await (await figma.getNodeByIdAsync("{_escape_js(instance_figma_node_id)}")).getMainComponentAsync()).createInstance();'
                 )
             else:
@@ -736,14 +766,16 @@ def generate_figma_script(
 
         if use_mode1:
             original_name = element.get("_original_name", eid)
-            lines.append(f'{var}.name = "{_escape_js(original_name)}";')
+            phase1_lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
             props = element.get("props", {})
             text_override = props.get("text", "")
             if text_override:
                 text_target = props.get("text_target")
                 find_expr = _build_text_finder(var, text_target)
-                lines.append(
+                # Mode 1 text overrides go to Phase 1 — the instance already
+                # has correct layout structure from the master component.
+                phase1_lines.append(
                     f'{{ const _t = {find_expr}; '
                     f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
                     f'_t.characters = "{_escape_js(text_override)}"; }} }}'
@@ -752,7 +784,7 @@ def generate_figma_script(
             subtitle_override = props.get("subtitle", "")
             if subtitle_override:
                 sub_find = _build_text_finder(var, None, subtitle=True)
-                lines.append(
+                phase1_lines.append(
                     f'{{ const _t = {sub_find}; '
                     f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
                     f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
@@ -761,7 +793,7 @@ def generate_figma_script(
             hidden_children = raw_visual.get("hidden_children", []) if (db_visuals is not None and raw_visual) else []
             for hc in hidden_children:
                 hname = _escape_js(hc["name"])
-                lines.append(
+                phase1_lines.append(
                     f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
                     f"if (_h) _h.visible = false; }}"
                 )
@@ -771,7 +803,7 @@ def generate_figma_script(
             # happen before property overrides on swapped descendants.
             override_tree = raw_visual.get("override_tree") if (db_visuals is not None and raw_visual) else None
             if override_tree:
-                _emit_override_tree(override_tree, var, node_id_vars, lines, deferred_lines)
+                _emit_override_tree(override_tree, var, node_id_vars, phase1_lines, phase3_lines)
 
             # L0 visual properties on the instance itself (rotation, opacity).
             # These differ from the master's defaults but aren't captured as
@@ -779,16 +811,14 @@ def generate_figma_script(
             if db_visuals is not None and raw_visual:
                 inst_rotation = raw_visual.get("rotation")
                 if inst_rotation is not None and inst_rotation != 0:
-                    lines.append(f"{var}.rotation = {-math.degrees(inst_rotation)};")
+                    phase1_lines.append(f"{var}.rotation = {-math.degrees(inst_rotation)};")
                 inst_opacity = raw_visual.get("opacity")
                 if inst_opacity is not None and inst_opacity < 1.0:
-                    lines.append(f"{var}.opacity = {inst_opacity};")
+                    phase1_lines.append(f"{var}.opacity = {inst_opacity};")
 
             # Instance's own visibility (e.g., hidden keyboard overlay)
             if element.get("visible") is False:
-                lines.append(f"{var}.visible = false;")
-
-            # Position set after appendChild (see post-appendChild block below)
+                phase1_lines.append(f"{var}.visible = false;")
 
             mode1_eids.add(eid)
         else:
@@ -796,7 +826,7 @@ def generate_figma_script(
 
             # GROUP: defer creation — figma.group() requires children to exist first.
             # Children will be appended to the grandparent temporarily, then
-            # wrapped into a GROUP in the deferred section.
+            # wrapped into a GROUP in Phase 2.
             if etype == "group":
                 group_deferred[eid] = {
                     "parent_eid": parent_eid,
@@ -818,14 +848,14 @@ def generate_figma_script(
                     )
 
             if is_text:
-                lines.append(f"const {var} = figma.createText();")
+                phase1_lines.append(f"const {var} = figma.createText();")
             elif etype in _NODE_CREATE_MAP:
-                lines.append(f"const {var} = {_NODE_CREATE_MAP[etype]};")
+                phase1_lines.append(f"const {var} = {_NODE_CREATE_MAP[etype]};")
             else:
-                lines.append(f"const {var} = figma.createFrame();")
+                phase1_lines.append(f"const {var} = figma.createFrame();")
 
             original_name = element.get("_original_name", eid)
-            lines.append(f'{var}.name = "{_escape_js(original_name)}";')
+            phase1_lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
             if is_text:
                 text_resize = "WIDTH_AND_HEIGHT"
@@ -835,11 +865,11 @@ def generate_figma_script(
                     stored = text_visual.get("text_auto_resize")
                     if stored:
                         text_resize = stored
-                lines.append(f'{var}.textAutoResize = "{text_resize}";')
+                phase1_lines.append(f'{var}.textAutoResize = "{text_resize}";')
 
             layout = element.get("layout", {})
             layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
-            lines.extend(layout_lines)
+            phase1_lines.extend(layout_lines)
             all_token_refs.extend(layout_refs)
 
             if db_visuals is not None:
@@ -850,22 +880,30 @@ def generate_figma_script(
                 raw_visual = {}
                 visual = {}
             visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
-            lines.extend(visual_lines)
+            phase1_lines.extend(visual_lines)
             all_token_refs.extend(visual_refs)
 
             # Emit vector paths for asset-backed vector nodes
             if has_vector_asset:
-                _emit_vector_paths(var, raw_visual, lines)
+                _emit_vector_paths(var, raw_visual, phase1_lines)
 
             # Clear default fills on nodes that should be transparent.
             # All Figma creation calls (createFrame, createRectangle,
             # createEllipse, createVector, etc.) produce a default white fill.
             # If the DB has no visible fills, the original was transparent.
             if not is_text and not visual.get("fills"):
-                lines.append(f"{var}.fills = [];")
+                phase1_lines.append(f"{var}.fills = [];")
+
+            # Clear default clipsContent on frames. createFrame() defaults
+            # to clipsContent=true. When the DB has no value (NULL), emit
+            # clipsContent=false as the safer default — unexpected clipping
+            # is more visually destructive than missing clipping.
+            # Analogous to the default fills clearing above.
+            if not is_text and not visual.get("clipsContent"):
+                phase1_lines.append(f"{var}.clipsContent = false;")
 
             if element.get("visible") is False:
-                lines.append(f"{var}.visible = false;")
+                phase1_lines.append(f"{var}.visible = false;")
 
             style = element.get("style", {})
             if is_text:
@@ -883,16 +921,44 @@ def generate_figma_script(
                     or (raw_visual if raw_visual else None)
                     or {}
                 )
-                _emit_text_props(var, element, style, tokens, lines, db_font=db_font)
+                _emit_text_props(var, element, style, tokens, phase1_lines, db_font=db_font)
+
+                # Collect text characters for Phase 3 (Hydrate).
+                # Text content is set after appendChild so it reflows
+                # at the correct container width.
+                text_content = element.get("props", {}).get("text", "")
+                if text_content:
+                    text_characters.append((var, _escape_js(text_content)))
 
             composition = element.get("_composition")
             has_ir_children = bool(element.get("children"))
             if composition and not is_text and not has_ir_children:
-                _emit_composition_children(var, eid, composition, lines, idx * 100)
+                _emit_composition_children(var, eid, composition, phase1_lines, idx * 100)
 
             elem_direction = element.get("layout", {}).get("direction", "")
             if elem_direction == "absolute":
                 absolute_eids.add(eid)
+
+        phase1_lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
+        phase1_lines.append("")
+
+    # -----------------------------------------------------------------------
+    # Phase 2: Compose — wire tree (appendChild), set layoutSizing
+    # -----------------------------------------------------------------------
+    phase2_lines.append("")
+    phase2_lines.append("// Phase 2: Compose — wire tree, set layoutSizing")
+    phase2_lines.append("await new Promise(r => setTimeout(r, 0));")
+    phase2_lines.append("")
+
+    for _idx, (eid, element, parent_eid) in enumerate(walk_order):
+        if eid in skipped_eids or eid in group_deferred:
+            continue
+        if eid not in var_map:
+            continue
+
+        var = var_map[eid]
+        etype = element.get("type", "")
+        is_text = etype in _TEXT_TYPES
 
         # Resolve parent: if parent is a deferred GROUP, append to grandparent
         resolved_parent_eid = parent_eid
@@ -901,81 +967,86 @@ def generate_figma_script(
             group_deferred[resolved_parent_eid]["children_vars"].append(var)
             resolved_parent_eid = group_deferred[resolved_parent_eid]["parent_eid"]
 
-        if resolved_parent_eid is not None and resolved_parent_eid in var_map and resolved_parent_eid not in mode1_eids:
-            parent_var = var_map[resolved_parent_eid]
-            lines.append(f"{parent_var}.appendChild({var});")
-            parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
-            parent_is_autolayout = parent_direction in ("horizontal", "vertical")
-            if parent_is_autolayout:
-                elem_sizing = element.get("layout", {}).get("sizing", {})
-                db_sizing_h = None
-                db_sizing_v = None
-                text_auto_resize = None
-                if db_visuals is not None:
-                    nid = spec.get("_node_id_map", {}).get(eid)
-                    if nid:
-                        nv = db_visuals.get(nid, {})
-                        db_sizing_h = nv.get("layout_sizing_h")
-                        db_sizing_v = nv.get("layout_sizing_v")
-                        text_auto_resize = nv.get("text_auto_resize")
-                sizing_h, sizing_v = _resolve_layout_sizing(
-                    elem_sizing, db_sizing_h, db_sizing_v,
-                    text_auto_resize, is_text, etype,
-                    parent_is_autolayout=True,
-                )
-                if sizing_h:
-                    figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
-                    lines.append(f'{var}.layoutSizingHorizontal = "{figma_h}";')
-                if sizing_v:
-                    figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
-                    lines.append(f'{var}.layoutSizingVertical = "{figma_v}";')
-            else:
-                # Position deferred — Figma recalculates position when
-                # children are added to HUG frames with CENTER constraints.
-                # Position comes from the IR (parent-relative coordinates).
-                # DB stores absolute canvas coordinates — NOT usable directly.
-                # The IR converts absolute → parent-relative at build time
-                # (see compiler-architecture.md Section 4.1: Spatial Encoding).
-                position = element.get("layout", {}).get("position")
-                if position:
-                    deferred_lines.append(f"{var}.x = {position.get('x', 0)};")
-                    deferred_lines.append(f"{var}.y = {position.get('y', 0)};")
+        if resolved_parent_eid is None or resolved_parent_eid not in var_map or resolved_parent_eid in mode1_eids:
+            continue
 
-            # Constraints also deferred (after position)
+        parent_var = var_map[resolved_parent_eid]
+        phase2_lines.append(f"{parent_var}.appendChild({var});")
+        parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
+        parent_is_autolayout = parent_direction in ("horizontal", "vertical")
+        if parent_is_autolayout:
+            elem_sizing = element.get("layout", {}).get("sizing", {})
+            db_sizing_h = None
+            db_sizing_v = None
+            text_auto_resize = None
             if db_visuals is not None:
-                node_id = spec.get("_node_id_map", {}).get(eid)
-                constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
-                c_h = constraint_visual.get("constraint_h")
-                c_v = constraint_visual.get("constraint_v")
-                if c_h or c_v:
-                    parts = []
-                    if c_h:
-                        mapped = _CONSTRAINT_MAP.get(c_h, c_h)
-                        parts.append(f'horizontal: "{mapped}"')
-                    if c_v:
-                        mapped = _CONSTRAINT_MAP.get(c_v, c_v)
-                        parts.append(f'vertical: "{mapped}"')
-                    deferred_lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
+                nid = spec.get("_node_id_map", {}).get(eid)
+                if nid:
+                    nv = db_visuals.get(nid, {})
+                    db_sizing_h = nv.get("layout_sizing_h")
+                    db_sizing_v = nv.get("layout_sizing_v")
+                    text_auto_resize = nv.get("text_auto_resize")
+            sizing_h, sizing_v = _resolve_layout_sizing(
+                elem_sizing, db_sizing_h, db_sizing_v,
+                text_auto_resize, is_text, etype,
+            )
+            if sizing_h:
+                figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
+                phase2_lines.append(f'{var}.layoutSizingHorizontal = "{figma_h}";')
+            if sizing_v:
+                figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
+                phase2_lines.append(f'{var}.layoutSizingVertical = "{figma_v}";')
+        else:
+            # Non-auto-layout parent: use pixel dimensions for resize
+            # and position. layoutSizing is irrelevant here — the node's
+            # size comes from explicit dimensions, not parent negotiation.
+            elem_sizing = element.get("layout", {}).get("sizing", {})
+            pw = elem_sizing.get("widthPixels")
+            ph = elem_sizing.get("heightPixels")
+            if pw is not None and ph is not None:
+                phase3_lines.append(f"{var}.resize({int(pw)}, {int(ph)});")
+            elif pw is not None:
+                phase3_lines.append(f"{var}.resize({int(pw)}, {var}.height);")
+            elif ph is not None:
+                phase3_lines.append(f"{var}.resize({var}.width, {int(ph)});")
+            position = element.get("layout", {}).get("position")
+            if position:
+                phase3_lines.append(f"{var}.x = {position.get('x', 0)};")
+                phase3_lines.append(f"{var}.y = {position.get('y', 0)};")
 
-        lines.append(f'M["{_escape_js(eid)}"] = {var}.id;')
-        lines.append("")
+        # Constraints deferred to Phase 3 (after position)
+        if db_visuals is not None:
+            node_id = spec.get("_node_id_map", {}).get(eid)
+            constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
+            c_h = constraint_visual.get("constraint_h")
+            c_v = constraint_visual.get("constraint_v")
+            if c_h or c_v:
+                parts = []
+                if c_h:
+                    mapped = _CONSTRAINT_MAP.get(c_h, c_h)
+                    parts.append(f'horizontal: "{mapped}"')
+                if c_v:
+                    mapped = _CONSTRAINT_MAP.get(c_v, c_v)
+                    parts.append(f'vertical: "{mapped}"')
+                phase3_lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
 
+    # Root element → page
     if root_id in var_map:
         if page_name:
             escaped_name = _escape_js(page_name)
-            lines.append(
+            phase2_lines.append(
                 f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
             )
-            lines.append(f"if (!_page) {{ _page = figma.createPage(); _page.name = \"{escaped_name}\"; }}")
-            lines.append(f"_page.appendChild({var_map[root_id]});")
-            lines.append(f"await figma.setCurrentPageAsync(_page);")
+            phase2_lines.append(f"if (!_page) {{ _page = figma.createPage(); _page.name = \"{escaped_name}\"; }}")
+            phase2_lines.append(f"_page.appendChild({var_map[root_id]});")
+            phase2_lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
-            lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
+            phase2_lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
 
         if canvas_position is not None:
             cx, cy = canvas_position
-            lines.append(f"{var_map[root_id]}.x = {cx};")
-            lines.append(f"{var_map[root_id]}.y = {cy};")
+            phase2_lines.append(f"{var_map[root_id]}.x = {cx};")
+            phase2_lines.append(f"{var_map[root_id]}.y = {cy};")
 
     # Emit deferred GROUP creation — inner groups first (reverse BFS order)
     for group_eid in reversed(list(group_deferred)):
@@ -991,21 +1062,21 @@ def generate_figma_script(
 
         if children_vars:
             children_str = ", ".join(children_vars)
-            lines.append(f"const {gvar} = figma.group([{children_str}], {gp_var});")
+            phase2_lines.append(f"const {gvar} = figma.group([{children_str}], {gp_var});")
         else:
             # Empty group — create a frame as placeholder (can't group zero nodes)
-            lines.append(f"const {gvar} = figma.createFrame();")
-            lines.append(f"{gp_var}.appendChild({gvar});")
+            phase2_lines.append(f"const {gvar} = figma.createFrame();")
+            phase2_lines.append(f"{gp_var}.appendChild({gvar});")
 
-        lines.append(f'{gvar}.name = "{_escape_js(original_name)}";')
+        phase2_lines.append(f'{gvar}.name = "{_escape_js(original_name)}";')
         var_map[group_eid] = gvar
-        lines.append(f'M["{_escape_js(group_eid)}"] = {gvar}.id;')
+        phase2_lines.append(f'M["{_escape_js(group_eid)}"] = {gvar}.id;')
 
-        # Deferred position + constraints for GROUP (same as non-GROUP children)
+        # Group position + constraints deferred to Phase 3
         position = group_element.get("layout", {}).get("position")
         if position:
-            deferred_lines.append(f"{gvar}.x = {position.get('x', 0)};")
-            deferred_lines.append(f"{gvar}.y = {position.get('y', 0)};")
+            phase3_lines.append(f"{gvar}.x = {position.get('x', 0)};")
+            phase3_lines.append(f"{gvar}.y = {position.get('y', 0)};")
         if db_visuals is not None:
             node_id = spec.get("_node_id_map", {}).get(group_eid)
             constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
@@ -1019,20 +1090,35 @@ def generate_figma_script(
                 if c_v:
                     mapped = _CONSTRAINT_MAP.get(c_v, c_v)
                     parts.append(f'vertical: "{mapped}"')
-                deferred_lines.append(f"{gvar}.constraints = {{{', '.join(parts)}}};")
+                phase3_lines.append(f"{gvar}.constraints = {{{', '.join(parts)}}};")
 
-        lines.append("")
+        phase2_lines.append("")
 
-    # Emit deferred position + constraints (after all children are appended)
-    if deferred_lines:
+    # -----------------------------------------------------------------------
+    # Phase 3: Hydrate — dimensions, position, text content
+    # -----------------------------------------------------------------------
+    hydrate_ops: list[str] = []
+
+    # Resize + position first: non-auto-layout children get their pixel
+    # dimensions here. This must precede text characters because FILL text
+    # descendants need ancestor widths established before content is set.
+    # Without this ordering, textAutoResize=HEIGHT wraps at 0px width.
+    hydrate_ops.extend(phase3_lines)
+
+    # Text characters: set after resize so text reflows at correct width
+    for var, escaped_text in text_characters:
+        hydrate_ops.append(f'{var}.characters = "{escaped_text}";')
+
+    lines: list[str] = preamble + phase1_lines + phase2_lines
+
+    if hydrate_ops:
         lines.append("")
-        lines.append("// Yield to Figma's event loop before deferred positioning")
+        lines.append("// Phase 3: Hydrate — text content, position, constraints")
         lines.append("await new Promise(r => setTimeout(r, 0));")
         lines.append("")
-        lines.append("// Position + constraints (deferred until all children appended)")
         lines.append("try {")
-        for dl in deferred_lines:
-            lines.append(f"  {dl}")
+        for op in hydrate_ops:
+            lines.append(f"  {op}")
         lines.append('  M["__canary"] = "deferred_ok";')
         lines.append("} catch (_e) {")
         lines.append('  M["__canary"] = "deferred_error: " + _e.message;')
@@ -1109,30 +1195,19 @@ def _emit_layout(
                 refs.append((eid, f"padding.{side}", token_name))
 
     sizing = layout.get("sizing", {})
-    has_auto_layout = direction in ("horizontal", "vertical")
-    # Auto-layout containers CAN set their own layoutSizing before appendChild
-    # (they define their own auto-layout context). Non-auto-layout children
-    # (text, rectangles, non-layout frames) must defer to post-appendChild.
-    if has_auto_layout:
-        for axis, figma_axis in [("width", "Horizontal"), ("height", "Vertical")]:
-            val = sizing.get(axis)
-            if val is None:
-                continue
-            if isinstance(val, str):
-                mapped = _SIZING_MAP.get(val)
-                if mapped and mapped != "FILL":
-                    lines.append(f'{var}.layoutSizing{figma_axis} = "{mapped}";')
-            elif isinstance(val, (int, float)):
-                lines.append(f'{var}.layoutSizing{figma_axis} = "FIXED";')
+    # layoutSizing is NOT emitted here. It's a parent-context-dependent
+    # property (like CSS flex-grow) — only meaningful when the node's parent
+    # has auto-layout. The renderer emits it post-appendChild when parent
+    # context is known. See feedback_sizing_emit_at_lowering.md.
 
     w = sizing.get("width")
     h = sizing.get("height")
-    rw = int(w) if isinstance(w, (int, float)) else sizing.get("widthPixels")
-    rh = int(h) if isinstance(h, (int, float)) else sizing.get("heightPixels")
-    if rw is not None:
-        rw = int(rw)
-    if rh is not None:
-        rh = int(rh)
+    # Emit resize() for pixel dimensions. For semantic sizing (hug/fill),
+    # pixel dimensions are stored as widthPixels/heightPixels but NOT used
+    # for resize here — auto-layout frames derive size from content/parent.
+    # The post-appendChild path sets layoutSizing when parent context is known.
+    rw = int(w) if isinstance(w, (int, float)) else None
+    rh = int(h) if isinstance(h, (int, float)) else None
     if rw is not None and rh is not None:
         lines.append(f"{var}.resize({rw}, {rh});")
     elif rw is not None:
@@ -1395,12 +1470,11 @@ def _emit_text_props(
     weight = _resolve_text_value(
         style.get("fontWeight"), db_font.get("font_weight"), tokens,
     )
-    figma_style = normalize_font_style(family, font_weight_to_style(weight))
-
     db_font_style = db_font.get("font_style")
-    if db_font_style and db_font_style != "Regular":
-        if "Italic" not in figma_style and "Oblique" not in figma_style:
-            figma_style = f"{figma_style} {db_font_style}"
+    if db_font_style:
+        figma_style = normalize_font_style(family, db_font_style)
+    else:
+        figma_style = normalize_font_style(family, font_weight_to_style(weight))
 
     lines.append(f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
 
@@ -1410,9 +1484,10 @@ def _emit_text_props(
     if font_size is not None:
         lines.append(f"{var}.fontSize = {font_size};")
 
-    text = element.get("props", {}).get("text", "")
-    if text:
-        lines.append(f'{var}.characters = "{_escape_js(text)}";')
+    # Note: text .characters is NOT emitted here. It's set in Phase 3
+    # (Hydrate) after the node is appended to its container, so text
+    # reflows at the correct container width. See three-phase rendering
+    # in compiler-architecture.md.
 
     text_align_h = db_font.get("text_align")
     if text_align_h:

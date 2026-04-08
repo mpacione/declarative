@@ -218,6 +218,41 @@ See `docs/cross-platform-value-formats.md` for the complete reference table.
 
 The Figma renderer produces a **semantically equivalent design file** — not a flat photocopy of rectangles with hex colors, but a working Figma file with real components, live design token variables, proper naming, and correct hierarchy. It reads all IR levels via progressive fallback.
 
+#### Three-Phase Rendering
+
+The Figma Plugin API has implicit ordering constraints that require careful emit sequencing. Rather than scattering workarounds throughout a single-pass loop, the renderer uses three clean phases:
+
+```
+Phase 1: MATERIALIZE — Create every node, set intrinsic properties
+         (fills, strokes, effects, font, fontSize, cornerRadius,
+          dimensions via resize, textAutoResize)
+         Every node starts as a standalone entity with correct
+         intrinsic size. No tree wiring yet.
+
+Phase 2: COMPOSE — Wire the tree (appendChild), set layoutSizing.
+         Auto-layout resolves here because all nodes have
+         intrinsic dimensions as starting points. FIXED children
+         establish parent HUG widths before FILL children expand.
+
+Phase 3: HYDRATE — Two sub-steps in strict order:
+         (a) resize/position on non-auto-layout children
+             (establishes pixel dimensions for FILL descendants)
+         (b) text characters (loadFontAsync + characters)
+             (text reflows at correct container widths)
+         This ordering ensures FILL text descendants have
+         ancestor widths established before content is set.
+```
+
+**Why three phases?** Each phase has a single responsibility and the boundaries eliminate an entire class of Figma Plugin API ordering bugs:
+
+- `resize()` in Phase 1 gives every frame a starting dimension (no zero-width containers)
+- `appendChild` + `layoutSizing` in Phase 2 lets auto-layout resolve with all children present
+- Text in Phase 3 flows into containers with established widths (no vertical single-char wrapping)
+
+**Platform-specific by design.** A React renderer would only need Phase 1+2 (CSS reflows text automatically). A SwiftUI renderer might have its own phase structure. The IR doesn't change — each backend owns its emit ordering.
+
+#### Progressive Fallback per Node
+
 For each node, walking the L0 `parent_id` tree:
 
 1. **L2 — Token bindings**: For every property on the node, check if a token binding exists in `node_token_bindings`. If yes, the reproduced node gets a live Figma variable binding (not a dead hex value). This makes the reproduced file respond to theme changes, mode switching, and token updates — just like the original.
@@ -235,6 +270,18 @@ For each node, walking the L0 `parent_id` tree:
    - Sets `visible`, `clipsContent`, `rotation`, `constraints` from raw DB values
 
 4. **Apply visibility and overrides**: Hidden children, instance property overrides, blend modes.
+
+#### Architectural Principle: IR Stays Pure, Renderer Owns Platform Constraints
+
+The IR stores sizing intent (`fill`/`hug`/`fixed`) unconditionally on every node, along with pixel dimensions. `layoutSizing` is a parent-context-dependent property (like CSS `flex-grow`) — it only applies when the node's parent has auto-layout. The IR stores it as ground truth; the renderer decides **when** and **whether** to emit it based on parent context at composition time (Phase 2).
+
+This follows the universal pattern across LLVM (legalization), Flutter (constraints down, sizes up), Compose (`weight()` inert outside `Row`/`Column`), and CSS (`flex-grow` ignored without `display:flex`). Store intent on the node, resolve in parent context at emit time.
+
+#### Tree Structure: DB `parent_id` as Single Source of Truth
+
+The tree structure for rendering always comes from the DB `parent_id` chain — the exact node tree as extracted from Figma. The `screen_component_instances` (SCI) table provides **classification** (element type, component key) but never overrides tree structure. SCI `parent_instance_id` is used for classification context, not for parent-child wiring.
+
+This separation prevents skip-level wiring bugs where SCI parent chains bypass intermediate INSTANCE nodes that lack SCI entries (e.g., keyboard containers), causing their children to be flattened under the wrong parent.
 
 ### Override Tree
 
@@ -300,18 +347,21 @@ If we cannot faithfully reproduce a screen from our own database, the data is un
 
 Extract screen 184 from the Dank file into the DB. Generate Figma Plugin API JavaScript from the DB. Execute it in Figma. The result must be visually indistinguishable from the original at 1:1 zoom.
 
-### Current Status (2026-04-06)
+### Current Status (2026-04-08)
 
-Round-trip structurally proven on 4 screens (184, 185, 188, 238). The renderer now implements progressive fallback correctly:
+Round-trip structurally proven on 11+ screens (iPhone + iPad + multi-screen composites). The renderer implements progressive fallback with three-phase emit architecture:
 
-- **L0 → L1 → L2 fallback**: All 203+ nodes enter the IR via LEFT JOIN. L1/L2 enrich as annotations, never filter.
+- **L0 → L1 → L2 fallback**: All nodes enter the IR via LEFT JOIN. L1/L2 enrich as annotations, never filter.
 - **Mode 1 instances**: Real component instances via `getNodeByIdAsync().createInstance()` with full override application (17 override types, 69,866 total overrides across all screens)
 - **Mode 2 frames**: Created from L0 properties with registry-driven visual emission
-- **Property registry** (`dd/property_registry.py`): Single source of truth for 48 Figma properties. Extraction, query (51 columns), and renderer all reference it — prevents the "extract but forget to emit" gap pattern.
+- **Property registry** (`dd/property_registry.py`): Single source of truth for 48 Figma properties. Extraction, query (51 columns), and renderer all reference it.
 - **Override types captured**: BOOLEAN (visibility), FILLS, STROKES, EFFECTS, CORNER_RADIUS, INSTANCE_SWAP, WIDTH, HEIGHT, OPACITY, LAYOUT_SIZING_H, ITEM_SPACING, PADDING_LEFT/RIGHT, PRIMARY_ALIGN, STROKE_WEIGHT, STROKE_ALIGN, TEXT
 - **Default clearing**: `fills=[]` and `clipsContent=false` explicitly set to override Figma's createFrame() defaults
-- **Layout sizing**: Auto-layout containers set own sizing pre-appendChild; non-auto-layout children deferred to post-appendChild
-- **Remaining gaps**: Image fills (no byte extraction), PROXY_EXECUTE position reliability (intermittent), font name normalization
+- **Layout sizing**: Ground-truth from DB extraction (79,833 nodes with explicit sizing). No heuristic inference. Pixel dimensions default to FIXED. Emitted at lowering time (post-appendChild) when parent context is known.
+- **Font style**: Ground-truth from DB (`fontName.style`), normalized per family (Inter "Semi Bold", SF Pro "Semibold", Baskerville "SemiBold")
+- **Three-phase renderer**: Materialize → Compose → Hydrate (COMPLETE). Phase 3 internal ordering: resize/position before text.characters so FILL text descendants reflow at correct ancestor widths.
+- **DB parent chain**: Tree structure from `parent_id` only, SCI for classification only (COMPLETE). Eliminates skip-level wiring where SCI `parent_instance_id` jumped over unclassified INSTANCE nodes.
+- **Remaining gaps**: Image fills (no byte extraction), Frame 372/373 rotation issue on screen 190
 
 ### What Must Work
 

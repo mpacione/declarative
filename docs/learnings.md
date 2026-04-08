@@ -585,3 +585,31 @@ The `build_visual_from_db` function must produce a renderer-agnostic visual dict
 
 ### getNodeByIdAsync Works with Instance-Prefixed IDs (Undocumented)
 Tested: `figma.getNodeByIdAsync("I5587:579466;2036:28290")` returns the correct node inside a component instance. O(1) lookup vs O(n) `findOne` tree walk. However, this is undocumented observed behavior — the Figma docs don't guarantee it. Recorded as a future optimization path but not adopted for stability. See also `setProperties()` for component properties (TEXT, BOOLEAN, INSTANCE_SWAP, VARIANT) — batch API, zero tree walks, but requires the component to define properties (this design system doesn't use them).
+
+---
+
+## Renderer Architecture (Session 8)
+
+### Ground-Truth Sizing Replaces Heuristic Inference
+The `parent_is_autolayout` heuristic (default FILL for auto-layout children with unknown sizing) caused 17K+ INSTANCE nodes, 298 VECTOR nodes, and 414 ELLIPSE nodes to stretch incorrectly. Targeted re-extraction from Figma Plugin API gave 95% coverage (79,833 nodes with explicit `layoutSizingH/V`). Pixel dimensions with no DB value now default to FIXED (Figma platform default). Lesson: extract ground truth from the source, don't infer from context. Heuristics compound and produce "patchy" fixes that mask deeper issues.
+
+### layoutSizing Is a Parent-Context-Dependent Property
+Setting `layoutSizingHorizontal = "HUG"` on a frame during creation (before appendChild) causes the frame to collapse to content size, even when it should be positioned absolutely at a specific width. `layoutSizing` only has meaning when the node's parent has auto-layout. This matches the universal pattern: LLVM (legalization at lowering), Flutter (`flex` ignored unless parent is `RenderFlex`), Compose (`weight()` inert outside `Row`/`Column`), CSS (`flex-grow` ignored without `display:flex`). Store sizing intent in the IR unconditionally; emit at lowering time when parent context is known.
+
+### Figma Plugin API: FILL Children Before HUG Width = Zero-Width Text
+When a HUG auto-layout frame has a FILL child appended before any FIXED-width sibling, the FILL child resolves to ~0px width. Text with `textAutoResize=HEIGHT` inside that FILL child renders one character per line and does NOT re-wrap when the container later expands (after FIXED siblings establish parent width). This is the root cause of vertical text rendering on bottom sheets. Fix: three-phase rendering where text characters are set in Phase 3 after tree composition and auto-layout resolution in Phase 2.
+
+### Three-Phase Rendering Eliminates Ordering Bugs Structurally
+Instead of scattering workarounds for Figma's emit ordering constraints, the renderer uses three phases: Materialize (create nodes, intrinsic properties), Compose (appendChild, layoutSizing), Hydrate (text characters, position). Each phase has single responsibility. The boundaries make ordering constraints structural rather than requiring developers to reason about "does this property go before or after appendChild." Platform-specific by design — React/SwiftUI/Flutter renderers can have different phase structures.
+
+### Phase 3 Internal Ordering: Resize Before Characters
+Within Phase 3 (Hydrate), resize/position operations must precede text `.characters` assignment. Non-auto-layout children get their pixel dimensions via `resize()` in Phase 3 (not Phase 1, because resize() resets layoutSizing to FIXED). FILL text descendants need ancestor widths established before content is set — otherwise text reflows at the wrong width. The three-phase split solved cross-phase ordering (creates before appends before characters), but this within-phase ordering was a second-order bug.
+
+### clipsContent Default: False When DB Has NULL
+`figma.createFrame()` defaults `clipsContent=true`. When the DB has NULL (no explicit value), the renderer emits `clipsContent=false`. Unexpected clipping (e.g., magnifier glass cropped by parent frame) is more visually destructive than missing clipping. Same "fail open" principle as default fills clearing. Discovered when a magnifier icon was being clipped by its parent container — initially misdiagnosed as an isMask issue, but the real cause was the parent's createFrame() defaulting to clip.
+
+### Font Style: Ground-Truth with Per-Family Normalization
+`fontName.style` from the Plugin API is the authoritative style name. The re-extraction stored it in the `font_style` DB column. However, when `_normalize_font_family` converts "Inter Variable" → "Inter", the style name "SemiBold" (from Inter Variable) needs to become "Semi Bold" (Inter's naming). Solution: `normalize_font_style` canonicalizes all semibold variants to "Semi Bold" first, then maps to the family-specific form. Bidirectional — handles both weight-derived ("Semi Bold") and DB-extracted ("SemiBold") inputs.
+
+### SCI Parent Wiring Bypasses Unclassified INSTANCE Nodes
+`build_composition_spec` used SCI `parent_instance_id` as primary parent, DB `parent_id` as fallback. When INSTANCE nodes lack SCI entries (123 nodes in Frame 427, e.g., `ios/keyboard-ipad-portrait`), their classified children have SCI entries pointing to the nearest classified ancestor, skipping intermediate containers. Result: keyboard rows flattened under iPad frame instead of keyboard layout frame. Fix: tree structure always from DB `parent_id`, SCI for classification only.

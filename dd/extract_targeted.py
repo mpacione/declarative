@@ -110,6 +110,117 @@ return result;
 '''
 
 
+def generate_sizing_script(screen_node_ids: list[str]) -> str:
+    """Generate JS to collect layoutSizingH/V, textAutoResize, and text properties.
+
+    These properties were missed by the original extraction due to the
+    'prop in node' bug (non-enumerable properties). safeRead captures them.
+    """
+    ids_json = json.dumps(screen_node_ids)
+
+    return f'''
+const screenIds = {ids_json};
+const result = {{}};
+
+function safeRead(node, prop) {{
+  try {{ const v = node[prop]; return v === undefined ? undefined : v; }}
+  catch(e) {{ return undefined; }}
+}}
+
+function safeReadNoMixed(node, prop) {{
+  const v = safeRead(node, prop);
+  return v === figma.mixed ? undefined : v;
+}}
+
+async function walkNode(node) {{
+  const entry = {{}};
+
+  // Layout sizing — always readable for nodes inside auto-layout parents
+  const lsh = safeRead(node, 'layoutSizingHorizontal');
+  if (lsh !== undefined) entry.lsh = lsh;
+  const lsv = safeRead(node, 'layoutSizingVertical');
+  if (lsv !== undefined) entry.lsv = lsv;
+
+  // Text properties that were missed
+  if (node.type === 'TEXT') {{
+    const tar = safeRead(node, 'textAutoResize');
+    if (tar !== undefined) entry.tar = tar;
+    const fs = safeReadNoMixed(node, 'fontName');
+    if (fs && fs.style) entry.fst = fs.style;
+    const tc = safeReadNoMixed(node, 'textCase');
+    if (tc !== undefined && tc !== 'ORIGINAL') entry.tc = tc;
+    const td = safeReadNoMixed(node, 'textDecoration');
+    if (td !== undefined && td !== 'NONE') entry.td = td;
+    const ps = safeReadNoMixed(node, 'paragraphSpacing');
+    if (ps !== undefined && ps > 0) entry.ps = ps;
+  }}
+
+  // Layout wrap
+  const lw = safeRead(node, 'layoutWrap');
+  if (lw !== undefined) entry.lw = lw;
+
+  if (Object.keys(entry).length > 0) {{
+    result[node.id] = entry;
+  }}
+
+  if ('children' in node) {{
+    for (const child of node.children) {{
+      await walkNode(child);
+    }}
+  }}
+}}
+
+for (const sid of screenIds) {{
+  const screen = await figma.getNodeByIdAsync(sid);
+  if (screen) {{
+    await walkNode(screen);
+  }}
+}}
+
+return result;
+'''
+
+
+def apply_sizing(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) -> dict[str, int]:
+    """Apply sizing/text re-extraction results to the nodes table."""
+    counts: dict[str, int] = {
+        "layout_sizing_h": 0, "layout_sizing_v": 0, "text_auto_resize": 0,
+        "font_style": 0, "text_case": 0, "text_decoration": 0,
+        "paragraph_spacing": 0, "layout_wrap": 0, "total_nodes_updated": 0,
+    }
+
+    field_map = {
+        "lsh": "layout_sizing_h",
+        "lsv": "layout_sizing_v",
+        "tar": "text_auto_resize",
+        "fst": "font_style",
+        "tc": "text_case",
+        "td": "text_decoration",
+        "ps": "paragraph_spacing",
+        "lw": "layout_wrap",
+    }
+
+    for figma_node_id, fields in data.items():
+        updates: dict[str, Any] = {}
+
+        for short_key, db_col in field_map.items():
+            if short_key in fields:
+                updates[db_col] = fields[short_key]
+                counts[db_col] = counts.get(db_col, 0) + 1
+
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [figma_node_id]
+            conn.execute(
+                f"UPDATE nodes SET {set_clause} WHERE figma_node_id = ?",
+                values,
+            )
+            counts["total_nodes_updated"] += 1
+
+    conn.commit()
+    return counts
+
+
 def apply_vector_geometry(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) -> dict[str, int]:
     """Apply vector geometry extraction results to the nodes table."""
     fill_count = 0
@@ -213,6 +324,14 @@ def run_targeted(
         script_fn = generate_vector_geometry_script
         apply_fn = apply_vector_geometry
         totals: dict[str, int] = {"fill_geometry": 0, "stroke_geometry": 0, "total_nodes_updated": 0}
+    elif mode == "sizing":
+        script_fn = generate_sizing_script
+        apply_fn = apply_sizing
+        totals = {
+            "layout_sizing_h": 0, "layout_sizing_v": 0, "text_auto_resize": 0,
+            "font_style": 0, "text_case": 0, "text_decoration": 0,
+            "paragraph_spacing": 0, "layout_wrap": 0, "total_nodes_updated": 0,
+        }
     else:
         script_fn = generate_targeted_script
         apply_fn = apply_targeted
@@ -286,8 +405,8 @@ if __name__ == "__main__":
     parser.add_argument("--db", required=True, help="Path to .declarative.db")
     parser.add_argument("--port", type=int, default=9223, help="WebSocket port")
     parser.add_argument("--batch", type=int, default=10, help="Screens per batch")
-    parser.add_argument("--mode", choices=["properties", "vector-geometry"], default="properties",
-                        help="Extraction mode: properties (is_mask etc.) or vector-geometry (fillGeometry/strokeGeometry)")
+    parser.add_argument("--mode", choices=["properties", "vector-geometry", "sizing"], default="properties",
+                        help="Extraction mode: properties (is_mask etc.), vector-geometry, or sizing (layoutSizingH/V, textAutoResize, etc.)")
     args = parser.parse_args()
 
     conn = sqlite3.connect(args.db)
@@ -367,6 +486,15 @@ ws.on('error', (err) => {{
     if args.mode == "vector-geometry":
         print(f"  fill_geometry: {summary['fill_geometry']}")
         print(f"  stroke_geometry: {summary['stroke_geometry']}")
+    elif args.mode == "sizing":
+        print(f"  layout_sizing_h: {summary['layout_sizing_h']}")
+        print(f"  layout_sizing_v: {summary['layout_sizing_v']}")
+        print(f"  text_auto_resize: {summary['text_auto_resize']}")
+        print(f"  font_style: {summary['font_style']}")
+        print(f"  text_case: {summary['text_case']}")
+        print(f"  text_decoration: {summary['text_decoration']}")
+        print(f"  paragraph_spacing: {summary['paragraph_spacing']}")
+        print(f"  layout_wrap: {summary['layout_wrap']}")
     else:
         print(f"  is_mask: {summary['is_mask']}")
         print(f"  boolean_operation: {summary['boolean_operation']}")

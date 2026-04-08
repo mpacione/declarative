@@ -2360,7 +2360,7 @@ class TestDeferredCanary:
         script, _ = generate_figma_script(spec)
         lines = script.split("\n")
         yield_idx = next(i for i, l in enumerate(lines) if "await new Promise" in l)
-        deferred_idx = next(i for i, l in enumerate(lines) if "deferred until all children" in l)
+        deferred_idx = next(i for i, l in enumerate(lines) if "Phase 3" in l or "Hydrate" in l or "deferred until all children" in l)
         assert yield_idx < deferred_idx
 
     def test_canary_after_all_deferred_lines(self):
@@ -2851,40 +2851,25 @@ class TestResolveLayoutSizing:
         assert h == "fill"
         assert v == "hug"
 
-    def test_pixel_sizing_gives_fixed_outside_autolayout(self):
+    def test_pixel_sizing_defaults_to_fixed(self):
+        """Pixel dimensions with no DB sizing default to FIXED (Figma platform default)."""
         from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
-            parent_is_autolayout=False,
         )
         assert h == "fixed"
         assert v == "fixed"
 
-    def test_pixel_sizing_defaults_to_fill_in_autolayout(self):
-        """When sizing mode is unknown (NULL) but node is an auto-layout child,
-        default to FILL rather than FIXED. FILL is the safer default — a FILL
-        node that should be FIXED will expand (cosmetic), while a FIXED node
-        that should be FILL will truncate content (functional breakage)."""
+    def test_db_sizing_takes_priority_over_pixel_dimensions(self):
+        """Ground-truth DB sizing overrides pixel dimension defaults."""
         from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
-            elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
+            elem_sizing={"width": 200, "height": 100}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
-            parent_is_autolayout=True,
         )
-        assert h == "fill"
-        assert v == "fill"
-
-    def test_explicit_db_fixed_respected_in_autolayout(self):
-        """When DB explicitly says FIXED, don't override to fill."""
-        from dd.visual import _resolve_layout_sizing
-        h, v = _resolve_layout_sizing(
-            elem_sizing={"width": 200, "height": 100}, db_sizing_h="FIXED", db_sizing_v="FIXED",
-            text_auto_resize=None, is_text=False, etype="container",
-            parent_is_autolayout=True,
-        )
-        assert h == "FIXED"
-        assert v == "FIXED"
+        assert h == "FILL"
+        assert v == "HUG"
 
     def test_fill_width_type_gives_fill(self):
         from dd.visual import _resolve_layout_sizing
@@ -3167,6 +3152,61 @@ class TestEmitMissingVisualProperties:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "dashPattern" not in script
+
+
+class TestClipsContentDefault:
+    """Figma createFrame() defaults clipsContent to true.
+
+    When clips_content is NULL in the DB (not extracted), the renderer must
+    emit clipsContent=false as the safer default. Unexpected clipping is more
+    visually destructive than missing clipping.
+    See feedback_default_fills_per_platform.md for the analogous fills pattern.
+    """
+
+    def test_frame_without_clips_content_gets_false(self):
+        """Frame with no clips_content in DB gets clipsContent=false."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "frame"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},  # No clips_content
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "clipsContent = false" in script
+
+    def test_frame_with_explicit_true_stays_true(self):
+        """Frame with clips_content=True keeps clipsContent=true."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "frame"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"clips_content": True, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "clipsContent = true" in script
+
+    def test_text_nodes_not_affected(self):
+        """Text nodes don't get clipsContent (only frames do)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "heading", "style": {"fontFamily": "Inter"}, "props": {"text": "Hello"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Text node (n1) should not have clipsContent; screen root (n0) may
+        lines = script.split("\n")
+        text_clips = [l for l in lines if "n1.clipsContent" in l]
+        assert len(text_clips) == 0
 
 
 class TestEmitMissingLayoutProperties:
@@ -3626,6 +3666,283 @@ class TestGradientFallback:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "GRADIENT_LINEAR" in script
         assert "gradientTransform" in script
+
+
+class TestThreePhaseRendering:
+    """Three-phase renderer: Materialize → Compose → Hydrate.
+
+    Phase 1 (Materialize): Create all nodes, set intrinsic properties
+    Phase 2 (Compose): Wire tree (appendChild), set layoutSizing
+    Phase 3 (Hydrate): Set text characters, position, constraints
+
+    This ordering eliminates the Figma Plugin API ordering bug where FILL
+    text children appended to HUG parents before FIXED siblings establish
+    width, causing text to wrap at ~0px.
+    """
+
+    def _build_hug_card_spec(self):
+        """Card with HUG width, FILL text child, and FIXED sibling.
+
+        This is the exact structure that triggers the vertical text bug
+        in single-pass rendering: the text child gets FILL sizing but
+        there's no width to fill yet because the FIXED sibling hasn't
+        been appended.
+        """
+        return {
+            "version": "1.0",
+            "root": "screen-1",
+            "_node_id_map": {
+                "frame-1": 100,
+                "text-1": 101,
+                "frame-2": 102,
+            },
+            "tokens": {},
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {
+                        "direction": "absolute",
+                        "sizing": {"width": 428, "height": 926},
+                    },
+                    "children": ["frame-1"],
+                },
+                "frame-1": {
+                    "type": "frame",
+                    "_original_name": "Card",
+                    "layout": {
+                        "direction": "vertical",
+                        "sizing": {"width": "hug", "height": "hug"},
+                    },
+                    "children": ["text-1", "frame-2"],
+                },
+                "text-1": {
+                    "type": "heading",
+                    "_original_name": "Title",
+                    "layout": {
+                        "sizing": {"width": "fill", "height": "hug"},
+                    },
+                    "style": {
+                        "fontFamily": "Inter",
+                        "fontWeight": 700,
+                        "fontSize": 24,
+                    },
+                    "props": {"text": "Card Title"},
+                },
+                "frame-2": {
+                    "type": "frame",
+                    "_original_name": "Content",
+                    "layout": {
+                        "sizing": {"width": 380, "height": 200, "widthPixels": 380, "heightPixels": 200},
+                    },
+                },
+            },
+        }
+
+    def _build_db_visuals(self):
+        return {
+            100: {
+                "layout_sizing_h": "HUG",
+                "layout_sizing_v": "HUG",
+                "bindings": [],
+            },
+            101: {
+                "layout_sizing_h": "FILL",
+                "layout_sizing_v": "HUG",
+                "font_family": "Inter",
+                "font_weight": 700,
+                "font_size": 24,
+                "text_content": "Card Title",
+                "text_auto_resize": "HEIGHT",
+                "font_style": "Bold",
+                "bindings": [],
+            },
+            102: {
+                "layout_sizing_h": "FIXED",
+                "layout_sizing_v": "FIXED",
+                "bindings": [],
+            },
+        }
+
+    def test_all_creates_before_any_appends(self):
+        """All node creation calls must precede all appendChild calls."""
+        spec = self._build_hug_card_spec()
+        script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
+        js_lines = script.split("\n")
+
+        last_create_line = -1
+        first_append_line = len(js_lines)
+
+        for i, line in enumerate(js_lines):
+            stripped = line.strip()
+            if stripped.startswith("const n") and ("figma.create" in stripped or "createInstance" in stripped):
+                last_create_line = i
+            if ".appendChild(" in stripped and not stripped.startswith("//"):
+                first_append_line = min(first_append_line, i)
+
+        assert last_create_line < first_append_line, (
+            f"Node creation (line {last_create_line}) must precede "
+            f"appendChild (line {first_append_line})"
+        )
+
+    def test_all_appends_before_text_characters(self):
+        """All appendChild calls must precede text .characters assignments."""
+        spec = self._build_hug_card_spec()
+        script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
+        js_lines = script.split("\n")
+
+        last_append_line = -1
+        first_characters_line = len(js_lines)
+
+        for i, line in enumerate(js_lines):
+            stripped = line.strip()
+            if ".appendChild(" in stripped and not stripped.startswith("//"):
+                last_append_line = i
+            if ".characters = " in stripped and not stripped.startswith("//"):
+                first_characters_line = min(first_characters_line, i)
+
+        assert last_append_line < first_characters_line, (
+            f"appendChild (line {last_append_line}) must precede "
+            f"text.characters (line {first_characters_line})"
+        )
+
+    def test_phase_comments_present(self):
+        """Generated script contains phase boundary comments."""
+        spec = self._build_hug_card_spec()
+        script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
+
+        assert "Phase 1" in script or "Materialize" in script
+        assert "Phase 2" in script or "Compose" in script
+        assert "Phase 3" in script or "Hydrate" in script
+
+    def test_layout_sizing_after_append(self):
+        """layoutSizing is set after appendChild, not before."""
+        spec = self._build_hug_card_spec()
+        script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
+        js_lines = script.split("\n")
+
+        for i, line in enumerate(js_lines):
+            stripped = line.strip()
+            if "layoutSizingHorizontal" in stripped or "layoutSizingVertical" in stripped:
+                # Find the closest preceding appendChild for this variable
+                var_name = stripped.split(".")[0]
+                append_found = False
+                for j in range(i - 1, -1, -1):
+                    if f".appendChild({var_name})" in js_lines[j]:
+                        append_found = True
+                        break
+                if var_name.startswith("n"):
+                    assert append_found, (
+                        f"layoutSizing on {var_name} (line {i}) has no preceding appendChild"
+                    )
+
+    def test_resize_before_characters_in_phase3(self):
+        """Within Phase 3, resize must precede text.characters.
+
+        When a non-auto-layout parent gets resize() in Phase 3, its FILL
+        descendants need that width established before text content is set.
+        Otherwise textAutoResize=HEIGHT wraps at 0px width.
+
+        Models the exact bug: screen root (absolute) → card (VERTICAL, FILL)
+        → text (FILL). Card's resize is deferred to Phase 3 because its
+        parent has no auto-layout. Text characters must come after that resize.
+        """
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "_node_id_map": {
+                "frame-1": 200,
+                "frame-2": 201,
+                "text-1": 202,
+            },
+            "tokens": {},
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {
+                        "direction": "absolute",
+                        "sizing": {"width": 428, "height": 926},
+                    },
+                    "children": ["frame-1"],
+                },
+                "frame-1": {
+                    "type": "frame",
+                    "_original_name": "iPhone",
+                    "layout": {
+                        "direction": "absolute",
+                        "sizing": {"width": 428, "height": 926},
+                    },
+                    "children": ["frame-2"],
+                },
+                "frame-2": {
+                    "type": "frame",
+                    "_original_name": "Card",
+                    "layout": {
+                        "direction": "vertical",
+                        "sizing": {
+                            "width": "fill",
+                            "height": "hug",
+                            "widthPixels": 428,
+                            "heightPixels": 225,
+                        },
+                    },
+                    "children": ["text-1"],
+                },
+                "text-1": {
+                    "type": "heading",
+                    "_original_name": "Label",
+                    "layout": {
+                        "sizing": {"width": "fill", "height": "hug"},
+                    },
+                    "style": {
+                        "fontFamily": "Inter",
+                        "fontWeight": 700,
+                        "fontSize": 24,
+                    },
+                    "props": {"text": "Strength"},
+                },
+            },
+        }
+        db_visuals = {
+            200: {"bindings": []},
+            201: {
+                "layout_sizing_h": "FILL",
+                "layout_sizing_v": "HUG",
+                "bindings": [],
+            },
+            202: {
+                "layout_sizing_h": "FILL",
+                "layout_sizing_v": "HUG",
+                "font_family": "Inter",
+                "font_weight": 700,
+                "font_size": 24,
+                "text_auto_resize": "HEIGHT",
+                "font_style": "Bold",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        js_lines = script.split("\n")
+
+        last_resize_line = -1
+        first_characters_line = len(js_lines)
+
+        for i, line in enumerate(js_lines):
+            stripped = line.strip()
+            if ".resize(" in stripped and not stripped.startswith("//"):
+                last_resize_line = i
+            if ".characters = " in stripped and not stripped.startswith("//"):
+                first_characters_line = min(first_characters_line, i)
+
+        assert last_resize_line < first_characters_line, (
+            f"resize (line {last_resize_line}) must precede "
+            f"text.characters (line {first_characters_line}) in Phase 3"
+        )
+
+    def test_deferred_canary_still_works(self):
+        """The deferred canary mechanism still functions in three-phase mode."""
+        spec = self._build_hug_card_spec()
+        script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
+        assert '"deferred_ok"' in script or '"__canary"' in script
 
 
 def _make_spec(elements: dict, tokens: dict | None = None) -> dict:

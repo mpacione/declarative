@@ -388,6 +388,10 @@ def _build_sizing(node: dict[str, Any]) -> dict[str, Any] | None:
 
     FILL/HUG → store as string (parent/content determines size).
     FIXED or NULL → store pixel value (explicit dimensions needed).
+
+    Pixel dimensions are always stored as widthPixels/heightPixels when
+    the semantic sizing is a string. Renderers need both: the semantic mode
+    for layoutSizing (post-appendChild) and pixel values for resize().
     """
     sizing: dict[str, Any] = {}
     h = node.get("layout_sizing_h")
@@ -397,11 +401,15 @@ def _build_sizing(node: dict[str, Any]) -> dict[str, Any] | None:
 
     if h in ("FILL", "HUG"):
         sizing["width"] = _SIZING_MAP[h]
+        if width is not None:
+            sizing["widthPixels"] = width
     elif width is not None:
         sizing["width"] = width
 
     if v in ("FILL", "HUG"):
         sizing["height"] = _SIZING_MAP[v]
+        if height is not None:
+            sizing["heightPixels"] = height
     elif height is not None:
         sizing["height"] = height
 
@@ -1182,24 +1190,21 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
             element["_original_name"] = node["name"]
         elements[element_id] = element
 
-    # Wire children: use parent_instance_id (L1 classified→classified) or
-    # parent_id (L0 node→node) to build the tree
+    # Wire children: always use DB parent_id (L0 ground-truth tree structure).
+    # SCI parent_instance_id is NOT used for tree wiring — it can skip
+    # intermediate unclassified INSTANCE nodes (e.g. keyboard containers),
+    # flattening the hierarchy and losing auto-layout context.
+    # SCI provides classification (canonical_type, component_key) only.
+    # See project_session8_plan.md, feedback_figma_api_quirks.md.
     children_map: dict[str, list[str]] = {}
     has_parent = set()
 
     for node in nodes:
-
         element_id = node_id_to_element_id[node["node_id"]]
-        parent_sci_id = node.get("parent_instance_id")
         parent_node_id = node.get("parent_id")
 
-        parent_element_id = None
-        if parent_sci_id is not None and parent_sci_id in sci_id_to_element_id:
-            parent_element_id = sci_id_to_element_id[parent_sci_id]
-        elif parent_node_id is not None and parent_node_id in node_id_to_element_id:
+        if parent_node_id is not None and parent_node_id in node_id_to_element_id:
             parent_element_id = node_id_to_element_id[parent_node_id]
-
-        if parent_element_id is not None:
             if parent_element_id not in children_map:
                 children_map[parent_element_id] = []
             children_map[parent_element_id].append(element_id)
