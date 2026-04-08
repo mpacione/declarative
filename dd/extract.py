@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from dd.extract_assets import process_vector_geometry
 from dd.extract_bindings import create_bindings_for_screen
 from dd.extract_components import extract_components
 from dd.extract_inventory import (
@@ -257,6 +258,11 @@ def complete_run(conn: sqlite3.Connection, run_id: int) -> dict[str, Any]:
             (run_status, run_id)
         )
 
+    # Post-processing: convert vector geometry into content-addressed assets
+    vector_count = 0
+    if run_status == "completed":
+        vector_count = process_vector_geometry(conn)
+
     conn.commit()
 
     return {
@@ -266,6 +272,7 @@ def complete_run(conn: sqlite3.Connection, run_id: int) -> dict[str, Any]:
         "completed": completed,
         "failed": failed,
         "skipped": skipped,
+        "vector_assets_processed": vector_count,
     }
 
 

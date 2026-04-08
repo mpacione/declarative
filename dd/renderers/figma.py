@@ -1000,6 +1000,27 @@ def generate_figma_script(
         lines.append(f'{gvar}.name = "{_escape_js(original_name)}";')
         var_map[group_eid] = gvar
         lines.append(f'M["{_escape_js(group_eid)}"] = {gvar}.id;')
+
+        # Deferred position + constraints for GROUP (same as non-GROUP children)
+        position = group_element.get("layout", {}).get("position")
+        if position:
+            deferred_lines.append(f"{gvar}.x = {position.get('x', 0)};")
+            deferred_lines.append(f"{gvar}.y = {position.get('y', 0)};")
+        if db_visuals is not None:
+            node_id = spec.get("_node_id_map", {}).get(group_eid)
+            constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
+            c_h = constraint_visual.get("constraint_h")
+            c_v = constraint_visual.get("constraint_v")
+            if c_h or c_v:
+                parts = []
+                if c_h:
+                    mapped = _CONSTRAINT_MAP.get(c_h, c_h)
+                    parts.append(f'horizontal: "{mapped}"')
+                if c_v:
+                    mapped = _CONSTRAINT_MAP.get(c_v, c_v)
+                    parts.append(f'vertical: "{mapped}"')
+                deferred_lines.append(f"{gvar}.constraints = {{{', '.join(parts)}}};")
+
         lines.append("")
 
     # Emit deferred position + constraints (after all children are appended)

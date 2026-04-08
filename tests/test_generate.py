@@ -3468,6 +3468,98 @@ class TestRenderReadiness:
         assert len(sizing_warnings) >= 1
 
 
+class TestGroupPositioning:
+    """Verify GROUP nodes get position and constraints after figma.group() creation."""
+
+    def test_group_gets_position_after_creation(self):
+        """GROUP nodes should have x/y set in the deferred positioning block."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "stacked", "sizing": {"width": 428, "height": 926}},
+                "children": ["grp-1"],
+            },
+            "grp-1": {
+                "type": "group",
+                "layout": {"direction": "stacked", "position": {"x": 50, "y": 100}},
+                "children": ["rect-1"],
+            },
+            "rect-1": {
+                "type": "rectangle",
+                "layout": {"direction": "stacked", "sizing": {"width": 100, "height": 50}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        # GROUP var should have position set
+        assert ".x = 50" in script
+        assert ".y = 100" in script
+
+    def test_group_gets_constraints(self):
+        """GROUP nodes should get constraints from db_visuals after creation."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "stacked", "sizing": {"width": 428, "height": 926}},
+                "children": ["grp-1"],
+            },
+            "grp-1": {
+                "type": "group",
+                "layout": {"direction": "stacked", "position": {"x": 0, "y": 0}},
+                "children": ["rect-1"],
+            },
+            "rect-1": {
+                "type": "rectangle",
+                "layout": {"direction": "stacked", "sizing": {"width": 100, "height": 50}},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "grp-1": 2, "rect-1": 3}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": [], "constraint_h": "MIN", "constraint_v": "MIN"},
+            3: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # GROUP should have constraints
+        assert 'horizontal: "MIN"' in script
+        assert 'vertical: "MIN"' in script
+
+
+class TestGradientFallback:
+    """Verify gradients with computed transform from handlePositions render correctly."""
+
+    def test_gradient_with_computed_transform_emitted(self):
+        """Gradient fills with gradientTransform (even computed) should be emitted."""
+        spec = _make_spec(
+            elements={
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"direction": "vertical", "sizing": {"width": 428, "height": 926}},
+                },
+            },
+        )
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "fills": json.dumps([{
+                    "type": "GRADIENT_LINEAR",
+                    "gradientHandlePositions": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 1.0, "y": 0.0},
+                        {"x": 0.0, "y": 1.0},
+                    ],
+                    "gradientStops": [
+                        {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
+                        {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
+                    ],
+                }]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "GRADIENT_LINEAR" in script
+        assert "gradientTransform" in script
+
+
 def _make_spec(elements: dict, tokens: dict | None = None) -> dict:
     root_id = next(iter(elements)) if elements else "root"
     return {

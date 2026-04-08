@@ -1936,3 +1936,59 @@ class TestDescendantOverrideHoisting:
         assert len(vis_overrides) == 1
         # Ancestor's version wins (value='false')
         assert vis_overrides[0]["value"] == "false"
+
+
+class TestGradientTransformComputation:
+    """Verify gradientTransform is computed from handlePositions when missing."""
+
+    def test_gradient_with_handle_positions_only_gets_transform(self):
+        """When handlePositions present but no gradientTransform, normalize_fills computes it."""
+        fills = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "gradientHandlePositions": [
+                {"x": 0.5, "y": 0.0},
+                {"x": 0.5, "y": 1.0},
+                {"x": 0.0, "y": 0.0},
+            ],
+            "gradientStops": [
+                {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
+                {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
+            ],
+        }])
+        result = normalize_fills(fills, {})
+        assert len(result) == 1
+        gt = result[0].get("gradientTransform")
+        assert gt is not None, "gradientTransform should be computed from handlePositions"
+        # (0,0)→p0, (1,0)→p1, (0,1)→p2
+        assert gt == [[0.0, -0.5, 0.5], [1.0, 0.0, 0.0]]
+
+    def test_gradient_with_existing_transform_not_overwritten(self):
+        """When both gradientTransform and handlePositions exist, existing transform preserved."""
+        fills = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "gradientHandlePositions": [
+                {"x": 0.5, "y": 0.0},
+                {"x": 0.5, "y": 1.0},
+                {"x": 0.0, "y": 0.0},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "gradientStops": [
+                {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
+                {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
+            ],
+        }])
+        result = normalize_fills(fills, {})
+        assert result[0]["gradientTransform"] == [[1, 0, 0], [0, 1, 0]]
+
+    def test_gradient_without_handle_positions_or_transform_skipped(self):
+        """Gradient fills with neither handlePositions nor gradientTransform are still included."""
+        fills = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "gradientStops": [
+                {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
+                {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
+            ],
+        }])
+        result = normalize_fills(fills, {})
+        assert len(result) == 1
+        assert result[0].get("gradientTransform") is None

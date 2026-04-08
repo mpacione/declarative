@@ -94,6 +94,14 @@ def normalize_fills(
             gradient_transform = fill.get("gradientTransform")
             if gradient_transform:
                 entry["gradientTransform"] = gradient_transform
+            elif handle_positions and len(handle_positions) >= 3:
+                # Compute gradientTransform from REST API handlePositions.
+                # Maps gradient space (0,0)→p0, (1,0)→p1, (0,1)→p2.
+                p0, p1, p2 = handle_positions[0], handle_positions[1], handle_positions[2]
+                entry["gradientTransform"] = [
+                    [p1["x"] - p0["x"], p2["x"] - p0["x"], p0["x"]],
+                    [p1["y"] - p0["y"], p2["y"] - p0["y"], p0["y"]],
+                ]
             if paint_opacity < 1.0:
                 entry["opacity"] = paint_opacity
             result.append(entry)
