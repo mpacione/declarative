@@ -77,7 +77,9 @@ graph LR
     L2 --> B3
     L3 --> B4
 
-    style IR fill:#1a1a2e,color:#fff
+    style IR fill:#f0f0f0,color:#000,stroke:#333
+    style Frontends fill:#fff,color:#000,stroke:#999
+    style Backends fill:#fff,color:#000,stroke:#999
 ```
 
 Each frontend fills the IR levels it can. Each backend reads from the **highest level available** and falls back to lower levels for missing data. L0 is always the safety net — complete and lossless.
@@ -97,99 +99,7 @@ An LLM producing a screen writes L3 (20 lines of YAML). The compiler fills in L2
 
 ### Progressive Fallback
 
-Every renderer reads the highest IR level available and gracefully degrades:
-
-```mermaid
-graph TD
-    L3["L3: Semantic Tree"] -->|"available?"| L2
-    L2["L2: Token Bindings"] -->|"available?"| L1
-    L1["L1: Classification"] -->|"available?"| L0
-    L0["L0: Raw Properties"] -->|"always available"| R["Render"]
-
-    style L3 fill:#2d6a4f,color:#fff
-    style L2 fill:#40916c,color:#fff
-    style L1 fill:#52b788,color:#fff
-    style L0 fill:#74c69d,color:#000
-```
-
-A property with a token binding renders as a **live Figma variable** or **CSS custom property**. Without a binding, it renders as a hardcoded value from L0. Both are correct — one is more portable.
-
----
-
-## Workflows
-
-### 1. Speak UI Into Existence
-
-Describe what you want in natural language. The LLM writes L3 (semantic YAML), the compiler fills in tokens and layout, and the renderer produces a real Figma file with live components and design tokens.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant LLM as Claude / LLM
-    participant Compiler as Compiler
-    participant Figma as Figma
-
-    User->>LLM: "A settings screen with<br/>profile photo, dark mode toggle,<br/>and a logout button"
-    LLM->>Compiler: L3 semantic YAML<br/>(~20 elements)
-    Compiler->>Compiler: Resolve tokens (L2)<br/>Classify components (L1)<br/>Fill visual properties (L0)
-    Compiler->>Figma: Plugin API script<br/>(real components, live tokens)
-    Figma-->>User: Working design file
-```
-
-### 2. Extract and Translate
-
-Pull a complete design system from Figma. Translate it to any target — another Figma file, React components, SwiftUI views, or CSS tokens.
-
-```mermaid
-sequenceDiagram
-    participant Figma as Figma File
-    participant CLI as dd extract
-    participant DB as SQLite IR
-    participant R1 as Figma Renderer
-    participant R2 as React Renderer
-    participant R3 as CSS Export
-
-    Figma->>CLI: REST API + Plugin API
-    CLI->>DB: 86K nodes, 74 cols each
-    CLI->>DB: 182K token bindings
-    CLI->>DB: 48 component types
-
-    DB->>R1: Progressive fallback (L2 → L1 → L0)
-    R1-->>Figma: Semantically equivalent file<br/>(real components, live tokens)
-
-    DB->>R2: Progressive fallback
-    R2-->>R2: JSX + CSS custom properties
-
-    DB->>R3: Token export
-    R3-->>R3: CSS / Tailwind / DTCG
-```
-
-### 3. Round-Trip Verification
-
-The foundational proof that the compiler works: Figma -> DB -> Figma produces a visually identical, structurally equivalent design file. Not a flat screenshot — real components, live variables, correct hierarchy.
-
-```
-Original screen (Figma)          Reproduced screen (Figma)
-┌─────────────────────┐          ┌─────────────────────┐
-│  ┌───────────────┐  │          │  ┌───────────────┐  │
-│  │    Header     │  │    ==    │  │    Header     │  │
-│  └───────────────┘  │          │  └───────────────┘  │
-│  ┌───────────────┐  │          │  ┌───────────────┐  │
-│  │     Card      │  │          │  │     Card      │  │
-│  │  ┌─────────┐  │  │          │  │  ┌─────────┐  │  │
-│  │  │ Toggle  │  │  │          │  │  │ Toggle  │  │  │
-│  │  └─────────┘  │  │          │  │  └─────────┘  │  │
-│  └───────────────┘  │          │  └───────────────┘  │
-│  ┌───────────────┐  │          │  ┌───────────────┐  │
-│  │    Button     │  │          │  │    Button     │  │
-│  └───────────────┘  │          │  └───────────────┘  │
-└─────────────────────┘          └─────────────────────┘
-  Components: real instances       Components: real instances
-  Tokens: live variables           Tokens: live variables
-  Hierarchy: preserved             Hierarchy: preserved
-```
-
-Proven on **11+ screens** (iPhone + iPad), 0.7-3.9s per screen.
+Every renderer reads the highest IR level available and gracefully degrades. A property with a token binding renders as a **live Figma variable** or **CSS custom property**. Without a binding, it renders as a hardcoded value from L0. Both are correct — one is more portable. See [compiler-architecture.md](docs/compiler-architecture.md) for details.
 
 ---
 
@@ -234,6 +144,56 @@ Then just talk:
 | "Push tokens to Figma" | Creates live Figma variables, binds to nodes |
 | "Add a dark mode" | OKLCH lightness inversion, preserves hue/chroma |
 | "Check for drift" | Compares DB tokens against live Figma variables |
+
+---
+
+## Workflows
+
+### Speak UI Into Existence
+
+Describe what you want in natural language. The LLM writes L3 (semantic YAML), the compiler fills in tokens and layout, and the renderer produces a real Figma file with live components and design tokens.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant LLM as Claude / LLM
+    participant Compiler as Compiler
+    participant Figma as Figma
+
+    User->>LLM: "A settings screen with<br/>profile photo, dark mode toggle,<br/>and a logout button"
+    LLM->>Compiler: L3 semantic YAML<br/>(~20 elements)
+    Compiler->>Compiler: Resolve tokens (L2)<br/>Classify components (L1)<br/>Fill visual properties (L0)
+    Compiler->>Figma: Plugin API script<br/>(real components, live tokens)
+    Figma-->>User: Working design file
+```
+
+### Extract and Translate
+
+Pull a complete design system from Figma. Translate it to any target — another Figma file, React components, SwiftUI views, or CSS tokens.
+
+```mermaid
+sequenceDiagram
+    participant Figma as Figma File
+    participant CLI as dd extract
+    participant DB as SQLite IR
+    participant R1 as Figma Renderer
+    participant R2 as React Renderer
+    participant R3 as CSS Export
+
+    Figma->>CLI: REST API + Plugin API
+    CLI->>DB: 86K nodes, 74 cols each
+    CLI->>DB: 182K token bindings
+    CLI->>DB: 48 component types
+
+    DB->>R1: Progressive fallback (L2 → L1 → L0)
+    R1-->>Figma: Semantically equivalent file<br/>(real components, live tokens)
+
+    DB->>R2: Progressive fallback
+    R2-->>R2: JSX + CSS custom properties
+
+    DB->>R3: Token export
+    R3-->>R3: CSS / Tailwind / DTCG
+```
 
 ---
 
@@ -290,41 +250,13 @@ graph TB
     NTB --> SWIFT_R
     NTB --> CSS_R
 
-    style IR fill:#1a1a2e,color:#fff
-    style Pipeline fill:#16213e,color:#fff
+    style IR fill:#f0f0f0,color:#000,stroke:#333
+    style Pipeline fill:#e0e0e0,color:#000,stroke:#333
+    style Extraction fill:#fff,color:#000,stroke:#999
+    style Renderers fill:#fff,color:#000,stroke:#999
 ```
 
-### Three-Phase Rendering (Figma Backend)
-
-The Figma Plugin API has implicit ordering constraints. The renderer uses three clean phases instead of scattering workarounds:
-
-```mermaid
-graph LR
-    subgraph P1["Phase 1: Materialize"]
-        C1["Create every node"]
-        C2["Set intrinsic properties<br/>(fills, strokes, fonts, radius)"]
-        C3["resize() for starting dimensions"]
-    end
-
-    subgraph P2["Phase 2: Compose"]
-        A1["appendChild — wire tree"]
-        A2["Set layoutSizing<br/>(parent context now known)"]
-        A3["Auto-layout resolves"]
-    end
-
-    subgraph P3["Phase 3: Hydrate"]
-        H1["resize/position on<br/>non-auto-layout children"]
-        H2["loadFontAsync + characters<br/>(text reflows at correct widths)"]
-    end
-
-    P1 --> P2 --> P3
-
-    style P1 fill:#264653,color:#fff
-    style P2 fill:#2a9d8f,color:#fff
-    style P3 fill:#e9c46a,color:#000
-```
-
-Each phase has a single responsibility. The boundaries eliminate an entire class of Figma Plugin API ordering bugs structurally. A React renderer wouldn't need Phase 3 at all — CSS reflows text automatically.
+The Figma backend uses a [three-phase renderer](docs/compiler-architecture.md) (Materialize → Compose → Hydrate) to handle Plugin API ordering constraints structurally.
 
 ### Property Registry
 
@@ -342,40 +274,7 @@ FigmaProperty:
 
 48 properties. Add one to the registry and it flows through extraction, query, overrides, and emission automatically. No parallel lists that drift apart.
 
----
-
-## The IR in Detail
-
-### L3 — What LLMs Write
-
-```yaml
-screen:
-  size: [428, 926]
-  layout: absolute
-
-  header:
-    component: nav/top-nav
-    text: Settings
-
-  card:
-    layout: vertical
-    padding: {space.lg}
-    fill: {color.surface.white}
-
-    heading: Notifications
-    toggle: Push Notifications
-    toggle: Dark Mode
-
-  button:
-    component: button/small/solid
-    text: Save
-```
-
-20 lines. An LLM can produce this from a natural language description. The compiler resolves `{space.lg}` to `16px`, finds the `nav/top-nav` component in the registry, and fills in all 74 L0 properties needed to render it.
-
-### L0 — What the DB Stores
-
-74 columns per node. Complete, lossless. This is what makes round-trip possible — and what makes every downstream renderer trustworthy, because the Figma round-trip has already validated the data end-to-end.
+See [compiler-architecture.md](docs/compiler-architecture.md) for IR level details, L3 YAML examples, and round-trip verification results.
 
 ---
 
@@ -429,16 +328,6 @@ screen:
 | [cross-platform-value-formats.md](docs/cross-platform-value-formats.md) | Value formats per platform |
 | [learnings.md](docs/learnings.md) | Active learnings and gotchas |
 | [tier-progress.md](docs/tier-progress.md) | Token pipeline progress tracker |
-
-## Running Tests
-
-```bash
-source .venv/bin/activate
-pytest tests/ --tb=short          # All 1,816 tests
-pytest tests/test_ir.py           # IR generation
-pytest tests/test_generate.py     # Figma renderer
-pytest tests/test_visual.py       # Visual dict builder
-```
 
 ## License
 
