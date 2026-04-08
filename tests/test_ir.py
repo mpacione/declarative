@@ -1938,6 +1938,52 @@ class TestDescendantOverrideHoisting:
         assert vis_overrides[0]["value"] == "false"
 
 
+class TestLayoutWrapInIR:
+    """Verify layout_wrap and counter_axis_spacing are included in the IR element."""
+
+    def test_wrap_layout_included_in_element(self):
+        node = {
+            "canonical_type": "frame",
+            "layout_mode": "HORIZONTAL",
+            "item_spacing": 12,
+            "layout_wrap": "WRAP",
+            "counter_axis_spacing": 10,
+        }
+        element = map_node_to_element(node)
+        assert element["layout"]["wrap"] == "WRAP"
+        assert element["layout"]["counterAxisGap"] == 10
+
+    def test_no_wrap_not_included(self):
+        node = {
+            "canonical_type": "frame",
+            "layout_mode": "HORIZONTAL",
+            "item_spacing": 12,
+            "layout_wrap": "NO_WRAP",
+        }
+        element = map_node_to_element(node)
+        assert "wrap" not in element["layout"]
+
+    def test_null_wrap_not_included(self):
+        node = {
+            "canonical_type": "frame",
+            "layout_mode": "HORIZONTAL",
+        }
+        element = map_node_to_element(node)
+        assert "wrap" not in element["layout"]
+
+    def test_wrap_inferred_from_counter_axis_spacing(self):
+        """When layout_wrap is NULL but counter_axis_spacing > 0, infer WRAP."""
+        node = {
+            "canonical_type": "frame",
+            "layout_mode": "HORIZONTAL",
+            "item_spacing": 12,
+            "counter_axis_spacing": 10,
+        }
+        element = map_node_to_element(node)
+        assert element["layout"]["wrap"] == "WRAP"
+        assert element["layout"]["counterAxisGap"] == 10
+
+
 class TestGradientTransformComputation:
     """Verify gradientTransform is computed from handlePositions when missing."""
 

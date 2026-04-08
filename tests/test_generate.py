@@ -3468,6 +3468,74 @@ class TestRenderReadiness:
         assert len(sizing_warnings) >= 1
 
 
+class TestLayoutWrap:
+    """Verify layoutWrap and counterAxisSpacing are emitted by the Figma renderer."""
+
+    def test_wrap_layout_emitted(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {
+                    "direction": "horizontal",
+                    "gap": 12,
+                    "wrap": "WRAP",
+                    "counterAxisGap": 10,
+                    "sizing": {"width": 380, "height": "hug"},
+                },
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutWrap = "WRAP"' in script
+        assert "counterAxisSpacing = 10" in script
+
+    def test_no_wrap_not_emitted(self):
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {
+                    "direction": "horizontal",
+                    "gap": 12,
+                    "sizing": {"width": 380, "height": "hug"},
+                },
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "layoutWrap" not in script
+        assert "counterAxisSpacing" not in script
+
+    def test_wrap_with_children_renders_correctly(self):
+        """WRAP layout with children that exceed parent width should wrap."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {
+                    "direction": "horizontal",
+                    "gap": 12,
+                    "wrap": "WRAP",
+                    "counterAxisGap": 10,
+                    "sizing": {"width": 380, "height": "hug"},
+                },
+                "children": ["text-1", "btn-1", "btn-2"],
+            },
+            "text-1": {
+                "type": "text",
+                "layout": {"sizing": {"width": "fill", "height": "hug"}},
+                "content": "Horizontal",
+            },
+            "btn-1": {
+                "type": "button",
+                "layout": {"direction": "horizontal", "sizing": {"width": 86, "height": 40}},
+            },
+            "btn-2": {
+                "type": "button",
+                "layout": {"direction": "horizontal", "sizing": {"width": 86, "height": 40}},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'layoutWrap = "WRAP"' in script
+        assert "counterAxisSpacing = 10" in script
+
+
 class TestGroupPositioning:
     """Verify GROUP nodes get position and constraints after figma.group() creation."""
 

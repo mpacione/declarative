@@ -346,6 +346,19 @@ def _build_layout(node: dict[str, Any], binding_index: dict[str, str]) -> dict[s
     if sizing:
         layout["sizing"] = sizing
 
+    wrap = node.get("layout_wrap")
+    cas = node.get("counter_axis_spacing")
+    # Infer WRAP from counter_axis_spacing when layout_wrap is missing
+    if not wrap and cas and cas > 0:
+        wrap = "WRAP"
+    if wrap and wrap != "NO_WRAP":
+        layout["wrap"] = wrap
+        cas_token = binding_index.get("counterAxisSpacing")
+        if cas_token:
+            layout["counterAxisGap"] = cas_token
+        elif cas and cas > 0:
+            layout["counterAxisGap"] = cas
+
     align = node.get("primary_align")
     if align:
         layout["mainAxisAlignment"] = align.lower()

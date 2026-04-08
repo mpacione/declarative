@@ -1077,6 +1077,10 @@ def _emit_layout(
     if figma_dir:
         lines.append(f'{var}.layoutMode = "{figma_dir}";')
 
+    wrap = layout.get("wrap")
+    if wrap and wrap != "NO_WRAP":
+        lines.append(f'{var}.layoutWrap = "{wrap}";')
+
     gap_val = layout.get("gap")
     if gap_val is not None:
         resolved, token_name = resolve_style_value(gap_val, tokens)
@@ -1084,6 +1088,14 @@ def _emit_layout(
             lines.append(f"{var}.itemSpacing = {resolved};")
         if token_name:
             refs.append((eid, "itemSpacing", token_name))
+
+    cas_val = layout.get("counterAxisGap")
+    if cas_val is not None:
+        resolved, token_name = resolve_style_value(cas_val, tokens)
+        if resolved is not None:
+            lines.append(f"{var}.counterAxisSpacing = {resolved};")
+        if token_name:
+            refs.append((eid, "counterAxisSpacing", token_name))
 
     padding = layout.get("padding", {})
     for side in ("top", "right", "bottom", "left"):
