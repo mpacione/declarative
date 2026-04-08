@@ -1,36 +1,46 @@
 # Learnings Log
 
-Accumulated insights from building Declarative Design. Covers the token pipeline (T1-T4) and compositional analysis (T5).
+Active insights for the compiler and round-trip renderer. Token pipeline learnings (T1-T4) archived to `docs/archive/learnings-token-pipeline.md`.
 
 ---
 
-## Extraction Pipeline (T5 Phase -1)
+## Extraction Pipeline
 
 ### Two-Path Extraction is Necessary
 
-**The lesson**: The Figma REST API and Plugin API return different property sets. `componentKey`, `layoutPositioning`, and Grid properties are Plugin API-only. A single extraction command can't get everything.
+The Figma REST API and Plugin API return different property sets. `componentKey`, `layoutPositioning`, and Grid properties are Plugin API-only. A single extraction command can't get everything.
 
-**The solution**: Two-step workflow. Step 1 (`dd extract`) uses the REST API — fast, reliable, batches 10 screens per HTTP request, gets ~90% of properties. Step 2 (`dd extract-supplement`) uses the Plugin API via Desktop Bridge — targeted, compact, gets only the fields REST can't.
+**Solution**: Two-step workflow. Step 1 (`dd extract`) uses the REST API — fast, reliable, batches 10 screens per HTTP request, gets ~90% of properties. Step 2 (`dd extract-supplement`) uses the Plugin API via Desktop Bridge — targeted, compact, gets only the fields REST can't.
 
-**Why not Plugin API for everything?** The Plugin API requires Figma Desktop open with the bridge plugin active. It has a ~64KB response limit per call. It's slower (one WebSocket message per batch vs one HTTP request for 10 screens). The REST API is more reliable for bulk extraction.
+**Why not Plugin API for everything?** The Plugin API requires Figma Desktop open with the bridge plugin active. It has a ~64KB response limit per call. It's slower. The REST API is more reliable for bulk extraction.
 
 ### Figma's Async API is Now Required
 
-**The lesson**: `figma.getNodeById` (sync) fails with "Cannot call with documentAccess: dynamic-page." Use `figma.getNodeByIdAsync` instead. Same for `node.mainComponent` → `node.getMainComponentAsync()`.
-
-**What happened**: The extraction JS used the sync API (which worked when originally written). Figma's newer dynamic-page document access model requires async. All `walk()` functions must be `async` with `await` on child traversal.
+`figma.getNodeById` (sync) fails with "Cannot call with documentAccess: dynamic-page." Use `figma.getNodeByIdAsync` instead. Same for `node.mainComponent` → `node.getMainComponentAsync()`.
 
 ### Response Truncation at 64KB
 
-**The lesson**: The PROXY_EXECUTE WebSocket truncates responses at ~64KB (65,536 chars). Large screens with many INSTANCE nodes (each contributing a 40-char component key) can exceed this.
-
-**The solution**: Auto-batching with truncation detection. Start at batch_size=5. If response is truncated (JSON parse error at char 65533), halve the batch size and retry. Fall back to batch_size=1 for individual screens. The `run_supplement()` orchestrator handles this automatically.
+The PROXY_EXECUTE WebSocket truncates responses at ~64KB. Auto-batching with truncation detection: start at batch_size=5, halve on truncation, fall back to batch_size=1. `run_supplement()` handles this automatically.
 
 ### Screen Classification Matters
 
-**The lesson**: Not all "screens" are app screens. The Dank file has 117 icon definitions (20×20), 14 component definitions, and 3 design canvases mixed in with 204 real app screens. Extracting, classifying, and rendering icon definitions wastes time and produces meaningless results.
+Not all "screens" are app screens. `screen_type` column classifies by dimensions: `app_screen` (≥350×≥700), `icon_def` (≤40×40), `design_canvas` (>2000), `component_def` (everything else). Only `app_screen` enters the rendering pipeline.
 
-**The solution**: `screen_type` column on screens table. Classified by dimensions: `app_screen` (≥350×≥700), `icon_def` (≤40×40), `design_canvas` (>2000 on any axis), `component_def` (everything else). Only `app_screen` enters the composition/rendering pipeline.
+---
+
+## Architecture
+
+### CLI for Deterministic, Agent for Judgment
+
+Extraction, clustering, validation, export = CLI commands. Renaming, merging, splitting, aliasing = Agent operations. The curation report bridges them.
+
+### Color State Derivation Should Use OKLCH, Not HLS
+
+HLS lighten/darken produces inconsistent visual shifts. OKLCH manipulates perceptual lightness, preserving hue and chroma.
+
+### Generated Tokens Need a Separate Collection
+
+Component state tokens live in a separate collection from base primitives. Primitives → Semantic → Component layers.
 
 ---
 
@@ -38,578 +48,142 @@ Accumulated insights from building Declarative Design. Covers the token pipeline
 
 ### IR Design: Visual Intent, Not Token Transport
 
-**The lesson**: The IR must carry complete visual properties for every element. Token refs are annotations, not the primary data source. Many Figma files have zero tokenized values — the IR must work without any tokens.
-
-**What happened**: The round-trip proof (Phase 3) generated a Figma frame with correct hierarchy and layout but nearly invisible content. The IR only carried style properties when they had token bindings. Gradients, effects, unbound fills, and aliased token colors were all lost.
-
-**The fix**: `visual` section with normalized fills/strokes/effects arrays. Token refs inline where they exist (`"{color.surface.primary}"`), literal hex values where they don't. The raw Figma JSON stays in the DB — the IR normalizes it into a universal format.
+The IR must carry complete visual properties for every element. Token refs are annotations, not the primary data source. Many Figma files have zero tokenized values — the IR must work without any tokens.
 
 ### Figma Frames Are Visual Elements
 
-**The lesson**: In Figma, a frame IS the visual element. "Frame 359" with a gradient fill and corner radius is a styled card, not a structural container.
-
-**What happened**: The classification rule `Frame N → container` was name-only. 64% of generic-named frames in the Dank file (3,158 of 4,807) have fills, strokes, or corner radius. They were all classified as empty containers, losing their visual properties.
-
-**The fix**: `rule_generic_frame_container()` must check for visual properties before classifying. Only truly empty frames (no fills, no strokes, no effects) are containers.
+In Figma, a frame IS the visual element. "Frame 359" with a gradient fill and corner radius is a styled card, not a structural container. 64% of generic-named frames have fills, strokes, or corner radius. `rule_generic_frame_container()` must check for visual properties before classifying.
 
 ### Component Instances Across Platforms
 
-**The lesson**: The IR stores canonical type + props. Each platform renderer resolves to native components independently. The IR doesn't carry Figma component keys.
-
-**Example**: `type: "icon"` with `canonical_name: "back"`. Figma renderer → `importComponentByKeyAsync(key)`. React → `<Icon name="arrow-left" />`. SwiftUI → `Image(systemName: "chevron.left")`.
+The IR stores canonical type + props. Each platform renderer resolves to native components independently. Figma → `importComponentByKeyAsync(key)`. React → `<Icon name="arrow-left" />`. SwiftUI → `Image(systemName: "chevron.left")`.
 
 ### figma_execute Async Model
 
-**The lesson**: Use top-level `await`, not `(async () => {...})()`. The MCP figma_execute tool provides its own async context. Wrapping in an IIFE prevents return values from being captured and created nodes get garbage collected.
-
-### Font Normalization
-
-**The lesson**: "Inter Variable" → "Inter" (Figma uses "Inter" for all weights). Numeric string weights like "500" must be parsed to int before mapping to style names. "Semi Bold" has a space (not "SemiBold").
+Use top-level `await`, not `(async () => {...})()`. The MCP `figma_execute` tool provides its own async context.
 
 ### Token Alias Resolution
 
-**The lesson**: Use `ntb.resolved_value` from node_token_bindings directly, not `token_values`. Aliased tokens (tier=aliased) don't have their own token_values rows — their values live on the target primitive token.
+Use `ntb.resolved_value` from `node_token_bindings` directly, not `token_values`. Aliased tokens don't have their own `token_values` rows.
 
-### Classification Accuracy Strategy
+### Classification Accuracy
 
-**The lesson**: Formal matching (name → alias index) gets 55% of nodes. Heuristics (position, font size, generic frame → container) get another 37%. LLM (Claude Haiku) gets the remaining 7% of ambiguous cases. Vision cross-validation is rate-limited by Figma's image API — use as spot-check, not batch.
-
-**Final accuracy**: 93.6% adjusted coverage (47,292 of 50,517 classifiable nodes).
+Formal matching: 55%. Heuristics: 37%. LLM (Claude Haiku): 7%. Final: 93.6% adjusted coverage.
 
 ---
 
-## Figma Push
-
-## Figma Push
-
-### Delete + Recreate vs Incremental Sync
-- **Current approach**: Delete all collections, recreate from DB. Works but loses Figma variable IDs.
-- **Target approach**: Incremental sync — update existing variables, create new ones, delete removed ones.
-- **Blocker**: We don't write back Figma variable IDs to the DB after creation. Need `writeback_variable_ids()`.
-- **Risk with delete/recreate**: If any Figma nodes are bound to variables, deleting the variable breaks the binding. Incremental sync preserves bindings.
-
-### Batching
-- `figma_setup_design_tokens` creates a collection + up to 100 tokens in one call.
-- `figma_batch_create_variables` adds tokens to an existing collection (also 100 max).
-- Typography (164 tokens) requires 2 calls: first 100 via `setup_design_tokens`, remaining 64 via `batch_create_variables` using the collection ID from the first call.
-- **Automation need**: The `dd push` CLI command must auto-batch and handle this split transparently.
-
-### Duplicate Collections
-- If you call `figma_setup_design_tokens` with a collection name that already exists, it creates a SECOND collection with the same name. No upsert behavior.
-- **Mitigation**: Always check for existing collections and delete or reuse them before creating.
-
-### Type Conversion
-- DB stores all values as strings. Figma needs actual numbers for FLOAT, strings for STRING.
-- Opacity was stored as STRING type in DB but Figma needs FLOAT. The export layer must handle this.
-- **Decision needed**: Store both native type and string in DB? Or just convert at export time?
-- **Current approach**: Convert at export time. Works but fragile — easy to miss a type.
-
-### Async Plugin API
-- `figma_execute` with async code returns `undefined` because the promise isn't awaited at the top level.
-- **Workaround**: Use `console.log("PREFIX:" + JSON.stringify(data))` then parse from `figma_get_console_logs`.
-- **Better approach**: Use dedicated MCP tools (`figma_setup_design_tokens`, `figma_batch_create_variables`, `figma_batch_update_variables`) which handle async properly and return structured data.
-- **Rule**: Never use `figma_execute` for async operations when a dedicated tool exists.
-
----
-
-## Curation Operations
-
-### split_token() Doesn't Inherit Tier
-- When splitting a token, the new token gets `tier='extracted'` instead of inheriting the parent's `tier='curated'`.
-- **Workaround**: Manually update tier after split.
-- **Fix needed**: `split_token()` should copy the parent token's tier to the new token.
-
-### split_token() Takes binding_ids, Not node_ids
-- The SKILL.md documented `node_ids` but the actual API uses `binding_ids`.
-- **Reason**: A node can have multiple bindings (fill + stroke), and you might want to split only the fill binding.
-- **SKILL.md updated**: Yes, corrected.
-
-### create_alias() Takes collection_id, Not collection Name
-- Need to create or find the collection first, then pass the integer ID.
-- **Workflow**: Check if "Semantic" collection exists → create if not → pass ID to `create_alias()`.
-
-### Naming Collisions During Split
-- `color.brand.blue` already existed when we tried to split the blue fill bindings into that name.
-- **Mitigation**: Always check for existing token names before splitting. Use a unique name or append a disambiguator.
-
-### DTCG Pattern Was Too Strict
-- Original: `^[a-z][a-z0-9]*(\.[a-z0-9]+)*$` — rejected camelCase like `fontSize`.
-- Fixed: `^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)*$` — allows camelCase in property suffixes.
-- Both `validate.py` and `curate.py` had the old pattern and needed updating.
-
----
-
-## Extraction
-
-### REST API Extraction is Fast and Reliable
-- 338 screens, 86K nodes, 205K bindings in 135 seconds via CLI.
-- Batches of 10 screens per API call. Rate limiting handled with exponential backoff.
-- Zero failures on the Dank (Experimental) file.
-
-### Color Clustering Crashed on Gradients
-- `fill.0.gradient` bindings have `resolved_value='gradient'` which can't be parsed as hex.
-- **Fix**: Filter the SQL query to only `fill.%.color` and `stroke.%.color` patterns, and require `resolved_value LIKE '#%'`.
-
-### Fractional Values From Figma Scaling
-- Figma produces values like `36.85981369018555px` when frames are scaled.
-- These need rounding during curation (T1.1), not extraction — extraction should capture exactly what Figma reports.
-
----
-
-## Architecture
-
-### CLI for Deterministic, Agent for Judgment
-- Extraction, clustering, validation, export = CLI commands. No judgment needed.
-- Renaming, merging, splitting, aliasing, dark mode = Agent operations. Require context and design knowledge.
-- **The curation report bridges them**: `dd curate-report --json` gives the agent a structured list of issues to act on.
-
-### The Push Problem
-- Every DB change needs to be synced to Figma. Currently this is manual (7+ MCP calls per sync).
-- **Target**: `dd push` command that reads DB state, diffs against Figma state, and applies incremental changes.
-- **Dependency**: Need to store Figma variable IDs in DB for incremental sync.
-- **Discovery**: Working through tiers first to learn all payload types before building the CLI command.
-
-### Curation → Push → Verify Should Be Atomic
-- Currently 3 manual steps: modify DB → push to Figma → read back and verify.
-- **Target**: `dd push --verify` that does all three.
-- Still discovering what "verify" means for each token type (color spot-check vs typography full comparison).
-
-### Color State Derivation Should Use OKLCH, Not HLS
-- HLS lighten/darken produces inconsistent visual shifts on saturated colors.
-- `#634AFF` darkened 15% via HLS → `#2200FC` (jumps to pure blue, loses purple character).
-- OKLCH manipulates perceptual lightness, preserving hue and chroma.
-- **Action**: When building T3.1 (dark mode) or any color derivation, use OKLCH (already in the codebase for ΔE clustering).
-
-### Generated Tokens Need a Separate Collection
-- Component state tokens (hover, pressed, disabled) live in "Component States" collection, separate from the base "Colors" collection.
-- This is the right pattern: primitives in one collection, component-level tokens in another.
-- Validates the T4.1 architecture: Primitives → Semantic → Component layers.
-
----
-
-## Tier 3 Learnings
-
-### OKLCH Inversion Is Too Aggressive for Pastels
-- Pure lightness inversion (L → 1-L) sends near-white pastels to near-black.
-- `#FFF7B2` (light yellow) → `#000000` (black). Lost all color.
-- `#DADADA` (light gray) → `#050505` (near-black). Too extreme for a "muted" surface.
-- **Fix needed**: Dampened inversion with floor/ceiling. E.g. `new_L = 0.15 + (1-L) * 0.7` keeps dark mode values in a usable 0.15–0.85 range.
-- For production, dark mode values need human review. The auto-derivation is a starting point, not a final answer.
-
-### create_theme() Works Cleanly Across Collections
-- Single call creates mode + copies values + applies transform across multiple collections.
-- Correctly skips non-color tokens when applying dark transform.
-- **Pattern**: Use `create_theme()` for any multi-collection mode operation.
-
-### Two-Mode Figma Collections Work Perfectly
-- `figma_setup_design_tokens` accepts multiple modes in one call: `modes: ["Default", "Dark"]`.
-- Each token gets values for both modes in the same payload.
-- Figma shows the mode switcher in the variable panel immediately.
-
-### Component Token Pattern: Alias, Don't Duplicate
-- Component tokens should alias primitives, not duplicate values.
-- `comp.buttonLg.radius` → `radius.v10` (alias, single source of truth)
-- NOT `comp.buttonLg.radius` = `10` (duplicate value, will drift)
-- This means changing the primitive propagates to all component tokens automatically.
-
-### Variables Exist But Aren't Bound to Nodes
-- **Critical gap**: We've pushed 308 variables to Figma, but NONE are bound to actual design nodes.
-- The variables exist in the panel but the nodes still use hardcoded values.
-- **Rebinding** (T6.2 in the taxonomy) is the missing link between "tokens exist" and "tokens are used."
-- This is why you can't see changes in the file — the variables are just sitting there unconnected.
-- **Priority**: Build rebinding before Tier 5 (Conjure), not after.
-
-### Rebinding Works — But Scale is a Problem
-- Single-binding test: 1/1, 0 failures. Multi-binding test: 26/26, 0 failures.
-- Property types verified: fill.color, stroke.color, cornerRadius, padding.*, itemSpacing, fontSize, fontFamily, fontWeight.
-- Full file: 182,877 bindings → 366 scripts of ~500 bindings each.
-- Each script is ~8KB, executes in <1 second via `figma_execute`.
-- **Problem**: 366 sequential MCP calls × ~1s each = ~6 minutes minimum. Need batching or parallelization.
-- **Approach**: `dd push --rebind` should generate all scripts, execute them in sequence via MCP, report progress.
-
-### Variable ID Writeback is Critical Infrastructure
-- Rebinding requires `figma_variable_id` on every token.
-- We had 0/308 IDs after pushing — had to fetch them all back via `figma_execute` and map by name.
-- **Fixed**: `dd push --writeback --figma-state response.json` handles this as a CLI step.
-- The name→ID mapping uses slash-to-dot conversion (`color/surface/white` → `color.surface.white`).
-
----
-
-## dd push
-
-### Compact Rebind Encoding Reduces Script Count 3x
-- Original verbose format: ~110 chars/binding → 500 bindings/script → 366 scripts for 182K bindings.
-- Compact format: ~30 chars/binding using property shortcodes (`fontSize`→`fs`, `fill.0.color`→`f0`) and stripped `VariableID:` prefix → 950 bindings/script → 193 scripts.
-- `figma_execute` has a hard 50K character limit. Compact encoding is essential for practical batch sizes.
-
-### CLI Generates Manifests, Agent Executes MCP
-- The CLI cannot make MCP calls. It outputs structured JSON manifests.
-- Agent reads manifest, executes each MCP call, reports progress.
-- This separation keeps deterministic logic in the CLI and Figma interaction in the agent.
-
-### Incremental Sync Reuses drift.py
-- `compare_token_values()` from `drift.py` already classifies tokens as synced/drifted/pending/figma_only/code_only.
-- Push maps these directly: pending/code_only → CREATE, drifted → UPDATE, figma_only → DELETE, synced → no action.
-- No duplicate diff logic needed — reuse what exists.
-
-### query_exportable_tokens() Extended Not Replaced
-- Added `include_existing=True` parameter instead of writing a new query function.
-- Default behavior unchanged (`include_existing=False` filters to `figma_variable_id IS NULL`).
-- Avoids parallel query functions that could drift.
-
-### Figma Opacity Variables Use 0-100 Scale, Not 0-1
-- Figma's node `opacity` property is 0-1 (e.g. `0.20` = 20%).
-- Figma FLOAT variables bound to `opacity` are interpreted as **percentages**: value `20` → node opacity `0.20`.
-- Our DB stores the raw Figma node value (0-1 range, e.g. `0.20`).
-- When we created variables with `0.20`, Figma interpreted it as 0.2% → node opacity `0.002`.
-- **Fix**: Multiply opacity values by 100 when creating/updating Figma variables. `convert_value_for_figma()` handles this based on token name containing "opacity".
-- This affected ~1,247 bindings across 4 opacity tokens — elements appeared invisible.
-
-### Compact Handler: Fill Shortcode Collision With Font Shortcodes
-- The fill branch `p[0]==='f'&&p.length<=2` matched both `f0` (fill.0.color) and `fs` (fontSize), `ff` (fontFamily), `fw` (fontWeight).
-- `fs`/`ff`/`fw` hit `setBoundVariableForPaint` and failed with "paintCopy validation" error.
-- **Fix**: Added `!isNaN(p[1])` digit check to the fill branch, matching the pattern already used by the stroke branch.
-
-### PROXY_EXECUTE Patch Enables Direct Script Execution
-- Patching the figma-console-mcp WebSocket server with a `PROXY_EXECUTE` handler lets external scripts execute code in the Figma plugin without going through Claude's tool interface.
-- Eliminates the 50K char tool parameter bottleneck — can send full 31KB scripts directly.
-- 193 scripts × 950 bindings executed in 108 seconds with 200ms inter-script delay.
-- Patch is ~30 lines in `websocket-server.js`, saved as `patches/figma-console-mcp-proxy-execute.patch`.
-- Won't survive package updates — must be re-applied.
-
-### setBoundVariableForEffect Fails on Deeply Nested Instance Children
-- `figma.variables.setBoundVariableForEffect(effect, 'color', variable)` throws when the target node's effect is inherited from a component at 3+ levels of instance nesting (e.g. `I123:456;789:012;107:925`).
-- The effect is owned by the innermost component definition; Figma doesn't allow overriding it as an instance property at that depth.
-- **Symptom**: Compact handler logs `{n, p: 'e0c'}` failure — no changes applied to `nd.effects`.
-- **Fix**: Mark these bindings `intentionally_unbound` in the DB. The shadow still renders from the component definition; it just can't be tokenized at this nesting depth.
-- **Detection**: Count semicolons in `node.id` — 2+ semicolons means 3+ levels deep. All 6 failures were `_KeyContainer` nodes inside a keyboard component.
-- **Rule**: Before rebinding `effect.N.color`, check instance depth. If `node.id` contains 2+ semicolons and the effect is not an override, skip it and log as `intentionally_unbound`.
-
-### PROXY_EXECUTE: Patch Activation Requires Killing the Stale Process
-- The figma-console-mcp node server is a long-running process. Restarting Claude Desktop spawns a new process only if the old one is dead.
-- If the server (port 9224) was started before the patch was applied, the patched file is on disk but the running process in memory uses the old code. PROXY_EXECUTE messages silently time out.
-- **Fix**: `lsof -i :9224` to find PID → `kill <PID>` → restart Claude Desktop. Verify PID changed.
-- **Symptom**: PROXY_EXECUTE sends but `PROXY_EXECUTE_RESULT` never arrives (8s timeout). If `SERVER_HELLO` arrives, the socket is live — it's definitely the stale process, not a network issue.
-
-### PROXY_EXECUTE: Sequential Execution Pattern
-- Best executed as a Node.js script that opens a new WebSocket per script, waits for `PROXY_EXECUTE_RESULT`, then closes and opens the next.
-- One connection per script (not a persistent connection) avoids interleaved responses and makes error attribution unambiguous.
-- Pattern:
-  ```js
-  for (const script of scripts) {
-    const ws = new WebSocket('ws://127.0.0.1:9224');
-    ws.on('message', msg => {
-      if (JSON.parse(msg).type === 'SERVER_HELLO')
-        ws.send(JSON.stringify({ type:'PROXY_EXECUTE', id:script, code, timeout:30000 }));
-      if (JSON.parse(msg).type === 'PROXY_EXECUTE_RESULT')
-        resolve(msg); ws.close();
-    });
-  }
-  ```
-- Set `timeout` to 30000ms for large scripts; the outer Node.js timeout should be `timeout + 5000`.
-
-### Rapid Rebinding Can Hang Figma
-- First full run (76s, no delay): Figma hung and required force-quit. All 182K node updates arrived faster than the renderer could process.
-- Second run (108s, 200ms delay between scripts): No hang, Figma stayed responsive.
-- **Rule**: Always add `asyncio.sleep(0.2)` between PROXY_EXECUTE calls. The cost is ~38s extra on 193 scripts — worth it vs a crash.
-
-### Persistent Error Logging via pluginData
-- Figma console logs (`console.error`) are lost on crash/restart — useless for diagnosing rebind failures.
-- **Fix**: Compact handler writes errors to `figma.root.setPluginData('rebind_errors', JSON.stringify(errors))`.
-- Each script reads existing errors, appends its own, writes back — errors accumulate across all scripts.
-- Error format: `{n: nodeId, p: propertyCode, r: reason}` where reason is `NODE_NOT_FOUND`, `VAR_NOT_FOUND`, `UNKNOWN_PROP`, or the exception message.
-- Companion scripts: `generate_error_read_script()` and `generate_error_clear_script()` for reading/clearing.
-- Persists in the Figma document itself — survives crashes, restarts, and session changes.
-
-### Full Rebind Results
-- 182,877 bindings, 193 scripts, 0 errors on clean run (after shortcode fix).
-- Previous run had 234 errors from font shortcode collision (fs/ff/fw hitting fill paint branch).
-- Visual artifacts from first run (solid black brush selector cards, misplaced opacity) resolved by the shortcode fix.
-- Residual artifacts from opacity/alpha loss required separate restoration scripts (see below).
-
-### Binding Color Variables Resets Paint/Effect Opacity
-- `setBoundVariableForPaint(paint, 'color', variable)` returns a new paint with `opacity: 1.0`, losing the original paint's opacity.
-- `setBoundVariableForEffect(effect, 'color', variable)` resets `effect.color.a` to `1.0`, losing the original alpha.
-- **Scope**: 5,128 fill opacities, 297 stroke opacities, 9,807 effect color alphas — all reset to 1.0 during rebind.
-- **SOLVED**: Alpha-baked color primitives. Instead of storing opacity as a separate paint property, the alpha is encoded directly into the color variable value as 8-digit hex (`#RRGGBBAA`). When Figma evaluates the variable, it reads the alpha from the color itself. No separate opacity restoration needed.
-- **Note**: Fill-level opacity is a separate concept from node-level opacity. Both exist in the extraction data (`nodes.fills` JSON has `paint.opacity`, `nodes.opacity` has node-level). Only node-level opacity was extracted as a binding. Alpha-baked colors handle the fill/stroke/effect paint-level opacity; node-level opacity remains a separate binding.
-
-### Extraction Gaps: Properties Stored But Not Normalized to Bindings
-- **Fill/stroke paint opacity**: Now baked into the color hex as 8-digit `#RRGGBBAA`. `normalize_fill()` and `normalize_stroke()` use paint-level opacity (not `color.a`) as the alpha channel in `rgba_to_hex()`.
-- **Effect color alpha**: Now baked into the effect color hex as 8-digit `#RRGGBBAA` via `normalize_effect()`.
-- **Non-tokenizable properties** (auto-layout sizing mode, text alignment, blend mode, visibility) are stored in node columns but correctly NOT extracted as bindings — they're structural, not design tokens.
-- **No longer needed**: Separate `fill.N.opacity`, `stroke.N.opacity`, `effect.N.alpha` bindings are unnecessary since alpha is part of the color value itself.
-
-### Binding itemSpacing on SPACE_BETWEEN Nodes Overrides Auto Gap
-- Figma's "Auto" gap is `primaryAxisAlignItems: "SPACE_BETWEEN"`. The `itemSpacing` property reports the computed value but the gap is auto-distributed.
-- Binding a variable to `itemSpacing` forces a fixed gap, losing the auto behavior. The layout snaps from space-between distribution to fixed spacing.
-- **Scope**: 1,408 nodes had SPACE_BETWEEN alignment but got `itemSpacing` bound to a token.
-- **Fix**: The rebind handler must skip `itemSpacing` binding when `primaryAxisAlignItems === "SPACE_BETWEEN"`.
-- **Restoration**: Unbind `itemSpacing` (`setBoundVariable('itemSpacing', null)`) and reset `primaryAxisAlignItems = 'SPACE_BETWEEN'`.
-- **Broader rule**: Before binding any layout property, check if the node uses an auto/distributed mode that the binding would override.
-
-### Variable Value Changes Also Reset Paint Opacities
-- Changing a variable's value (e.g., from raw hex to variable alias via `setValueForMode`) causes Figma to re-evaluate all bound nodes.
-- This re-evaluation resets paint opacities on those nodes to 1.0 — the same bug as `setBoundVariableForPaint`.
-- **Scope**: T4.1 alias update (52 variables × `setValueForMode`) reset 4,831 fill opacities and 9,807 effect alphas that we had previously restored.
-- **Implication**: The compact handler opacity fix only protects during rebinding. ANY Figma variable modification (value change, alias update, mode creation) can trigger this.
-- **SOLVED**: Alpha-baked color primitives (see below). Paint opacity is encoded directly in the color variable as 8-digit hex (`#RRGGBBAA`), so Figma cannot lose it during re-evaluation. The `restore_opacities` phase has been removed from the push manifest.
-
-### Test Schemas Must Use Real Schema
-- Three test files defined custom minimal schemas (missing columns, triggers, constraints). These diverged from `schema.sql` over time, causing false passes.
-- **Fix**: All test files now use `init_db(":memory:")` from `dd/db.py` which loads the full `schema.sql`.
-- **Rule**: Never define custom `CREATE TABLE` statements in test files. Always use the conftest `temp_db`/`db` fixtures. If a test needs specific data, insert it into the real schema's tables.
-
----
-
-## Value Provenance & History Architecture
-
-### The Four Structural Gaps
-
-All edge cases in the pipeline (force_renormalize, binding mismatches, false positives, opacity loss) trace to four structural gaps in `token_values`:
-
-**Gap 1 — Stored normalization without provenance**
-`resolved_value` is computed at write time and stored as a dumb string. When normalization rules change, every stored value silently becomes wrong with no way to detect staleness or know whether a value is re-extractable (figma), recomputable (derived), or must be preserved (manual). Every workaround in the alpha-baked colors work was a symptom of this missing `source` column.
-
-**Gap 2 — Sync state too coarse and misplaced**
-`tokens.sync_status` is one field shared across all mode values. Per-mode sync state and push confirmation timestamps (`last_verified_at`) are invisible.
-
-**Gap 3 — No value history**
-Every write overwrites in place. No audit trail, no rollback. Fatal for frontend code sync and T5 Conjure where the vocabulary must be stable and trustworthy.
-
-**Gap 4 — Unbounded operations tables**
-`screen_extraction_status` grows at N_runs × N_screens. No retention policy.
-
-### The Fix: token_values Provenance + History
-
-Three columns added to `token_values`:
-- `source TEXT` — `'figma' | 'derived' | 'manual' | 'imported'`
-- `sync_status TEXT` — per-value (not per-token)
-- `last_verified_at TEXT` — when last confirmed against Figma
-
-New `token_value_history` table — append-only record of every change, with `changed_by` and `reason`.
-
-New `db.update_token_value()` helper — single call site pattern for all value mutations, ensures history is always written.
-
-`force_renormalize` becomes scoped: only applies to `source='figma'` values. Derived values are recomputed by re-running `modes.py`, not renormalized from stale raw_value.
-
-### Design Decision: Fix Root, Not Symptoms
-
-The architectural lesson: `force_renormalize`, `detect_binding_mismatches`, `unbind_mismatched` are all correct at what they do, but they patch consequences. The root cause is that normalization has no version/source metadata. With `source` on `token_values`, these tools become narrower and more correct (only operate on `source='figma'` values that haven't been re-extracted yet).
-
-### Migration Heuristic
-
-Modes-derived values are always in non-default modes. One-time migration:
-```sql
-UPDATE token_values SET source = 'derived'
-WHERE mode_id NOT IN (SELECT id FROM token_modes WHERE is_default = 1);
-```
-
-## Alpha-Baked Color Architecture
-
-### The Problem: Figma Loses Paint Opacity on Variable Re-evaluation
-
-Figma's `setBoundVariableForPaint` and `setBoundVariableForEffect` reset paint opacity and effect `color.a` to 1.0. Worse, any variable value change (alias update, mode creation) re-evaluates all bound nodes, triggering the same opacity loss. This meant 5,128 fill opacities, 297 stroke opacities, and 9,807 effect alphas were wiped every time variables were modified.
-
-The previous workaround was a mandatory `restore_opacities` post-step after every push, reading original opacities from DB JSON columns and generating restoration scripts. This was fragile and slow.
-
-### The Solution: Bake Alpha Into the Color Value
-
-Instead of treating paint opacity as a separate property, encode it directly into the color variable as 8-digit hex (`#RRGGBBAA`). Figma reads the alpha channel from the color value itself, so there is nothing to lose during re-evaluation.
-
-### Implementation (Steps 1-6 complete, 656 tests passing)
-
-1. **`color.py`**: Added `hex_to_rgba()` helper. Updated `hex_to_oklch()` to strip alpha suffix before OKLCH conversion (OKLCH operates on RGB only).
-2. **`normalize.py`**: `normalize_fill()` and `normalize_stroke()` now use paint-level opacity (not `color.a`) as the alpha channel in `rgba_to_hex()`, producing `#RRGGBBAA` when opacity < 1.
-3. **`modes.py`**: `apply_oklch_inversion()` and `apply_high_contrast()` preserve alpha suffix through transforms. The alpha is stripped before OKLCH manipulation and re-appended after.
-4. **`drift.py`**: Removed FF-alpha stripping. 8-digit hex (e.g., `#09090B0D`) is now a distinct value from 6-digit hex (`#09090B`). This is correct because they represent different visual appearances.
-5. **`cluster_colors.py`**: Colors at different alphas no longer cluster together. `#09090B` at 100% opacity and `#09090B` at 5% opacity are perceptually different and must be separate primitives.
-6. **`export_rebind.py`**: Removed manual opacity preservation from the compact handler. The alpha is in the variable value, so the handler does not need to save/restore it.
-7. **`push.py`**: Removed the `restore_opacities` phase from the push manifest. No longer needed.
-
-### Step 7 — force_renormalize
-
-The existing `insert_bindings()` protects bound bindings from overwrite (Step 1: UPSERT only touches `unbound`; Step 2: marks `bound` as `overridden` if value changed). Neither behavior is correct for normalization changes — we need to update the value while preserving `binding_status = 'bound'`.
-
-**Solution**: Added `force_renormalize=True` parameter to `insert_bindings()` and threaded through `create_bindings_for_screen()`. When set, Step 2 updates `raw_value`/`resolved_value` without changing `binding_status`. This is a permanent pipeline capability, not a one-off: any future normalization change (not just alpha-baking) can use the same flag.
-
-### Binding-Token Consistency Detection
-
-After renormalization, bound bindings have updated values (e.g., `#0000000D`) but still point to tokens with old values (`#000000`). The system had no way to detect or resolve this internal mismatch.
-
-**Problem scope**: This isn't alpha-specific. The same mismatch occurs when:
-1. Normalization rules change (alpha-baking, format changes)
-2. A designer manually edits nodes in Figma and you re-extract
-3. An agent edits a token's value during curation
-
-**Solution**: Three composable functions in `validate.py`:
-- `detect_binding_mismatches(conn, file_id, token_id=None, screen_id=None)` — finds all bound bindings where `resolved_value` doesn't match token value. Uses type-aware normalization (reuses `drift.py`'s `normalize_value_for_comparison`) to avoid false positives from format differences (`10` vs `10.0`). Resolves alias chains.
-- `unbind_mismatched(conn, file_id, token_id=None, screen_id=None)` — sets mismatched bindings to `unbound` + clears `token_id`, so they re-enter the clustering pipeline.
-- `check_binding_token_consistency(conn, file_id)` — validation check #8, returns warning-severity issues grouped by token.
-
-All three accept optional `token_id`/`screen_id` filters for atomic operations. The functions compose: validate calls detect for reporting, cluster can call unbind before clustering, agent can call detect for a single token.
-
-A `v_binding_mismatches` view in `schema.sql` provides the same detection as an always-available SQL query for dashboards and `dd status`.
-
-**Key insight**: the normalization comparison must be type-aware. Raw SQL `!=` produces 87K false positives (dimension `10` vs `10.0`, lineHeight JSON vs number). Using `normalize_value_for_comparison` from `drift.py` reduces to ~20K genuine mismatches. Remaining categories beyond alpha: lineHeight JSON format, actual value drift, and floating point noise — pre-existing issues to address separately.
-
-### Pending Steps (continued)
-
-- Run `create_bindings_for_screen(force_renormalize=True)` across all screens to propagate alpha-inclusive values to bound bindings.
-- Run `unbind_mismatched()` to release alpha-mismatched bindings for re-clustering.
-- Run `dd cluster` to create new alpha-baked primitives. Colors at different alphas cluster separately.
-- Curate, derive mode values, push, and rebind through existing pipeline.
-- Push new alpha-baked primitives to Figma as variables, rebind affected nodes, test mode switching.
-
-### Design Decisions
-
-- **Paint opacity vs color.a**: Figma paints have both `paint.opacity` and `paint.color.a`. The extraction uses `paint.opacity` as the authoritative alpha source, not `color.a`. This matches Figma's visual rendering behavior.
-- **Alpha naming convention**: Alpha-baked primitives use `.aN` suffix where N is the opacity percentage (e.g., `prim.gray.950.a5` for 5% opacity).
-- **Clustering**: Colors at different alphas are treated as distinct values. `#09090B` and `#09090B0D` will never cluster together, even though the RGB components are identical.
-- **Pipeline composability**: Mismatch detection, unbinding, and clustering are separate atomic functions that compose rather than a monolithic "reconcile" step. Each can operate on 1 or N items via optional filters. This supports just-in-time incremental processing.
-- **Type-aware comparison**: Reuses `drift.py`'s `normalize_value_for_comparison` to avoid false positives. The SQL view (`v_binding_mismatches`) does raw comparison for dashboards; the Python function does normalized comparison for pipeline decisions.
-- **Alpha rebinds get overwritten by subsequent variable updates**: Any Figma variable operation (alias updates, mode creation, value changes) re-evaluates all bound nodes and can reset paint opacity to 1.0. Alpha-baked colors survive this because the alpha is in the variable value, BUT if the alpha rebind was applied before a later non-alpha rebind or variable update that touched the same node, the alpha binding can be lost (replaced by the non-alpha semantic variable). The full alpha rebind pass must run LAST, after all other variable operations, and must cover ALL THREE property classes:
-  - `fill.N.color` → `setBoundVariableForPaint` on `node.fills` (4,831 bindings, 4,723 ok, 108 gradient fails)
-  - `effect.N.color` → `setBoundVariableForEffect` on `node.effects` (1,144 bindings, 1,144 ok)
-  - `stroke.N.color` → `setBoundVariableForPaint` on `node.strokes` (297 bindings, 267 ok)
-  Missing any property class leaves those bindings with alpha=1.0. The original targeted fill-only pass missed effects and strokes entirely.
-- **normalize_value_for_comparison improvements**: JSON dimension objects (`{"value":24,"unit":"PIXELS"}`) are now extracted to scalars. Figma float32 noise (e.g., `10.000000149`) rounds to nearest integer if difference < 0.001. This eliminated ~2,700 false positive mismatches in binding-token consistency checks.
-
----
-
-## Extended Property Extraction (T4.6)
-
-### Comprehensive Property Coverage
-The system now extracts every visual property Figma exposes, not just the subset needed for the original Dank file. This was done for public release — users will bring diverse files and expect full coverage.
-
-### Three Categories of Properties
-1. **Tokenizable** (bound to Figma variables via `setBoundVariable`): fills, strokes, effects, cornerRadius, padding, spacing, fontSize, fontFamily, fontWeight, fontStyle, lineHeight, letterSpacing, paragraphSpacing, opacity, strokeWeight (uniform + per-side), visible (BOOLEAN).
-2. **Stored but not tokenizable** (for Conjure screen generation): layout_mode, alignment, sizing modes, rotation, clipsContent, constraints, strokeAlign/Cap/Join, dashPattern, textDecoration, textCase, textAlignVertical, layoutWrap, min/max width/height, componentKey.
-3. **Structural** (composition tree): parent_id, path, depth, sort_order, component references, instance overrides.
-
-### Gradient Stop Decomposition
-Gradient fills now produce individual color bindings per stop (`fill.0.gradient.stop.0.color`, `fill.0.gradient.stop.1.color`). The whole gradient is still stored as `fill.0.gradient` (intentionally_unbound since Figma can't bind variables to gradients), but the stop colors ARE tokenizable as regular color values. This enables color consistency checking across gradients.
-
-### IMAGE Fill Storage
-IMAGE fills were previously skipped entirely. They now produce `fill.N.image` bindings with `resolved_value='image'` and raw_value containing `imageRef` and `scaleMode`. Marked `intentionally_unbound` during clustering. Needed for Conjure to know where images are placed.
-
-### BACKGROUND_BLUR
-Previously unhandled. Now extracted as `effect.N.radius` alongside LAYER_BLUR. Same pattern — the radius is tokenizable.
-
-### Rebinding Infrastructure Was Already There
-`export_rebind.py` already had PROPERTY_SHORTCODES and handlers for `strokeWeight`, `fontStyle`, `paragraphSpacing` before any of these properties were extracted. The gap was purely extraction + normalization + clustering. This is good architecture — the rebind layer was designed for extensibility.
-
-### Generic Clustering Pattern
-`_cluster_simple_dimension()` in `cluster_misc.py` handles any single-property dimension clustering. Pass a property name and token prefix, it queries unbound bindings, creates tokens per unique value, and proposes bindings. Reused by `cluster_stroke_weight()` and `cluster_paragraph_spacing()`. Use this for any new dimension property.
-
-### Instance Overrides Table
-New `instance_overrides` table tracks what properties an INSTANCE node has overridden from its main component. Needed for T5 Conjure to recreate instances with correct property settings (TEXT overrides, BOOLEAN toggles, INSTANCE_SWAP choices).
-
-### component_key Column
-The `component_key` field on nodes (populated from `mainComponent.key` via Plugin API) is the critical piece for Conjure screen generation. It's what `importComponentByKeyAsync()` needs to instantiate a component from a library.
-
----
-
-## Round-Trip Renderer Learnings (2026-04-06)
+## Round-Trip Renderer (2026-04-06)
 
 ### Selective Property Propagation — The Systemic Pattern
-Every bug in the round-trip session (textAutoResize, layoutSizing, clipsContent, rotation, default fills, Mode 1 visibility) followed the same pattern: a property was handled at some pipeline layers but missed at others. Each layer independently decided which properties to handle, creating cascading gaps. The fix: `dd/property_registry.py` — a single authoritative list of 58 Figma properties that all layers reference. Override extraction went from 11 to 17 types (59K→70K overrides). Query went from 30 to 51 columns.
+
+Every bug followed the same pattern: a property was handled at some pipeline layers but missed at others. Fix: `dd/property_registry.py` — a single authoritative list that all layers reference.
 
 ### Figma Default Leak Pattern
-`figma.createFrame()` creates frames with `clipsContent=true` and a white fill `[{type:"SOLID",color:{r:1,g:1,b:1}}]`. If the original frame was transparent or non-clipping, the renderer must EXPLICITLY set `fills=[]` and `clipsContent=false`. Any Figma property with a non-null default must be cleared when the DB value differs from the default.
+
+`figma.createFrame()` creates frames with `clipsContent=true` and a white fill. The renderer must EXPLICITLY set `fills=[]` and `clipsContent=false` when the DB value differs.
 
 ### layoutSizing Requires Parent Context — But Not Always
-Setting `layoutSizingHorizontal` on a node that isn't a child of an auto-layout frame throws. BUT auto-layout containers (nodes with `layoutMode`) CAN set their own layoutSizing before appendChild — they define their own context. Only non-auto-layout children (text, rectangles, non-layout frames) need deferral to post-appendChild.
+
+Auto-layout containers CAN set their own layoutSizing before appendChild. Non-auto-layout children must defer to post-appendChild.
 
 ### Figma Override Field Name Aliases
-Figma's `node.overrides[].overriddenFields` uses DIFFERENT names than the Plugin API property names:
-- `primaryAxisSizingMode` → `layoutSizingHorizontal`
-- `counterAxisSizingMode` → `layoutSizingVertical`
-The property registry stores both names so extraction checks all aliases.
+
+`overriddenFields` uses different names: `primaryAxisSizingMode` → `layoutSizingHorizontal`, `counterAxisSizingMode` → `layoutSizingVertical`. The property registry stores both.
 
 ### Rotation: REST API = Radians, Plugin API = Degrees
-The REST API returns rotation in radians (-π to π). The Plugin API uses degrees (-180 to 180). The renderer must convert via `math.degrees()`.
+
+REST API: radians (-π to π). Plugin API: degrees (-180 to 180). Renderer converts via `math.degrees()` with sign negation.
 
 ### Mode 1 Instances Need L0 Properties
-After `createInstance()`, the instance inherits the master's defaults. But the DB may show different rotation, opacity, or visibility. These L0 properties must be applied directly to the instance after creation — they're not "overrides" in Figma's sense, just property differences.
 
-### PROXY_EXECUTE Reliability — ROOT CAUSED (2026-04-06 Session 2)
-**Not a reliability bug — timeout.** Scripts take >120s due to `findOne` tree searches. With override grouping (37-44% findOne reduction), execution drops to 0.7-3.9s. A canary check (`M["__canary"] = "deferred_ok"`) confirms the deferred section executes. Performance variance between screens is Figma plugin cold-start, not algorithmic — first execution in a session pays a heavy cache initialization cost (170s), subsequent runs reuse warm caches (0.7s for the same screen).
+After `createInstance()`, the instance inherits master defaults. L0 properties (rotation, opacity, visibility) must be applied directly — they're not "overrides" in Figma's sense.
 
-### Font Style Naming — FIXED (2026-04-06 Session 2)
-`normalize_font_style(family, style)` maps per-family: SF Pro Text/Display/Pro → "Semibold" (no space), Baskerville → "SemiBold" (camelCase), Inter → "Semi Bold" (with space). Verified against `figma.listAvailableFontsAsync()` ground truth.
+### PROXY_EXECUTE Reliability — ROOT CAUSED
 
-### Override Decomposition at Query Time Fixes 33 Silently-Dropped Types
-Override `property_name` in the DB is a composite `{target}{suffix}` (e.g., `:self:cornerRadius`). The renderer must split target from property to group overrides. Originally, `_OVERRIDE_SUFFIX_MAP` (7 entries) tried to do this at emit time, but 33 of 42 override types weren't in the map. Self-targeting overrides for cornerRadius, effects, strokes, padding were silently dropped — `findOne(n => n.id.endsWith(":self:cornerRadius"))` matched nothing.
+Not a reliability bug — timeout. Scripts take >120s due to `findOne` tree searches. With override grouping (37-44% findOne reduction), execution drops to 0.7-3.9s. Cold-start pays ~170s; warm cache: 0.7s.
 
-Fix: decompose at query time using `override_suffix_for_type()` from `extract_supplement.py` — the same code that created the composite string. One source of suffix truth, no second map. Overrides now use `{target, property, value}` format. Grouping is trivial: `group by target`. `_emit_override_op` reuses `format_js_value` for generic properties.
+### Font Style Naming
 
-Key lesson: when a pipeline stage encodes information (target+suffix → composite string), the stage that decodes it must use the same encoding knowledge. A hardcoded second map will always drift.
+`normalize_font_style(family, style)` maps per-family: SF Pro → "Semibold", Baskerville → "SemiBold", Inter → "Semi Bold". Verified against `figma.listAvailableFontsAsync()`.
+
+### Override Decomposition at Query Time
+
+Override `property_name` is composite `{target}{suffix}`. Decompose at query time using `override_suffix_for_type()` from the same code that created the composite. Key lesson: when a pipeline stage encodes information, the stage that decodes it must use the same encoding knowledge. A hardcoded second map will always drift.
 
 ### Gradient Fill Emission Requires Two Data Formats
-The REST API stores `gradientHandlePositions` (3 points). The Plugin API needs `gradientTransform` (2x3 matrix). These are different parameterizations of the same gradient. The solution: store BOTH in the `fills` column. Supplement extraction enriches existing fills with `gradientTransform` from the Plugin API. **ORDERING RISK**: supplement must run AFTER REST extraction. If REST re-runs after supplement, the enrichment (gradientTransform) is lost and supplement must re-run.
 
-### Token Refs Without L0 Fallback — The Progressive Fallback Gap
-When the IR `style` dict has a token ref like `{type.display.s32.fontSize}` and the token isn't in the tokens dict, the renderer was skipping the property entirely instead of falling back to the DB value (32.0). This affected ALL text properties (fontSize, fontFamily, fontWeight) on Mode 2 text nodes — 42+ per screen. Fix: `_resolve_text_value()` implements progressive fallback: L2 (resolved token) → L0 (DB value).
+REST API: `gradientHandlePositions` (3 points). Plugin API: `gradientTransform` (2x3 matrix). Store BOTH. **ORDERING RISK**: supplement must run AFTER REST extraction.
+
+### Token Refs Without L0 Fallback
+
+`_resolve_text_value()` implements progressive fallback: L2 (resolved token) → L0 (DB value). Previously, missing tokens caused properties to be skipped entirely.
 
 ### Per-Corner Radius Was Silently Dropped
-`normalize_corner_radius` correctly returns a dict for asymmetric corners (`{"tl": 28, "tr": 28, "bl": 0, "br": 0}`), but `_emit_visual` only handled `isinstance(radius, (int, float))` and silently dropped dicts. Fix: emit `topLeftRadius`, `topRightRadius`, `bottomLeftRadius`, `bottomRightRadius` for dict format.
+
+`normalize_corner_radius` returns a dict for asymmetric corners but emission only handled scalars. Now emits `topLeftRadius`, `topRightRadius`, etc.
 
 ### Unpublished Components Need Fallback Chain
-`importComponentByKeyAsync` only works for published library components. 25 of 122 component keys are unpublished (keyboard, Home Indicator, system chrome). Fix: fallback chain — component_figma_id → instance figma_node_id + `getMainComponentAsync()` → Mode 2 createFrame.
 
-### Registry-Driven Emission — The Architectural Fix (Sessions 3-4)
-The property registry was driving extraction, query, and overrides but NOT emission or the visual builder. Each emit function maintained its own hardcoded property list — 17 of 48 properties were extracted but never emitted. Root cause: the M×N problem at the property level.
+`importComponentByKeyAsync` only works for published components. Fallback: component_figma_id → instance figma_node_id + `getMainComponentAsync()` → Mode 2 createFrame.
 
-Fix (LLVM TableGen pattern): three emission categories — Template (uniform `"{var}.{figma_name} = {value};"`, type-aware via `format_js_value()`), Handler (`HANDLER` sentinel → dispatch dict), Deferred (empty emit dict). `build_visual_from_db` also made registry-driven — iterates PROPERTIES with `_apply_db_transform` instead of maintaining manual mappings. `_emit_visual` reduced to single `emit_from_registry` delegation. Structural tests enforce every property is classified as template/handler/deferred.
+### Registry-Driven Emission — The Architectural Fix
 
-Key lesson: naive Python string formatting for JS emission produces invalid code (Python `True` vs JS `true`, Python dicts with single quotes). The formatter must be type-aware — read `value_type` from the registry and format accordingly.
+Three emission categories: Template (uniform format, type-aware via `format_js_value()`), Handler (dispatch dict), Deferred (empty dict). `build_visual_from_db` is registry-driven. Structural tests enforce classification.
+
+Key lesson: naive Python string formatting for JS emission produces invalid code (Python `True` vs JS `true`). The formatter must be type-aware.
 
 ### Alpha Channel Lost at the Final Mile
-`hex_to_figma_rgb()` explicitly dropped alpha from 8-digit hex, then three emit functions hardcoded `a:1`. Gradient stops and shadow colors lost their alpha — gradients rendered opaque, shadows rendered as solid black. Fix: `hex_to_figma_rgba()` preserves alpha. The data was correct through the entire pipeline (extraction → DB → IR → normalization) — it was only lost in the last conversion step before JS emission. Lesson: when a round-trip produces wrong output, check the final mile first.
+
+`hex_to_figma_rgb()` dropped alpha from 8-digit hex. Data was correct through the entire pipeline — only lost in the last conversion step. Lesson: when round-trip produces wrong output, check the final mile first.
 
 ### textAutoResize and layoutSizing Are Interdependent
-In Figma, setting `layoutSizing=FIXED` on a text node implicitly overrides `textAutoResize`. These are two separate API properties that must be set consistently. The sizing heuristic was a 35-line if/elif cascade that didn't account for this interaction. Fix: `_TEXT_AUTO_RESIZE_SIZING` lookup table + `_resolve_layout_sizing` pure function. `WIDTH_AND_HEIGHT` → HUG/HUG, `HEIGHT` → FILL/HUG. The function takes all inputs and returns the sizing decision — no side effects, no DB lookups, testable in isolation.
+
+`_TEXT_AUTO_RESIZE_SIZING` lookup table + `_resolve_layout_sizing` pure function. `WIDTH_AND_HEIGHT` → HUG/HUG, `HEIGHT` → FILL/HUG.
 
 ### Inter Variable vs Inter — Subtle Font Width Difference
-`"Inter Variable"` (Figma's variable font) renders slightly narrower than `"Inter"` (static font) at the same weight. Our font normalization converts `"Inter Variable"` → `"Inter"` for Plugin API compatibility. This causes text that fits at 66px in the original to wrap in the reproduction. Known minor fidelity gap — not fixable without variable font support in the generation pipeline.
 
-### No Value Transform Is Universal — IR Must Be Renderer-Agnostic
-Cross-platform analysis (Figma, React/CSS, SwiftUI, Flutter, Android) revealed that **every** value transform is platform-specific:
-- Rotation: Figma/CSS/Android use degrees, Flutter/Canvas use radians. IR stores radians (ground truth).
-- Colors: Figma uses `{r,g,b,a}` floats, CSS uses hex/rgba(), Flutter uses packed `0xAARRGGBB` (alpha FIRST). IR stores hex.
-- Font weight: Figma uses style names ("Semi Bold"), CSS/Android use numeric, SwiftUI uses enum. IR stores numeric.
-- Line height: Figma uses `{value, unit}`, CSS uses unitless multiplier, SwiftUI `.lineSpacing()` is **additive only** (not total). IR stores {value, unit}.
+"Inter Variable" renders slightly narrower than "Inter" at the same weight. Known minor fidelity gap.
 
-The `build_visual_from_db` function must produce a renderer-agnostic visual dict. Each renderer transforms from that dict to its native format. See `docs/cross-platform-value-formats.md` for the complete reference table.
+### No Value Transform Is Universal
+
+Every value transform is platform-specific. IR stores ground truth (radians, hex, numeric weight, {value, unit}). Each renderer transforms to native format. See `docs/cross-platform-value-formats.md`.
 
 ### getNodeByIdAsync Works with Instance-Prefixed IDs (Undocumented)
-Tested: `figma.getNodeByIdAsync("I5587:579466;2036:28290")` returns the correct node inside a component instance. O(1) lookup vs O(n) `findOne` tree walk. However, this is undocumented observed behavior — the Figma docs don't guarantee it. Recorded as a future optimization path but not adopted for stability. See also `setProperties()` for component properties (TEXT, BOOLEAN, INSTANCE_SWAP, VARIANT) — batch API, zero tree walks, but requires the component to define properties (this design system doesn't use them).
+
+O(1) lookup for instance children. Undocumented — recorded as future optimization, not adopted for stability.
 
 ---
 
 ## Renderer Architecture (Session 8)
 
 ### Ground-Truth Sizing Replaces Heuristic Inference
-The `parent_is_autolayout` heuristic (default FILL for auto-layout children with unknown sizing) caused 17K+ INSTANCE nodes, 298 VECTOR nodes, and 414 ELLIPSE nodes to stretch incorrectly. Targeted re-extraction from Figma Plugin API gave 95% coverage (79,833 nodes with explicit `layoutSizingH/V`). Pixel dimensions with no DB value now default to FIXED (Figma platform default). Lesson: extract ground truth from the source, don't infer from context. Heuristics compound and produce "patchy" fixes that mask deeper issues.
+
+The `parent_is_autolayout` heuristic caused 17K+ nodes to stretch incorrectly. Re-extraction gave 95% coverage (79,833 nodes). Pixel dimensions default to FIXED. Lesson: extract ground truth, don't infer from context.
 
 ### layoutSizing Is a Parent-Context-Dependent Property
-Setting `layoutSizingHorizontal = "HUG"` on a frame during creation (before appendChild) causes the frame to collapse to content size, even when it should be positioned absolutely at a specific width. `layoutSizing` only has meaning when the node's parent has auto-layout. This matches the universal pattern: LLVM (legalization at lowering), Flutter (`flex` ignored unless parent is `RenderFlex`), Compose (`weight()` inert outside `Row`/`Column`), CSS (`flex-grow` ignored without `display:flex`). Store sizing intent in the IR unconditionally; emit at lowering time when parent context is known.
+
+Matches universal pattern: LLVM (legalization), Flutter (`flex` inert unless parent is `RenderFlex`), CSS (`flex-grow` ignored without `display:flex`). Store intent in IR; emit at lowering time when parent context is known.
 
 ### Figma Plugin API: FILL Children Before HUG Width = Zero-Width Text
-When a HUG auto-layout frame has a FILL child appended before any FIXED-width sibling, the FILL child resolves to ~0px width. Text with `textAutoResize=HEIGHT` inside that FILL child renders one character per line and does NOT re-wrap when the container later expands (after FIXED siblings establish parent width). This is the root cause of vertical text rendering on bottom sheets. Fix: three-phase rendering where text characters are set in Phase 3 after tree composition and auto-layout resolution in Phase 2.
+
+Root cause of vertical text. Fix: three-phase rendering where text characters are set in Phase 3 after tree composition in Phase 2.
 
 ### Three-Phase Rendering Eliminates Ordering Bugs Structurally
-Instead of scattering workarounds for Figma's emit ordering constraints, the renderer uses three phases: Materialize (create nodes, intrinsic properties), Compose (appendChild, layoutSizing), Hydrate (text characters, position). Each phase has single responsibility. The boundaries make ordering constraints structural rather than requiring developers to reason about "does this property go before or after appendChild." Platform-specific by design — React/SwiftUI/Flutter renderers can have different phase structures.
+
+Materialize (create nodes, intrinsic properties) → Compose (appendChild, layoutSizing) → Hydrate (text characters, position). Platform-specific by design.
 
 ### Phase 3 Internal Ordering: Resize Before Characters
-Within Phase 3 (Hydrate), resize/position operations must precede text `.characters` assignment. Non-auto-layout children get their pixel dimensions via `resize()` in Phase 3 (not Phase 1, because resize() resets layoutSizing to FIXED). FILL text descendants need ancestor widths established before content is set — otherwise text reflows at the wrong width. The three-phase split solved cross-phase ordering (creates before appends before characters), but this within-phase ordering was a second-order bug.
+
+Resize/position must precede text `.characters` assignment. FILL text descendants need ancestor widths established before content is set.
 
 ### clipsContent Default: False When DB Has NULL
-`figma.createFrame()` defaults `clipsContent=true`. When the DB has NULL (no explicit value), the renderer emits `clipsContent=false`. Unexpected clipping (e.g., magnifier glass cropped by parent frame) is more visually destructive than missing clipping. Same "fail open" principle as default fills clearing. Discovered when a magnifier icon was being clipped by its parent container — initially misdiagnosed as an isMask issue, but the real cause was the parent's createFrame() defaulting to clip.
+
+Unexpected clipping is more destructive than missing clipping. Same "fail open" principle as default fills clearing.
 
 ### Font Style: Ground-Truth with Per-Family Normalization
-`fontName.style` from the Plugin API is the authoritative style name. The re-extraction stored it in the `font_style` DB column. However, when `_normalize_font_family` converts "Inter Variable" → "Inter", the style name "SemiBold" (from Inter Variable) needs to become "Semi Bold" (Inter's naming). Solution: `normalize_font_style` canonicalizes all semibold variants to "Semi Bold" first, then maps to the family-specific form. Bidirectional — handles both weight-derived ("Semi Bold") and DB-extracted ("SemiBold") inputs.
+
+`normalize_font_style` canonicalizes all semibold variants to "Semi Bold" first, then maps to family-specific form. Bidirectional.
 
 ### SCI Parent Wiring Bypasses Unclassified INSTANCE Nodes
-`build_composition_spec` used SCI `parent_instance_id` as primary parent, DB `parent_id` as fallback. When INSTANCE nodes lack SCI entries (123 nodes in Frame 427, e.g., `ios/keyboard-ipad-portrait`), their classified children have SCI entries pointing to the nearest classified ancestor, skipping intermediate containers. Result: keyboard rows flattened under iPad frame instead of keyboard layout frame. Fix: tree structure always from DB `parent_id`, SCI for classification only.
+
+Tree structure always from DB `parent_id`, SCI for classification only. Eliminates skip-level wiring.
