@@ -1,5 +1,7 @@
 """Tests for IR generation (T5 Phase 2)."""
 
+from __future__ import annotations
+
 import json
 import sqlite3
 
@@ -138,6 +140,28 @@ class TestNormalizeFills:
         assert len(fills) == 2
         assert fills[0]["type"] == "solid"
         assert fills[1]["type"] == "image"
+
+    def test_image_fill_preserves_image_transform(self):
+        transform = [[0.64, 0.0, 0.17], [0.0, 0.64, 0.17]]
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "STRETCH",
+            "imageHash": "abc123",
+            "imageTransform": transform,
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert len(fills) == 1
+        assert fills[0]["imageTransform"] == transform
+        assert fills[0]["scaleMode"] == "stretch"
+
+    def test_image_fill_without_image_transform_has_no_key(self):
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "FILL",
+            "imageHash": "abc123",
+        }])
+        fills = normalize_fills(fills_json, [])
+        assert "imageTransform" not in fills[0]
 
 
 class TestNormalizeStrokes:
@@ -697,7 +721,7 @@ class TestBuildCompositionSpec:
         db.execute(
             "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
             "x, y, width, height, parent_id) "
-            "VALUES (17, 1, 'sp2', '(Adjust Auto Layout Spacing)', 'FRAME', 2, 5, -8990, 7060, 60, 4, 13)"
+            "VALUES (17, 1, 'sp2', '(Auto Layout spacer)', 'RECTANGLE', 2, 5, -8990, 7060, 60, 4, 13)"
         )
         db.commit()
         row = db.execute("SELECT id FROM nodes WHERE id = 17").fetchone()
@@ -726,6 +750,22 @@ class TestBuildCompositionSpec:
         node_ids = set(spec["_node_id_map"].values())
         assert 18 not in node_ids
         assert 19 not in node_ids
+
+    def test_parenthesized_visual_nodes_included_in_spec(self, db: sqlite3.Connection):
+        """Parenthesized names with visual content are NOT synthetic.
+        Only known Figma internals (e.g. Auto Layout spacer) are filtered."""
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+            "x, y, width, height, parent_id, fills) "
+            "VALUES (20, 1, 'adj1', '(✏️ Adjust Auto Layout Spacing)', 'FRAME', 2, 7, "
+            "-8990, 7060, 200, 8, 13, "
+            "'[{\"type\":\"SOLID\",\"color\":{\"r\":0.4,\"g\":0.8,\"b\":0.3,\"a\":1}}]')"
+        )
+        db.commit()
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        node_ids = set(spec["_node_id_map"].values())
+        assert 20 in node_ids
 
     def test_system_chrome_included_in_spec(self, db: sqlite3.Connection):
         """System chrome (keyboards, status bars) IS design content.

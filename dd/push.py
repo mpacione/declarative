@@ -4,6 +4,8 @@ Generates structured MCP action specs from DB state + optional Figma state.
 This module produces manifests but does not make MCP calls directly.
 """
 
+from __future__ import annotations
+
 import sqlite3
 from typing import Any
 

@@ -1,5 +1,7 @@
 """W3C DTCG v2025.10 tokens.json export module."""
 
+from __future__ import annotations
+
 import json
 from typing import Any
 

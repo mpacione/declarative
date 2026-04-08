@@ -244,16 +244,19 @@ class TestSystemChrome:
 
 
 class TestSyntheticNode:
-    """Verify synthetic node detection — platform artifacts not designer content."""
+    """Verify synthetic node detection — only known Figma-internal artifacts."""
 
     def test_auto_layout_spacer(self):
         assert is_synthetic_node("(Auto Layout spacer)") is True
 
-    def test_adjust_auto_layout_spacing(self):
-        assert is_synthetic_node("(Adjust Auto Layout Spacing)") is True
+    def test_adjust_auto_layout_spacing_is_not_synthetic(self):
+        """Adjust Auto Layout Spacing nodes have fills, strokes, and children.
+        They are visual design content, not platform artifacts."""
+        assert is_synthetic_node("(✏️ Adjust Auto Layout Spacing)") is False
 
-    def test_other_parenthesized_names(self):
-        assert is_synthetic_node("(Some Future Figma Internal)") is True
+    def test_unknown_parenthesized_names_not_synthetic(self):
+        """Only known Figma internals are synthetic, not all parenthesized names."""
+        assert is_synthetic_node("(Some Future Figma Internal)") is False
 
     def test_system_chrome_is_not_synthetic(self):
         assert is_synthetic_node("ios/status-bar") is False
@@ -270,7 +273,7 @@ class TestSyntheticNode:
     def test_parenthesized_substring_not_synthetic(self):
         assert is_synthetic_node("my (custom) frame") is False
         assert is_synthetic_node("(") is False
-        assert is_synthetic_node("()") is True  # edge: empty parens is synthetic
+        assert is_synthetic_node("()") is False
 
     def test_empty_name_not_synthetic(self):
         assert is_synthetic_node("") is False

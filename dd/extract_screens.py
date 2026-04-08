@@ -1,5 +1,7 @@
 """Screen extraction script generator for Figma node trees."""
 
+from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -21,6 +23,19 @@ def generate_extraction_script(screen_node_id: str) -> str:
   const screen = await figma.getNodeByIdAsync(screenId);
   const nodes = [];
 
+  // Safe property reader: handles non-enumerable props, prototype getters,
+  // and properties that throw on wrong node types. Returns undefined on miss.
+  function safeRead(node, prop) {
+    try { const v = node[prop]; return v === undefined ? undefined : v; }
+    catch(e) { return undefined; }
+  }
+
+  // safeRead with figma.mixed check — returns undefined if mixed.
+  function safeReadNoMixed(node, prop) {
+    const v = safeRead(node, prop);
+    return v === figma.mixed ? undefined : v;
+  }
+
   async function walk(node, parentIdx, depth) {
     const entry = {
       figma_node_id: node.id,
@@ -34,13 +49,17 @@ def generate_extraction_script(screen_node_id: str) -> str:
     };
 
     // Visual properties
-    if ('fills' in node) entry.fills = JSON.stringify(node.fills);
-    if ('strokes' in node) entry.strokes = JSON.stringify(node.strokes);
-    if ('effects' in node) entry.effects = JSON.stringify(node.effects);
+    const fills = safeRead(node, 'fills');
+    if (fills !== undefined) entry.fills = JSON.stringify(fills);
+    const strokes = safeRead(node, 'strokes');
+    if (strokes !== undefined) entry.strokes = JSON.stringify(strokes);
+    const effects = safeRead(node, 'effects');
+    if (effects !== undefined) entry.effects = JSON.stringify(effects);
 
     // Handle cornerRadius - can be number or mixed
-    if ('cornerRadius' in node) {
-      if (node.cornerRadius === figma.mixed) {
+    const cr = safeRead(node, 'cornerRadius');
+    if (cr !== undefined) {
+      if (cr === figma.mixed) {
         entry.corner_radius = JSON.stringify({
           tl: node.topLeftRadius || 0,
           tr: node.topRightRadius || 0,
@@ -48,60 +67,80 @@ def generate_extraction_script(screen_node_id: str) -> str:
           br: node.bottomRightRadius || 0
         });
       } else {
-        entry.corner_radius = node.cornerRadius;
+        entry.corner_radius = cr;
       }
     }
 
-    if ('opacity' in node) entry.opacity = node.opacity;
-    if ('blendMode' in node) entry.blend_mode = node.blendMode;
-    if ('visible' in node) entry.visible = node.visible;
+    const opacity = safeRead(node, 'opacity');
+    if (opacity !== undefined) entry.opacity = opacity;
+    const blendMode = safeRead(node, 'blendMode');
+    if (blendMode !== undefined) entry.blend_mode = blendMode;
+    const visible = safeRead(node, 'visible');
+    if (visible !== undefined) entry.visible = visible;
 
     // Stroke properties
-    if ('strokeWeight' in node) {
-      if (node.strokeWeight === figma.mixed) {
+    const sw = safeRead(node, 'strokeWeight');
+    if (sw !== undefined) {
+      if (sw === figma.mixed) {
         entry.stroke_top_weight = node.strokeTopWeight;
         entry.stroke_right_weight = node.strokeRightWeight;
         entry.stroke_bottom_weight = node.strokeBottomWeight;
         entry.stroke_left_weight = node.strokeLeftWeight;
       } else {
-        entry.stroke_weight = node.strokeWeight;
+        entry.stroke_weight = sw;
       }
     }
-    if ('strokeAlign' in node) entry.stroke_align = node.strokeAlign;
-    if ('strokeCap' in node && node.strokeCap !== figma.mixed) entry.stroke_cap = node.strokeCap;
-    if ('strokeJoin' in node && node.strokeJoin !== figma.mixed) entry.stroke_join = node.strokeJoin;
-    if ('dashPattern' in node && node.dashPattern?.length) entry.dash_pattern = JSON.stringify(node.dashPattern);
+    const sa = safeRead(node, 'strokeAlign');
+    if (sa !== undefined) entry.stroke_align = sa;
+    const sc = safeReadNoMixed(node, 'strokeCap');
+    if (sc !== undefined) entry.stroke_cap = sc;
+    const sj = safeReadNoMixed(node, 'strokeJoin');
+    if (sj !== undefined) entry.stroke_join = sj;
+    const dp = safeRead(node, 'dashPattern');
+    if (dp?.length) entry.dash_pattern = JSON.stringify(dp);
 
     // Vector geometry (VECTOR, BOOLEAN_OPERATION, ELLIPSE, LINE, etc.)
-    if ('fillGeometry' in node && node.fillGeometry?.length) entry.fill_geometry = JSON.stringify(node.fillGeometry);
-    if ('strokeGeometry' in node && node.strokeGeometry?.length) entry.stroke_geometry = JSON.stringify(node.strokeGeometry);
-    if ('booleanOperation' in node) entry.boolean_operation = node.booleanOperation;
+    const fg = safeRead(node, 'fillGeometry');
+    if (fg?.length) entry.fill_geometry = JSON.stringify(fg);
+    const sg = safeRead(node, 'strokeGeometry');
+    if (sg?.length) entry.stroke_geometry = JSON.stringify(sg);
+    const bo = safeRead(node, 'booleanOperation');
+    if (bo !== undefined) entry.boolean_operation = bo;
 
     // Corner smoothing (iOS-style smooth corners)
-    if ('cornerSmoothing' in node && node.cornerSmoothing > 0) entry.corner_smoothing = node.cornerSmoothing;
+    const cs = safeRead(node, 'cornerSmoothing');
+    if (cs !== undefined && cs > 0) entry.corner_smoothing = cs;
 
     // Arc data (partial arcs on ELLIPSE nodes)
-    if ('arcData' in node) entry.arc_data = JSON.stringify(node.arcData);
+    const ad = safeRead(node, 'arcData');
+    if (ad !== undefined) entry.arc_data = JSON.stringify(ad);
 
     // Transform + clipping
-    if ('rotation' in node && node.rotation !== 0) entry.rotation = node.rotation;
-    if ('clipsContent' in node) entry.clips_content = node.clipsContent ? 1 : 0;
+    const rot = safeRead(node, 'rotation');
+    if (rot !== undefined && rot !== 0) entry.rotation = rot;
+    const cc = safeRead(node, 'clipsContent');
+    if (cc !== undefined) entry.clips_content = cc ? 1 : 0;
 
     // Mask
-    if ('isMask' in node && node.isMask) entry.is_mask = 1;
+    const im = safeRead(node, 'isMask');
+    if (im) entry.is_mask = 1;
 
     // Constraints
-    if ('constraints' in node) {
-      entry.constraint_h = node.constraints?.horizontal;
-      entry.constraint_v = node.constraints?.vertical;
+    const constraints = safeRead(node, 'constraints');
+    if (constraints) {
+      entry.constraint_h = constraints.horizontal;
+      entry.constraint_v = constraints.vertical;
     }
 
     // Child positioning within auto-layout parent
-    if ('layoutPositioning' in node) entry.layout_positioning = node.layoutPositioning;
+    const lp = safeRead(node, 'layoutPositioning');
+    if (lp !== undefined) entry.layout_positioning = lp;
 
     // Layout sizing: read for ALL nodes (auto-layout children, text nodes, etc.)
-    if ('layoutSizingHorizontal' in node) entry.layout_sizing_h = node.layoutSizingHorizontal;
-    if ('layoutSizingVertical' in node) entry.layout_sizing_v = node.layoutSizingVertical;
+    const lsh = safeRead(node, 'layoutSizingHorizontal');
+    if (lsh !== undefined) entry.layout_sizing_h = lsh;
+    const lsv = safeRead(node, 'layoutSizingVertical');
+    if (lsv !== undefined) entry.layout_sizing_v = lsv;
 
     // Auto-layout
     if (node.layoutMode && node.layoutMode !== 'NONE') {
@@ -114,38 +153,62 @@ def generate_extraction_script(screen_node_id: str) -> str:
       entry.counter_axis_spacing = node.counterAxisSpacing;
       entry.primary_align = node.primaryAxisAlignItems;
       entry.counter_align = node.counterAxisAlignItems;
-      if ('layoutWrap' in node) entry.layout_wrap = node.layoutWrap;
-      if ('minWidth' in node) entry.min_width = node.minWidth;
-      if ('maxWidth' in node) entry.max_width = node.maxWidth;
-      if ('minHeight' in node) entry.min_height = node.minHeight;
-      if ('maxHeight' in node) entry.max_height = node.maxHeight;
+      const lw = safeRead(node, 'layoutWrap');
+      if (lw !== undefined) entry.layout_wrap = lw;
+      const miw = safeRead(node, 'minWidth');
+      if (miw !== undefined) entry.min_width = miw;
+      const maw = safeRead(node, 'maxWidth');
+      if (maw !== undefined) entry.max_width = maw;
+      const mih = safeRead(node, 'minHeight');
+      if (mih !== undefined) entry.min_height = mih;
+      const mah = safeRead(node, 'maxHeight');
+      if (mah !== undefined) entry.max_height = mah;
 
       // Grid layout properties (layoutMode === 'GRID')
       if (node.layoutMode === 'GRID') {
-        if ('gridRowCount' in node) entry.grid_row_count = node.gridRowCount;
-        if ('gridColumnCount' in node) entry.grid_column_count = node.gridColumnCount;
-        if ('gridRowGap' in node) entry.grid_row_gap = node.gridRowGap;
-        if ('gridColumnGap' in node) entry.grid_column_gap = node.gridColumnGap;
-        if ('gridRowSizes' in node) entry.grid_row_sizes = JSON.stringify(node.gridRowSizes);
-        if ('gridColumnSizes' in node) entry.grid_column_sizes = JSON.stringify(node.gridColumnSizes);
+        const grc = safeRead(node, 'gridRowCount');
+        if (grc !== undefined) entry.grid_row_count = grc;
+        const gcc = safeRead(node, 'gridColumnCount');
+        if (gcc !== undefined) entry.grid_column_count = gcc;
+        const grg = safeRead(node, 'gridRowGap');
+        if (grg !== undefined) entry.grid_row_gap = grg;
+        const gcg = safeRead(node, 'gridColumnGap');
+        if (gcg !== undefined) entry.grid_column_gap = gcg;
+        const grs = safeRead(node, 'gridRowSizes');
+        if (grs !== undefined) entry.grid_row_sizes = JSON.stringify(grs);
+        const gcs = safeRead(node, 'gridColumnSizes');
+        if (gcs !== undefined) entry.grid_column_sizes = JSON.stringify(gcs);
       }
     }
 
     // Typography (TEXT nodes)
     if (node.type === 'TEXT') {
-      entry.font_family = node.fontName?.family;
-      entry.font_style = node.fontName?.style;
-      entry.font_weight = node.fontWeight;
-      entry.font_size = node.fontSize;
-      entry.line_height = JSON.stringify(node.lineHeight);
-      entry.letter_spacing = JSON.stringify(node.letterSpacing);
-      if ('paragraphSpacing' in node) entry.paragraph_spacing = node.paragraphSpacing;
-      entry.text_align = node.textAlignHorizontal;
-      if ('textAlignVertical' in node) entry.text_align_v = node.textAlignVertical;
-      if ('textDecoration' in node && node.textDecoration !== figma.mixed) entry.text_decoration = node.textDecoration;
-      if ('textCase' in node && node.textCase !== figma.mixed) entry.text_case = node.textCase;
+      const fn = safeRead(node, 'fontName');
+      if (fn && fn !== figma.mixed) {
+        entry.font_family = fn.family;
+        entry.font_style = fn.style;
+      }
+      const fw = safeReadNoMixed(node, 'fontWeight');
+      if (fw !== undefined) entry.font_weight = fw;
+      const fs = safeReadNoMixed(node, 'fontSize');
+      if (fs !== undefined) entry.font_size = fs;
+      const lh = safeRead(node, 'lineHeight');
+      if (lh !== undefined) entry.line_height = JSON.stringify(lh);
+      const ls = safeRead(node, 'letterSpacing');
+      if (ls !== undefined) entry.letter_spacing = JSON.stringify(ls);
+      const ps = safeRead(node, 'paragraphSpacing');
+      if (ps !== undefined) entry.paragraph_spacing = ps;
+      const tah = safeRead(node, 'textAlignHorizontal');
+      if (tah !== undefined) entry.text_align = tah;
+      const tav = safeRead(node, 'textAlignVertical');
+      if (tav !== undefined) entry.text_align_v = tav;
+      const td = safeReadNoMixed(node, 'textDecoration');
+      if (td !== undefined) entry.text_decoration = td;
+      const tc = safeReadNoMixed(node, 'textCase');
+      if (tc !== undefined) entry.text_case = tc;
       entry.text_content = node.characters;
-      entry.text_auto_resize = node.textAutoResize;
+      const tar = safeRead(node, 'textAutoResize');
+      if (tar !== undefined) entry.text_auto_resize = tar;
     }
 
     // Component reference (INSTANCE nodes)

@@ -5,6 +5,8 @@ component list that compose_screen() consumes. Uses Claude Haiku for
 fast, cheap parsing.
 """
 
+from __future__ import annotations
+
 import json
 import re
 import sqlite3

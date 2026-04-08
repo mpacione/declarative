@@ -1,5 +1,7 @@
 """Tests for Figma generation from CompositionSpec IR (T5 Phase 3)."""
 
+from __future__ import annotations
+
 import json
 import sqlite3
 
@@ -1529,7 +1531,8 @@ class TestNodeTypeDispatch:
         script, _ = generate_figma_script(spec)
         assert "figma.createEllipse()" in script
 
-    def test_vector_type_skipped_without_asset(self):
+    def test_vector_type_created_without_asset(self):
+        """Vectors are always created (even without asset data)."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1542,7 +1545,7 @@ class TestNodeTypeDispatch:
             },
         })
         script, _ = generate_figma_script(spec)
-        assert "vector" not in script.lower() or "createVector" not in script
+        assert "createVector()" in script
 
     def test_vector_with_asset_creates_vector(self):
         spec = _make_spec({
@@ -1575,7 +1578,8 @@ class TestNodeTypeDispatch:
         assert "vectorPaths" in script
         assert "M 0 0 L 10 0 L 10 10 Z" in script
 
-    def test_boolean_operation_with_asset_creates_vector(self):
+    def test_boolean_operation_with_asset(self):
+        """Boolean operations are created natively and get vector path data."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1601,9 +1605,10 @@ class TestNodeTypeDispatch:
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "figma.createVector()" in script
+        assert "createBooleanOperation()" in script
 
-    def test_group_type_skipped(self):
+    def test_group_created_via_figma_group(self):
+        """Groups must be created via figma.group() — not skipped, not createFrame."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1613,17 +1618,82 @@ class TestNodeTypeDispatch:
             "group-1": {
                 "type": "group",
                 "layout": {},
+                "children": ["rectangle-1"],
+            },
+            "rectangle-1": {
+                "type": "rectangle",
+                "layout": {},
             },
         })
         script, _ = generate_figma_script(spec)
-        assert "createFrame" not in script or 'name = "group' not in script
+        assert "figma.group(" in script
+        assert "createRectangle" in script
+
+    def test_vector_created_not_skipped(self):
+        """Vectors without assets should be created, not skipped."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["vector-1"],
+            },
+            "vector-1": {
+                "type": "vector",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "createVector()" in script
+
+    def test_boolean_operation_created_not_skipped(self):
+        """Boolean operations should be created, not skipped."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["boolean_operation-1"],
+            },
+            "boolean_operation-1": {
+                "type": "boolean_operation",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "createBooleanOperation()" in script
 
 
-class TestMaskGroupRendering:
-    """Mask groups must NOT be skipped — they contain mask shapes + masked content."""
+class TestGroupRendering:
+    """Groups are created via figma.group() with proper mask support."""
 
-    def test_group_with_mask_child_not_skipped(self):
-        """A group whose child has is_mask should be rendered, not skipped."""
+    def test_group_children_not_orphaned(self):
+        """Children of groups must appear in the generated script."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
+                "children": ["group-1"],
+            },
+            "group-1": {
+                "type": "group",
+                "layout": {},
+                "children": ["ellipse-1", "rectangle-1"],
+            },
+            "ellipse-1": {
+                "type": "ellipse",
+                "layout": {},
+            },
+            "rectangle-1": {
+                "type": "rectangle",
+                "layout": {},
+            },
+        })
+        script, _ = generate_figma_script(spec)
+        assert "createEllipse" in script
+        assert "createRectangle" in script
+        assert "figma.group(" in script
+
+    def test_mask_group_with_is_mask(self):
+        """Mask groups work natively — isMask on child inside a real GROUP."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1648,11 +1718,10 @@ class TestMaskGroupRendering:
             10: {"is_mask": 1, "fills": "[]", "strokes": "[]", "effects": "[]", "bindings": [], "_asset_refs": []},
             20: {"fills": "[]", "strokes": "[]", "effects": "[]", "bindings": [], "_asset_refs": []},
         }
-        # Map element IDs → node IDs
         spec["_node_id_map"] = {"ellipse-1": 10, "rectangle-1": 20, "group-1": 5}
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        # The group must be created as a frame (groups render as frames in Figma API)
-        assert 'name = "group-1"' in script or 'name = "Mask Group"' in script or "createFrame" in script
+        assert "figma.group(" in script
+        assert ".isMask = true" in script
 
     def test_is_mask_property_emitted(self):
         """Nodes with is_mask=1 must have .isMask = true set in the generated JS."""
@@ -1673,22 +1742,6 @@ class TestMaskGroupRendering:
         spec["_node_id_map"] = {"ellipse-1": 10}
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".isMask = true" in script
-
-    def test_non_mask_group_still_skipped(self):
-        """Regular groups (no mask children) should still be skipped."""
-        spec = _make_spec({
-            "screen-1": {
-                "type": "screen",
-                "layout": {"direction": "absolute", "sizing": {"width": 100, "height": 100}},
-                "children": ["group-1"],
-            },
-            "group-1": {
-                "type": "group",
-                "layout": {},
-            },
-        })
-        script, _ = generate_figma_script(spec)
-        assert "createFrame" not in script or 'name = "group' not in script
 
 
 class TestFix3BPropertyEmission:
@@ -2115,6 +2168,70 @@ class TestDefaultFillClearing:
         # Text node should NOT get fills=[]
         lines = [l for l in script.split("\n") if "n1." in l]
         assert not any("fills = []" in l for l in lines)
+
+
+    def test_rectangle_without_fills_gets_empty_fills(self):
+        """Rectangles with no fills should get fills=[] to clear Figma's default white."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["r-1"],
+            },
+            "r-1": {"type": "rectangle"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "r-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = [l for l in script.split("\n") if "n1." in l]
+        assert any("fills = []" in l for l in lines), (
+            f"Rectangle with no fills should get fills=[], got: {lines}"
+        )
+
+    def test_ellipse_without_fills_gets_empty_fills(self):
+        """Ellipses with no fills should get fills=[] to clear Figma's default white."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["e-1"],
+            },
+            "e-1": {"type": "ellipse"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "e-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = [l for l in script.split("\n") if "n1." in l]
+        assert any("fills = []" in l for l in lines), (
+            f"Ellipse with no fills should get fills=[], got: {lines}"
+        )
+
+    def test_vector_without_fills_gets_empty_fills(self):
+        """Vectors with no fills should get fills=[] to clear Figma's default white."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["v-1"],
+            },
+            "v-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "v-1": 2}
+        db_visuals = {
+            1: {"bindings": []},
+            2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = [l for l in script.split("\n") if "n1." in l]
+        assert any("fills = []" in l for l in lines), (
+            f"Vector with no fills should get fills=[], got: {lines}"
+        )
 
 
 class TestMode1L0Properties:
@@ -2653,6 +2770,24 @@ class TestFillTypeCoverage:
         assert "SOLID" in lines[0]
         assert "IMAGE" in lines[0]
 
+    def test_image_fill_with_image_transform_emitted(self):
+        from dd.renderers.figma import _emit_fills
+        transform = [[0.64, 0.0, 0.17], [0.0, 0.64, 0.17]]
+        fills = [{"type": "image", "asset_hash": "abc123", "scaleMode": "stretch", "imageTransform": transform}]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert len(lines) == 1
+        assert "CROP" in lines[0]
+        assert "imageTransform" in lines[0]
+        assert "0.64" in lines[0]
+        assert "0.17" in lines[0]
+
+    def test_image_fill_without_image_transform_no_crop(self):
+        from dd.renderers.figma import _emit_fills
+        fills = [{"type": "image", "asset_hash": "abc123", "scaleMode": "fill"}]
+        lines, _ = _emit_fills("v", "e", fills, {})
+        assert "imageTransform" not in lines[0]
+        assert "FILL" in lines[0]
+
     def test_all_normalize_fill_types_have_emit_handler(self):
         """Structural coverage: every type normalize_fills can produce must be
         handled by _emit_fills. This test fails if a new fill type is added
@@ -2716,14 +2851,40 @@ class TestResolveLayoutSizing:
         assert h == "fill"
         assert v == "hug"
 
-    def test_pixel_sizing_gives_fixed(self):
+    def test_pixel_sizing_gives_fixed_outside_autolayout(self):
         from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
             text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=False,
         )
         assert h == "fixed"
         assert v == "fixed"
+
+    def test_pixel_sizing_defaults_to_fill_in_autolayout(self):
+        """When sizing mode is unknown (NULL) but node is an auto-layout child,
+        default to FILL rather than FIXED. FILL is the safer default — a FILL
+        node that should be FIXED will expand (cosmetic), while a FIXED node
+        that should be FILL will truncate content (functional breakage)."""
+        from dd.visual import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 200, "height": 100}, db_sizing_h=None, db_sizing_v=None,
+            text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True,
+        )
+        assert h == "fill"
+        assert v == "fill"
+
+    def test_explicit_db_fixed_respected_in_autolayout(self):
+        """When DB explicitly says FIXED, don't override to fill."""
+        from dd.visual import _resolve_layout_sizing
+        h, v = _resolve_layout_sizing(
+            elem_sizing={"width": 200, "height": 100}, db_sizing_h="FIXED", db_sizing_v="FIXED",
+            text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True,
+        )
+        assert h == "FIXED"
+        assert v == "FIXED"
 
     def test_fill_width_type_gives_fill(self):
         from dd.visual import _resolve_layout_sizing
@@ -3261,6 +3422,51 @@ class TestEmitMissingTextProperties:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+class TestRenderReadiness:
+    """Verify render-readiness validation catches data gaps before rendering."""
+
+    def test_warns_on_vector_without_asset(self):
+        from dd.renderers.figma import validate_render_readiness
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["v-1"]},
+            "v-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "v-1": 2}
+        db_visuals = {1: {"bindings": []}, 2: {"bindings": []}}
+        warnings = validate_render_readiness(spec, db_visuals)
+        vector_warnings = [w for w in warnings if w["code"] == "EMPTY_VECTOR"]
+        assert len(vector_warnings) == 1
+        assert "v-1" in vector_warnings[0]["element_id"]
+
+    def test_no_warning_for_vector_with_asset(self):
+        from dd.renderers.figma import validate_render_readiness
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["v-1"]},
+            "v-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "v-1": 2}
+        db_visuals = {1: {"bindings": []}, 2: {"bindings": [], "_asset_refs": [{"svg_data": "M0 0"}]}}
+        warnings = validate_render_readiness(spec, db_visuals)
+        vector_warnings = [w for w in warnings if w["code"] == "EMPTY_VECTOR"]
+        assert len(vector_warnings) == 0
+
+    def test_warns_on_missing_sizing_mode(self):
+        from dd.renderers.figma import validate_render_readiness
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "vertical"},
+                "children": ["f-1"],
+            },
+            "f-1": {"type": "frame", "layout": {"sizing": {"width": 200}}},
+        })
+        spec["_node_id_map"] = {"screen-1": 1, "f-1": 2}
+        db_visuals = {1: {"bindings": []}, 2: {"bindings": [], "layout_sizing_h": None}}
+        warnings = validate_render_readiness(spec, db_visuals)
+        sizing_warnings = [w for w in warnings if w["code"] == "MISSING_SIZING_MODE"]
+        assert len(sizing_warnings) >= 1
+
 
 def _make_spec(elements: dict, tokens: dict | None = None) -> dict:
     root_id = next(iter(elements)) if elements else "root"

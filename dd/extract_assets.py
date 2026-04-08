@@ -1,5 +1,7 @@
 """Asset extraction: image hashes and vector geometry from the DB."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import sqlite3

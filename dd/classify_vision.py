@@ -4,6 +4,8 @@ Takes screenshots of classified component subtrees and re-classifies via
 vision to detect disagreements between structural and visual classification.
 """
 
+from __future__ import annotations
+
 import base64
 import json
 import sqlite3

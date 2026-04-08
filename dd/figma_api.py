@@ -4,6 +4,8 @@ Fetches file data via the Figma REST API and converts the response
 into the dict format expected by parse_extraction_response().
 """
 
+from __future__ import annotations
+
 import json
 import math
 import time

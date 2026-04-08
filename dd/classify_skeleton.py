@@ -4,6 +4,8 @@ Generates compact skeleton notation from classified component instances.
 Notation format: stack(header, scroll(content), bottom_nav)
 """
 
+from __future__ import annotations
+
 import sqlite3
 from typing import Any
 

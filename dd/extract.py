@@ -1,5 +1,7 @@
 """Extraction orchestrator with resume support for the DD pipeline."""
 
+from __future__ import annotations
+
 import sqlite3
 import time
 from collections.abc import Callable

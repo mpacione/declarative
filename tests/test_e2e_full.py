@@ -5,6 +5,8 @@ curation, validation, all exports, dark mode creation (OKLCH inversion),
 and drift detection. This is the comprehensive regression gate for the entire project.
 """
 
+from __future__ import annotations
+
 import json
 import re
 import sqlite3

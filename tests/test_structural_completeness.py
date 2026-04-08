@@ -182,6 +182,62 @@ class TestDBSchemaAlignment:
         )
 
 
+class TestFillSubPropertyCompleteness:
+    """Every IMAGE fill sub-property is either preserved or documented as dropped."""
+
+    # Sub-properties that normalize_fills preserves for IMAGE fills.
+    _PRESERVED_IMAGE_KEYS: set[str] = {
+        "type", "asset_hash", "scaleMode", "opacity", "imageTransform",
+    }
+
+    # Sub-properties intentionally dropped with documented reasons.
+    _DROPPED_IMAGE_KEYS: dict[str, str] = {
+        "blendMode": "Figma default NORMAL; per-paint blendMode not yet supported in renderers",
+        "visible": "Invisible fills filtered at normalization time (never reach output)",
+        "imageHash": "Renamed to asset_hash in normalized form",
+        "imageRef": "REST API alias for imageHash; renamed to asset_hash",
+        "filters": "Image filters (exposure, contrast, etc.) — future work",
+        "rotation": "Per-fill rotation — future work",
+    }
+
+    def test_image_fill_keys_accounted_for(self):
+        """No IMAGE fill sub-property is silently stripped by normalize_fills."""
+        from dd.ir import normalize_fills
+        import json
+
+        all_image_keys = {
+            "type", "scaleMode", "imageHash", "imageRef", "imageTransform",
+            "blendMode", "visible", "opacity", "filters", "rotation",
+        }
+
+        accounted = self._PRESERVED_IMAGE_KEYS | set(self._DROPPED_IMAGE_KEYS.keys())
+        missing = all_image_keys - accounted
+        assert not missing, (
+            f"IMAGE fill keys not preserved or documented as dropped: {sorted(missing)}. "
+            f"Add to _PRESERVED_IMAGE_KEYS or _DROPPED_IMAGE_KEYS."
+        )
+
+    def test_preserved_keys_actually_survive_normalization(self):
+        """Keys listed as preserved actually appear in normalize_fills output."""
+        from dd.ir import normalize_fills
+        import json
+
+        fills_json = json.dumps([{
+            "type": "IMAGE",
+            "scaleMode": "FILL",
+            "imageHash": "test123",
+            "imageTransform": [[1, 0, 0], [0, 1, 0]],
+            "opacity": 0.8,
+        }])
+        result = normalize_fills(fills_json, [])
+        assert len(result) == 1
+        output_keys = set(result[0].keys())
+        expected = {"type", "asset_hash", "scaleMode", "opacity", "imageTransform"}
+        assert expected == output_keys, (
+            f"normalize_fills output keys {output_keys} != expected {expected}"
+        )
+
+
 class TestExtractionAlignment:
     """Extraction scripts capture all registered properties."""
 
@@ -206,4 +262,28 @@ class TestExtractionAlignment:
         missing = {name for name in required_in_script if name not in script}
         assert not missing, (
             f"Plugin API extraction script missing properties: {sorted(missing)}"
+        )
+
+    def test_extraction_uses_safe_read_not_in_operator(self):
+        """Extraction must use safeRead() helper, not 'prop' in node.
+
+        The JavaScript 'in' operator misses non-enumerable properties on
+        some Figma Plugin API node types, causing silent data loss.
+        """
+        from dd.extract_screens import generate_extraction_script
+        script = generate_extraction_script("1:1")
+
+        assert "function safeRead" in script, (
+            "Extraction script must define a safeRead helper function"
+        )
+
+        # The 'in node' pattern should not appear for property reads.
+        # Allowed exceptions: 'children' in node (structural, not a property)
+        import re
+        in_node_matches = re.findall(r"'(\w+)'\s+in\s+node", script)
+        allowed_in_checks = {"children"}
+        disallowed = set(in_node_matches) - allowed_in_checks
+        assert not disallowed, (
+            f"Extraction uses 'prop in node' instead of safeRead for: {sorted(disallowed)}. "
+            f"Replace with safeRead(node, 'prop') to avoid missing non-enumerable properties."
         )

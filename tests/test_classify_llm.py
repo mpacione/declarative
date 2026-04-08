@@ -1,5 +1,7 @@
 """Tests for LLM classification (T5 Phase 1b, Step 3)."""
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from unittest.mock import MagicMock

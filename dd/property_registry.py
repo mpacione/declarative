@@ -13,6 +13,8 @@ Each property maps:
   Figma Plugin API name → DB column → override field name → value type
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 

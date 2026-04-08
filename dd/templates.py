@@ -5,6 +5,8 @@ from the DB. Templates are used by the renderer for Mode 1 (instance
 path via componentKey) and Mode 2 (frame construction from structure).
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from collections import Counter, defaultdict

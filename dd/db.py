@@ -1,5 +1,7 @@
 """Database interface for Declarative Design."""
 
+from __future__ import annotations
+
 import shutil
 import sqlite3
 from datetime import datetime

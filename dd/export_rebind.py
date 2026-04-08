@@ -1,5 +1,7 @@
 """Generate rebind scripts for Figma Plugin API to bind nodes to variables."""
 
+from __future__ import annotations
+
 import json
 import math
 import sqlite3

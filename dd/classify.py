@@ -7,6 +7,8 @@ Classifies nodes against the component_type_catalog using:
   Step 4: Vision cross-validation (deferred to Phase 1b)
 """
 
+from __future__ import annotations
+
 import sqlite3
 from typing import Any
 

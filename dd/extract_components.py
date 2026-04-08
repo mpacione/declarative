@@ -4,6 +4,8 @@ This module parses component/component_set data fetched from Figma via MCP,
 structures it, and writes to the database. It does not call MCP directly.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from typing import Any

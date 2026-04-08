@@ -6,6 +6,8 @@ every element carries its complete visual description with token refs as
 inline annotations where they exist, literal values where they don't.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from typing import Any
@@ -104,6 +106,9 @@ def normalize_fills(
                     "asset_hash": image_hash,
                     "scaleMode": (fill.get("scaleMode") or "FILL").lower(),
                 }
+                image_transform = fill.get("imageTransform")
+                if image_transform:
+                    entry["imageTransform"] = image_transform
                 if paint_opacity < 1.0:
                     entry["opacity"] = paint_opacity
                 result.append(entry)

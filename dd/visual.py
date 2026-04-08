@@ -16,6 +16,8 @@ See docs/cross-platform-value-formats.md for how each platform
 converts from this format to its native representation.
 """
 
+from __future__ import annotations
+
 import json
 import re
 from typing import Any
@@ -208,6 +210,7 @@ def _resolve_layout_sizing(
     text_auto_resize: str | None,
     is_text: bool,
     etype: str,
+    parent_is_autolayout: bool = False,
 ) -> tuple[str | None, str | None]:
     """Determine layoutSizing for an auto-layout child.
 
@@ -225,6 +228,7 @@ def _resolve_layout_sizing(
         is_text=is_text,
         etype=etype,
         is_horizontal=True,
+        parent_is_autolayout=parent_is_autolayout,
     )
     v = _resolve_one_axis(
         db_value=db_sizing_v,
@@ -233,6 +237,7 @@ def _resolve_layout_sizing(
         is_text=is_text,
         etype=etype,
         is_horizontal=False,
+        parent_is_autolayout=parent_is_autolayout,
     )
     return h, v
 
@@ -244,11 +249,17 @@ def _resolve_one_axis(
     is_text: bool,
     etype: str,
     is_horizontal: bool,
+    parent_is_autolayout: bool = False,
 ) -> str | None:
     """Resolve layoutSizing for one axis.
 
     Returns semantic lowercase ("fill", "hug", "fixed"), DB-native
     uppercase ("FILL", "HUG"), or None. Renderers map to platform format.
+
+    When parent_is_autolayout is True and no explicit sizing mode was
+    captured, defaults to "fill" rather than "fixed". FILL is the safer
+    default: a FILL node that should be FIXED expands (cosmetic issue),
+    while a FIXED node that should be FILL truncates content (functional).
     """
     if db_value:
         return db_value
@@ -257,7 +268,7 @@ def _resolve_one_axis(
     if isinstance(ir_value, str) and ir_value in ("fill", "hug", "fixed"):
         return ir_value
     if isinstance(ir_value, (int, float)):
-        return "fixed"
+        return "fill" if parent_is_autolayout else "fixed"
     if is_text and is_horizontal:
         return "fill"
     if is_horizontal and etype in _FILL_WIDTH_TYPES:

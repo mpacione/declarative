@@ -1,5 +1,7 @@
 """Mode creation and value seeding for design tokens."""
 
+from __future__ import annotations
+
 import json
 import math
 import sqlite3

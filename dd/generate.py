@@ -9,6 +9,8 @@ New code should import from the specific modules directly:
   from dd.renderers.figma import generate_figma_script, generate_screen
 """
 
+from __future__ import annotations
+
 # Shared infrastructure (renderer-agnostic)
 from dd.visual import (  # noqa: F401
     build_visual_from_db,

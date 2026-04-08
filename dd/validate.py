@@ -4,6 +4,8 @@ Validates token data before export to Figma, checking for completeness,
 compliance, and quality issues. Blocks export if error-severity issues exist.
 """
 
+from __future__ import annotations
+
 import json
 import re
 import sqlite3

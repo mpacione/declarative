@@ -6,6 +6,8 @@ Only processes nodes NOT already classified by formal matching.
 All rules are defined in dd/classify_rules.py.
 """
 
+from __future__ import annotations
+
 import sqlite3
 from typing import Any
 

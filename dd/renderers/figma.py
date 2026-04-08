@@ -11,6 +11,8 @@ See docs/cross-platform-value-formats.md for how this renderer's
 transforms compare to other platforms (React, SwiftUI, Flutter).
 """
 
+from __future__ import annotations
+
 import json
 import math
 import re
@@ -35,12 +37,11 @@ _NODE_CREATE_MAP = {
     "rectangle": "figma.createRectangle()",
     "ellipse": "figma.createEllipse()",
     "line": "figma.createLine()",
+    "vector": "figma.createVector()",
+    "boolean_operation": "figma.createBooleanOperation()",
 }
 
-# Node types that cannot be created in Figma — skip silently (unless asset-backed)
-_SKIP_NODE_TYPES = frozenset({"vector", "boolean_operation", "group"})
-
-# Vector-capable node types that can be rendered when they have asset data
+# Vector-capable node types that can have SVG path data from the asset pipeline
 _VECTOR_TYPES = frozenset({"vector", "boolean_operation"})
 
 _WEIGHT_TO_STYLE = {
@@ -688,6 +689,9 @@ def generate_figma_script(
     mode1_eids: set = set()
     skipped_eids: set = set()
     absolute_eids: set = set()
+    # Deferred GROUP creation: children are created first, then grouped.
+    # Maps group_eid → {"parent_eid": str, "children_vars": [str], "element": dict}
+    group_deferred: dict[str, dict] = {}
 
     for idx, (eid, element, parent_eid) in enumerate(walk_order):
         # Skip descendants of Mode 1 elements (they come from the instance)
@@ -789,7 +793,19 @@ def generate_figma_script(
             mode1_eids.add(eid)
         else:
             # Mode 2: create from L0 properties
-            # Check for asset-backed vector nodes before skipping
+
+            # GROUP: defer creation — figma.group() requires children to exist first.
+            # Children will be appended to the grandparent temporarily, then
+            # wrapped into a GROUP in the deferred section.
+            if etype == "group":
+                group_deferred[eid] = {
+                    "parent_eid": parent_eid,
+                    "children_vars": [],
+                    "element": element,
+                }
+                continue
+
+            # Check for asset-backed vector data (SVG paths)
             has_vector_asset = False
             if etype in _VECTOR_TYPES and db_visuals is not None:
                 node_id = spec.get("_node_id_map", {}).get(eid)
@@ -801,23 +817,7 @@ def generate_figma_script(
                         for ref in asset_refs
                     )
 
-            # Groups with mask children must be rendered (not skipped)
-            has_mask_child = False
-            if etype == "group" and db_visuals is not None:
-                node_id_map = spec.get("_node_id_map", {})
-                for child_eid in element.get("children", []):
-                    child_nid = node_id_map.get(child_eid)
-                    if child_nid and db_visuals.get(child_nid, {}).get("is_mask"):
-                        has_mask_child = True
-                        break
-
-            if etype in _SKIP_NODE_TYPES and not has_vector_asset and not has_mask_child:
-                skipped_eids.add(eid)
-                continue
-
-            if has_vector_asset:
-                lines.append(f"const {var} = figma.createVector();")
-            elif is_text:
+            if is_text:
                 lines.append(f"const {var} = figma.createText();")
             elif etype in _NODE_CREATE_MAP:
                 lines.append(f"const {var} = {_NODE_CREATE_MAP[etype]};")
@@ -857,10 +857,11 @@ def generate_figma_script(
             if has_vector_asset:
                 _emit_vector_paths(var, raw_visual, lines)
 
-            # Clear default white fill on frames that should be transparent.
-            # figma.createFrame() gets a default white fill; if the DB has no
-            # fills (NULL or []), the original was transparent — clear it.
-            if not is_text and not visual.get("fills") and etype not in _NODE_CREATE_MAP:
+            # Clear default fills on nodes that should be transparent.
+            # All Figma creation calls (createFrame, createRectangle,
+            # createEllipse, createVector, etc.) produce a default white fill.
+            # If the DB has no visible fills, the original was transparent.
+            if not is_text and not visual.get("fills"):
                 lines.append(f"{var}.fills = [];")
 
             if element.get("visible") is False:
@@ -893,10 +894,17 @@ def generate_figma_script(
             if elem_direction == "absolute":
                 absolute_eids.add(eid)
 
-        if parent_eid is not None and parent_eid in var_map and parent_eid not in mode1_eids:
-            parent_var = var_map[parent_eid]
+        # Resolve parent: if parent is a deferred GROUP, append to grandparent
+        resolved_parent_eid = parent_eid
+        while resolved_parent_eid in group_deferred:
+            # Track this child for the deferred group
+            group_deferred[resolved_parent_eid]["children_vars"].append(var)
+            resolved_parent_eid = group_deferred[resolved_parent_eid]["parent_eid"]
+
+        if resolved_parent_eid is not None and resolved_parent_eid in var_map and resolved_parent_eid not in mode1_eids:
+            parent_var = var_map[resolved_parent_eid]
             lines.append(f"{parent_var}.appendChild({var});")
-            parent_direction = spec.get("elements", {}).get(parent_eid, {}).get("layout", {}).get("direction", "")
+            parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
             parent_is_autolayout = parent_direction in ("horizontal", "vertical")
             if parent_is_autolayout:
                 elem_sizing = element.get("layout", {}).get("sizing", {})
@@ -913,6 +921,7 @@ def generate_figma_script(
                 sizing_h, sizing_v = _resolve_layout_sizing(
                     elem_sizing, db_sizing_h, db_sizing_v,
                     text_auto_resize, is_text, etype,
+                    parent_is_autolayout=True,
                 )
                 if sizing_h:
                     figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
@@ -967,6 +976,31 @@ def generate_figma_script(
             cx, cy = canvas_position
             lines.append(f"{var_map[root_id]}.x = {cx};")
             lines.append(f"{var_map[root_id]}.y = {cy};")
+
+    # Emit deferred GROUP creation — inner groups first (reverse BFS order)
+    for group_eid in reversed(list(group_deferred)):
+        ginfo = group_deferred[group_eid]
+        children_vars = ginfo["children_vars"]
+        gp_eid = ginfo["parent_eid"]
+        while gp_eid in group_deferred:
+            gp_eid = group_deferred[gp_eid]["parent_eid"]
+        gp_var = var_map.get(gp_eid, var_map.get(root_id, "figma.currentPage"))
+        group_element = ginfo["element"]
+        original_name = group_element.get("_original_name", group_eid)
+        gvar = f"g{group_eid.replace('-', '_')}"
+
+        if children_vars:
+            children_str = ", ".join(children_vars)
+            lines.append(f"const {gvar} = figma.group([{children_str}], {gp_var});")
+        else:
+            # Empty group — create a frame as placeholder (can't group zero nodes)
+            lines.append(f"const {gvar} = figma.createFrame();")
+            lines.append(f"{gp_var}.appendChild({gvar});")
+
+        lines.append(f'{gvar}.name = "{_escape_js(original_name)}";')
+        var_map[group_eid] = gvar
+        lines.append(f'M["{_escape_js(group_eid)}"] = {gvar}.id;')
+        lines.append("")
 
     # Emit deferred position + constraints (after all children are appended)
     if deferred_lines:
@@ -1192,11 +1226,21 @@ def _emit_fills(
             asset_hash = fill.get("asset_hash")
             if asset_hash:
                 scale_mode = fill.get("scaleMode", "fill").upper()
+                image_transform = fill.get("imageTransform")
+                # REST API uses STRETCH; Plugin API needs CROP when
+                # imageTransform is present (crop/zoom), FILL otherwise
+                if scale_mode == "STRETCH":
+                    scale_mode = "CROP" if image_transform else "FILL"
                 opacity = fill.get("opacity")
                 opacity_str = f', opacity: {opacity}' if opacity is not None and opacity < 1.0 else ""
+                transform_str = ""
+                if image_transform:
+                    r0 = image_transform[0]
+                    r1 = image_transform[1]
+                    transform_str = f", imageTransform: [[{r0[0]},{r0[1]},{r0[2]}],[{r1[0]},{r1[1]},{r1[2]}]]"
                 paints.append(
                     f'{{type: "IMAGE", scaleMode: "{scale_mode}", '
-                    f'imageHash: "{_escape_js(asset_hash)}"{opacity_str}}}'
+                    f'imageHash: "{_escape_js(asset_hash)}"{transform_str}{opacity_str}}}'
                 )
 
     if paints:
@@ -1413,6 +1457,69 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
         "element_count": ir_result["element_count"],
         "token_count": ir_result["token_count"],
     }
+
+
+def validate_render_readiness(
+    spec: dict[str, Any],
+    db_visuals: dict[int, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Check for data gaps that will affect render quality.
+
+    Returns a list of warning dicts, each with:
+      code: machine-readable warning type
+      severity: "info" | "warning" | "error"
+      element_id: which element is affected
+      message: human-readable description
+    """
+    warnings: list[dict[str, Any]] = []
+    elements = spec.get("elements", {})
+    node_id_map = spec.get("_node_id_map", {})
+
+    for eid, element in elements.items():
+        etype = element.get("type", "")
+        nid = node_id_map.get(eid)
+        nv = db_visuals.get(nid, {}) if db_visuals and nid else {}
+
+        # EMPTY_VECTOR: vector/boolean_operation without path data
+        if etype in ("vector", "boolean_operation"):
+            asset_refs = nv.get("_asset_refs", [])
+            has_geometry = any(r.get("svg_data") for r in asset_refs)
+            if not has_geometry:
+                warnings.append({
+                    "code": "EMPTY_VECTOR",
+                    "severity": "warning",
+                    "element_id": eid,
+                    "message": f"{etype} '{eid}' has no path geometry — will render as invisible empty node",
+                })
+
+        # MISSING_SIZING_MODE: auto-layout child with no explicit sizing
+        parent_eid = None
+        for pid, pel in elements.items():
+            if eid in pel.get("children", []):
+                parent_eid = pid
+                break
+        if parent_eid:
+            parent_direction = elements.get(parent_eid, {}).get("layout", {}).get("direction", "")
+            if parent_direction in ("horizontal", "vertical"):
+                sizing_h = nv.get("layout_sizing_h")
+                sizing_v = nv.get("layout_sizing_v")
+                ir_sizing = element.get("layout", {}).get("sizing", {})
+                if sizing_h is None and isinstance(ir_sizing.get("width"), (int, float)):
+                    warnings.append({
+                        "code": "MISSING_SIZING_MODE",
+                        "severity": "info",
+                        "element_id": eid,
+                        "message": f"'{eid}' in auto-layout has no sizing mode — defaulting to FILL",
+                    })
+                if sizing_v is None and isinstance(ir_sizing.get("height"), (int, float)):
+                    warnings.append({
+                        "code": "MISSING_SIZING_MODE",
+                        "severity": "info",
+                        "element_id": eid,
+                        "message": f"'{eid}' in auto-layout has no vertical sizing mode — defaulting to FILL",
+                    })
+
+    return warnings
 
 
 def build_rebind_script_from_result(

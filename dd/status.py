@@ -1,5 +1,7 @@
 """Curation progress and export readiness reporting."""
 
+from __future__ import annotations
+
 import sqlite3
 from collections import Counter
 

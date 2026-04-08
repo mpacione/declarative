@@ -8,6 +8,8 @@ Library-only module: not exposed via CLI. Used internally by push.py
 and validate.py for value comparison and normalization.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from typing import Any

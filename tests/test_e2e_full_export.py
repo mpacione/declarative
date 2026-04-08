@@ -5,6 +5,8 @@ curation, validation, and all 4 export formats (CSS, Tailwind, DTCG, Figma paylo
 Verifies cross-format consistency and DTCG round-trip capability.
 """
 
+from __future__ import annotations
+
 import json
 import re
 import sqlite3

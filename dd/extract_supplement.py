@@ -15,6 +15,8 @@ and returns the result. This can be figma_execute MCP, PROXY_EXECUTE WebSocket,
 or any other execution mechanism.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 import time
@@ -90,11 +92,17 @@ def generate_supplement_script(screen_node_ids: list[str]) -> str:
 const screenIds = {ids_json};
 const result = {{}};
 
+function safeRead(node, prop) {{
+  try {{ const v = node[prop]; return v === undefined ? undefined : v; }}
+  catch(e) {{ return undefined; }}
+}}
+
 async function walkNode(node) {{
   const entry = {{}};
 
-  if ('layoutPositioning' in node && node.layoutPositioning !== 'AUTO') {{
-    entry.lp = node.layoutPositioning;
+  const lp = safeRead(node, 'layoutPositioning');
+  if (lp !== undefined && lp !== 'AUTO') {{
+    entry.lp = lp;
   }}
 
   if (node.type === 'INSTANCE') {{
@@ -155,12 +163,18 @@ async function walkNode(node) {{
   }}
 
   if (node.layoutMode === 'GRID') {{
-    if ('gridRowCount' in node) entry.gr = node.gridRowCount;
-    if ('gridColumnCount' in node) entry.gc = node.gridColumnCount;
-    if ('gridRowGap' in node) entry.grg = node.gridRowGap;
-    if ('gridColumnGap' in node) entry.gcg = node.gridColumnGap;
-    if ('gridRowSizes' in node) entry.grs = node.gridRowSizes;
-    if ('gridColumnSizes' in node) entry.gcs = node.gridColumnSizes;
+    const gr = safeRead(node, 'gridRowCount');
+    if (gr !== undefined) entry.gr = gr;
+    const gc = safeRead(node, 'gridColumnCount');
+    if (gc !== undefined) entry.gc = gc;
+    const grg = safeRead(node, 'gridRowGap');
+    if (grg !== undefined) entry.grg = grg;
+    const gcg = safeRead(node, 'gridColumnGap');
+    if (gcg !== undefined) entry.gcg = gcg;
+    const grs = safeRead(node, 'gridRowSizes');
+    if (grs !== undefined) entry.grs = grs;
+    const gcs = safeRead(node, 'gridColumnSizes');
+    if (gcs !== undefined) entry.gcs = gcs;
   }}
 
   if (Object.keys(entry).length > 0) {{

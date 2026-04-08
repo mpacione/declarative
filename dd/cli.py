@@ -11,6 +11,8 @@ Usage:
     python -m dd maintenance [--db PATH] [--keep-last N] [--dry-run]
 """
 
+from __future__ import annotations
+
 import argparse
 import glob
 import json
