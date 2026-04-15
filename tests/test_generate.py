@@ -3208,6 +3208,47 @@ class TestClipsContentDefault:
         text_clips = [l for l in lines if "n1.clipsContent" in l]
         assert len(text_clips) == 0
 
+    def test_leaf_shape_nodes_not_affected(self):
+        """Rectangle, ellipse, line, vector, boolean_operation don't support
+        clipsContent — it's a FRAME-only property. Emitting it on these leaf
+        shapes throws 'object is not extensible' at runtime in Figma.
+        """
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "children": ["rect-1", "ellipse-1", "line-1", "vector-1", "bool-1"],
+            },
+            "rect-1": {"type": "rectangle"},
+            "ellipse-1": {"type": "ellipse"},
+            "line-1": {"type": "line"},
+            "vector-1": {"type": "vector"},
+            "bool-1": {"type": "boolean_operation"},
+        })
+        spec["_node_id_map"] = {
+            "screen-1": -1,
+            "rect-1": -2,
+            "ellipse-1": -3,
+            "line-1": -4,
+            "vector-1": -5,
+            "bool-1": -6,
+        }
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+            -3: {"bindings": []},
+            -4: {"bindings": []},
+            -5: {"bindings": []},
+            -6: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        lines = script.split("\n")
+        # Leaf shapes are n1..n5; none may carry clipsContent
+        for leaf_var in ("n1", "n2", "n3", "n4", "n5"):
+            leaf_clips = [l for l in lines if f"{leaf_var}.clipsContent" in l]
+            assert len(leaf_clips) == 0, (
+                f"{leaf_var} (leaf shape) must not emit clipsContent: {leaf_clips}"
+            )
+
 
 class TestEmitMissingLayoutProperties:
     """Verify emission of layout properties previously extracted but not emitted."""

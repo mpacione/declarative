@@ -899,7 +899,13 @@ def generate_figma_script(
             # clipsContent=false as the safer default — unexpected clipping
             # is more visually destructive than missing clipping.
             # Analogous to the default fills clearing above.
-            if not is_text and not visual.get("clipsContent"):
+            #
+            # Gate to container types only: clipsContent is a FRAME property.
+            # Leaf shapes (rectangle, ellipse, line, vector, boolean_operation)
+            # don't have it and Figma throws "object is not extensible" when
+            # you try to set it on them.
+            is_container = not is_text and etype not in _NODE_CREATE_MAP
+            if is_container and not visual.get("clipsContent"):
                 phase1_lines.append(f"{var}.clipsContent = false;")
 
             if element.get("visible") is False:
