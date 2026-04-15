@@ -27,11 +27,19 @@ from dd.boundary import (
 )
 
 
-# Text height tolerance before we flag a wrap: if rendered height is
-# more than 1.5x the IR-expected height, the text almost certainly
-# wrapped to multiple lines. Tighter than 1.5x risks false positives
-# from font metrics (cap height / x-height / line-height drift).
-_TEXT_HEIGHT_WRAP_RATIO = 1.5
+# Text height tolerance before we flag a wrap.
+#
+# Real wraps observed in testing produce ratios of 3x or more (a 3-line
+# wrap of 15px-expected text renders at ~48px; a pathological per-char
+# wrap produces 20x+). A 1.5x threshold catches those reliably but
+# fires false positives on single-line text where the DB's recorded
+# height is a tighter bounding-box metric than Figma's actual
+# line-height at the rendered font size — e.g. Inter 20pt Semi Bold
+# renders at ~24px line-height while the source DB captures 15px.
+#
+# 2.0x gives comfortable headroom above typical font-metric drift
+# while still catching 2-line wraps and everything worse.
+_TEXT_HEIGHT_WRAP_RATIO = 2.0
 
 
 # Figma native type expected for each IR element type. Entries marked

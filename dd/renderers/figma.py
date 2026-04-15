@@ -826,11 +826,21 @@ def generate_figma_script(
     # Deferred GROUP creation: children are created first, then grouped.
     # Maps group_eid → {"parent_eid": str, "children_vars": [str], "element": dict}
     group_deferred: dict[str, dict] = {}
-    # Text characters collected for Phase 3
-    # Tuple: (var, escaped_text, eid) — eid carried through so
-    # the per-op guard (ADR-007 Session B) attributes failures to the
-    # right IR position.
+    # Text characters collected from Phase 1 walk. These are emitted in
+    # Phase 2 immediately after appendChild and BEFORE layoutSizing so
+    # HUG text siblings have real content widths when FILL children
+    # evaluate their share of remaining space. See
+    # test_fill_text_characters_set_before_layoutsizing.
+    # Tuple: (var, escaped_text, eid) — eid carried through for the
+    # per-op guard (ADR-007 Session B) attribution.
     text_characters: list[tuple[str, str, str]] = []
+    # Lookup by eid so the Phase 2 loop can emit characters as it walks.
+    text_by_eid: dict[str, tuple[str, str]] = {}
+    # Deferred textAutoResize mode (e.g. "HEIGHT"). Emitted in Phase 2
+    # AFTER characters + layoutSizing so text sizes to content first,
+    # then layoutSizing sets the final width, then HEIGHT locks it.
+    # See comment in Phase 1 text branch for the defect this avoids.
+    text_autoresize_deferred: dict[str, str] = {}
 
     # -----------------------------------------------------------------------
     # Phase 1: Materialize — create all nodes with intrinsic properties
@@ -1035,6 +1045,15 @@ def generate_figma_script(
 
             text_resize_for_layout: str | None = None
             if is_text:
+                # Determine the DB's desired final textAutoResize mode.
+                # Emission is DEFERRED to Phase 2 (after appendChild +
+                # characters + layoutSizing) because setting HEIGHT
+                # mode while the text is still empty locks the width
+                # at 0, and subsequent .characters would wrap at 0
+                # regardless of later layoutSizing. By holding at the
+                # default WIDTH_AND_HEIGHT through Phase 1, characters
+                # set the content-driven width before any locking
+                # happens.
                 text_resize = "WIDTH_AND_HEIGHT"
                 if db_visuals is not None:
                     node_id = spec.get("_node_id_map", {}).get(eid)
@@ -1042,8 +1061,11 @@ def generate_figma_script(
                     stored = text_visual.get("text_auto_resize")
                     if stored:
                         text_resize = stored
-                phase1_lines.append(f'{var}.textAutoResize = "{text_resize}";')
                 text_resize_for_layout = text_resize
+                # Remember the DB value for Phase 2 to apply after
+                # characters + layoutSizing.
+                if text_resize != "WIDTH_AND_HEIGHT":
+                    text_autoresize_deferred[eid] = text_resize
 
             layout = element.get("layout", {})
             layout_lines, layout_refs = _emit_layout(
@@ -1119,7 +1141,9 @@ def generate_figma_script(
                 # at the correct container width.
                 text_content = element.get("props", {}).get("text", "")
                 if text_content:
-                    text_characters.append((var, _escape_js(text_content), eid))
+                    escaped = _escape_js(text_content)
+                    text_characters.append((var, escaped, eid))
+                    text_by_eid[eid] = (var, escaped)
 
             composition = element.get("_composition")
             has_ir_children = bool(element.get("children"))
@@ -1163,6 +1187,20 @@ def generate_figma_script(
 
         parent_var = var_map[resolved_parent_eid]
         phase2_lines.append(f"{parent_var}.appendChild({var});")
+
+        # ADR-007 follow-up: emit text .characters BEFORE layoutSizing.
+        # A later FILL sibling evaluating its share of remaining space
+        # needs HUG text siblings to have their real content widths.
+        # Leaving .characters to Phase 3 made HUG siblings measure as
+        # 0 wide at layoutSizing time, causing FILL to lock the width
+        # incorrectly and wrap to "M/o/r/e"-style columns.
+        if eid in text_by_eid:
+            _var, _text = text_by_eid[eid]
+            phase2_lines.append(_guarded_op(
+                f'{_var}.characters = "{_text}";',
+                eid, "text_set_failed",
+            ))
+
         parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
         if parent_is_autolayout:
@@ -1187,6 +1225,13 @@ def generate_figma_script(
             if sizing_v:
                 figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
                 phase2_lines.append(f'{var}.layoutSizingVertical = "{figma_v}";')
+            # Now that the text has content + layoutSizing-determined
+            # width, apply the DB's textAutoResize mode (e.g. "HEIGHT")
+            # to lock the width. Doing this earlier would have locked
+            # at 0 before .characters = ... ran.
+            if eid in text_autoresize_deferred:
+                mode = text_autoresize_deferred[eid]
+                phase2_lines.append(f'{var}.textAutoResize = "{mode}";')
         else:
             # Non-auto-layout parent: use pixel dimensions for resize
             # and position. layoutSizing is irrelevant here — the node's
@@ -1324,15 +1369,10 @@ def generate_figma_script(
     # Without this ordering, textAutoResize=HEIGHT wraps at 0px width.
     hydrate_ops.extend(phase3_lines)
 
-    # Text characters: set after resize so text reflows at correct width.
-    # Each assignment is wrapped in a per-op guard (ADR-007 Session B) —
-    # a font-not-loaded throw for one node records kind="text_set_failed"
-    # and does not prevent subsequent text nodes from being set.
-    for var, escaped_text, eid in text_characters:
-        hydrate_ops.append(_guarded_op(
-            f'{var}.characters = "{escaped_text}";',
-            eid, "text_set_failed",
-        ))
+    # Text characters are now emitted in Phase 2 (after appendChild,
+    # before layoutSizing) so HUG siblings have real content widths
+    # when FILL children resolve. No Phase 3 emission needed; the
+    # Phase 3 block only holds deferred position/constraint ops.
 
     lines: list[str] = preamble + phase1_lines + phase2_lines
 

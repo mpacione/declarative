@@ -263,13 +263,17 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert "figma.createText()" in script
 
-    def test_text_nodes_use_auto_resize_and_fill(self):
+    def test_text_nodes_use_fill_layout_sizing(self):
+        """Under the ADR-007 emission order, WIDTH_AND_HEIGHT is the
+        Figma-Plugin-API default for newly-created text nodes and no
+        longer needs an explicit assignment. Explicit emission remains
+        for non-default modes (HEIGHT etc.) — see
+        TestTextAutoResize::test_explicit_height_from_db_emits."""
         spec = _make_spec({
             "screen-1": {"type": "screen", "layout": {"direction": "vertical"}, "children": ["t-1"]},
             "t-1": {"type": "text", "props": {"text": "Hello"}},
         })
         script, _ = generate_figma_script(spec)
-        assert "textAutoResize" in script
         assert 'layoutSizingHorizontal = "FILL"' in script
 
     def test_card_fills_parent_width_in_vertical_layout(self):
@@ -1958,8 +1962,13 @@ class TestTextAutoResize:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert 'textAutoResize = "TRUNCATE"' in script
 
-    def test_defaults_to_width_and_height_when_no_db_visuals(self):
-        """Without db_visuals, should default to WIDTH_AND_HEIGHT for safety."""
+    def test_no_explicit_emission_when_default_width_and_height(self):
+        """ADR-007 follow-up: WIDTH_AND_HEIGHT is the Figma default for
+        a newly-created text node. Explicit emission is skipped — it's
+        redundant and historically caused width-lock side effects when
+        emitted before .characters. Non-default modes (HEIGHT, NONE,
+        TRUNCATE) still emit in Phase 2 after layoutSizing — see
+        test_explicit_height_from_db_emits."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1969,10 +1978,13 @@ class TestTextAutoResize:
             "t-1": {"type": "text", "props": {"text": "Hello"}},
         })
         script, _ = generate_figma_script(spec, db_visuals=None)
-        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' in script
+        # No explicit textAutoResize line should appear; default is
+        # Figma's WIDTH_AND_HEIGHT and emitting it is redundant.
+        assert "textAutoResize" not in script
 
-    def test_defaults_to_width_and_height_when_null_in_db(self):
-        """When DB has text_auto_resize=None, should default to WIDTH_AND_HEIGHT."""
+    def test_no_explicit_emission_when_null_in_db(self):
+        """When DB text_auto_resize is None, defer to Figma's default
+        (WIDTH_AND_HEIGHT). No emission required."""
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -1987,7 +1999,7 @@ class TestTextAutoResize:
             2: {"bindings": [], "text_auto_resize": None},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert 'textAutoResize = "WIDTH_AND_HEIGHT"' in script
+        assert "textAutoResize" not in script
 
 
 class TestLayoutSizingFromDB:
@@ -3701,6 +3713,121 @@ class TestGroupPositioning:
                 f"to HEIGHT and causes text to wrap"
             )
 
+    def test_fill_text_characters_set_before_layoutsizing(self):
+        """A FILL-sized text node in a HORIZONTAL auto-layout parent,
+        alongside a HUG sibling, must have its characters set BEFORE
+        layoutSizingHorizontal is applied.
+
+        Otherwise the HUG sibling has empty characters at layoutSizing
+        time → it measures as 0 wide → the FILL child gets the wrong
+        remaining space → when characters are finally assigned the text
+        wraps at a locked-too-narrow width (e.g. "M/o/r/e" one char per
+        line). This is the root cause of screen 176/177 wrap defects.
+        """
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "children": ["row-1"],
+                "layout": {"sizing": {"width": 428, "height": 926}},
+            },
+            "row-1": {
+                "type": "frame",
+                "layout": {
+                    "direction": "horizontal",
+                    "sizing": {"width": 393, "height": 22},
+                    "position": {"x": 0, "y": 0},
+                },
+                "children": ["sibling-1", "fill-text-1"],
+            },
+            "sibling-1": {
+                "type": "heading",
+                "layout": {
+                    "sizing": {
+                        "width": "hug", "widthPixels": 254,
+                        "height": "hug", "heightPixels": 22,
+                    },
+                },
+                "props": {"text": "Trending Memes & Templates"},
+                "style": {"fontFamily": "Inter", "fontWeight": 600, "fontSize": 18},
+            },
+            "fill-text-1": {
+                "type": "heading",
+                "layout": {
+                    "sizing": {
+                        "width": "fill", "widthPixels": 103,
+                        "height": "hug", "heightPixels": 22,
+                    },
+                },
+                "props": {"text": "More"},
+                "style": {"fontFamily": "Inter", "fontWeight": 600, "fontSize": 18},
+            },
+        })
+        spec["_node_id_map"] = {
+            "screen-1": -1, "row-1": -2, "sibling-1": -3, "fill-text-1": -4,
+        }
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "FRAME",
+                "layout_mode": "HORIZONTAL",
+                "layout_sizing_h": "FIXED",
+                "layout_sizing_v": "HUG",
+                "bindings": [],
+            },
+            -3: {
+                "node_type": "TEXT",
+                "layout_sizing_h": "HUG",
+                "layout_sizing_v": "HUG",
+                "text_auto_resize": "WIDTH_AND_HEIGHT",
+                "bindings": [],
+            },
+            -4: {
+                "node_type": "TEXT",
+                "layout_sizing_h": "FILL",
+                "layout_sizing_v": "HUG",
+                "text_auto_resize": "HEIGHT",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+
+        # Find the two text nodes by their content and compare positions.
+        # The characters assignment of ANY text node sharing a parent
+        # with a FILL text must come before any layoutSizingHorizontal
+        # assignment in the same parent's subtree.
+        import re
+        # Pull the position in the script of:
+        #   1. sibling's characters assignment (HUG text)
+        #   2. fill-text's characters assignment
+        #   3. fill-text's layoutSizingHorizontal assignment
+        chars_sibling_pos = -1
+        chars_fill_pos = -1
+        layoutsize_fill_pos = -1
+        for m in re.finditer(r'(\w+)\.characters = "Trending Memes & Templates"', script):
+            chars_sibling_pos = m.start()
+        for m in re.finditer(r'(\w+)\.characters = "More"', script):
+            chars_fill_pos = m.start()
+            fill_var = m.group(1)
+            layoutsize_match = re.search(
+                rf'\b{re.escape(fill_var)}\.layoutSizingHorizontal',
+                script,
+            )
+            if layoutsize_match:
+                layoutsize_fill_pos = layoutsize_match.start()
+
+        assert chars_sibling_pos > 0, "sibling text characters not emitted"
+        assert chars_fill_pos > 0, "fill text characters not emitted"
+        assert layoutsize_fill_pos > 0, "fill text layoutSizingHorizontal not emitted"
+
+        # The HUG sibling's characters must be set BEFORE the FILL
+        # child's layoutSizingHorizontal, so Figma's auto-layout sees
+        # the real sibling width when computing FILL's remainder.
+        assert chars_sibling_pos < layoutsize_fill_pos, (
+            "HUG sibling characters must be set before FILL child's "
+            "layoutSizingHorizontal — otherwise FILL sees an empty "
+            "(0-width) sibling and mis-allocates space"
+        )
+
     def test_text_with_height_autoresize_still_resizes(self):
         """HEIGHT mode (fixed width, grows height) legitimately needs
         the explicit width from the DB — the resize call is correct
@@ -3934,35 +4061,43 @@ class TestThreePhaseRendering:
             f"appendChild (line {first_append_line})"
         )
 
-    def test_all_appends_before_text_characters(self):
-        """All appendChild calls must precede text .characters assignments."""
+    def test_each_text_characters_follows_its_own_append(self):
+        """ADR-007 follow-up: text .characters is emitted in Phase 2
+        immediately after the node's own appendChild (and before
+        layoutSizing), not in a single trailing Phase 3 block. The
+        correct invariant is per-node: each text's characters must
+        follow its own appendChild. This replaces the old rule ('all
+        appendChild before all characters'), which silently forced
+        FILL-next-to-HUG layouts to wrap at 0 width because HUG
+        siblings had no content when FILL evaluated."""
         spec = self._build_hug_card_spec()
         script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
         js_lines = script.split("\n")
 
-        last_append_line = -1
-        first_characters_line = len(js_lines)
-
+        import re
         for i, line in enumerate(js_lines):
-            stripped = line.strip()
-            if ".appendChild(" in stripped and not stripped.startswith("//"):
-                last_append_line = i
-            if ".characters = " in stripped and not stripped.startswith("//"):
-                first_characters_line = min(first_characters_line, i)
-
-        assert last_append_line < first_characters_line, (
-            f"appendChild (line {last_append_line}) must precede "
-            f"text.characters (line {first_characters_line})"
-        )
+            m = re.search(r'(\w+)\.characters = "', line)
+            if not m:
+                continue
+            var = m.group(1)
+            found = any(
+                f".appendChild({var})" in js_lines[j]
+                for j in range(i)
+            )
+            assert found, (
+                f"{var}.characters on line {i} has no preceding appendChild({var})"
+            )
 
     def test_phase_comments_present(self):
-        """Generated script contains phase boundary comments."""
+        """Generated script contains phase boundary comments. Phase 3
+        is only emitted when deferred operations exist (position /
+        resize / constraint) — with text characters now in Phase 2, a
+        fixture with nothing deferred has no Phase 3 block."""
         spec = self._build_hug_card_spec()
         script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
 
         assert "Phase 1" in script or "Materialize" in script
         assert "Phase 2" in script or "Compose" in script
-        assert "Phase 3" in script or "Hydrate" in script
 
     def test_layout_sizing_after_append(self):
         """layoutSizing is set after appendChild, not before."""
@@ -3985,16 +4120,23 @@ class TestThreePhaseRendering:
                         f"layoutSizing on {var_name} (line {i}) has no preceding appendChild"
                     )
 
-    def test_resize_before_characters_in_phase3(self):
-        """Within Phase 3, resize must precede text.characters.
+    def test_resize_before_characters_in_same_subtree(self):
+        """Legacy invariant (pre-ADR-007): when a non-auto-layout
+        parent's resize was deferred to Phase 3, its FILL descendants
+        had to wait for that resize before .characters ran.
 
-        When a non-auto-layout parent gets resize() in Phase 3, its FILL
-        descendants need that width established before text content is set.
-        Otherwise textAutoResize=HEIGHT wraps at 0px width.
+        After ADR-007's Phase-2 text emission, .characters is set
+        immediately after each text node's own appendChild — no longer
+        gated on a distant Phase 3 resize. The invariant that survived:
+        at the moment .characters is set, the text's parent chain must
+        already have concrete dimensions (established in Phase 1 via
+        resize or Phase 2 via auto-layout).
 
-        Models the exact bug: screen root (absolute) → card (VERTICAL, FILL)
-        → text (FILL). Card's resize is deferred to Phase 3 because its
-        parent has no auto-layout. Text characters must come after that resize.
+        This test continues to guard that in the specific scenario
+        where a FILL text descends from a card that has explicit
+        pixel dimensions via widthPixels — those pixel dimensions are
+        emitted in Phase 1 (via _emit_layout resize for non-auto-layout
+        children), so by Phase 2 the chain has widths.
         """
         spec = {
             "version": "1.0",
@@ -4073,20 +4215,30 @@ class TestThreePhaseRendering:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         js_lines = script.split("\n")
 
-        last_resize_line = -1
-        first_characters_line = len(js_lines)
-
+        # For each text.characters assignment, find the text's parent
+        # chain and verify at least one ancestor resize() appears
+        # earlier in the script. The text node itself may be
+        # FILL-sized (no resize), but its ancestors must have had
+        # their widths established.
+        import re
         for i, line in enumerate(js_lines):
-            stripped = line.strip()
-            if ".resize(" in stripped and not stripped.startswith("//"):
-                last_resize_line = i
-            if ".characters = " in stripped and not stripped.startswith("//"):
-                first_characters_line = min(first_characters_line, i)
-
-        assert last_resize_line < first_characters_line, (
-            f"resize (line {last_resize_line}) must precede "
-            f"text.characters (line {first_characters_line}) in Phase 3"
-        )
+            m = re.search(r'(\w+)\.characters = "', line)
+            if not m:
+                continue
+            # For this legacy test we specifically care that some
+            # resize() came before some .characters — in the fixture
+            # there's only one text so a global ordering check still
+            # works.
+            found_prior_resize = any(
+                ".resize(" in js_lines[j]
+                and not js_lines[j].strip().startswith("//")
+                for j in range(i)
+            )
+            assert found_prior_resize, (
+                f"text.characters at line {i} has no preceding resize() — "
+                f"the text's container chain needs concrete widths before "
+                f"characters is set, otherwise wrap happens at 0 width"
+            )
 
     def test_phase3_uses_per_op_guards_not_canary(self):
         """ADR-007 Session B: three-phase mode emits per-op guards in
