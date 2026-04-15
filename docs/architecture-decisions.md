@@ -416,3 +416,68 @@ The registry remains the center. Every backend adds rows
 (capabilities, adapters, probes, verifiers); every property adds
 columns; no ad-hoc gates in any emission, ingest, or verification
 path.
+
+## Chapter epilogue (2026-04-15) — ADR-007 in action
+
+The ADR-007 verification channel was exercised against three real
+screens (175/176/177) and surfaced four sequential defect classes,
+each fixed by following the per-node attribution trail it produced.
+The chapter's commits, in landing order:
+
+1. `4c4c051` — ADR-001 capability gate + ADR-006 boundary contract +
+   ADR-007 unified verification channel (the foundation).
+2. `3499e2c` — `_mode1_eligible` flag on IR elements (suppresses
+   `type_substitution` for name-only-classified FRAMEs that were
+   never INSTANCEs) + GROUP `.constraints` capability gate (honours
+   the existing registry exclusion the renderer was bypassing).
+3. `fcd39b9` — Skip `resize()` on text nodes whose DB
+   `text_auto_resize` is `WIDTH_AND_HEIGHT` (Plugin API side-effects
+   the resize into HEIGHT mode, locking width at 0). Adds
+   `KIND_BOUNDS_MISMATCH` to the verifier vocabulary, with a
+   text-height-wrap heuristic.
+4. `10f1bb7` — Move `.characters = ...` emission from Phase 3 to
+   Phase 2 (after appendChild, before layoutSizing) so HUG siblings
+   have real content widths when FILL siblings evaluate. Defer
+   `textAutoResize` mode emission to after layoutSizing so the
+   width-locking happens last.
+5. `5c3837c` — Capture and emit `leadingTrim` as a first-class text
+   property (schema → REST API → parse + insert filters → registry →
+   emitter). Source files use `CAP_HEIGHT` for tight vertical
+   layout; without it the bbox is ~1.6× taller and DB-captured
+   y-positions land text top-aligned in fixed-height parents.
+
+Verification-driven debugging in action: after each fix landed, a
+fresh `dd verify` run reported new bounds_mismatch / type_substitution
+entries pointing at the next defect. By the end of the chapter,
+all three screens reach `is_parity=True, parity_ratio=1.0000,
+errors=0` and visually match source.
+
+### Outstanding issues identified during the chapter
+
+These are real bugs the verifier didn't yet have a `kind` for, or
+that surfaced as side observations:
+
+- **Whitelist drift** (`feedback_extract_whitelist_drift.md`):
+  `dd/extract_screens.py::parse_extraction_response` and
+  `::insert_nodes` maintain hand-rolled column whitelists that
+  silently drop new schema fields. Cost an extra two re-extract
+  iterations on the `leadingTrim` rollout. Should be replaced with
+  registry-driven discovery.
+- **Render-three timing**: `render_three.js` fires back-to-back
+  PROXY_EXECUTE calls without inter-call waits and exhibits a race
+  where the live state queried after script return differs from
+  the state observed during execution. Inserting `~1s` waits (as in
+  `test_seq.js`) avoids the race. Test-harness pacing issue, not a
+  renderer bug.
+- **Missing illustrations on screen 176**: the tablet/pencil
+  illustration at the top of the home screen renders as empty grey
+  space. Likely a vector-asset extraction or Mode 1 issue, separate
+  from the wrap class. Not yet diagnosed.
+- **Icon variant drift on screen 175**: the Community modal-row
+  icon renders as a QR-grid icon vs the source's picture-frame
+  icon. Component-instance swap pointing at the wrong target.
+  Surfaces as a rendering correctness issue but not yet
+  representable in `bounds_mismatch` or `type_substitution`.
+
+These are seeds for the next chapter — each is a candidate for a
+new `kind` in the verifier vocabulary, plus a backing fix.
