@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 
 from dd.boundary import (
     KIND_BOUNDS_MISMATCH,
+    KIND_MISSING_ASSET,
     KIND_MISSING_CHILD,
     KIND_MISSING_TEXT,
     KIND_TYPE_SUBSTITUTION,
@@ -64,6 +65,13 @@ _IR_TO_FIGMA_TYPE: dict[str, frozenset[str]] = {
 # expected INSTANCE and the render produced a fallback (FRAME).
 _SHOULD_BE_INSTANCE: frozenset[str] = frozenset({
     "button", "card", "header", "instance",
+})
+
+# Figma node types whose visible output is defined entirely by their
+# vector path geometry. A node of one of these types that rendered
+# with both fillGeometry and strokeGeometry empty is a missing asset.
+_VECTOR_HOSTS: frozenset[str] = frozenset({
+    "VECTOR", "BOOLEAN_OPERATION",
 })
 
 
@@ -180,6 +188,35 @@ class FigmaRenderVerifier:
                     context={"ir_type": ir_type, "rendered_type": rendered_type},
                 ))
                 continue
+
+            # Missing-asset check — a VECTOR / BOOLEAN_OPERATION
+            # rendered with zero fillGeometry AND zero strokeGeometry
+            # has no paths to draw. Figma falls back to the node's
+            # intrinsic bounding box (a grey rectangle), so visually
+            # the illustration/icon disappears. Gated on BOTH geom
+            # keys being present in the rendered ref: older walks that
+            # omit the signal stay silent (no false positives).
+            if rendered_type in _VECTOR_HOSTS:
+                fg = rendered.get("fillGeometryCount")
+                sg = rendered.get("strokeGeometryCount")
+                if (
+                    isinstance(fg, int)
+                    and isinstance(sg, int)
+                    and fg == 0
+                    and sg == 0
+                ):
+                    errors.append(StructuredError(
+                        kind=KIND_MISSING_ASSET,
+                        id=eid,
+                        error=(
+                            f"{rendered_type} rendered with no path geometry"
+                            f" (fillGeometryCount=0, strokeGeometryCount=0)"
+                        ),
+                        context={
+                            "rendered_type": rendered_type,
+                            "ir_type": ir_type,
+                        },
+                    ))
 
             # Empty-text check — Defect 2 surfaces here
             expected_text = (element.get("props") or {}).get("text")

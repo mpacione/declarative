@@ -54,6 +54,13 @@ KIND_MISSING_TEXT = "missing_text"
 KIND_MISSING_CHILD = "missing_child"
 KIND_EXTRA_CHILD = "extra_child"
 KIND_BOUNDS_MISMATCH = "bounds_mismatch"
+# VECTOR / BOOLEAN_OPERATION rendered with zero path geometry — the
+# node was emitted as a vector host but has no paths, so Figma falls
+# back to a shape-less frame-like placeholder (i.e. a grey rectangle
+# of the node's width/height). Catches the entire
+# "empty grey box where illustration should be" defect class that
+# the structural parity check is blind to.
+KIND_MISSING_ASSET = "missing_asset"
 
 
 @dataclass(frozen=True)

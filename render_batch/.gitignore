@@ -1,0 +1,8 @@
+# Sweep artifacts — regenerated on every run
+scripts/
+walks/
+reports/
+summary.json
+*.log
+# Pre-existing scratch scripts
+screen_*.js

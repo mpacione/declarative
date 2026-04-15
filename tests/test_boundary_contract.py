@@ -275,6 +275,8 @@ class TestStructuredErrorKindVocabulary:
         assert boundary.KIND_DEGRADED_TO_PLACEHOLDER == "degraded_to_placeholder"
         assert boundary.KIND_CAPABILITY_GATED == "capability_gated"
         assert boundary.KIND_CKR_UNBUILT == "ckr_unbuilt"
+        # Render-verification delta (ADR-007 Position 3)
+        assert boundary.KIND_MISSING_ASSET == "missing_asset"
 
     def test_kind_constants_are_strings(self):
         from dd import boundary
@@ -640,6 +642,144 @@ class TestRenderVerifierContract:
         assert substitution_errors == [], (
             "Mode 1-ineligible FRAME should not be flagged as substitution"
         )
+
+    # ------------------------------------------------------------------
+    # KIND_MISSING_ASSET — a VECTOR / BOOLEAN_OPERATION rendered with
+    # zero path geometry is structurally a rectangle (Figma's default
+    # createVector fallback) and visually a grey box. Attribution per
+    # eid so downstream fixes (re-extract geometry, fallback paths)
+    # can target exactly the nodes that failed.
+    # ------------------------------------------------------------------
+
+    def test_vector_missing_geometry_flagged_as_missing_asset(self):
+        """A VECTOR rendered with fillGeometryCount=0 AND
+        strokeGeometryCount=0 surfaces as missing_asset. This is the
+        class of defect that turns the 'tablet/pencil illustration at
+        top of screen 176' into a grey rectangle."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"vector-1": {"type": "vector"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "vector-1": {
+                "type": "VECTOR",
+                "fillGeometryCount": 0,
+                "strokeGeometryCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        assert not report.is_parity
+        entries = [e for e in report.errors if e.kind == KIND_MISSING_ASSET]
+        assert len(entries) == 1
+        assert entries[0].id == "vector-1"
+
+    def test_vector_with_geometry_not_flagged_as_missing_asset(self):
+        """A VECTOR with non-zero path geometry renders correctly and
+        produces no missing_asset entry."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"vector-1": {"type": "vector"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "vector-1": {
+                "type": "VECTOR",
+                "fillGeometryCount": 3,
+                "strokeGeometryCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        assert all(e.kind != KIND_MISSING_ASSET for e in report.errors)
+        assert report.is_parity is True
+
+    def test_vector_without_geom_keys_not_flagged(self):
+        """Old walks (before the geometry-count plumbing) omit the
+        fillGeometryCount / strokeGeometryCount keys entirely. The
+        verifier must stay silent in that case — only zero-with-signal
+        counts as evidence of a missing asset."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"vector-1": {"type": "vector"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "vector-1": {"type": "VECTOR"},  # no geom keys at all
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        assert all(e.kind != KIND_MISSING_ASSET for e in report.errors)
+        assert report.is_parity is True
+
+    def test_boolean_operation_missing_geometry_flagged(self):
+        """BOOLEAN_OPERATION is a vector host just like VECTOR. Same
+        missing-asset check applies."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"bool-1": {"type": "vector"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "bool-1": {
+                "type": "BOOLEAN_OPERATION",
+                "fillGeometryCount": 0,
+                "strokeGeometryCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_MISSING_ASSET]
+        assert len(entries) == 1
+        assert entries[0].id == "bool-1"
+
+    def test_icon_rendered_as_vector_without_geometry_flagged(self):
+        """Icons can be rendered through the VECTOR path (not INSTANCE
+        or FRAME). An icon that rendered as VECTOR with no paths is
+        functionally the same defect as a plain vector with no paths."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"icon-1": {"type": "icon"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "icon-1": {
+                "type": "VECTOR",
+                "fillGeometryCount": 0,
+                "strokeGeometryCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_MISSING_ASSET]
+        assert len(entries) == 1
+
+    def test_icon_rendered_as_instance_not_flagged_as_missing_asset(self):
+        """Icons rendered through the INSTANCE path pull geometry from
+        the master component; the rendered instance itself reports no
+        direct geometry, but that's not a defect. Only VECTOR /
+        BOOLEAN_OPERATION host nodes are subject to the check."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_MISSING_ASSET
+        ir = self._ir({"icon-1": {"type": "icon"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "icon-1": {"type": "INSTANCE"},  # no geom keys, and that's fine
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        assert all(e.kind != KIND_MISSING_ASSET for e in report.errors)
+
+    def test_type_substitution_precedes_missing_asset(self):
+        """When rendered type isn't a vector host at all, the node is
+        a type_substitution, not a missing_asset. One eid, one entry —
+        no double-counting."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_TYPE_SUBSTITUTION, KIND_MISSING_ASSET
+        ir = self._ir({"vector-1": {"type": "vector"}})
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "vector-1": {
+                "type": "FRAME",  # not a vector host at all
+                "fillGeometryCount": 0,
+                "strokeGeometryCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        subs = [e for e in report.errors if e.kind == KIND_TYPE_SUBSTITUTION]
+        assets = [e for e in report.errors if e.kind == KIND_MISSING_ASSET]
+        assert len(subs) == 1
+        assert len(assets) == 0
 
 
 @pytest.mark.unit
