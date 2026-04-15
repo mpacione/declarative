@@ -277,6 +277,8 @@ class TestStructuredErrorKindVocabulary:
         assert boundary.KIND_CKR_UNBUILT == "ckr_unbuilt"
         # Render-verification delta (ADR-007 Position 3)
         assert boundary.KIND_MISSING_ASSET == "missing_asset"
+        # Runtime micro-guard (ADR-007 Position 2) — font load failures
+        assert boundary.KIND_FONT_LOAD_FAILED == "font_load_failed"
 
     def test_kind_constants_are_strings(self):
         from dd import boundary

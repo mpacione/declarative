@@ -174,7 +174,14 @@ class TestGenerateFigmaScript:
         script, refs = generate_figma_script(spec)
         assert "const M = {};" in script
         assert "return M;" in script
-        assert "(async" not in script
+        # No outer IIFE wrap — the plugin's harness already wraps us in
+        # an async function, so wrapping again would orphan our work.
+        # Inline `(async () => { ... })()` guards for per-op error
+        # capture (font-load, resize, etc.) are fine; what's NOT OK is a
+        # script-level `(async function () { ... })()` that would
+        # enclose the entire generated body.
+        assert "(async function" not in script
+        assert not script.lstrip().startswith("(async")
 
     def test_creates_frame(self):
         spec = _make_spec({"screen-1": {
@@ -329,6 +336,7 @@ class TestGenerateFigmaScript:
         assert "figma.loadFontAsync" in script
         assert '"Inter"' in script
         assert '"Bold"' in script
+
 
     def test_children_appended_in_order(self):
         spec = _make_spec({
@@ -486,6 +494,102 @@ class TestGenerateFigmaScript:
         })
         script, _ = generate_figma_script(spec)
         assert '\\"hello\\"' in script
+
+
+class TestGuardedFontLoading:
+    """A single unavailable font (trial / unlicensed / deleted from the
+    system) must not abort the entire script.
+
+    Symptom observed on Dank screens 314/315/317: every script's
+    preamble loads 10+ fonts including 'ABC Diatype Mono Medium
+    Unlicensed Trial'. figma.loadFontAsync() throws for that family on
+    any machine where the trial isn't licensed. One throw in the
+    preamble rejects the enclosing async IIFE, so every downstream node
+    creation and text setter never runs — the walker gets no M payload,
+    verify can't attribute the failure. Result: 3/204 walk_failed on
+    the corpus sweep.
+
+    Fix: every loadFontAsync call is wrapped in a per-font try/catch
+    that pushes a structured `font_load_failed` entry to __errors and
+    continues. Unrelated fonts still load, unrelated text nodes still
+    render, and the specific (family, style) that failed is attributable
+    per-eid in the report."""
+
+    def test_bare_loadfontasync_absent(self):
+        """No bare `await figma.loadFontAsync(...)` at start of line —
+        every one is wrapped so a single failure can't reject the outer
+        async function."""
+        import re
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "style": {"fontFamily": "Inter", "fontWeight": 400}},
+        })
+        script, _ = generate_figma_script(spec)
+        bare = re.findall(r"^await figma\.loadFontAsync\(", script, re.MULTILINE)
+        assert bare == [], f"Found {len(bare)} unguarded loadFontAsync calls"
+
+    def test_guard_pushes_font_load_failed_entry(self):
+        """On catch, the guard pushes `{kind:"font_load_failed", family,
+        style, error}` so the specific failed font is attributable."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "style": {"fontFamily": "Inter", "fontWeight": 400}},
+        })
+        script, _ = generate_figma_script(spec)
+        assert 'kind:"font_load_failed"' in script
+
+    def test_errors_declared_before_font_loads(self):
+        """The guard pushes to __errors, so __errors must exist when the
+        first font-load guard runs."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "style": {"fontFamily": "Inter", "fontWeight": 400}},
+        })
+        script, _ = generate_figma_script(spec)
+        errors_idx = script.index("const __errors = [];")
+        first_font_idx = script.index("loadFontAsync")
+        assert errors_idx < first_font_idx, (
+            f"__errors must precede first loadFontAsync "
+            f"(errors at {errors_idx}, font at {first_font_idx})"
+        )
+
+    def test_every_font_guarded(self):
+        """Multi-font scripts must guard every one of them, not just the
+        first. Without this, one throw in font N halts fonts N+1..."""
+        import re
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t1", "t2", "t3"]},
+            "t1": {"type": "text", "style": {"fontFamily": "Inter", "fontWeight": 400}},
+            "t2": {"type": "text", "style": {"fontFamily": "SF Pro", "fontWeight": 500}},
+            "t3": {"type": "text", "style": {"fontFamily": "Helvetica", "fontWeight": 700}},
+        })
+        script, _ = generate_figma_script(spec)
+        load_count = len(re.findall(r"figma\.loadFontAsync\(\{", script))
+        # Guards are IIFEs; each font load appears inside exactly one guard
+        # that also pushes font_load_failed. One `kind:"font_load_failed"`
+        # push per guarded font.
+        push_count = script.count('kind:"font_load_failed"')
+        assert load_count >= 3, f"expected ≥3 loadFontAsync calls, got {load_count}"
+        assert push_count == load_count, (
+            f"every loadFontAsync must have a matching font_load_failed "
+            f"push (loads={load_count}, pushes={push_count})"
+        )
+
+    def test_guard_preserves_family_and_style_in_entry(self):
+        """The structured entry carries the specific family and style so
+        downstream can bucket by font, not just count."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "style": {"fontFamily": "Baskerville", "fontWeight": 600}},
+        })
+        script, _ = generate_figma_script(spec)
+        # The Baskerville/SemiBold pair appears in both the load call
+        # and the guard's structured push. One way to verify: count
+        # occurrences of the family in the script and assert ≥2.
+        assert script.count('"Baskerville"') >= 2, (
+            "family name must appear in both loadFontAsync call and "
+            "font_load_failed entry"
+        )
 
 
 # ---------------------------------------------------------------------------

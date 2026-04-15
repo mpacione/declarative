@@ -47,6 +47,13 @@ KIND_TEXT_SET_FAILED = "text_set_failed"
 KIND_RESIZE_FAILED = "resize_failed"
 KIND_CONSTRAINT_FAILED = "constraint_failed"
 KIND_POSITION_FAILED = "position_failed"
+# figma.loadFontAsync() threw for a specific family/style. Common cause:
+# unlicensed trial fonts like "ABC Diatype Mono Medium Unlicensed Trial"
+# that are present in the Figma file but can't be loaded by the Plugin
+# API. Without a guard, one missing font aborts the entire script —
+# including every unrelated text node that uses a different font. The
+# guard localises the failure to the specific (family, style) pair.
+KIND_FONT_LOAD_FAILED = "font_load_failed"
 
 # Render-verification delta (ADR-007 Position 3)
 KIND_TYPE_SUBSTITUTION = "type_substitution"

@@ -744,19 +744,40 @@ def generate_figma_script(
 
     preamble: list[str] = []
 
-    # Always load Inter Regular — Figma's default font for createText()
-    all_fonts = [("Inter", "Regular")] + [f for f in fonts if f != ("Inter", "Regular")]
-    for family, style in all_fonts:
-        preamble.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
-
-    preamble.append("const M = {};")
     # Structured error channel — Mode 1 null-guards push structured entries here
     # when a referenced component node can't be resolved (deleted, unpublished,
     # never existed). The runtime harness (render_test/run.js) reads this to
     # distinguish "script aborted on exception" from "script finished with
     # recoverable errors". Downstream verification loops diff the errors array
     # against the IR to fail closed on missing-component regressions.
+    #
+    # Declared BEFORE the font-load block so the per-font guards have
+    # somewhere to push. See TestGuardedFontLoading.
     preamble.append("const __errors = [];")
+
+    # Guarded font loading (ADR-007 Position 2). A single unavailable
+    # font — trial/unlicensed fonts like "ABC Diatype Mono Medium
+    # Unlicensed Trial" that the Plugin API can't load — must not abort
+    # the script. One rejection in the preamble kills every downstream
+    # node creation. Each load is wrapped in a try/catch that pushes
+    # `{kind:"font_load_failed", family, style, error}` and continues.
+    # Unrelated text nodes still render; text nodes using the failed
+    # font surface as `text_set_failed` entries at Phase 3 (the existing
+    # per-op guards handle that). See tests: TestGuardedFontLoading.
+    # Always load Inter Regular — Figma's default font for createText()
+    all_fonts = [("Inter", "Regular")] + [f for f in fonts if f != ("Inter", "Regular")]
+    for family, style in all_fonts:
+        family_js = _escape_js(family)
+        style_js = _escape_js(style)
+        preamble.append(
+            "await (async () => { try { "
+            f"await figma.loadFontAsync({{family: \"{family_js}\", style: \"{style_js}\"}}); "
+            "} catch (__e) { "
+            f"__errors.push({{kind:\"font_load_failed\", family:\"{family_js}\", style:\"{style_js}\", "
+            "error: String(__e && __e.message || __e)}); } })();"
+        )
+
+    preamble.append("const M = {};")
     # ADR-007 Position 1: if CKR wasn't built for this DB, every INSTANCE
     # downstream will degrade to Mode 2. Push one structured entry so the
     # root cause is visible in the error channel even before the
@@ -1134,7 +1155,7 @@ def generate_figma_script(
                     or (raw_visual if raw_visual else None)
                     or {}
                 )
-                _emit_text_props(var, element, style, tokens, phase1_lines, db_font=db_font)
+                _emit_text_props(var, element, style, tokens, phase1_lines, db_font=db_font, eid=eid)
 
                 # Collect text characters for Phase 3 (Hydrate).
                 # Text content is set after appendChild so it reflows
@@ -1746,6 +1767,7 @@ def _emit_text_props(
     var: str, element: dict[str, Any], style: dict[str, Any],
     tokens: dict[str, Any], lines: list[str],
     db_font: dict[str, Any] | None = None,
+    eid: str = "",
 ) -> None:
     """Emit text properties with progressive fallback (L2 token → L0 DB).
 
@@ -1771,7 +1793,19 @@ def _emit_text_props(
     else:
         figma_style = normalize_font_style(family, font_weight_to_style(weight))
 
-    lines.append(f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};')
+    # Guard the fontName assignment. When an upstream loadFontAsync
+    # failed (e.g. unlicensed trial font), this setter throws with
+    # "Cannot use unloaded font" and — if unguarded — aborts Phase 1.
+    # One bad text node shouldn't kill the whole render. The
+    # font_load_failed entry from the preamble guard carries the family
+    # and style; this per-op guard carries the eid so the specific
+    # text node is attributable. See TestGuardedFontLoading +
+    # feedback_text_layout_invariants.md.
+    fontname_stmt = f'{var}.fontName = {{family: "{family}", style: "{figma_style}"}};'
+    if eid:
+        lines.append(_guarded_op(fontname_stmt, eid, "text_set_failed"))
+    else:
+        lines.append(fontname_stmt)
 
     font_size = _resolve_text_value(
         style.get("fontSize"), db_font.get("font_size"), tokens,
