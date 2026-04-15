@@ -207,6 +207,118 @@ class TestProcessVectorGeometry:
         ref_count = conn.execute("SELECT COUNT(*) FROM node_asset_refs").fetchone()[0]
         assert ref_count == 2
 
+    def test_processes_figma_api_key_data_not_path(self):
+        """Figma Plugin API returns fillGeometry / strokeGeometry as
+        arrays of objects with key `data`, NOT `path` (verified by
+        inspecting `node.fillGeometry[0]`). process_vector_geometry
+        must read `data` or svg_data will silently become "" across
+        every vector node — hash collisions collapse all 26,050+
+        VECTORs to a single empty asset, and the renderer emits no
+        paths.
+
+        Regression guard for the 2026-04-15 chapter's re-extract
+        incident."""
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        # The Figma Plugin API shape: {data, windingRule}
+        # (verified on Dank screen 175 vector id 21358).
+        figma_shape = json.dumps([
+            {"data": "M11.6667 16.0001 L0.999999 16.0001", "windingRule": "NONZERO"},
+        ])
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, fill_geometry) "
+            "VALUES (1, '1:1', 'Arrow', 'VECTOR', 1, 0, ?)",
+            (figma_shape,),
+        )
+        count = process_vector_geometry(conn)
+        assert count == 1
+
+        asset = conn.execute("SELECT hash, metadata FROM assets").fetchone()
+        metadata = json.loads(asset["metadata"])
+        assert metadata["svg_data"], (
+            "svg_data must be non-empty when the Figma API returned "
+            "path data under key 'data'"
+        )
+        # After normalization, coordinates keep their values; only the
+        # letter-to-digit boundary gets a space inserted.
+        assert "11.6667 16.0001" in metadata["svg_data"], (
+            "svg_data must contain the original path coordinates, not an "
+            "empty placeholder"
+        )
+
+    def test_normalizes_compact_svg_commands_for_figma_parser(self):
+        """Figma's vectorPaths parser rejects compact SVG shorthand
+        like `M160.757 118.403` with "Invalid command at M160.757".
+        The Plugin API's own `node.fillGeometry` returns exactly that
+        shorthand. process_vector_geometry must normalize so the
+        stored svg_data has a space after each command letter."""
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        # Real Plugin-API output is compact: no space after M/L/C/Z.
+        compact_path = json.dumps([
+            {"data": "M160.757 118.403L7.39424 118.403Z", "windingRule": "NONZERO"},
+        ])
+        conn.execute(
+            "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, fill_geometry) "
+            "VALUES (1, '1:1', 'Frame', 'VECTOR', 1, 0, ?)",
+            (compact_path,),
+        )
+        count = process_vector_geometry(conn)
+        assert count == 1
+        asset = conn.execute("SELECT metadata FROM assets").fetchone()
+        metadata = json.loads(asset["metadata"])
+        svg = metadata["svg_data"]
+        # Every command letter M/L/C/Z followed by a digit/minus/period
+        # must have a space between them after normalization.
+        assert "M 160.757" in svg
+        assert "L 7.39424" in svg
+        # No compact form should survive
+        assert "M160" not in svg
+        assert "L7." not in svg
+
+    def test_distinct_paths_get_distinct_content_hashes_figma_shape(self):
+        """Content addressing must work with the real Figma shape.
+        Two nodes with different path data → two different hashes,
+        even when the key is 'data' (not 'path')."""
+        from dd.extract_assets import process_vector_geometry
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (file_key, name) VALUES ('test', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (file_id, figma_node_id, name, width, height) "
+            "VALUES (1, '1:0', 'Screen', 375, 812)"
+        )
+        path_a = json.dumps([{"data": "M 0 0 L 10 10", "windingRule": "NONZERO"}])
+        path_b = json.dumps([{"data": "M 5 5 L 15 15", "windingRule": "NONZERO"}])
+        for fig, path in [("1:1", path_a), ("1:2", path_b)]:
+            conn.execute(
+                "INSERT INTO nodes (screen_id, figma_node_id, name, node_type, "
+                "depth, sort_order, fill_geometry) "
+                "VALUES (1, ?, 'Icon', 'VECTOR', 1, 0, ?)",
+                (fig, path),
+            )
+        count = process_vector_geometry(conn)
+        assert count == 2
+        distinct_hashes = conn.execute(
+            "SELECT COUNT(DISTINCT hash) FROM assets"
+        ).fetchone()[0]
+        assert distinct_hashes == 2, (
+            f"expected 2 distinct content hashes for 2 distinct paths, "
+            f"got {distinct_hashes} (hash collision — paths treated as "
+            f"identical, likely because they're being read as empty)"
+        )
+
 
 class TestAssetResolver:
     """Verify the abstract AssetResolver contract and SQLite implementation."""

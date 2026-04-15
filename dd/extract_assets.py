@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from abc import ABC, abstractmethod
 from typing import Any
@@ -55,14 +56,66 @@ def link_node_asset(
     )
 
 
+_SVG_COMMAND_RE = re.compile(r"([MmLlCcQqAaZzHhVvSsTt])(?=[\d.\-])")
+
+
+def _normalize_svg_path(path: str) -> str:
+    """Insert a space between each SVG command letter and its first
+    coordinate.
+
+    Figma's ``vectorPaths`` parser rejects the compact shorthand
+    ``M160.757 118.403`` with "Invalid command at M160.757" — it
+    requires a space between the command letter and the first
+    number: ``M 160.757 118.403``. The SVG spec allows both; Figma's
+    is strict.
+
+    The Figma Plugin API's own ``node.fillGeometry`` returns paths
+    in the compact form. Storing them verbatim and emitting through
+    ``vectorPaths`` is a round-trip that fails on Figma's own output.
+    This function normalizes the path string so the value we emit is
+    always Figma-parser-accepted."""
+    return _SVG_COMMAND_RE.sub(r"\1 ", path)
+
+
 def _hash_svg_paths(paths: list[dict]) -> tuple[str, str]:
-    """Hash SVG path data and return (content_hash, combined_svg_data)."""
-    combined = ";".join(
-        f"{p.get('windingRule', 'NONZERO')}:{p.get('path', '')}"
+    """Hash SVG path data and return (content_hash, combined_svg_data).
+
+    Figma Plugin API's ``node.fillGeometry`` / ``node.strokeGeometry``
+    returns arrays of objects with key ``data`` (not ``path``) —
+    verified empirically on Dank screen 175 VECTOR id 21358:
+
+        [{"windingRule": "NONZERO", "data": "M11.6667 16.0001 ..."}]
+
+    Accept both ``data`` (real Figma API) and ``path`` (legacy test
+    fixtures) so existing tests stay green. Without this, every
+    vector's path collapses to the empty string, producing a single
+    hash collision across all 26,050+ vector nodes and an empty
+    ``svg_data`` that the renderer's ``_emit_vector_paths`` skips —
+    result: every vector renders as a shape-less grey rectangle.
+    """
+    def _get_path(p: dict) -> str:
+        v = p.get("data")
+        if v is None:
+            v = p.get("path", "")
+        return _normalize_svg_path(v) if v else ""
+
+    # Content hash includes the per-path windingRule so EVENODD + NONZERO
+    # paths with the same coordinates don't collide.
+    combined = "|".join(
+        f"{p.get('windingRule', 'NONZERO')}:{_get_path(p)}"
         for p in paths
     )
     content_hash = hashlib.sha256(combined.encode("utf-8")).hexdigest()[:16]
-    svg_data = ";".join(p.get("path", "") for p in paths)
+    # svg_data concatenates sub-paths with spaces. Figma's VectorPath
+    # parser expects SVG path grammar; ';' is not a valid separator and
+    # causes "Invalid command at ..." errors on assignment. Multiple
+    # M-commands in one string are fine — Figma treats each 'M' as a
+    # new subpath. The tradeoff: a single windingRule per asset; when
+    # sub-paths have mixed windings (NONZERO + EVENODD), we drop the
+    # distinction and use the first path's winding at emit time.
+    # Follow-up: store paths as a list in asset metadata so emit_vector_paths
+    # can produce multiple VectorPath entries. Tracked in session notes.
+    svg_data = " ".join(_get_path(p) for p in paths)
     return content_hash, svg_data
 
 
