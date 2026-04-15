@@ -431,6 +431,184 @@ class TestRenderVerifierContract:
         from dd.verify_figma import FigmaRenderVerifier
         assert FigmaRenderVerifier().backend == "figma"
 
+    def test_text_that_wrapped_flagged_as_bounds_mismatch(self):
+        """Text that wrapped to multiple lines (rendered height > 1.5x
+        IR's expected height) surfaces as bounds_mismatch so callers
+        can attribute the layout defect to a specific eid.
+
+        Catches regressions like screen 175's original 'Commun / ity'
+        visible wrap, where the Figma Plugin API side-effected
+        textAutoResize into HEIGHT mode and .characters then wrapped."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_BOUNDS_MISMATCH
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen"},
+                "text-1": {
+                    "type": "text",
+                    "props": {"text": "Community"},
+                    "layout": {
+                        "sizing": {"width": 111, "height": 15},
+                    },
+                },
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "text-1": {
+                    "type": "TEXT",
+                    "characters": "Community",
+                    "width": 111,
+                    "height": 48,  # wrapped to 3 lines at ~16px each
+                },
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        bounds_errors = [
+            e for e in report.errors if e.kind == KIND_BOUNDS_MISMATCH
+        ]
+        assert len(bounds_errors) == 1
+        assert bounds_errors[0].id == "text-1"
+
+    def test_text_with_matching_height_not_flagged(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_BOUNDS_MISMATCH
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen"},
+                "text-1": {
+                    "type": "text",
+                    "props": {"text": "Community"},
+                    "layout": {"sizing": {"width": 111, "height": 15}},
+                },
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "text-1": {
+                    "type": "TEXT",
+                    "characters": "Community",
+                    "width": 111,
+                    "height": 15,
+                },
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        bounds_errors = [
+            e for e in report.errors if e.kind == KIND_BOUNDS_MISMATCH
+        ]
+        assert bounds_errors == []
+
+    def test_heading_ir_type_with_rendered_text_still_wrap_checked(self):
+        """The classifier tags some TEXT nodes as ir_type='heading' or
+        'title' (not 'text'). The wrap check must fire based on the
+        rendered type being TEXT, not the IR semantic type."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_BOUNDS_MISMATCH
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen"},
+                "heading-1": {
+                    "type": "heading",
+                    "props": {"text": "More"},
+                    "layout": {"sizing": {"height": "hug", "heightPixels": 22}},
+                },
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "heading-1": {
+                    "type": "TEXT",
+                    "characters": "More",
+                    "width": 0,
+                    "height": 88,  # 4-line wrap at 22px
+                },
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        bounds_errors = [
+            e for e in report.errors if e.kind == KIND_BOUNDS_MISMATCH
+        ]
+        assert len(bounds_errors) == 1, (
+            "Wrap detection must fire for TEXT-rendered nodes regardless "
+            "of IR semantic type (heading/title/text all possible)"
+        )
+
+    def test_semantic_height_string_uses_heightPixels_fallback(self):
+        """When IR sizing.height is a semantic string like 'hug' or
+        'fill', use sizing.heightPixels for the numeric comparison."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_BOUNDS_MISMATCH
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen"},
+                "text-1": {
+                    "type": "text",
+                    "props": {"text": "More"},
+                    "layout": {
+                        "sizing": {
+                            "width": "fill", "widthPixels": 103,
+                            "height": "hug", "heightPixels": 22,
+                        }
+                    },
+                },
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "text-1": {
+                    "type": "TEXT", "characters": "More",
+                    "width": 0, "height": 88,
+                },
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        bounds_errors = [
+            e for e in report.errors if e.kind == KIND_BOUNDS_MISMATCH
+        ]
+        assert len(bounds_errors) == 1
+
+    def test_missing_bounds_in_rendered_ref_skips_check(self):
+        """Backward-compat: rendered payloads without width/height
+        must not trigger false positives."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_BOUNDS_MISMATCH
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen"},
+                "text-1": {
+                    "type": "text",
+                    "props": {"text": "X"},
+                    "layout": {"sizing": {"width": 10, "height": 10}},
+                },
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "text-1": {"type": "TEXT", "characters": "X"},  # no width/height
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        bounds_errors = [
+            e for e in report.errors if e.kind == KIND_BOUNDS_MISMATCH
+        ]
+        assert bounds_errors == []
+
     def test_mode1_ineligible_frame_not_flagged_as_substitution(self):
         """Name-only classified FRAMEs (e.g. a FRAME named
         'card/sheet/success' with no component_key/figma_node_id

@@ -53,6 +53,7 @@ KIND_TYPE_SUBSTITUTION = "type_substitution"
 KIND_MISSING_TEXT = "missing_text"
 KIND_MISSING_CHILD = "missing_child"
 KIND_EXTRA_CHILD = "extra_child"
+KIND_BOUNDS_MISMATCH = "bounds_mismatch"
 
 
 @dataclass(frozen=True)

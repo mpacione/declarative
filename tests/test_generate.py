@@ -3647,6 +3647,103 @@ class TestGroupPositioning:
         assert ".x = 50" in script
         assert ".y = 100" in script
 
+    def test_text_with_width_and_height_autoresize_is_not_resized(self):
+        """Figma Plugin API quirk: calling resize() on a text node whose
+        textAutoResize is WIDTH_AND_HEIGHT implicitly flips it to HEIGHT
+        (locking the width). The subsequent .characters assignment then
+        wraps the text within the locked width, producing visible
+        "Commun / ity" style multi-line text that should be single-line.
+
+        Fix: when the DB says the text node's textAutoResize is
+        WIDTH_AND_HEIGHT, don't emit resize() — let the content
+        determine the size."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["text-1"],
+            },
+            "text-1": {
+                "type": "text",
+                "layout": {
+                    "sizing": {"width": 111, "height": 15},
+                    "position": {"x": 0, "y": 0},
+                },
+                "props": {"text": "Community"},
+                "style": {"fontFamily": "Inter", "fontWeight": 600, "fontSize": 20},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "TEXT",
+                "text_auto_resize": "WIDTH_AND_HEIGHT",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Pull lines that belong to the text node's var. The var name is
+        # deterministic from walk order — text-1 is the second walked
+        # element so `n1`. But that's brittle; instead, scan every
+        # assignment to any var that sets textAutoResize="WIDTH_AND_HEIGHT"
+        # and verify that var never has a .resize(...) line.
+        import re
+        for m in re.finditer(
+            r'(\w+)\.textAutoResize = "WIDTH_AND_HEIGHT";', script,
+        ):
+            var = m.group(1)
+            # No resize line for this var anywhere in the script.
+            resize_pattern = re.compile(rf"\b{re.escape(var)}\.resize\(")
+            assert not resize_pattern.search(script), (
+                f"text node {var} has textAutoResize=WIDTH_AND_HEIGHT "
+                f"but renderer emitted resize(), which flips autoResize "
+                f"to HEIGHT and causes text to wrap"
+            )
+
+    def test_text_with_height_autoresize_still_resizes(self):
+        """HEIGHT mode (fixed width, grows height) legitimately needs
+        the explicit width from the DB — the resize call is correct
+        there. This guards against over-fixing the WIDTH_AND_HEIGHT
+        case by accidentally suppressing all text resizes."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["text-1"],
+            },
+            "text-1": {
+                "type": "text",
+                "layout": {
+                    "sizing": {"width": 200, "height": 60},
+                    "position": {"x": 0, "y": 0},
+                },
+                "props": {"text": "Long paragraph"},
+                "style": {"fontFamily": "Inter", "fontWeight": 400, "fontSize": 14},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "TEXT",
+                "text_auto_resize": "HEIGHT",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # HEIGHT mode: resize should still be emitted.
+        import re
+        for m in re.finditer(
+            r'(\w+)\.textAutoResize = "HEIGHT";', script,
+        ):
+            var = m.group(1)
+            resize_pattern = re.compile(rf"\b{re.escape(var)}\.resize\(")
+            assert resize_pattern.search(script), (
+                f"text node {var} has textAutoResize=HEIGHT; resize() "
+                f"must be emitted to set the fixed width"
+            )
+
     def test_group_does_not_get_constraints(self):
         """GROUP nodes do NOT support .constraints in the Figma Plugin
         API — the property_registry capability set for constraint_h/v

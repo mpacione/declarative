@@ -1033,6 +1033,7 @@ def generate_figma_script(
             original_name = element.get("_original_name", eid)
             phase1_lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
+            text_resize_for_layout: str | None = None
             if is_text:
                 text_resize = "WIDTH_AND_HEIGHT"
                 if db_visuals is not None:
@@ -1042,9 +1043,13 @@ def generate_figma_script(
                     if stored:
                         text_resize = stored
                 phase1_lines.append(f'{var}.textAutoResize = "{text_resize}";')
+                text_resize_for_layout = text_resize
 
             layout = element.get("layout", {})
-            layout_lines, layout_refs = _emit_layout(var, eid, layout, tokens)
+            layout_lines, layout_refs = _emit_layout(
+                var, eid, layout, tokens,
+                text_auto_resize=text_resize_for_layout,
+            )
             phase1_lines.extend(layout_lines)
             all_token_refs.extend(layout_refs)
 
@@ -1376,7 +1381,17 @@ def _walk_elements(spec: dict[str, Any]) -> list[tuple[str, dict, str | None]]:
 
 def _emit_layout(
     var: str, eid: str, layout: dict[str, Any], tokens: dict[str, Any],
+    text_auto_resize: str | None = None,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit layout-related JS for a node.
+
+    ``text_auto_resize`` carries the DB's textAutoResize for TEXT nodes
+    so we can skip `resize()` when the node is in WIDTH_AND_HEIGHT mode
+    — in that mode content determines size, and calling `resize()` has
+    the Plugin API side effect of flipping autoResize to HEIGHT,
+    locking the width and causing subsequent `.characters` to wrap at
+    the locked width.
+    """
     lines: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
@@ -1430,6 +1445,15 @@ def _emit_layout(
     # The post-appendChild path sets layoutSizing when parent context is known.
     rw = int(w) if isinstance(w, (int, float)) else None
     rh = int(h) if isinstance(h, (int, float)) else None
+    # Text-node guard: in WIDTH_AND_HEIGHT auto-resize mode, the node's
+    # size is derived from content. Calling resize() has the Plugin API
+    # side effect of flipping autoResize to HEIGHT, which locks the
+    # width; the subsequent Phase 3 `.characters = ...` then wraps at
+    # that locked width, producing visible "Commun / ity" multiline
+    # breakage. Skip resize entirely when the DB says WIDTH_AND_HEIGHT.
+    if text_auto_resize == "WIDTH_AND_HEIGHT":
+        rw = None
+        rh = None
     if rw is not None and rh is not None:
         lines.append(f"{var}.resize({rw}, {rh});")
     elif rw is not None:

@@ -18,12 +18,20 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from dd.boundary import (
+    KIND_BOUNDS_MISMATCH,
     KIND_MISSING_CHILD,
     KIND_MISSING_TEXT,
     KIND_TYPE_SUBSTITUTION,
     RenderReport,
     StructuredError,
 )
+
+
+# Text height tolerance before we flag a wrap: if rendered height is
+# more than 1.5x the IR-expected height, the text almost certainly
+# wrapped to multiple lines. Tighter than 1.5x risks false positives
+# from font metrics (cap height / x-height / line-height drift).
+_TEXT_HEIGHT_WRAP_RATIO = 1.5
 
 
 # Figma native type expected for each IR element type. Entries marked
@@ -175,6 +183,46 @@ class FigmaRenderVerifier:
                         id=eid,
                         error=f"expected characters={expected_text!r}, got empty",
                         context={"expected": expected_text},
+                    ))
+
+            # Text-wrap detection: rendered height far exceeds the IR
+            # height → text almost certainly wrapped to multiple lines.
+            # Catches regressions like the screen 175 "Commun / ity"
+            # visible wrap where Figma's resize() flipped autoResize
+            # into HEIGHT mode, and the screen 176 "M/o/r/e" vertical
+            # wrap where FILL sizing handed the text a 0-width parent.
+            #
+            # Gate on rendered_type (not IR type) because the classifier
+            # assigns heading/title/text semantic labels interchangeably
+            # to TEXT nodes. Prefer sizing.heightPixels when
+            # sizing.height is a semantic string ("hug"/"fill").
+            if rendered_type == "TEXT" and rendered.get("height") is not None:
+                sizing = (element.get("layout") or {}).get("sizing") or {}
+                ir_h = sizing.get("heightPixels")
+                if not isinstance(ir_h, (int, float)):
+                    raw_h = sizing.get("height")
+                    if isinstance(raw_h, (int, float)):
+                        ir_h = raw_h
+                rendered_h = rendered.get("height")
+                if (
+                    isinstance(ir_h, (int, float))
+                    and isinstance(rendered_h, (int, float))
+                    and ir_h > 0
+                    and rendered_h > ir_h * _TEXT_HEIGHT_WRAP_RATIO
+                ):
+                    errors.append(StructuredError(
+                        kind=KIND_BOUNDS_MISMATCH,
+                        id=eid,
+                        error=(
+                            f"rendered height={rendered_h} exceeds "
+                            f"IR height={ir_h} by > {_TEXT_HEIGHT_WRAP_RATIO}x "
+                            f"— text likely wrapped"
+                        ),
+                        context={
+                            "ir_height": ir_h,
+                            "rendered_height": rendered_h,
+                            "ratio": rendered_h / ir_h,
+                        },
                     ))
 
         return RenderReport(
