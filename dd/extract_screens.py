@@ -410,7 +410,7 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
         if node.get("node_type") == "TEXT":
             for field in ["font_family", "font_style", "text_align", "text_align_v",
                           "text_decoration", "text_case", "text_content",
-                          "text_auto_resize"]:
+                          "text_auto_resize", "leading_trim"]:
                 if field in node:
                     cleaned[field] = node[field]
             if "font_weight" in node:
@@ -550,7 +550,7 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "font_family", "font_weight", "font_size", "font_style",
             "line_height", "letter_spacing", "paragraph_spacing",
             "text_align", "text_align_v", "text_decoration", "text_case", "text_content",
-            "text_auto_resize", "component_key",
+            "text_auto_resize", "leading_trim", "component_key",
         ]
 
         for field in optional_fields:

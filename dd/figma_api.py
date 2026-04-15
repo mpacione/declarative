@@ -423,6 +423,14 @@ def _add_typography_properties(node: dict, api_node: dict) -> None:
     if style.get("textCase"):
         node["text_case"] = style["textCase"]
 
+    # leadingTrim controls whether the text's bounding box includes
+    # full line-height padding (NONE — default) or trims to cap-height
+    # (CAP_HEIGHT). Critical for tight vertical layout; without it,
+    # DB-captured position values land text visually off-center in
+    # fixed-height non-auto-layout parents.
+    if style.get("leadingTrim"):
+        node["leading_trim"] = style["leadingTrim"]
+
     if api_node.get("characters") is not None:
         node["text_content"] = api_node["characters"]
 

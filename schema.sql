@@ -425,6 +425,7 @@ CREATE TABLE nodes (
     text_case       TEXT,                        -- ORIGINAL, UPPER, LOWER, TITLE, SMALL_CAPS, SMALL_CAPS_FORCED
     text_content    TEXT,                        -- actual text string
     text_auto_resize TEXT,                       -- NONE, HEIGHT, WIDTH_AND_HEIGHT, TRUNCATE
+    leading_trim    TEXT,                        -- NONE (default), CAP_HEIGHT — trims bounding box to cap-height for tight vertical layout
 
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync

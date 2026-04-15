@@ -1800,6 +1800,18 @@ def _emit_text_props(
     if text_case:
         lines.append(f'{var}.textCase = "{text_case}";')
 
+    # leadingTrim controls whether the text bounding box includes full
+    # line-height padding (NONE, default) or trims to cap-height
+    # (CAP_HEIGHT). Source files use CAP_HEIGHT for tight vertical
+    # layout inside fixed-height non-auto-layout parents. Without
+    # emitting this, the text's box is ~1.6x taller than the source's,
+    # and positions extracted from DB (computed against the tighter
+    # box) land the text visually top-aligned instead of centered.
+    # Skip emission when "NONE" (Figma's default — redundant).
+    leading_trim = db_font.get("leading_trim")
+    if leading_trim and leading_trim != "NONE":
+        lines.append(f'{var}.leadingTrim = "{leading_trim}";')
+
     line_height = db_font.get("line_height")
     if line_height is not None:
         if isinstance(line_height, str):

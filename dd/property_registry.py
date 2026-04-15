@@ -284,6 +284,16 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   ("paragraphSpacing",), "text", "number",
                   emit={"figma": _UNIFORM},
                   capabilities=_figma_caps(_FIGMA_TEXT)),
+    # leadingTrim trims the text node's bounding box to cap-height
+    # (or CAP_HEIGHT) when enabled, producing a tighter box than the
+    # default "NONE" which includes full line-height padding. Crucial
+    # for visually centering text within fixed-height non-auto-layout
+    # parents: a Workshop label at Inter 20pt Semi Bold is 15px with
+    # CAP_HEIGHT vs 24px with NONE.
+    FigmaProperty("leadingTrim", "leading_trim",
+                  ("leadingTrim",), "text", "enum",
+                  emit={"figma": _UNIFORM},
+                  capabilities=_figma_caps(_FIGMA_TEXT)),
 
     # === CONSTRAINTS ===
     # Deferred: emitted in post-appendChild section, not main emit block

@@ -3871,6 +3871,71 @@ class TestGroupPositioning:
                 f"must be emitted to set the fixed width"
             )
 
+    def test_leading_trim_cap_height_emitted(self):
+        """Text with leading_trim=CAP_HEIGHT in DB must emit
+        `textNode.leadingTrim = "CAP_HEIGHT"` so Figma renders the
+        text's bounding box as cap-height only (tight), not full
+        line-height (which is ~1.6x taller at Inter 20pt Semi Bold).
+
+        Without this, text position emitted from DB (computed
+        assuming the tighter 15px bbox) lands the text
+        visually top-aligned instead of vertically-centered when
+        inside a fixed-height non-auto-layout parent."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "children": ["t-1"],
+                "layout": {"sizing": {"width": 428, "height": 926}},
+            },
+            "t-1": {
+                "type": "heading",
+                "props": {"text": "Workshop"},
+                "style": {"fontFamily": "Inter Variable", "fontWeight": 600, "fontSize": 20},
+                "layout": {
+                    "sizing": {"width": 97, "height": 15},
+                    "position": {"x": 50, "y": 7.5},
+                },
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "t-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "TEXT",
+                "leading_trim": "CAP_HEIGHT",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'leadingTrim = "CAP_HEIGHT"' in script
+
+    def test_leading_trim_none_not_emitted(self):
+        """leading_trim=NONE is the Figma default — don't emit
+        redundant assignments."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "children": ["t-1"],
+                "layout": {"sizing": {"width": 428, "height": 926}},
+            },
+            "t-1": {
+                "type": "heading",
+                "props": {"text": "Workshop"},
+                "style": {"fontFamily": "Inter", "fontWeight": 400, "fontSize": 14},
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "t-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "TEXT",
+                "leading_trim": "NONE",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "leadingTrim" not in script
+
     def test_group_does_not_get_constraints(self):
         """GROUP nodes do NOT support .constraints in the Figma Plugin
         API — the property_registry capability set for constraint_h/v
