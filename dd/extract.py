@@ -18,7 +18,6 @@ from dd.extract_inventory import (
 )
 from dd.extract_screens import (
     compute_is_semantic,
-    generate_extraction_script,
     insert_nodes,
     parse_extraction_response,
     update_screen_status,
@@ -180,21 +179,6 @@ def get_next_screen(
     """
     pending = get_pending_screens(conn, run_id)
     return pending[0] if pending else None
-
-
-def get_extraction_script(screen_figma_node_id: str) -> str:
-    """
-    Get the JavaScript extraction script for a screen.
-
-    Convenience wrapper for generate_extraction_script.
-
-    Args:
-        screen_figma_node_id: Figma node ID of the screen
-
-    Returns:
-        JavaScript code string
-    """
-    return generate_extraction_script(screen_figma_node_id)
 
 
 def complete_run(conn: sqlite3.Connection, run_id: int) -> dict[str, Any]:

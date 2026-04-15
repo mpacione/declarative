@@ -101,7 +101,6 @@ Parses Figma COMPONENT_SET and COMPONENT nodes, extracts variants, infers slots,
 | `insert_variant_axes(conn, component_id, axes)` | UPSERT into `variant_axes` with interaction detection |
 | `populate_variant_dimension_values(conn, component_id)` | Cross-product: variant × axis → dimension values |
 | `insert_slots(conn, component_id, slots)` | UPSERT into `component_slots` |
-| `extract_slots_from_nodes(conn, component_id, figma_node_id)` | Query DB for child nodes, infer and insert slots |
 
 **Populates**: `components`, `component_variants`, `variant_axes`, `variant_dimension_values`, `component_slots`, `component_a11y`. Currently ALL EMPTY in Dank DB — needs to be run.
 
@@ -214,7 +213,6 @@ OKLCH-based dark mode, compact mode, and high-contrast mode generation.
 | Function | Purpose |
 |----------|---------|
 | `create_dark_mode(conn, collection_id)` | Copy values → OKLCH lightness inversion (`L' = 1-L`, chroma clamped to 0.4) |
-| `create_compact_mode(conn, collection_id, factor)` | Copy values → scale dimensions by factor (default 0.875 = 12.5% reduction) |
 | `create_high_contrast_mode(conn, collection_id)` | Light colors brighter (`L * 1.2 + 0.1`), dark darker (`L * 0.6`), chroma boosted |
 | `create_theme(conn, file_id, theme_name, transform)` | Apply transform across all collections in file |
 

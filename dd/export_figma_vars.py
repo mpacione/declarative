@@ -409,24 +409,6 @@ def writeback_variable_ids(conn: sqlite3.Connection, file_id: int,
     }
 
 
-def writeback_variable_ids_from_response(conn: sqlite3.Connection, file_id: int,
-                                        raw_response: Any) -> dict[str, int]:
-    """Convenience wrapper for writeback_variable_ids.
-
-    Parses the raw response and writes back the variable IDs.
-
-    Args:
-        conn: Database connection
-        file_id: File ID being processed
-        raw_response: Raw response from figma_get_variables MCP call
-
-    Returns:
-        Dict with counts: tokens_updated, tokens_not_found, collections_updated, modes_updated
-    """
-    parsed = parse_figma_variables_response(raw_response)
-    return writeback_variable_ids(conn, file_id, parsed)
-
-
 def get_sync_status_summary(conn: sqlite3.Connection, file_id: int) -> dict[str, int]:
     """Get summary of sync status for tokens in a file.
 

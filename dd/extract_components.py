@@ -376,51 +376,6 @@ def insert_slots(conn: sqlite3.Connection, component_id: int, slots: list[dict[s
     return slot_ids
 
 
-def extract_slots_from_nodes(conn: sqlite3.Connection, component_id: int,
-                           component_figma_node_id: str,
-                           children: list[dict[str, Any]] | None = None) -> list[int]:
-    """
-    Extract and insert slots for a component from its children.
-
-    Args:
-        conn: Database connection
-        component_id: ID of the component
-        component_figma_node_id: Figma node ID of the component
-        children: Optional list of child dicts. If not provided, queries the DB.
-
-    Returns:
-        List of slot IDs
-    """
-    if children is None:
-        # Query the database for children
-        # This is a simplified approach - in practice, we'd need to find
-        # the actual child nodes from a component_sheet screen
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT name, node_type, sort_order
-            FROM nodes
-            WHERE component_id = ?
-            ORDER BY sort_order
-        """, (component_id,))
-
-        children = []
-        for row in cursor.fetchall():
-            children.append({
-                "name": row[0],
-                "node_type": row[1],
-                "sort_order": row[2]
-            })
-
-    # Infer slots from children
-    slots = infer_slots(children)
-
-    # Insert slots into database
-    if slots:
-        return insert_slots(conn, component_id, slots)
-
-    return []
-
-
 def parse_component_set(component_set_data: dict[str, Any]) -> dict[str, Any]:
     """
     Parse a COMPONENT_SET node from Figma.

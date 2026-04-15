@@ -294,40 +294,6 @@ def create_dark_mode(conn: sqlite3.Connection, collection_id: int, mode_name: st
     }
 
 
-def create_compact_mode(
-    conn: sqlite3.Connection,
-    collection_id: int,
-    factor: float = 0.875,
-    mode_name: str = "Compact"
-) -> dict[str, Any]:
-    """Create a compact/density mode with scale factor.
-
-    Args:
-        conn: Database connection
-        collection_id: ID of the collection
-        factor: Scale factor to apply (default: 0.875)
-        mode_name: Name for the new mode (default: "Compact")
-
-    Returns:
-        Dictionary with mode creation details
-    """
-    # Create the mode
-    mode_id = create_mode(conn, collection_id, mode_name)
-
-    # Copy values from default
-    values_copied = copy_values_from_default(conn, collection_id, mode_id)
-
-    # Apply scale factor
-    values_scaled = apply_scale_factor(conn, collection_id, mode_id, factor)
-
-    return {
-        "mode_id": mode_id,
-        "mode_name": mode_name,
-        "values_copied": values_copied,
-        "values_scaled": values_scaled
-    }
-
-
 def apply_high_contrast(conn: sqlite3.Connection, collection_id: int, mode_id: int) -> int:
     """Apply high contrast transform to color tokens in a mode.
 

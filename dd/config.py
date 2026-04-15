@@ -16,16 +16,3 @@ LOCK_TIMEOUT_MINUTES = 10  # Advisory lock expiry
 MAX_TOKENS_PER_CALL = 100  # Figma API limit per C-3
 MAX_BINDINGS_PER_SCRIPT = 950  # Rebind script batch size (compact format, fits 50K char limit)
 USE_FIGMA_CODE_LIMIT = 50000  # Character limit per C-1
-
-
-def db_path(name: str) -> Path:
-    """
-    Return the full path for a database file given its base name.
-
-    Args:
-        name: Base name for the database (e.g., 'dank')
-
-    Returns:
-        Path object for the database file (e.g., PROJECT_ROOT / 'dank.declarative.db')
-    """
-    return PROJECT_ROOT / f"{name}{DB_SUFFIX}"
