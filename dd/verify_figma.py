@@ -19,9 +19,12 @@ from typing import Any, ClassVar
 
 from dd.boundary import (
     KIND_BOUNDS_MISMATCH,
+    KIND_EFFECT_MISSING,
+    KIND_FILL_MISMATCH,
     KIND_MISSING_ASSET,
     KIND_MISSING_CHILD,
     KIND_MISSING_TEXT,
+    KIND_STROKE_MISMATCH,
     KIND_TYPE_SUBSTITUTION,
     RenderReport,
     StructuredError,
@@ -267,6 +270,115 @@ class FigmaRenderVerifier:
                             "ir_height": ir_h,
                             "rendered_height": rendered_h,
                             "ratio": rendered_h / ir_h,
+                        },
+                    ))
+
+            # Fill-color comparison: each IR solid fill is compared against
+            # the corresponding rendered solid fill. Token-bound fills (color
+            # starts with '{') are skipped — the IR value is a reference, not
+            # a concrete hex. Gated on both sides having a 'fills' key so
+            # older walkers that omit fills don't trigger false positives.
+            ir_fills = (element.get("visual") or {}).get("fills")
+            rendered_fills = rendered.get("fills")
+            if isinstance(ir_fills, list) and isinstance(rendered_fills, list):
+                ir_solids = [f for f in ir_fills if f.get("type") == "solid"]
+                rd_solids = [f for f in rendered_fills if f.get("type") == "solid"]
+
+                if len(ir_solids) != len(rd_solids):
+                    errors.append(StructuredError(
+                        kind=KIND_FILL_MISMATCH,
+                        id=eid,
+                        error=(
+                            f"solid fill count: IR={len(ir_solids)}, "
+                            f"rendered={len(rd_solids)}"
+                        ),
+                        context={
+                            "ir_solid_count": len(ir_solids),
+                            "rendered_solid_count": len(rd_solids),
+                        },
+                    ))
+                else:
+                    for fi, (ir_fill, rd_fill) in enumerate(zip(ir_solids, rd_solids)):
+                        ir_color = (ir_fill.get("color") or "").upper()
+                        rd_color = (rd_fill.get("color") or "").upper()
+                        if ir_color.startswith("{"):
+                            continue
+                        if ir_color != rd_color:
+                            errors.append(StructuredError(
+                                kind=KIND_FILL_MISMATCH,
+                                id=eid,
+                                error=(
+                                    f"fill[{fi}] color: IR={ir_color}, "
+                                    f"rendered={rd_color}"
+                                ),
+                                context={
+                                    "fill_index": fi,
+                                    "ir_color": ir_fill.get("color"),
+                                    "rendered_color": rd_fill.get("color"),
+                                },
+                            ))
+
+            # Stroke-color comparison: same shape as fill comparison.
+            ir_strokes = (element.get("visual") or {}).get("strokes")
+            rendered_strokes = rendered.get("strokes")
+            if isinstance(ir_strokes, list) and isinstance(rendered_strokes, list):
+                ir_ss = [s for s in ir_strokes if s.get("type") == "solid"]
+                rd_ss = [s for s in rendered_strokes if s.get("type") == "solid"]
+
+                if len(ir_ss) != len(rd_ss):
+                    errors.append(StructuredError(
+                        kind=KIND_STROKE_MISMATCH,
+                        id=eid,
+                        error=(
+                            f"solid stroke count: IR={len(ir_ss)}, "
+                            f"rendered={len(rd_ss)}"
+                        ),
+                        context={
+                            "ir_solid_count": len(ir_ss),
+                            "rendered_solid_count": len(rd_ss),
+                        },
+                    ))
+                else:
+                    for si, (ir_s, rd_s) in enumerate(zip(ir_ss, rd_ss)):
+                        ir_sc = (ir_s.get("color") or "").upper()
+                        rd_sc = (rd_s.get("color") or "").upper()
+                        if ir_sc.startswith("{"):
+                            continue
+                        if ir_sc != rd_sc:
+                            errors.append(StructuredError(
+                                kind=KIND_STROKE_MISMATCH,
+                                id=eid,
+                                error=(
+                                    f"stroke[{si}] color: IR={ir_sc}, "
+                                    f"rendered={rd_sc}"
+                                ),
+                                context={
+                                    "stroke_index": si,
+                                    "ir_color": ir_s.get("color"),
+                                    "rendered_color": rd_s.get("color"),
+                                },
+                            ))
+
+            # Effect-count comparison: IR effect count vs rendered.
+            # Walker captures effectCount (simpler than full effect diff).
+            ir_effects = (element.get("visual") or {}).get("effects")
+            rendered_effect_count = rendered.get("effectCount")
+            if (
+                isinstance(ir_effects, list)
+                and isinstance(rendered_effect_count, int)
+            ):
+                ir_ec = len(ir_effects)
+                if rendered_effect_count < ir_ec:
+                    errors.append(StructuredError(
+                        kind=KIND_EFFECT_MISSING,
+                        id=eid,
+                        error=(
+                            f"effect count: IR={ir_ec}, "
+                            f"rendered={rendered_effect_count}"
+                        ),
+                        context={
+                            "ir_effect_count": ir_ec,
+                            "rendered_effect_count": rendered_effect_count,
                         },
                     ))
 

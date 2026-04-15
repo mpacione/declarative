@@ -339,10 +339,38 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     if props:
         element["props"] = props
 
+    visual = _build_visual(node, bindings)
+    if visual:
+        element["visual"] = visual
+
     if node.get("visible") == 0:
         element["visible"] = False
 
     return element
+
+
+def _build_visual(node: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build visual section — normalized fills/strokes/effects for verification.
+
+    The verifier compares IR visual properties against rendered ones
+    per-eid. Only populates when the node has visible visual properties;
+    empty visual dicts are omitted to keep the IR compact.
+    """
+    visual: dict[str, Any] = {}
+
+    fills = normalize_fills(node.get("fills"), bindings)
+    if fills:
+        visual["fills"] = fills
+
+    strokes = normalize_strokes(node.get("strokes"), bindings, node)
+    if strokes:
+        visual["strokes"] = strokes
+
+    effects = normalize_effects(node.get("effects"), bindings)
+    if effects:
+        visual["effects"] = effects
+
+    return visual
 
 
 def _build_layout(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any]:

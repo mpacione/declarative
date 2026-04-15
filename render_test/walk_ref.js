@@ -87,6 +87,31 @@ if (rootNode) {
           entry.strokeGeometryCount = (n.strokeGeometry || []).length;
         } catch (_) { entry.strokeGeometryCount = 0; }
       }
+      // Capture SOLID fills/strokes for KIND_FILL_MISMATCH /
+      // KIND_STROKE_MISMATCH verification. Normalized to the same shape
+      // as the IR: [{type, color}]. Only SOLID for now.
+      const toHex = (v) => Math.round(Math.min(1, Math.max(0, v)) * 255)
+        .toString(16).padStart(2, '0').toUpperCase();
+      const normalizeSolids = (paints) => {
+        if (!Array.isArray(paints)) return null;
+        const out = [];
+        for (const p of paints) {
+          if (p.visible === false) continue;
+          if (p.type === 'SOLID' && p.color) {
+            out.push({ type: 'solid', color: '#' + toHex(p.color.r) + toHex(p.color.g) + toHex(p.color.b) });
+          }
+        }
+        return out.length > 0 ? out : null;
+      };
+      try { const f = normalizeSolids(n.fills); if (f) entry.fills = f; } catch (_) {}
+      try { const s = normalizeSolids(n.strokes); if (s) entry.strokes = s; } catch (_) {}
+      // Effect count for KIND_EFFECT_MISSING — just the count, not full data.
+      try {
+        const fx = n.effects;
+        if (Array.isArray(fx)) {
+          entry.effectCount = fx.filter(e => e.visible !== false).length;
+        }
+      } catch (_) {}
       eid_map[eid] = entry;
     }
     if ('children' in n) for (const c of n.children) stack.push(c);

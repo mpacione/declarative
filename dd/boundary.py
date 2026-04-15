@@ -68,6 +68,19 @@ KIND_BOUNDS_MISMATCH = "bounds_mismatch"
 # "empty grey box where illustration should be" defect class that
 # the structural parity check is blind to.
 KIND_MISSING_ASSET = "missing_asset"
+# A node's rendered SOLID fill color differs from the IR's normalized
+# fill color. Catches the visual-loss class where structural parity
+# holds (correct tree shape) but the node shows the wrong color —
+# e.g. a variant resolved to a different default fill, or the renderer
+# emitted a stale/wrong hex. Only fires on SOLID fills for now;
+# gradient-stop and image-hash mismatches are future candidates.
+KIND_FILL_MISMATCH = "fill_mismatch"
+# A node's rendered SOLID stroke color differs from the IR's normalized
+# stroke color. Same pattern as KIND_FILL_MISMATCH but for strokes.
+KIND_STROKE_MISMATCH = "stroke_mismatch"
+# A node's IR declares effects (shadows, blurs) but the rendered node
+# has fewer effects. Catches dropped shadows, missing blurs, etc.
+KIND_EFFECT_MISSING = "effect_missing"
 
 
 @dataclass(frozen=True)

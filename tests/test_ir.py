@@ -335,13 +335,14 @@ class TestMapNodeToElement:
         assert element["layout"]["sizing"]["width"] == "fill"
         assert element["layout"]["sizing"]["height"] == "hug"
 
-    def test_no_visual_section_in_thin_ir(self):
+    def test_fills_included_in_visual_for_verification(self):
         fills_json = json.dumps([{
             "type": "SOLID", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
         }])
         node = _make_node(fills=fills_json, corner_radius="8", opacity=0.5)
         element = map_node_to_element(node)
-        assert "visual" not in element
+        assert "visual" in element
+        assert element["visual"]["fills"] == [{"type": "solid", "color": "#FF0000"}]
 
     def test_maps_font_size_token(self):
         node = _make_node(bindings=[
@@ -374,6 +375,35 @@ class TestMapNodeToElement:
         element = map_node_to_element(node)
         assert element["style"]["fontSize"] == "{type.body.md.fontSize}"
         assert element["style"]["fontFamily"] == "{type.body.md.fontFamily}"
+
+    def test_solid_fills_included_in_visual(self):
+        fills_json = json.dumps([
+            {"type": "SOLID", "color": {"r": 1, "g": 0, "b": 0}, "opacity": 1}
+        ])
+        node = _make_node(fills=fills_json)
+        element = map_node_to_element(node)
+        assert "visual" in element
+        assert element["visual"]["fills"] == [{"type": "solid", "color": "#FF0000"}]
+
+    def test_no_fills_omits_visual(self):
+        node = _make_node(fills=None)
+        element = map_node_to_element(node)
+        assert "visual" not in element
+
+    def test_token_bound_fill_uses_token_ref(self):
+        fills_json = json.dumps([
+            {"type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98}, "opacity": 1}
+        ])
+        node = _make_node(
+            fills=fills_json,
+            bindings=[
+                {"property": "fill.0.color", "token_name": "color.surface.primary", "resolved_value": "#FAFAFA"},
+            ],
+        )
+        element = map_node_to_element(node)
+        assert element["visual"]["fills"] == [
+            {"type": "solid", "color": "{color.surface.primary}"},
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -585,14 +615,15 @@ class TestBuildCompositionSpec:
         for eid in spec["elements"]:
             assert isinstance(eid, str)
 
-    def test_no_visual_section_in_thin_ir(self, db: sqlite3.Connection):
+    def test_fills_included_in_composed_ir_for_verification(self, db: sqlite3.Connection):
         fills_json = json.dumps([{"type": "SOLID", "color": {"r": 0.98, "g": 0.98, "b": 0.98, "a": 1.0}}])
         db.execute("UPDATE nodes SET fills = ? WHERE id = 10", (fills_json,))
         db.commit()
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         header = next(el for el in spec["elements"].values() if el["type"] == "header")
-        assert "visual" not in header
+        assert "visual" in header
+        assert header["visual"]["fills"] == [{"type": "solid", "color": "{color.surface.primary}"}]
 
     def test_serializable_to_json(self, db: sqlite3.Connection):
         data = query_screen_for_ir(db, screen_id=1)

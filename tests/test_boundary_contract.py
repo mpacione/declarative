@@ -784,6 +784,327 @@ class TestRenderVerifierContract:
         assert len(assets) == 0
 
 
+    # ------------------------------------------------------------------
+    # KIND_FILL_MISMATCH — a node's rendered solid fill color differs
+    # from the IR's normalized fill. Structural parity holds (tree shape
+    # is right) but the pixel color is wrong. Same pattern as
+    # KIND_MISSING_ASSET: walker captures the signal, verifier compares
+    # against IR, kind attributes per-eid.
+    # ------------------------------------------------------------------
+
+    def test_solid_fill_color_mismatch_flagged(self):
+        """A frame with IR fill #FF0000 but rendered fill #00FF00
+        surfaces as fill_mismatch."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "fills": [{"type": "solid", "color": "#FF0000"}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "fills": [{"type": "solid", "color": "#00FF00"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert len(entries) == 1
+        assert entries[0].id == "frame-1"
+        assert entries[0].context["ir_color"] == "#FF0000"
+        assert entries[0].context["rendered_color"] == "#00FF00"
+
+    def test_matching_solid_fill_not_flagged(self):
+        """When IR and rendered fills match, no fill_mismatch is emitted."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "fills": [{"type": "solid", "color": "#FF0000"}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "fills": [{"type": "solid", "color": "#FF0000"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert entries == []
+
+    def test_fill_count_mismatch_flagged(self):
+        """IR has one fill but rendered has none — fill was dropped."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "rect-1": {
+                "type": "rectangle",
+                "visual": {
+                    "fills": [{"type": "solid", "color": "#AABBCC"}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "rect-1": {
+                "type": "RECTANGLE",
+                "fills": [],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert len(entries) == 1
+
+    def test_no_fills_key_in_rendered_skips_check(self):
+        """Backward-compat: rendered payloads without the fills key
+        (from older walkers) must not trigger false positives."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "fills": [{"type": "solid", "color": "#FF0000"}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {"type": "FRAME"},  # no fills key
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert entries == []
+
+    def test_no_fills_in_ir_skips_check(self):
+        """Elements without visual.fills in IR skip fill comparison."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {"type": "frame"},  # no visual section
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "fills": [{"type": "solid", "color": "#FF0000"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert entries == []
+
+    def test_token_bound_fill_skips_comparison(self):
+        """Token-bound fills ('{token.name}' syntax) are resolved at
+        runtime — the IR color is a reference, not a concrete hex.
+        Comparing that against the rendered hex would be a false
+        positive."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "fills": [{"type": "solid", "color": "{brand/primary}"}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "fills": [{"type": "solid", "color": "#0066FF"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert entries == [], "Token-bound fills should skip comparison"
+
+    # ------------------------------------------------------------------
+    # KIND_STROKE_MISMATCH — same pattern as fill mismatch, for strokes.
+    # ------------------------------------------------------------------
+
+    def test_solid_stroke_color_mismatch_flagged(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_STROKE_MISMATCH
+        ir = self._ir({
+            "rect-1": {
+                "type": "rectangle",
+                "visual": {
+                    "strokes": [{"type": "solid", "color": "#FF0000", "width": 2}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "rect-1": {
+                "type": "RECTANGLE",
+                "strokes": [{"type": "solid", "color": "#00FF00"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_STROKE_MISMATCH]
+        assert len(entries) == 1
+        assert entries[0].id == "rect-1"
+
+    def test_matching_stroke_not_flagged(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_STROKE_MISMATCH
+        ir = self._ir({
+            "rect-1": {
+                "type": "rectangle",
+                "visual": {
+                    "strokes": [{"type": "solid", "color": "#FF0000", "width": 1}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "rect-1": {
+                "type": "RECTANGLE",
+                "strokes": [{"type": "solid", "color": "#FF0000"}],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_STROKE_MISMATCH]
+        assert entries == []
+
+    def test_no_strokes_key_in_rendered_skips_check(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_STROKE_MISMATCH
+        ir = self._ir({
+            "rect-1": {
+                "type": "rectangle",
+                "visual": {
+                    "strokes": [{"type": "solid", "color": "#FF0000", "width": 1}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "rect-1": {"type": "RECTANGLE"},
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_STROKE_MISMATCH]
+        assert entries == []
+
+    # ------------------------------------------------------------------
+    # KIND_EFFECT_MISSING — IR declares effects (shadows/blurs) but
+    # the rendered node has fewer.
+    # ------------------------------------------------------------------
+
+    def test_missing_effect_flagged(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_EFFECT_MISSING
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "effects": [
+                        {"type": "drop-shadow", "color": "#00000040",
+                         "offset": {"x": 0, "y": 4}, "blur": 8, "spread": 0},
+                    ],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "effectCount": 0,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_EFFECT_MISSING]
+        assert len(entries) == 1
+
+    def test_matching_effect_count_not_flagged(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_EFFECT_MISSING
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "effects": [
+                        {"type": "drop-shadow", "color": "#00000040",
+                         "offset": {"x": 0, "y": 4}, "blur": 8, "spread": 0},
+                    ],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "effectCount": 1,
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_EFFECT_MISSING]
+        assert entries == []
+
+    def test_no_effect_key_in_rendered_skips_check(self):
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_EFFECT_MISSING
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "effects": [{"type": "drop-shadow", "color": "#000",
+                                 "offset": {"x": 0, "y": 2}, "blur": 4, "spread": 0}],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {"type": "FRAME"},
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_EFFECT_MISSING]
+        assert entries == []
+
+    def test_multiple_fills_first_mismatch_flagged(self):
+        """When a node has multiple fills, each is compared independently.
+        Only mismatching fills produce entries."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_FILL_MISMATCH
+        ir = self._ir({
+            "frame-1": {
+                "type": "frame",
+                "visual": {
+                    "fills": [
+                        {"type": "solid", "color": "#FF0000"},
+                        {"type": "solid", "color": "#00FF00"},
+                    ],
+                },
+            },
+        })
+        rendered = self._rendered({
+            "screen-1": {"type": "FRAME"},
+            "frame-1": {
+                "type": "FRAME",
+                "fills": [
+                    {"type": "solid", "color": "#FF0000"},  # match
+                    {"type": "solid", "color": "#0000FF"},  # mismatch
+                ],
+            },
+        })
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        entries = [e for e in report.errors if e.kind == KIND_FILL_MISMATCH]
+        assert len(entries) == 1
+        assert entries[0].context["fill_index"] == 1
+
+
 @pytest.mark.unit
 class TestStructuredErrorShape:
     """Whatever the backend or failure mode, error entries have uniform shape."""
