@@ -6,7 +6,64 @@ import json
 from typing import Any
 
 from dd.config import USE_FIGMA_CODE_LIMIT
+from dd.property_registry import PROPERTIES
 from dd.types import NON_SEMANTIC_PREFIXES, SEMANTIC_NODE_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Registry-driven forwarding lists
+#
+# These lists used to be hand-rolled. Adding a new property to the registry
+# (e.g. `leading_trim`) didn't extend them, so the new column silently
+# dropped between extraction and DB insert. Deriving them from the registry
+# means a new FigmaProperty with a db_column automatically extends both
+# forwards without hand-edits.
+#
+# See feedback_extract_whitelist_drift.md for the incident that motivated
+# this. Structural test: tests/test_extraction.py::TestExtractWhitelistsAreRegistryDriven.
+# ---------------------------------------------------------------------------
+
+# Text-category columns forwarded by parse_extraction_response as plain
+# strings (no type coercion). Numeric/json-array text columns (font_size,
+# font_weight, line_height, letter_spacing, paragraph_spacing) are handled
+# separately in the parser because they need float/int/json coercion.
+_TEXT_COERCED: frozenset[str] = frozenset({
+    "font_size", "font_weight", "line_height",
+    "letter_spacing", "paragraph_spacing",
+})
+
+TEXT_PASSTHROUGH_COLUMNS: tuple[str, ...] = tuple(
+    p.db_column for p in PROPERTIES
+    if p.category == "text" and p.db_column and p.db_column not in _TEXT_COERCED
+)
+
+# Columns not in the registry but still forwarded into the nodes table by
+# insert_nodes. Structural (position, grid, geometry, per-side stroke, FK).
+# These are legitimately outside the registry's scope today; if the registry
+# grows to cover them, move them to the derived list.
+_STRUCTURAL_INSERT_COLUMNS: tuple[str, ...] = (
+    "x", "y",
+    "grid_row_count", "grid_column_count",
+    "grid_row_gap", "grid_column_gap",
+    "grid_row_sizes", "grid_column_sizes",
+    "fill_geometry", "stroke_geometry",
+    "stroke_top_weight", "stroke_right_weight",
+    "stroke_bottom_weight", "stroke_left_weight",
+    "component_key",
+)
+
+# Every column insert_nodes forwards into the SQL INSERT statement. Tested
+# by TestExtractWhitelistsAreRegistryDriven.
+INSERT_NODE_COLUMNS: tuple[str, ...] = tuple(
+    dict.fromkeys([
+        # Size + layout (width, height, padding, etc.) come from the
+        # registry's size / layout / constraint categories. Visual columns
+        # (fills, strokes, effects, corner_radius, etc.) from 'visual'.
+        # Text columns handled below.
+        *(p.db_column for p in PROPERTIES if p.db_column),
+        *_STRUCTURAL_INSERT_COLUMNS,
+    ])
+)
 
 
 def generate_extraction_script(screen_node_id: str) -> str:
@@ -406,11 +463,13 @@ def parse_extraction_response(response: list[dict[str, Any]]) -> list[dict[str, 
                     else:
                         cleaned[field] = value
 
-        # Typography properties
+        # Typography properties. Derived from the property registry's
+        # `text` category so a new text-column property (e.g.
+        # leading_trim) auto-propagates. Columns that need type coercion
+        # (font_size, font_weight, line_height, etc.) are handled
+        # separately below.
         if node.get("node_type") == "TEXT":
-            for field in ["font_family", "font_style", "text_align", "text_align_v",
-                          "text_decoration", "text_case", "text_content",
-                          "text_auto_resize", "leading_trim"]:
+            for field in TEXT_PASSTHROUGH_COLUMNS:
                 if field in node:
                     cleaned[field] = node[field]
             if "font_weight" in node:
@@ -527,33 +586,12 @@ def insert_nodes(conn, screen_id: int, nodes: list[dict[str, Any]]) -> list[int]
             "is_semantic": node.get("is_semantic", 0),
         }
 
-        # Add optional fields
-        optional_fields = [
-            "x", "y", "width", "height",
-            "layout_mode", "padding_top", "padding_right", "padding_bottom", "padding_left",
-            "item_spacing", "counter_axis_spacing", "primary_align", "counter_align",
-            "layout_positioning",
-            "layout_sizing_h", "layout_sizing_v", "layout_wrap",
-            "min_width", "max_width", "min_height", "max_height",
-            "grid_row_count", "grid_column_count",
-            "grid_row_gap", "grid_column_gap",
-            "grid_row_sizes", "grid_column_sizes",
-            "fills", "strokes", "effects", "corner_radius",
-            "opacity", "blend_mode", "visible",
-            "stroke_weight", "stroke_top_weight", "stroke_right_weight",
-            "stroke_bottom_weight", "stroke_left_weight",
-            "stroke_align", "stroke_cap", "stroke_join", "dash_pattern",
-            "fill_geometry", "stroke_geometry", "boolean_operation",
-            "corner_smoothing", "arc_data",
-            "rotation", "clips_content", "is_mask",
-            "constraint_h", "constraint_v",
-            "font_family", "font_weight", "font_size", "font_style",
-            "line_height", "letter_spacing", "paragraph_spacing",
-            "text_align", "text_align_v", "text_decoration", "text_case", "text_content",
-            "text_auto_resize", "leading_trim", "component_key",
-        ]
-
-        for field in optional_fields:
+        # Add optional fields. Derived from INSERT_NODE_COLUMNS at module
+        # scope (registry-driven + _STRUCTURAL_INSERT_COLUMNS). A new
+        # registry property with a db_column is auto-forwarded; only
+        # explicitly structural columns (x/y/grid/geometry/FK) need
+        # hand-listing in _STRUCTURAL_INSERT_COLUMNS.
+        for field in INSERT_NODE_COLUMNS:
             if field in node:
                 values[field] = node[field]
 

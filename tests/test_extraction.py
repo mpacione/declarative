@@ -341,6 +341,95 @@ def test_generate_extraction_script_format():
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+class TestExtractWhitelistsAreRegistryDriven:
+    """`parse_extraction_response` and `insert_nodes` used to maintain
+    hand-rolled whitelists of fields to forward. Adding a new property
+    to the registry (e.g. `leading_trim`) didn't auto-extend them;
+    result: the new column silently dropped between extraction and
+    DB insert, and a re-extract showed 0 rows of the new field despite
+    every upstream/downstream path being correct.
+
+    See feedback_extract_whitelist_drift.md for the cost in
+    re-extract iterations.
+
+    These structural tests pin the invariant: both whitelists MUST be
+    a superset of the registry's text-category and all-category
+    db_columns. Adding a new registry property with a db_column
+    automatically extends the whitelists (via registry lookup in
+    extract_screens.py)."""
+
+    def test_parse_extraction_forwards_every_text_category_registry_column(self):
+        """Every registry property with category='text' and db_column
+        set must appear in the parsed output when present in the
+        input."""
+        from dd.property_registry import PROPERTIES
+        text_cols = [
+            p.db_column for p in PROPERTIES
+            if p.category == "text" and p.db_column
+        ]
+        assert text_cols, "registry must expose at least one text-category db_column"
+
+        # Build a mock input that includes every text column. The parser
+        # should forward every one of them into its output dict.
+        node_input = {
+            "figma_node_id": "test:1",
+            "name": "t1",
+            "node_type": "TEXT",
+            "depth": 0,
+            "sort_order": 0,
+        }
+        # Seed each text column with a marker value.
+        for col in text_cols:
+            # Only set columns the parser knows to forward generically.
+            # font_size / font_weight / line_height / letter_spacing /
+            # paragraph_spacing need type coercion and are handled
+            # separately in the parser. Use string values for the rest.
+            if col in {"font_size", "font_weight", "line_height",
+                       "letter_spacing", "paragraph_spacing"}:
+                node_input[col] = 1.0 if col != "font_weight" else 400
+            else:
+                node_input[col] = f"__marker_{col}__"
+
+        parsed = parse_extraction_response([node_input])
+        assert len(parsed) == 1
+        result = parsed[0]
+
+        missing = [col for col in text_cols if col not in result]
+        assert missing == [], (
+            f"registry text columns missing from parse output: {missing}. "
+            f"`parse_extraction_response` whitelist has drifted from the "
+            f"property registry — adding a new text-category property "
+            f"must auto-extend it."
+        )
+
+    def test_insert_nodes_accepts_every_registry_db_column(self):
+        """`insert_nodes` must forward every registry-declared db_column
+        (across all categories) into its SQL INSERT statement."""
+        from dd.property_registry import PROPERTIES
+        reg_cols = {p.db_column for p in PROPERTIES if p.db_column}
+        assert reg_cols, "registry must expose db_columns"
+
+        # Rather than run the real INSERT (requires DB + schema), inspect
+        # the source to assert the whitelist — or equivalently, import
+        # the module-level whitelist if one exists. Use source
+        # introspection via the registry's canonical set.
+        from dd import extract_screens
+        # Expose the effective whitelist used by insert_nodes. The
+        # function computes it internally; expose it as a module
+        # attribute for introspection.
+        assert hasattr(extract_screens, "INSERT_NODE_COLUMNS"), (
+            "extract_screens must expose INSERT_NODE_COLUMNS so drift "
+            "tests can read the effective whitelist"
+        )
+        whitelist = set(extract_screens.INSERT_NODE_COLUMNS)
+        missing = reg_cols - whitelist
+        assert missing == set(), (
+            f"registry db_columns missing from insert_nodes whitelist: "
+            f"{sorted(missing)}. Whitelist has drifted from registry."
+        )
+
+
 def test_parse_extraction_response_basic():
     """Pass the 5-node mock response and verify all nodes parsed with correct types."""
     response = _make_mock_response(5)
