@@ -141,12 +141,18 @@ class FigmaRenderVerifier:
 
             # Catalog-mapped elements that should have materialised as
             # INSTANCE but instead rendered as FRAME are specifically
-            # the ADR-007 Defect-1 class. Surface them distinctly even
-            # when FRAME is technically allowed.
+            # the ADR-007 Defect-1 class. Only flag when Mode 1 was
+            # actually eligible for this element. `_mode1_eligible` is
+            # computed at IR-build time from DB state (see ir.py
+            # map_node_to_element). When False, the element is a
+            # name-only classified FRAME — the renderer correctly
+            # emitted createFrame and the semantic tag is a classifier
+            # heuristic, not a resolvable INSTANCE reference.
             if (
                 ir_type in _SHOULD_BE_INSTANCE
                 and rendered_type == "FRAME"
                 and "INSTANCE" in (expected or frozenset())
+                and element.get("_mode1_eligible", True)
             ):
                 errors.append(StructuredError(
                     kind=KIND_TYPE_SUBSTITUTION,

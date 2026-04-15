@@ -3647,8 +3647,15 @@ class TestGroupPositioning:
         assert ".x = 50" in script
         assert ".y = 100" in script
 
-    def test_group_gets_constraints(self):
-        """GROUP nodes should get constraints from db_visuals after creation."""
+    def test_group_does_not_get_constraints(self):
+        """GROUP nodes do NOT support .constraints in the Figma Plugin
+        API — the property_registry capability set for constraint_h/v
+        excludes GROUP. Previously the renderer's group branch was
+        bypassing the capability gate and emitting the illegal
+        assignment anyway, which Session B's micro-guard caught as a
+        constraint_failed entry on every render. Fix: gate the
+        emission so nothing is written for GROUP.
+        """
         spec = _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -3672,9 +3679,10 @@ class TestGroupPositioning:
             3: {"bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        # GROUP should have constraints
-        assert 'horizontal: "MIN"' in script
-        assert 'vertical: "MIN"' in script
+        # The group's variable is "ggrp_1" (prefix g + eid with - → _).
+        # No line in the generated script should assign
+        # ggrp_1.constraints = { ... }.
+        assert "ggrp_1.constraints" not in script
 
 
 class TestGradientFallback:
@@ -4540,6 +4548,55 @@ class TestSessionB_PerOpGuards:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         # .x and .y setters are guarded
         assert "position_failed" in script
+
+    def test_group_constraints_are_not_emitted(self):
+        """GROUP nodes don't support .constraints in the Figma Plugin
+        API; the property_registry already declares the capability
+        excluding GROUP (constraint_h/v: _FIGMA_ALL_VISIBLE - _FIGMA_GROUP).
+        The renderer's group branch at the Phase 3 emission site was
+        bypassing the capability gate, producing a runtime throw
+        ('object is not extensible') that Session B caught as a
+        constraint_failed entry on every render. Fix: honour the
+        capability gate in the group branch too."""
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "layout": {"direction": "absolute", "sizing": {"width": 428, "height": 926}},
+                "children": ["group-1"],
+            },
+            "group-1": {
+                "type": "group",
+                "layout": {"position": {"x": 0, "y": 0}},
+                "children": ["rect-1"],
+            },
+            "rect-1": {
+                "type": "rectangle",
+                "layout": {
+                    "sizing": {"widthPixels": 10, "heightPixels": 10},
+                    "position": {"x": 0, "y": 0},
+                },
+            },
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "group-1": -2, "rect-1": -3}
+        db_visuals = {
+            -1: {"bindings": []},
+            # group has constraints in DB, but they must NOT be emitted
+            -2: {
+                "node_type": "GROUP",
+                "constraint_h": "MIN",
+                "constraint_v": "MIN",
+                "bindings": [],
+            },
+            -3: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # No line in the emitted script should set a GROUP's .constraints.
+        # The guarded-op wrapper prefixes each Phase 3 op with `try {`, so
+        # we scan for the g<eid>.constraints pattern regardless of wrapping.
+        gvar = "ggroup_1"
+        assert f"{gvar}.constraints" not in script, (
+            "GROUP.constraints must be suppressed by the capability gate"
+        )
 
     def test_eid_preserved_in_guard_entry(self):
         """Each structured entry carries the eid it came from so

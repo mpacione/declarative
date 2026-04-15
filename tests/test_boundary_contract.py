@@ -431,6 +431,38 @@ class TestRenderVerifierContract:
         from dd.verify_figma import FigmaRenderVerifier
         assert FigmaRenderVerifier().backend == "figma"
 
+    def test_mode1_ineligible_frame_not_flagged_as_substitution(self):
+        """Name-only classified FRAMEs (e.g. a FRAME named
+        'card/sheet/success' with no component_key/figma_node_id
+        backing) should NOT produce a type_substitution entry —
+        Mode 1 was never eligible, the renderer correctly emitted
+        createFrame, and flagging would be a classifier-quality
+        complaint wearing a render-parity mask."""
+        from dd.verify_figma import FigmaRenderVerifier
+        from dd.boundary import KIND_TYPE_SUBSTITUTION
+
+        ir = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {"type": "screen", "children": ["card-1"]},
+                "card-1": {"type": "card", "_mode1_eligible": False},
+            },
+        }
+        rendered = {
+            "eid_map": {
+                "screen-1": {"type": "FRAME"},
+                "card-1": {"type": "FRAME"},  # correctly emitted as frame
+            },
+        }
+        report = FigmaRenderVerifier().verify(ir, rendered)
+        substitution_errors = [
+            e for e in report.errors if e.kind == KIND_TYPE_SUBSTITUTION
+        ]
+        assert substitution_errors == [], (
+            "Mode 1-ineligible FRAME should not be flagged as substitution"
+        )
+
 
 @pytest.mark.unit
 class TestStructuredErrorShape:

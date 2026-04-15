@@ -1285,7 +1285,15 @@ def generate_figma_script(
             constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
             c_h = constraint_visual.get("constraint_h")
             c_v = constraint_visual.get("constraint_v")
-            if c_h or c_v:
+            # ADR-001 capability gate: GROUP does not support .constraints
+            # in the Figma Plugin API. Without this gate, emission throws
+            # "object is not extensible" at runtime and Session B's
+            # micro-guard records a spurious constraint_failed entry on
+            # every render. The property_registry's capability set for
+            # constraint_h/v already excludes GROUP — consult it here too.
+            from dd.property_registry import is_capable
+            allow_constraints = is_capable("constraint_h", "figma", "GROUP")
+            if (c_h or c_v) and allow_constraints:
                 parts = []
                 if c_h:
                     mapped = _CONSTRAINT_MAP.get(c_h, c_h)

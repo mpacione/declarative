@@ -307,6 +307,26 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
         "type": resolved_type,
     }
 
+    # ADR-007 / Defect-1 residual: name-only classification (e.g. a FRAME
+    # named "card/sheet/success") can promote the IR type to "card" even
+    # though the DB has no component backing. The renderer's Mode 1 gate
+    # will never fire for these and the downstream RenderVerifier would
+    # otherwise spuriously flag type_substitution on every render.
+    #
+    # Mark each element with whether Mode 1 is actually eligible — same
+    # gate as dd/renderers/figma.py:827. Verifier consults this flag
+    # before treating a FRAME-for-INSTANCE result as a degradation.
+    node_type = node.get("node_type")
+    component_key = node.get("component_key")
+    component_figma_id = node.get("component_figma_id")
+    instance_figma_node_id = node.get("figma_node_id")
+    mode1_eligible = bool(
+        component_key
+        or component_figma_id
+        or (node_type == "INSTANCE" and instance_figma_node_id)
+    )
+    element["_mode1_eligible"] = mode1_eligible
+
     layout = _build_layout(node, binding_index)
     if layout:
         element["layout"] = layout
