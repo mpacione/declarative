@@ -144,6 +144,255 @@ class TestRunExtract:
 
 
 @pytest.mark.integration
+class TestRunExtractHonestFailure:
+    """ADR-006: when Figma API returns null for a requested id, the extract
+    command must count that screen as failed (not silently drop it) and the
+    summary must reflect it. Historical bug: cli.py reported "0 failed" for
+    runs that lost 242/339 screens.
+    """
+
+    def _mock_request_factory(
+        self,
+        mock_file_json: dict,
+        valid_screens: dict[str, dict],
+        null_ids: set[str],
+    ):
+        def mock_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            if "/nodes" in url:
+                ids = kwargs.get("params", {}).get("ids", "").split(",")
+                if ids == ["1:1"]:
+                    resp.json.return_value = mock_file_json
+                else:
+                    nodes = {}
+                    for nid in ids:
+                        if nid in null_ids:
+                            nodes[nid] = None
+                        elif nid in valid_screens:
+                            nodes[nid] = {"document": valid_screens[nid]}
+                    resp.json.return_value = {"nodes": nodes}
+            resp.raise_for_status = MagicMock()
+            return resp
+        return mock_request
+
+    def test_null_api_response_counts_as_failed_not_silently_dropped(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+
+        valid_doc = {
+            "id": "100:1",
+            "name": "Home",
+            "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 428, "height": 926},
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+
+        mock_file_json = {
+            "name": "Test File",
+            "lastModified": "2025-03-25T00:00:00Z",
+            "nodes": {
+                "1:1": {
+                    "document": {
+                        "id": "1:1", "name": "Page 1", "type": "CANVAS",
+                        "children": [
+                            {
+                                "id": "100:1", "name": "Home", "type": "FRAME",
+                                "absoluteBoundingBox": {
+                                    "x": 0, "y": 0, "width": 428, "height": 926
+                                },
+                                "children": [],
+                            },
+                            {
+                                "id": "200:2", "name": "DeletedScreen", "type": "FRAME",
+                                "absoluteBoundingBox": {
+                                    "x": 0, "y": 0, "width": 428, "height": 926
+                                },
+                                "children": [],
+                            },
+                        ],
+                    }
+                }
+            },
+        }
+
+        mock_request = self._mock_request_factory(
+            mock_file_json=mock_file_json,
+            valid_screens={"100:1": valid_doc},
+            null_ids={"200:2"},
+        )
+
+        with patch("dd.figma_api.requests.request", side_effect=mock_request):
+            run_extract(
+                file_key="test-key",
+                token="fake-token",
+                page_id="1:1",
+                db_path=db_path,
+            )
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        statuses = conn.execute(
+            "SELECT s.figma_node_id, ses.status, ses.error "
+            "FROM screen_extraction_status ses "
+            "JOIN screens s ON s.id = ses.screen_id "
+            "ORDER BY s.figma_node_id"
+        ).fetchall()
+        conn.close()
+
+        by_id = {r["figma_node_id"]: r for r in statuses}
+        assert by_id["100:1"]["status"] == "completed"
+        assert by_id["200:2"]["status"] == "failed", (
+            "null API response must be recorded as failed, not left pending"
+        )
+        assert by_id["200:2"]["error"], "failed rows must carry the error reason"
+        assert "node_not_found" in by_id["200:2"]["error"] or "null" in by_id["200:2"]["error"].lower()
+
+    def test_null_api_response_does_not_raise(self, tmp_path):
+        """Regression: NoneType subscript on resp['nodes'][id]['document']."""
+        db_path = str(tmp_path / "test.declarative.db")
+
+        mock_file_json = {
+            "name": "Test File",
+            "lastModified": "2025-03-25T00:00:00Z",
+            "nodes": {
+                "1:1": {
+                    "document": {
+                        "id": "1:1", "name": "Page 1", "type": "CANVAS",
+                        "children": [
+                            {
+                                "id": "200:2", "name": "DeletedScreen", "type": "FRAME",
+                                "absoluteBoundingBox": {
+                                    "x": 0, "y": 0, "width": 428, "height": 926
+                                },
+                                "children": [],
+                            },
+                        ],
+                    }
+                }
+            },
+        }
+        mock_request = self._mock_request_factory(
+            mock_file_json=mock_file_json,
+            valid_screens={},
+            null_ids={"200:2"},
+        )
+
+        with patch("dd.figma_api.requests.request", side_effect=mock_request):
+            # Should not raise NoneType is not subscriptable
+            run_extract(
+                file_key="test-key",
+                token="fake-token",
+                page_id="1:1",
+                db_path=db_path,
+            )
+
+
+@pytest.mark.integration
+class TestRunExtractAutoBuildsCKR:
+    """ADR-007 Session A: every fresh DB produced by `run_extract` has
+    `component_key_registry` populated. Without this, the renderer's
+    Mode 1 gate evaluates False for every INSTANCE and silently falls
+    through to Mode 2 (createFrame), destroying component identity.
+    """
+
+    def _minimal_mock_request(self):
+        """Return a mock that satisfies figma_api.get_file_tree +
+        get_screen_nodes with one component master and one instance."""
+
+        master_doc = {
+            "id": "200:1", "name": "button/primary", "type": "COMPONENT",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 100, "height": 40},
+            "fills": [], "strokes": [], "effects": [], "children": [],
+        }
+        instance_doc = {
+            "id": "100:1", "name": "Home", "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 428, "height": 926},
+            "fills": [], "strokes": [], "effects": [],
+            "children": [
+                {
+                    "id": "100:2", "name": "button/primary", "type": "INSTANCE",
+                    "componentId": "200:1",
+                    "absoluteBoundingBox": {
+                        "x": 16, "y": 20, "width": 100, "height": 40
+                    },
+                    "fills": [], "strokes": [], "effects": [], "children": [],
+                },
+            ],
+        }
+        mock_file_json = {
+            "name": "Test File",
+            "lastModified": "2025-03-25T00:00:00Z",
+            "nodes": {
+                "1:1": {
+                    "document": {
+                        "id": "1:1", "name": "Page 1", "type": "CANVAS",
+                        "children": [master_doc, instance_doc],
+                    }
+                }
+            },
+        }
+
+        def mock_request(method, url, **kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            if "/nodes" in url:
+                ids = kwargs.get("params", {}).get("ids", "").split(",")
+                if ids == ["1:1"]:
+                    resp.json.return_value = mock_file_json
+                else:
+                    nodes = {}
+                    for nid in ids:
+                        if nid == "200:1":
+                            nodes[nid] = {"document": master_doc}
+                        elif nid == "100:1":
+                            nodes[nid] = {"document": instance_doc}
+                    resp.json.return_value = {"nodes": nodes}
+            resp.raise_for_status = MagicMock()
+            return resp
+        return mock_request
+
+    def test_extract_calls_build_component_key_registry(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+
+        with patch("dd.figma_api.requests.request", side_effect=self._minimal_mock_request()), \
+             patch("dd.templates.build_component_key_registry", wraps=__import__("dd.templates", fromlist=["build_component_key_registry"]).build_component_key_registry) as spy:
+            run_extract(
+                file_key="test-key",
+                token="fake-token",
+                page_id="1:1",
+                db_path=db_path,
+            )
+            assert spy.called, "run_extract must call build_component_key_registry"
+
+    def test_extract_populates_ckr_table(self, tmp_path):
+        db_path = str(tmp_path / "test.declarative.db")
+
+        with patch("dd.figma_api.requests.request", side_effect=self._minimal_mock_request()):
+            run_extract(
+                file_key="test-key",
+                token="fake-token",
+                page_id="1:1",
+                db_path=db_path,
+            )
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        # Table must exist and be non-empty given our fixture has one
+        # INSTANCE whose master lives in the same file.
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='component_key_registry'"
+        ).fetchone()
+        assert exists is not None, "CKR table must be created by run_extract"
+        # Note: master lacks a component_key in our minimal fixture (REST
+        # API doesn't populate it without Plugin API supplement), so the
+        # registry may be empty. What we're asserting here is that the
+        # build *ran* and the table exists. Fixture-with-keys coverage
+        # lives in test_templates.py and test_component_key_registry.py.
+        conn.close()
+
+
+@pytest.mark.integration
 class TestRunCluster:
     def test_cluster_creates_tokens_from_seeded_db(self, tmp_path):
         from dd.cli import run_cluster

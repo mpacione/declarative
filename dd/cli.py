@@ -28,12 +28,13 @@ from pathlib import Path
 
 from dd.db import get_connection, init_db
 from dd.extract import complete_run, process_screen, run_inventory
+from dd.extract_screens import update_screen_status
 from dd.figma_api import (
     convert_node_tree,
     extract_top_level_frames,
     get_file_tree,
-    get_screen_nodes,
 )
+from dd.ingest_figma import FigmaIngestAdapter
 
 
 def resolve_token(flag_value: str | None) -> str:
@@ -77,50 +78,92 @@ def run_extract(
 
     print(f"Extracting {len(pending)} screens (run {run_id})...")
 
+    # ADR-006: ingest goes through the boundary adapter so null responses
+    # and transient errors become structured entries rather than silent
+    # drops / NoneType crashes. The adapter batches internally.
+    adapter = FigmaIngestAdapter(file_key=file_key, token=token)
+    by_id = {s["figma_node_id"]: s for s in pending}
+
     import time
     start = time.time()
-    batch_size = 10
-    processed = 0
 
-    for batch_start in range(0, len(pending), batch_size):
-        batch = pending[batch_start:batch_start + batch_size]
-        batch_ids = [s["figma_node_id"] for s in batch]
+    ingest_result = adapter.extract_screens(list(by_id.keys()))
+
+    # Record each adapter-level failure on the DB row so the run summary
+    # is honest. Kind is preserved in the error text for downstream
+    # diagnosis (e.g. "node_not_found: ...").
+    for err in ingest_result.errors:
+        screen = by_id.get(err.id or "")
+        if not screen:
+            continue
+        update_screen_status(
+            conn, run_id, screen["screen_id"], "failed",
+            error=f"{err.kind}: {err.error or ''}".strip(": "),
+        )
+        print(
+            f"  {screen['name']} — FAILED: {err.kind} ({err.error or ''})",
+            file=sys.stderr,
+        )
+    conn.commit()
+
+    # Process the screens the adapter successfully fetched.
+    total = len(pending)
+    processed_ok = 0
+    for entry in ingest_result.extracted:
+        figma_node_id = entry["id"]
+        screen = by_id[figma_node_id]
+        screen_id = screen["screen_id"]
+        name = screen["name"]
+        processed_ok += 1
 
         try:
-            resp = get_screen_nodes(file_key, token, batch_ids)
+            raw_response = convert_node_tree(entry["document"])
+            result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
+            elapsed = time.time() - start
+            done_so_far = processed_ok + len(ingest_result.errors)
+            avg = elapsed / max(done_so_far, 1)
+            eta = avg * (total - done_so_far)
+            print(
+                f"  [{done_so_far}/{total}] {name} — "
+                f"{result['node_count']} nodes, {result['binding_count']} bindings "
+                f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
+            )
         except Exception as e:
-            for screen in batch:
-                processed += 1
-                print(f"  [{processed}/{len(pending)}] {screen['name']} — FAILED: {e}", file=sys.stderr)
-            continue
-
-        for screen in batch:
-            processed += 1
-            screen_id = screen["screen_id"]
-            figma_node_id = screen["figma_node_id"]
-            name = screen["name"]
-
-            try:
-                screen_data = resp["nodes"][figma_node_id]["document"]
-                raw_response = convert_node_tree(screen_data)
-                result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
-
-                elapsed = time.time() - start
-                avg = elapsed / processed
-                eta = avg * (len(pending) - processed)
-                print(
-                    f"  [{processed}/{len(pending)}] {name} — "
-                    f"{result['node_count']} nodes, {result['binding_count']} bindings "
-                    f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
-                )
-            except Exception as e:
-                print(f"  [{processed}/{len(pending)}] {name} — FAILED: {e}", file=sys.stderr)
+            # process_screen already updates status to 'failed' in its
+            # inner except. We log here for visibility.
+            print(
+                f"  {name} — FAILED during process_screen: {e}",
+                file=sys.stderr,
+            )
 
     summary = complete_run(conn, run_id)
     print(
         f"\nDone: {summary['completed']}/{summary['total_screens']} screens, "
         f"{summary['failed']} failed, {summary['skipped']} skipped"
     )
+    if ingest_result.errors:
+        # Surface the structured channel so callers/CI can tell apart
+        # "clean run" from "run completed but lossy".
+        print(
+            f"  (ingest reported {len(ingest_result.errors)} "
+            f"structured error{'s' if len(ingest_result.errors) != 1 else ''})",
+            file=sys.stderr,
+        )
+
+    # ADR-007 Session A: component_key_registry is a Mode 1 prerequisite.
+    # Build it at the end of every extract so downstream generation can
+    # resolve INSTANCE nodes to their masters. Without this, Mode 1's
+    # gate evaluates False for every INSTANCE and the renderer silently
+    # falls through to Mode 2 (createFrame). See project_adr007_execution_plan.md.
+    try:
+        from dd.templates import build_component_key_registry
+        ckr_count = build_component_key_registry(conn)
+        print(f"component_key_registry: {ckr_count} rows")
+    except Exception as exc:
+        print(
+            f"  component_key_registry build failed: {exc}",
+            file=sys.stderr,
+        )
 
     conn.close()
 
@@ -543,7 +586,9 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
         import subprocess
         node_js = (
             'const WebSocket = require("ws");'
-            f'const ws = new WebSocket("ws://127.0.0.1:{args.port}");'
+            # Use localhost so we match the Bridge's IPv6 bind on systems
+            # where ::1 is preferred over 127.0.0.1.
+            f'const ws = new WebSocket("ws://localhost:{args.port}");'
             f'const code = {json.dumps(script)};'
             'ws.on("open", () => {'
             '  ws.send(JSON.stringify({ type: "PROXY_EXECUTE", id: "supp", code, timeout: 60000 }));'
@@ -583,6 +628,63 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
     print(f"  grid: {result['grid']}")
     if result["failed"] > 0:
         print(f"  failed: {result['failed']} screens")
+
+
+def _run_verify(db_path: str, args: argparse.Namespace) -> None:
+    """ADR-007 Position 3: verify a rendered Figma subtree against its IR.
+
+    Reads the IR from the DB (via ``generate_ir``) and the rendered-tree
+    walk from ``--rendered-ref`` (a JSON file produced by the caller,
+    typically by the harness or a ``figma_execute`` payload). Produces
+    a RenderReport. Exit code is non-zero when ``is_parity != True``.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.ir import generate_ir
+    from dd.verify_figma import FigmaRenderVerifier
+    from dataclasses import asdict
+
+    rendered_path = Path(args.rendered_ref)
+    if not rendered_path.exists():
+        print(f"Error: --rendered-ref file not found: {rendered_path}", file=sys.stderr)
+        sys.exit(1)
+    rendered_ref = json.loads(rendered_path.read_text())
+
+    conn = get_connection(db_path)
+    try:
+        ir_result = generate_ir(conn, int(args.screen))
+        spec = ir_result["spec"]
+    finally:
+        conn.close()
+
+    report = FigmaRenderVerifier().verify(spec, rendered_ref)
+
+    if args.json:
+        payload = {
+            "backend": report.backend,
+            "ir_node_count": report.ir_node_count,
+            "rendered_node_count": report.rendered_node_count,
+            "is_parity": report.is_parity,
+            "parity_ratio": report.parity_ratio(),
+            "errors": [asdict(e) for e in report.errors],
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"RenderReport (screen {args.screen}, backend={report.backend}):")
+        print(f"  ir_node_count:       {report.ir_node_count}")
+        print(f"  rendered_node_count: {report.rendered_node_count}")
+        print(f"  is_parity:           {report.is_parity}")
+        print(f"  parity_ratio:        {report.parity_ratio():.4f}")
+        print(f"  errors:              {len(report.errors)}")
+        for err in report.errors[:20]:
+            print(f"    kind={err.kind} id={err.id}  {(err.error or '')[:80]}")
+        if len(report.errors) > 20:
+            print(f"    ... ({len(report.errors) - 20} more)")
+
+    if not report.is_parity:
+        sys.exit(1)
 
 
 def _find_node_binary() -> str:
@@ -772,6 +874,22 @@ def main(argv: list | None = None) -> None:
     push_parser.add_argument("--writeback", action="store_true", help="Apply variable ID writeback from Figma response")
     push_parser.add_argument("--out", help="Write manifest to file instead of stdout")
 
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Verify a rendered Figma subtree against its IR (ADR-007 Position 3)",
+    )
+    verify_parser.add_argument("--db", help="Database path")
+    verify_parser.add_argument("--screen", required=True, help="Screen ID (DB id)")
+    verify_parser.add_argument(
+        "--rendered-ref",
+        required=True,
+        help="Path to JSON file with {\"eid_map\": {eid: {type, characters?, ...}}} "
+             "from a rendered Figma subtree walk",
+    )
+    verify_parser.add_argument(
+        "--json", action="store_true", help="Emit the full RenderReport as JSON",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -829,6 +947,9 @@ def main(argv: list | None = None) -> None:
     elif args.command == "push":
         db_path = detect_db_path(args.db)
         _run_push(db_path, args)
+    elif args.command == "verify":
+        db_path = detect_db_path(args.db)
+        _run_verify(db_path, args)
 
 
 if __name__ == "__main__":

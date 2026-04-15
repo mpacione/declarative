@@ -164,7 +164,9 @@ class TestGenerateFromPromptEndToEnd:
 
     def test_script_appends_to_page(self, dank_db):
         result = generate_from_prompt(dank_db, [{"type": "button"}])
-        assert "figma.currentPage.appendChild" in result["structure_script"]
+        # _rootPage = figma.currentPage captured pre-prefetch; see
+        # dd/renderers/figma.py preamble and TestExplicitStateHarness.
+        assert "_rootPage.appendChild" in result["structure_script"]
 
     def test_empty_components_produces_empty_screen(self, dank_db):
         result = generate_from_prompt(dank_db, [])

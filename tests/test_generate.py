@@ -342,7 +342,9 @@ class TestGenerateFigmaScript:
     def test_root_appended_to_page(self):
         spec = _make_spec({"screen-1": {"type": "screen"}})
         script, _ = generate_figma_script(spec)
-        assert "figma.currentPage.appendChild" in script
+        # _rootPage is a snapshot of figma.currentPage captured before any
+        # getNodeByIdAsync side-effects it. See TestExplicitStateHarness.
+        assert "_rootPage.appendChild" in script
 
     def test_token_ref_collected_via_db_visuals(self):
         spec = _make_spec(
@@ -712,7 +714,9 @@ class TestGenerateFigmaScriptFromDB:
             -2: {"bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "figma.currentPage.appendChild" in script
+        # _rootPage = figma.currentPage captured at entry; see
+        # TestExplicitStateHarness for the harness contract rationale.
+        assert "_rootPage.appendChild" in script
         assert "figma.createPage()" not in script
 
     def test_mode2_still_creates_frame(self):
@@ -2310,11 +2314,18 @@ class TestMode1L0Properties:
         assert "opacity = 0.5" in script
 
 
-class TestDeferredCanary:
-    """Verify deferred section has yield, try/catch, and canary."""
+class TestDeferredPhase3Structure:
+    """Phase 3 structure after ADR-007 Session B:
+
+    - No coarse try/catch, no M["__canary"] — per-op guards replace both.
+    - The async-yield (`await new Promise(r => setTimeout(r, 0))`) still
+      runs before deferred operations so Figma's layout engine can
+      resolve before positions/constraints/text are applied.
+    - Each guarded operation is a short try/catch pushing a structured
+      entry to __errors on failure.
+    """
 
     def _absolute_spec(self) -> dict:
-        """Spec with absolute parent + positioned child — triggers deferred lines."""
         return _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -2328,7 +2339,6 @@ class TestDeferredCanary:
         })
 
     def _autolayout_spec(self) -> dict:
-        """Spec with auto-layout only — no deferred lines."""
         return _make_spec({
             "screen-1": {
                 "type": "screen",
@@ -2338,41 +2348,35 @@ class TestDeferredCanary:
             "card-1": {"type": "card"},
         })
 
-    def test_canary_emitted_when_deferred_lines_present(self):
+    def test_no_canary_regardless_of_shape(self):
+        for spec in (self._absolute_spec(), self._autolayout_spec()):
+            script, _ = generate_figma_script(spec)
+            assert "__canary" not in script, (
+                "Session B removed M[\"__canary\"]; "
+                "one failure channel (__errors) only"
+            )
+
+    def test_no_deferred_error_marker(self):
         spec = self._absolute_spec()
         script, _ = generate_figma_script(spec)
-        assert 'M["__canary"] = "deferred_ok"' in script
+        assert "deferred_error" not in script
+        assert "deferred_ok" not in script
 
-    def test_canary_not_emitted_when_no_deferred_lines(self):
-        spec = self._autolayout_spec()
-        script, _ = generate_figma_script(spec)
-        assert "__canary" not in script
-
-    def test_deferred_wrapped_in_try_catch(self):
-        spec = self._absolute_spec()
-        script, _ = generate_figma_script(spec)
-        assert "try {" in script
-        assert "} catch (_e) {" in script
-        assert '"deferred_error: "' in script
-
-    def test_yield_before_deferred_section(self):
+    def test_yield_before_phase3_operations(self):
         spec = self._absolute_spec()
         script, _ = generate_figma_script(spec)
         lines = script.split("\n")
-        yield_idx = next(i for i, l in enumerate(lines) if "await new Promise" in l)
-        deferred_idx = next(i for i, l in enumerate(lines) if "Phase 3" in l or "Hydrate" in l or "deferred until all children" in l)
-        assert yield_idx < deferred_idx
+        phase3_idx = next(
+            (i for i, l in enumerate(lines) if "// Phase 3:" in l), None,
+        )
+        if phase3_idx is None:
+            pytest.skip("no Phase 3 emitted for this fixture")
+        yield_line = lines[phase3_idx + 1]
+        assert "await new Promise" in yield_line, (
+            "async yield must immediately follow the Phase 3 marker"
+        )
 
-    def test_canary_after_all_deferred_lines(self):
-        spec = self._absolute_spec()
-        script, _ = generate_figma_script(spec)
-        lines = script.split("\n")
-        canary_idx = next(i for i, l in enumerate(lines) if "__canary" in l and "deferred_ok" in l)
-        position_indices = [i for i, l in enumerate(lines) if ".x = " in l or ".y = " in l]
-        assert position_indices, "Expected position lines in deferred section"
-        assert canary_idx > max(position_indices)
-
-    def test_deferred_with_constraints_from_db(self):
+    def test_constraints_emitted_with_per_op_guard(self):
         spec = self._absolute_spec()
         spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
         db_visuals = {
@@ -2380,11 +2384,11 @@ class TestDeferredCanary:
             -2: {"constraint_h": "MIN", "constraint_v": "MIN", "bindings": []},
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        lines = script.split("\n")
-        constraint_lines = [l for l in lines if ".constraints = " in l]
-        assert constraint_lines, "Expected constraint lines"
-        for cl in constraint_lines:
-            assert cl.startswith("  "), f"Constraint line should be indented (inside try): {cl!r}"
+        # Session B wraps each constraint assignment in its own try/catch
+        # with kind="constraint_failed". Legacy indentation-as-marker
+        # no longer applies because each line carries its own guard.
+        assert ".constraints = " in script
+        assert "constraint_failed" in script
 
 
 class TestUnpublishedComponentFallback:
@@ -3979,11 +3983,238 @@ class TestThreePhaseRendering:
             f"text.characters (line {first_characters_line}) in Phase 3"
         )
 
-    def test_deferred_canary_still_works(self):
-        """The deferred canary mechanism still functions in three-phase mode."""
+    def test_phase3_uses_per_op_guards_not_canary(self):
+        """ADR-007 Session B: three-phase mode emits per-op guards in
+        Phase 3, never the legacy M["__canary"] coarse try/catch."""
         spec = self._build_hug_card_spec()
         script, _ = generate_figma_script(spec, db_visuals=self._build_db_visuals())
-        assert '"deferred_ok"' in script or '"__canary"' in script
+        assert "__canary" not in script
+        assert "deferred_ok" not in script
+        assert "deferred_error" not in script
+
+
+class TestCapabilityLint:
+    """Structural lint: no generated script may assign a property to a var
+    whose native Figma type doesn't support it. This is a defense-in-depth
+    test — the emit gate should already prevent illegal emissions, but this
+    lint catches regressions from any code path that bypasses emit_from_registry.
+
+    The lint is derived from the registry's capability table, so adding a
+    new property with correct capabilities automatically extends coverage.
+    """
+
+    # JS create-call → Figma native node type
+    _CREATE_TO_NATIVE = {
+        "figma.createRectangle": "RECTANGLE",
+        "figma.createEllipse": "ELLIPSE",
+        "figma.createLine": "LINE",
+        "figma.createVector": "VECTOR",
+        "figma.createBooleanOperation": "BOOLEAN_OPERATION",
+        "figma.createText": "TEXT",
+        "figma.createFrame": "FRAME",
+        "figma.createComponent": "COMPONENT",
+    }
+
+    def _var_native_types(self, script: str) -> dict[str, str]:
+        """Scan `const nN = figma.createX();` declarations and build
+        var → native Figma type map."""
+        import re
+        var_types: dict[str, str] = {}
+        for match in re.finditer(
+            r"const\s+(\w+)\s*=\s*(figma\.create\w+)\(\)", script,
+        ):
+            var, create = match.group(1), match.group(2)
+            native = self._CREATE_TO_NATIVE.get(create)
+            if native:
+                var_types[var] = native
+        # Mode 1 null-guards resolve to createInstance via an IIFE; any
+        # createInstance-backed var is an INSTANCE.
+        for match in re.finditer(
+            r"const\s+(\w+)\s*=\s*await\s+\(async\s*\(\s*\)\s*=>", script,
+        ):
+            var = match.group(1)
+            var_types.setdefault(var, "INSTANCE")
+        return var_types
+
+    def test_script_has_no_illegal_property_assignments(self):
+        """Mixed-type screen: emit should never land layoutMode on TEXT,
+        clipsContent on RECTANGLE, arcData on anything but ELLIPSE, etc."""
+        import re
+        from dd.property_registry import is_capable, by_figma_name, PROPERTIES
+
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["rect-1", "text-1", "ellipse-1", "line-1"]},
+            "rect-1": {"type": "rectangle"},
+            "text-1": {"type": "text"},
+            "ellipse-1": {"type": "ellipse"},
+            "line-1": {"type": "line"},
+        })
+        spec["_node_id_map"] = {
+            "screen-1": -1, "rect-1": -2, "text-1": -3,
+            "ellipse-1": -4, "line-1": -5,
+        }
+        db_visuals = {
+            -1: {"bindings": []}, -2: {"bindings": []},
+            -3: {"bindings": []}, -4: {"bindings": []},
+            -5: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        var_types = self._var_native_types(script)
+
+        # Known registry property names for the lint sweep
+        registry_props = {p.figma_name for p in PROPERTIES}
+
+        violations: list[str] = []
+        # Pattern: `nN.propertyName = ...` or `nN.propertyName =`
+        for line in script.split("\n"):
+            match = re.match(r"\s*(\w+)\.(\w+)\s*=", line)
+            if not match:
+                continue
+            var, prop = match.group(1), match.group(2)
+            if var not in var_types or prop not in registry_props:
+                continue
+            native = var_types[var]
+            if not is_capable(prop, "figma", native):
+                violations.append(f"{var} ({native}).{prop} — {line.strip()}")
+
+        assert not violations, (
+            "Generated script assigns properties to node types that don't "
+            f"support them:\n  " + "\n  ".join(violations)
+        )
+
+
+class TestPrefetchNullSafety:
+    """figma.getNodeByIdAsync() can throw on transient network errors
+    ("Unable to establish connection to Figma after 10 seconds") or return
+    null when a component has been deleted. A bare `const _p0 = await
+    figma.getNodeByIdAsync(id);` aborts the whole script on either.
+
+    Contract: every prefetch await is wrapped in a try/catch IIFE that
+    resolves to null on failure and pushes a structured entry into
+    __errors. Downstream Mode 1 null-guards already handle null __src.
+    """
+
+    def test_prefetch_is_null_safe(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Bare `const _pN = await figma.getNodeByIdAsync(...)` is not allowed
+        assert "const _p0 = await figma.getNodeByIdAsync" not in script
+        # Must be wrapped in a try/catch IIFE that pushes to __errors
+        assert "prefetch_failed" in script
+
+
+class TestExplicitStateHarness:
+    """figma.getNodeByIdAsync() side-effects figma.currentPage, silently
+    moving the active page. Anything downstream that reads figma.currentPage
+    (e.g. `figma.currentPage.appendChild`) leaks nodes to the wrong page.
+
+    Contract: the generated script captures figma.currentPage into a local
+    _rootPage variable BEFORE any prefetch / getNodeByIdAsync call, and all
+    subsequent references use _rootPage. The harness owns the target page;
+    the script pins explicitly and never reads ambient state after that.
+    """
+
+    def test_root_page_captured_before_prefetch(self):
+        """_rootPage is declared before any getNodeByIdAsync call."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        root_pos = script.find("const _rootPage")
+        fetch_pos = script.find("getNodeByIdAsync")
+        assert root_pos != -1, "_rootPage must be declared"
+        assert root_pos < fetch_pos, (
+            "_rootPage must be captured before any getNodeByIdAsync call"
+        )
+
+    def test_append_child_uses_captured_root_page(self):
+        """figma.currentPage.appendChild is replaced with _rootPage.appendChild
+        so side-effecting page changes don't leak nodes to other pages."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": []},
+        })
+        spec["_node_id_map"] = {"screen-1": -1}
+        script, _ = generate_figma_script(
+            spec, db_visuals={-1: {"bindings": []}},
+        )
+        assert "_rootPage.appendChild" in script
+        assert "figma.currentPage.appendChild" not in script
+
+
+class TestMode1NullSafety:
+    """Mode 1 instantiation must survive missing component nodes.
+
+    The master-component resolution chain can return null at runtime when
+    the component has been deleted, unpublished, or never existed in this
+    file. The old emission path threw uncaught "cannot read property
+    'getMainComponentAsync' of null" which aborted the entire script.
+
+    Contract: every Mode 1 creation is wrapped in a null-guarded async
+    expression that falls back to createFrame() and records the failure
+    in the script's __errors array for structured reporting.
+    """
+
+    def test_mode1_via_component_figma_id_is_null_guarded(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The instance creation must be guarded and have a placeholder fallback
+        assert "createInstance()" in script
+        assert "__errors" in script
+        assert "figma.createFrame()" in script
+
+    def test_mode1_via_instance_id_is_null_guarded(self):
+        """The second fallback path (getMainComponentAsync) must null-guard."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        # Only figma_node_id provided, no component_figma_id → second path
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "figma_node_id": "999:1",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "getMainComponentAsync" in script
+        assert "__errors" in script
+        # Must not be the old bare double-await that crashes on null
+        assert ".getMainComponentAsync()).createInstance()" not in script
+
+    def test_generated_script_declares_errors_array(self):
+        """Every generated script declares __errors so the runtime harness
+        can read structured failure reports."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": []},
+        })
+        spec["_node_id_map"] = {"screen-1": -1}
+        script, _ = generate_figma_script(spec, db_visuals={-1: {"bindings": []}})
+        assert "__errors" in script
 
 
 def _make_spec(elements: dict, tokens: dict | None = None) -> dict:
@@ -3994,3 +4225,335 @@ def _make_spec(elements: dict, tokens: dict | None = None) -> dict:
         "tokens": tokens or {},
         "elements": elements,
     }
+
+
+# ---------------------------------------------------------------------------
+# ADR-007 Session A: Codegen-time degradation (Position 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSessionA_Mode1GateWidening:
+    """The Mode 1 gate at figma.py:827 previously required EITHER
+    component_key OR component_figma_id. This blocked path 2 (lines
+    851-863: instance_figma_node_id → getMainComponentAsync) from
+    ever being reached, because the gate evaluated False before the
+    elif branch was checked. ADR-007 Session A widens the gate so
+    an INSTANCE node with only `instance_figma_node_id` reaches path 2.
+    """
+
+    def test_path1_reached_when_component_figma_id_present(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "INSTANCE",
+                "component_figma_id": "123:456",
+                "figma_node_id": "789:1",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Path 1: getNodeByIdAsync against component_figma_id → createInstance
+        assert '"123:456"' in script
+        assert "createInstance()" in script
+        # Path 2's getMainComponentAsync should NOT be emitted on path 1
+        assert "getMainComponentAsync" not in script
+
+    def test_path2_reached_when_instance_only(self):
+        """NEW: when only instance_figma_node_id is present on an INSTANCE
+        node, the gate should fall through to path 2, which emits
+        `getNodeByIdAsync(instance_id).getMainComponentAsync().createInstance()`.
+        Before Session A this branch was dead code.
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "INSTANCE",
+                "component_key": None,
+                "component_figma_id": None,
+                "figma_node_id": "789:1",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "getMainComponentAsync" in script, (
+            "Session A: INSTANCE with only figma_node_id must reach path 2"
+        )
+        assert '"789:1"' in script
+        assert "createInstance()" in script
+
+    def test_non_instance_not_widened(self):
+        """Only INSTANCE nodes get the path-2 fallback. A FRAME with
+        figma_node_id but no component inputs must still take Mode 2.
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "frame"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "FRAME",
+                "figma_node_id": "789:1",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Mode 2: createFrame for non-INSTANCE nodes
+        assert "figma.createFrame()" in script
+        # No Mode 1 for this node
+        assert "getMainComponentAsync" not in script
+
+
+@pytest.mark.unit
+class TestSessionA_DegradationEmission:
+    """When the emitter makes a lossy choice (Mode 2 for what should be
+    an INSTANCE), it pushes a structured __errors entry at codegen time.
+    Silent type substitution becomes impossible.
+    """
+
+    def test_instance_with_no_inputs_emits_degraded_to_mode2(self):
+        """An INSTANCE node whose DB row has no component_key, no
+        component_figma_id, AND no figma_node_id is genuinely
+        unresolvable. The emitter must record this as a structured
+        entry next to the createFrame() fallback line."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "INSTANCE",
+                "component_key": None,
+                "component_figma_id": None,
+                "figma_node_id": None,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "degraded_to_mode2" in script, (
+            "Session A: silent INSTANCE→FRAME must emit a structured "
+            "__errors entry"
+        )
+        # The push should carry the eid so downstream verification can
+        # attribute the degradation to a specific IR position.
+        assert "button-1" in script
+
+    def test_instance_taking_mode1_does_not_emit_degradation(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "node_type": "INSTANCE",
+                "component_figma_id": "123:456",
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "degraded_to_mode2" not in script
+
+    def test_non_instance_mode2_does_not_emit_degradation(self):
+        """FRAMEs always take Mode 2; that's not a degradation."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "frame"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"node_type": "FRAME", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "degraded_to_mode2" not in script
+
+
+@pytest.mark.unit
+class TestSessionA_CkrUnbuiltSignal:
+    """When the DB doesn't have CKR built, every INSTANCE downstream
+    degrades. The script preamble must push one `ckr_unbuilt` entry so
+    the root cause is traceable even before the extract-side auto-build
+    is in place on every deployment.
+    """
+
+    def test_preamble_pushes_ckr_unbuilt_when_flag_false(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"node_type": "INSTANCE", "figma_node_id": "789:1", "bindings": []},
+        }
+        script, _ = generate_figma_script(
+            spec, db_visuals=db_visuals, ckr_built=False,
+        )
+        assert "ckr_unbuilt" in script
+
+    def test_preamble_does_not_push_when_flag_true(self):
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"node_type": "INSTANCE", "figma_node_id": "789:1", "bindings": []},
+        }
+        script, _ = generate_figma_script(
+            spec, db_visuals=db_visuals, ckr_built=True,
+        )
+        assert "ckr_unbuilt" not in script
+
+    def test_default_ckr_built_is_true(self):
+        """Existing callers that don't pass the flag must not see
+        spurious ckr_unbuilt pushes."""
+        spec = _make_spec({"screen-1": {"type": "screen"}})
+        spec["_node_id_map"] = {"screen-1": -1}
+        db_visuals = {-1: {"bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "ckr_unbuilt" not in script
+
+
+# ---------------------------------------------------------------------------
+# ADR-007 Session B: Runtime micro-guards (Position 2)
+# ---------------------------------------------------------------------------
+
+
+def _spec_with_text_and_frame() -> tuple[dict, dict]:
+    """Build a spec with position-requiring frame + text node for
+    exercising Phase 3 emissions."""
+    spec = _make_spec({
+        "screen-1": {
+            "type": "screen",
+            "children": ["frame-1", "text-1"],
+            "layout": {
+                "sizing": {"width": 428, "height": 926},
+                "position": {"x": 0, "y": 0},
+            },
+        },
+        "frame-1": {
+            "type": "frame",
+            "layout": {
+                "sizing": {"widthPixels": 200, "heightPixels": 100},
+                "position": {"x": 10, "y": 20},
+            },
+        },
+        "text-1": {
+            "type": "text",
+            "props": {"text": "Hello"},
+            "layout": {
+                "sizing": {"width": 100, "height": 24},
+                "position": {"x": 10, "y": 140},
+            },
+            "style": {
+                "fontFamily": "Inter",
+                "fontWeight": 400,
+                "fontSize": 14,
+            },
+        },
+    })
+    spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2, "text-1": -3}
+    db_visuals = {
+        -1: {"bindings": []},
+        -2: {"bindings": []},
+        -3: {"bindings": []},
+    }
+    return spec, db_visuals
+
+
+@pytest.mark.unit
+class TestSessionB_NoCoarsePhaseGuards:
+    """The Phase 3 coarse try/catch and M["__canary"] are removed.
+    A single throw can no longer abort all subsequent statements."""
+
+    def test_no_canary_in_emitted_script(self):
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'M["__canary"]' not in script
+        assert "deferred_ok" not in script
+        assert "deferred_error" not in script
+
+    def test_phase3_try_blocks_are_small(self):
+        """No single `try {` block in Phase 3 should contain more than a
+        handful of statements. Per-op guards keep each try tiny."""
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+
+        # Find Phase 3 block
+        if "// Phase 3:" not in script:
+            pytest.skip("no Phase 3 emitted for this fixture")
+        phase3 = script.split("// Phase 3:", 1)[1]
+        phase3 = phase3.split("M[\"__errors\"]", 1)[0]  # up to return
+
+        # Count statements between a `try {` and its `catch`
+        import re
+        for m in re.finditer(r"try\s*\{([^}]*)\}", phase3):
+            body = m.group(1)
+            stmts = [s for s in body.split(";") if s.strip()]
+            # Tolerate small try blocks (e.g. single-op guard), but not
+            # the ~550-statement legacy phase guard.
+            assert len(stmts) <= 3, (
+                f"Phase 3 try block has {len(stmts)} statements — "
+                f"expected <=3 for per-op guards"
+            )
+
+
+@pytest.mark.unit
+class TestSessionB_PerOpGuards:
+    """Each Phase 3 operation is wrapped in its own guard pushing a
+    structured entry to __errors on failure."""
+
+    def test_text_characters_assignment_has_guard(self):
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The .characters = ... assignment is guarded with a catch that
+        # pushes kind="text_set_failed"
+        assert ".characters =" in script
+        assert "text_set_failed" in script
+
+    def test_resize_has_guard(self):
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".resize(" in script
+        assert "resize_failed" in script
+
+    def test_position_has_guard(self):
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # .x and .y setters are guarded
+        assert "position_failed" in script
+
+    def test_eid_preserved_in_guard_entry(self):
+        """Each structured entry carries the eid it came from so
+        downstream verification can attribute failures per-node."""
+        spec, db_visuals = _spec_with_text_and_frame()
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # text-1 is our eid for the text node; it must appear in a push
+        # statement (surrounded by structured-error scaffolding).
+        import re
+        # Find text_set_failed pushes and verify they carry eid="text-1"
+        pushes = re.findall(
+            r"__errors\.push\(\{[^}]*text_set_failed[^}]*\}\)", script
+        )
+        assert pushes, "no text_set_failed push found"
+        assert any('"text-1"' in p for p in pushes), (
+            "text_set_failed push must carry eid='text-1'"
+        )

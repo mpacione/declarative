@@ -506,6 +506,11 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
         registry_cols.append("component_key")
     if "figma_node_id" not in registry_cols and "figma_node_id" in node_cols:
         registry_cols.append("figma_node_id")
+    # ADR-007 Session A: node_type is required so the renderer can
+    # distinguish INSTANCE nodes from FRAME/RECTANGLE/etc. when deciding
+    # Mode 1 path 2 eligibility and emitting degraded_to_mode2 entries.
+    if "node_type" not in registry_cols and "node_type" in node_cols:
+        registry_cols.append("node_type")
     # Note: x/y are NOT included here. Position is spatial encoding
     # (absolute canvas coords in DB, parent-relative in IR). Renderers
     # read position from the IR, not from the visual dict.

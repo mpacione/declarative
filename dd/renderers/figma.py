@@ -354,6 +354,32 @@ def _escape_js(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
+def _guarded_op(op: str, eid: str, kind: str) -> str:
+    """Wrap a single JS statement in an inline try/catch that pushes a
+    structured entry to __errors on throw.
+
+    ADR-007 Position 2: per-operation granularity. One bad node produces
+    one entry; neighbors still run. Replaces the legacy coarse-grained
+    Phase 3 try/catch + M["__canary"] pattern.
+
+    Multi-statement strings (e.g. brace blocks built by the override
+    emitter) are accepted as-is — callers are responsible for ensuring
+    the wrapped body is a valid expression list.
+    """
+    eid_lit = _escape_js(eid)
+    # Normalize trailing whitespace/semicolon so the guard body doesn't
+    # emit `...;;`
+    body = op.rstrip()
+    if body.endswith(";"):
+        body = body[:-1]
+    return (
+        f"try {{ {body}; }} "
+        f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", '
+        f'kind:"{kind}", '
+        f'error: String(__e && __e.message || __e)}}); }}'
+    )
+
+
 def _normalize_font_family(family: str) -> str:
     """Normalize font family names for Figma compatibility.
 
@@ -481,12 +507,46 @@ def _register_figma_handlers() -> None:
     })
 
 
+# IR node-type → Figma Plugin API native node type.
+# Used at the emission gate so the capability table (which is declared in
+# Figma Plugin API terms) can decide whether a property is legal on a given
+# node. Anything not in the map is treated as a container (FRAME).
+_IR_TO_FIGMA_TYPE: dict[str, str] = {
+    "rectangle": "RECTANGLE",
+    "ellipse": "ELLIPSE",
+    "line": "LINE",
+    "vector": "VECTOR",
+    "boolean_operation": "BOOLEAN_OPERATION",
+    "text": "TEXT",
+    "heading": "TEXT",
+    "link": "TEXT",
+    "frame": "FRAME",
+    "container": "FRAME",
+    "screen": "FRAME",
+    "section": "FRAME",
+    "component": "COMPONENT",
+    "instance": "INSTANCE",
+    "group": "GROUP",
+}
+
+
+def ir_to_figma_type(ir_type: str) -> str:
+    """Map an IR node type string to its Figma Plugin API native type.
+
+    Defaults unknown IR types to "FRAME" — anything container-like in the IR
+    becomes a frame in Figma, which is the most permissive capability set
+    and matches how the generator falls back when emitting unknown types.
+    """
+    return _IR_TO_FIGMA_TYPE.get(ir_type, "FRAME")
+
+
 def emit_from_registry(
     var: str,
     eid: str,
     visual: dict[str, Any],
     tokens: dict[str, Any],
     renderer: str = "figma",
+    node_type: str | None = None,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit properties from the visual dict, driven by the registry.
 
@@ -495,9 +555,16 @@ def emit_from_registry(
     - String template → type-aware formatting via format_js_value
     - Empty/missing emit dict → deferred, skip
 
+    When `node_type` is provided (the Figma Plugin API native type like
+    "FRAME", "RECTANGLE", "TEXT"), each property is gated through
+    is_capable() before emission. Properties whose capability set excludes
+    this node_type are silently skipped — this is the output gate that
+    prevents "object is not extensible" runtime errors. Omit node_type
+    for permissive emission (used by existing callers and unit tests).
+
     Returns (lines, token_refs).
     """
-    from dd.property_registry import PROPERTIES, HANDLER
+    from dd.property_registry import PROPERTIES, HANDLER, is_capable
 
     _register_figma_handlers()
 
@@ -512,6 +579,15 @@ def emit_from_registry(
 
         value = visual.get(prop.figma_name)
         if value is None:
+            continue
+
+        # Capability gate: if the caller told us the native node type, the
+        # registry's capability set is authoritative. Skip silently on
+        # mismatch — the same table acts as constrained-decoding grammar
+        # for synthetic generation.
+        if node_type is not None and not is_capable(
+            prop.figma_name, renderer, node_type,
+        ):
             continue
 
         if spec is HANDLER:
@@ -629,6 +705,7 @@ def generate_figma_script(
     db_visuals: dict[int, dict[str, Any]] | None = None,
     page_name: str | None = None,
     canvas_position: tuple[float, float] | None = None,
+    ckr_built: bool = True,
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """Generate a figma_execute script from a CompositionSpec.
 
@@ -673,6 +750,30 @@ def generate_figma_script(
         preamble.append(f'await figma.loadFontAsync({{family: "{family}", style: "{style}"}});')
 
     preamble.append("const M = {};")
+    # Structured error channel — Mode 1 null-guards push structured entries here
+    # when a referenced component node can't be resolved (deleted, unpublished,
+    # never existed). The runtime harness (render_test/run.js) reads this to
+    # distinguish "script aborted on exception" from "script finished with
+    # recoverable errors". Downstream verification loops diff the errors array
+    # against the IR to fail closed on missing-component regressions.
+    preamble.append("const __errors = [];")
+    # ADR-007 Position 1: if CKR wasn't built for this DB, every INSTANCE
+    # downstream will degrade to Mode 2. Push one structured entry so the
+    # root cause is visible in the error channel even before the
+    # extract-side auto-build has propagated to every deployment.
+    if not ckr_built:
+        preamble.append(
+            '__errors.push({kind:"ckr_unbuilt", '
+            'error:"component_key_registry empty or missing — '
+            'Mode 1 will degrade to Mode 2 for every INSTANCE node"});'
+        )
+    # Explicit state harness: capture the harness-pinned currentPage BEFORE any
+    # prefetch. figma.getNodeByIdAsync() side-effects figma.currentPage (it
+    # flips to the page that hosts the resolved node), so downstream reads of
+    # figma.currentPage would leak nodes to the wrong page. We bind _rootPage
+    # here and use it everywhere downstream — the script never reads ambient
+    # state once prefetch has started. See feedback_figma_api_quirks.md.
+    preamble.append("const _rootPage = figma.currentPage;")
 
     # Pre-fetch all unique Figma node IDs needed for createInstance/swapComponent.
     # Batching into a single preamble avoids redundant async lookups (50→27 calls
@@ -692,12 +793,22 @@ def generate_figma_script(
             _collect_swap_targets_from_tree(vis.get("override_tree"), needed_node_ids)
 
     if needed_node_ids:
-        preamble.append("// Pre-fetch component nodes (deduplicated)")
+        preamble.append("// Pre-fetch component nodes (deduplicated, null-safe)")
+        # Each lookup is wrapped so a transient Figma backend failure (network
+        # timeout "Unable to establish connection") or a deleted component
+        # produces a null + structured error instead of aborting the script.
+        # Downstream Mode 1 null-guards already handle null component refs.
         node_id_vars: dict[str, str] = {}
         for i, nid in enumerate(sorted(needed_node_ids)):
             var_name = f"_p{i}"
             node_id_vars[nid] = var_name
-            preamble.append(f'const {var_name} = await figma.getNodeByIdAsync("{_escape_js(nid)}");')
+            id_lit = _escape_js(nid)
+            preamble.append(
+                f'const {var_name} = await (async () => {{ '
+                f'try {{ return await figma.getNodeByIdAsync("{id_lit}"); }} '
+                f'catch (__e) {{ __errors.push({{kind:"prefetch_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return null; }} '
+                f'}})();'
+            )
     else:
         node_id_vars = {}
 
@@ -716,7 +827,10 @@ def generate_figma_script(
     # Maps group_eid → {"parent_eid": str, "children_vars": [str], "element": dict}
     group_deferred: dict[str, dict] = {}
     # Text characters collected for Phase 3
-    text_characters: list[tuple[str, str]] = []  # (var, escaped_text)
+    # Tuple: (var, escaped_text, eid) — eid carried through so
+    # the per-op guard (ADR-007 Session B) attributes failures to the
+    # right IR position.
+    text_characters: list[tuple[str, str, str]] = []
 
     # -----------------------------------------------------------------------
     # Phase 1: Materialize — create all nodes with intrinsic properties
@@ -745,21 +859,61 @@ def generate_figma_script(
 
         instance_figma_node_id = raw_visual.get("figma_node_id") if (db_visuals is not None and raw_visual) else None
 
+        db_node_type = raw_visual.get("node_type") if (db_visuals is not None and raw_visual) else None
+        is_db_instance = db_node_type == "INSTANCE"
+
         # Mode 1 fallback chain:
         #   1. component_figma_id (from registry) → getNodeByIdAsync → createInstance
-        #   2. instance figma_node_id (from DB) → getMainComponentAsync → createInstance
-        #      (handles unpublished/local components that importComponentByKeyAsync rejects)
+        #   2. instance figma_node_id (from DB, INSTANCE node) → getMainComponentAsync → createInstance
+        #      (handles unpublished/local components that importComponentByKeyAsync rejects;
+        #       also covers fresh DBs where CKR hasn't been built yet)
         #   3. Fall through to Mode 2 (createFrame) if no usable ID
-        use_mode1 = (component_key or component_figma_id) and not is_text
+        #
+        # ADR-007 Session A: the gate now also reaches path 2 when only
+        # `instance_figma_node_id` + `node_type='INSTANCE'` are populated.
+        # Before Session A, the `elif instance_figma_node_id:` branch at
+        # ~line 851 was unreachable because the gate required component_key
+        # or component_figma_id.
+        use_mode1 = (
+            (component_key or component_figma_id
+             or (is_db_instance and instance_figma_node_id))
+            and not is_text
+        )
         if use_mode1:
+            # Mode 1 null-safety contract: every createInstance() call sits
+            # behind an async guard that records missing-node failures in
+            # __errors and falls back to a placeholder createFrame(). This
+            # prevents one deleted/unpublished component from aborting the
+            # entire script with "cannot read property 'x' of null". The
+            # script surfaces partial success; the harness diffs __errors
+            # against the IR and decides whether to accept or fail.
+            eid_lit = _escape_js(eid)
             if component_figma_id:
-                node_expr = node_id_vars.get(component_figma_id, f'await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")')
+                node_expr = node_id_vars.get(
+                    component_figma_id,
+                    f'await figma.getNodeByIdAsync("{_escape_js(component_figma_id)}")',
+                )
+                id_lit = _escape_js(component_figma_id)
                 phase1_lines.append(
-                    f'const {var} = ({node_expr}).createInstance();'
+                    f'const {var} = await (async () => {{ '
+                    f'const __src = {node_expr}; '
+                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_node", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'try {{ return __src.createInstance(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return figma.createFrame(); }} '
+                    f'}})();'
                 )
             elif instance_figma_node_id:
+                id_lit = _escape_js(instance_figma_node_id)
                 phase1_lines.append(
-                    f'const {var} = (await (await figma.getNodeByIdAsync("{_escape_js(instance_figma_node_id)}")).getMainComponentAsync()).createInstance();'
+                    f'const {var} = await (async () => {{ '
+                    f'const __src = await figma.getNodeByIdAsync("{id_lit}"); '
+                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_instance_node", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'if (typeof __src.getMainComponentAsync !== "function") {{ __errors.push({{eid:"{eid_lit}", kind:"not_an_instance", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'const __master = await __src.getMainComponentAsync(); '
+                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"no_main_component", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'try {{ return __master.createInstance(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return figma.createFrame(); }} '
+                    f'}})();'
                 )
             else:
                 use_mode1 = False
@@ -824,6 +978,28 @@ def generate_figma_script(
         else:
             # Mode 2: create from L0 properties
 
+            # ADR-007 Position 1: silent INSTANCE→FRAME substitution is a
+            # codegen-time degradation. If the DB says this node is an
+            # INSTANCE but we reached Mode 2, record a structured
+            # __errors entry so the loss is visible in the error channel.
+            # Without this push, a fresh DB without CKR + supplement
+            # silently turns every component instance into an empty
+            # createFrame() (see screen 175 case study in ADR-007).
+            if is_db_instance:
+                eid_lit = _escape_js(eid)
+                reason_parts: list[str] = []
+                if not component_key:
+                    reason_parts.append("no component_key")
+                if not component_figma_id:
+                    reason_parts.append("no component_figma_id")
+                if not instance_figma_node_id:
+                    reason_parts.append("no instance_figma_node_id")
+                reason = _escape_js(", ".join(reason_parts) or "unknown")
+                phase1_lines.append(
+                    f'__errors.push({{eid:"{eid_lit}", '
+                    f'kind:"degraded_to_mode2", reason:"{reason}"}});'
+                )
+
             # GROUP: defer creation — figma.group() requires children to exist first.
             # Children will be appended to the grandparent temporarily, then
             # wrapped into a GROUP in Phase 2.
@@ -879,7 +1055,10 @@ def generate_figma_script(
             else:
                 raw_visual = {}
                 visual = {}
-            visual_lines, visual_refs = _emit_visual(var, eid, visual, tokens)
+            figma_type = ir_to_figma_type(etype)
+            visual_lines, visual_refs = _emit_visual(
+                var, eid, visual, tokens, node_type=figma_type,
+            )
             phase1_lines.extend(visual_lines)
             all_token_refs.extend(visual_refs)
 
@@ -898,14 +1077,15 @@ def generate_figma_script(
             # to clipsContent=true. When the DB has no value (NULL), emit
             # clipsContent=false as the safer default — unexpected clipping
             # is more visually destructive than missing clipping.
-            # Analogous to the default fills clearing above.
             #
-            # Gate to container types only: clipsContent is a FRAME property.
-            # Leaf shapes (rectangle, ellipse, line, vector, boolean_operation)
-            # don't have it and Figma throws "object is not extensible" when
-            # you try to set it on them.
-            is_container = not is_text and etype not in _NODE_CREATE_MAP
-            if is_container and not visual.get("clipsContent"):
+            # Gate through the registry's capability table: clipsContent is
+            # only legal on container types (FRAME/COMPONENT/INSTANCE/SECTION).
+            # is_capable() is the single source of truth — no ad-hoc gates.
+            from dd.property_registry import is_capable as _is_capable
+            if (
+                _is_capable("clipsContent", "figma", figma_type)
+                and not visual.get("clipsContent")
+            ):
                 phase1_lines.append(f"{var}.clipsContent = false;")
 
             if element.get("visible") is False:
@@ -934,7 +1114,7 @@ def generate_figma_script(
                 # at the correct container width.
                 text_content = element.get("props", {}).get("text", "")
                 if text_content:
-                    text_characters.append((var, _escape_js(text_content)))
+                    text_characters.append((var, _escape_js(text_content), eid))
 
             composition = element.get("_composition")
             has_ir_children = bool(element.get("children"))
@@ -1010,15 +1190,25 @@ def generate_figma_script(
             pw = elem_sizing.get("widthPixels")
             ph = elem_sizing.get("heightPixels")
             if pw is not None and ph is not None:
-                phase3_lines.append(f"{var}.resize({int(pw)}, {int(ph)});")
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({int(pw)}, {int(ph)});", eid, "resize_failed",
+                ))
             elif pw is not None:
-                phase3_lines.append(f"{var}.resize({int(pw)}, {var}.height);")
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({int(pw)}, {var}.height);", eid, "resize_failed",
+                ))
             elif ph is not None:
-                phase3_lines.append(f"{var}.resize({var}.width, {int(ph)});")
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({var}.width, {int(ph)});", eid, "resize_failed",
+                ))
             position = element.get("layout", {}).get("position")
             if position:
-                phase3_lines.append(f"{var}.x = {position.get('x', 0)};")
-                phase3_lines.append(f"{var}.y = {position.get('y', 0)};")
+                phase3_lines.append(_guarded_op(
+                    f"{var}.x = {position.get('x', 0)};", eid, "position_failed",
+                ))
+                phase3_lines.append(_guarded_op(
+                    f"{var}.y = {position.get('y', 0)};", eid, "position_failed",
+                ))
 
         # Constraints deferred to Phase 3 (after position)
         if db_visuals is not None:
@@ -1034,7 +1224,10 @@ def generate_figma_script(
                 if c_v:
                     mapped = _CONSTRAINT_MAP.get(c_v, c_v)
                     parts.append(f'vertical: "{mapped}"')
-                phase3_lines.append(f"{var}.constraints = {{{', '.join(parts)}}};")
+                phase3_lines.append(_guarded_op(
+                    f"{var}.constraints = {{{', '.join(parts)}}};",
+                    eid, "constraint_failed",
+                ))
 
     # Root element → page
     if root_id in var_map:
@@ -1047,7 +1240,7 @@ def generate_figma_script(
             phase2_lines.append(f"_page.appendChild({var_map[root_id]});")
             phase2_lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
-            phase2_lines.append(f"figma.currentPage.appendChild({var_map[root_id]});")
+            phase2_lines.append(f"_rootPage.appendChild({var_map[root_id]});")
 
         if canvas_position is not None:
             cx, cy = canvas_position
@@ -1061,7 +1254,7 @@ def generate_figma_script(
         gp_eid = ginfo["parent_eid"]
         while gp_eid in group_deferred:
             gp_eid = group_deferred[gp_eid]["parent_eid"]
-        gp_var = var_map.get(gp_eid, var_map.get(root_id, "figma.currentPage"))
+        gp_var = var_map.get(gp_eid, var_map.get(root_id, "_rootPage"))
         group_element = ginfo["element"]
         original_name = group_element.get("_original_name", group_eid)
         gvar = f"g{group_eid.replace('-', '_')}"
@@ -1081,8 +1274,12 @@ def generate_figma_script(
         # Group position + constraints deferred to Phase 3
         position = group_element.get("layout", {}).get("position")
         if position:
-            phase3_lines.append(f"{gvar}.x = {position.get('x', 0)};")
-            phase3_lines.append(f"{gvar}.y = {position.get('y', 0)};")
+            phase3_lines.append(_guarded_op(
+                f"{gvar}.x = {position.get('x', 0)};", group_eid, "position_failed",
+            ))
+            phase3_lines.append(_guarded_op(
+                f"{gvar}.y = {position.get('y', 0)};", group_eid, "position_failed",
+            ))
         if db_visuals is not None:
             node_id = spec.get("_node_id_map", {}).get(group_eid)
             constraint_visual = db_visuals.get(node_id, {}) if node_id else {}
@@ -1096,7 +1293,10 @@ def generate_figma_script(
                 if c_v:
                     mapped = _CONSTRAINT_MAP.get(c_v, c_v)
                     parts.append(f'vertical: "{mapped}"')
-                phase3_lines.append(f"{gvar}.constraints = {{{', '.join(parts)}}};")
+                phase3_lines.append(_guarded_op(
+                    f"{gvar}.constraints = {{{', '.join(parts)}}};",
+                    group_eid, "constraint_failed",
+                ))
 
         phase2_lines.append("")
 
@@ -1111,9 +1311,15 @@ def generate_figma_script(
     # Without this ordering, textAutoResize=HEIGHT wraps at 0px width.
     hydrate_ops.extend(phase3_lines)
 
-    # Text characters: set after resize so text reflows at correct width
-    for var, escaped_text in text_characters:
-        hydrate_ops.append(f'{var}.characters = "{escaped_text}";')
+    # Text characters: set after resize so text reflows at correct width.
+    # Each assignment is wrapped in a per-op guard (ADR-007 Session B) —
+    # a font-not-loaded throw for one node records kind="text_set_failed"
+    # and does not prevent subsequent text nodes from being set.
+    for var, escaped_text, eid in text_characters:
+        hydrate_ops.append(_guarded_op(
+            f'{var}.characters = "{escaped_text}";',
+            eid, "text_set_failed",
+        ))
 
     lines: list[str] = preamble + phase1_lines + phase2_lines
 
@@ -1122,14 +1328,16 @@ def generate_figma_script(
         lines.append("// Phase 3: Hydrate — text content, position, constraints")
         lines.append("await new Promise(r => setTimeout(r, 0));")
         lines.append("")
-        lines.append("try {")
+        # ADR-007 Session B: each op carries its own inline try/catch
+        # (see _guarded_op). No coarse Phase 3 try/catch, no M["__canary"];
+        # one failure channel (__errors) with per-node granularity.
         for op in hydrate_ops:
-            lines.append(f"  {op}")
-        lines.append('  M["__canary"] = "deferred_ok";')
-        lines.append("} catch (_e) {")
-        lines.append('  M["__canary"] = "deferred_error: " + _e.message;')
-        lines.append("}")
+            lines.append(op)
 
+    # Expose structured error channel on the return payload so the harness
+    # can distinguish "script finished with recoverable errors" from a raw
+    # exception. Empty array means clean run.
+    lines.append('M["__errors"] = __errors;')
     lines.append("return M;")
 
     return ("\n".join(lines), all_token_refs)
@@ -1240,6 +1448,7 @@ def _emit_layout(
 
 def _emit_visual(
     var: str, eid: str, visual: dict[str, Any], tokens: dict[str, Any],
+    node_type: str | None = None,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit Figma JS for all visual properties, driven by the registry.
 
@@ -1247,8 +1456,16 @@ def _emit_visual(
     properties (fills, strokes, effects, cornerRadius, clipsContent) to
     their handler functions and formats template properties via
     format_js_value.
+
+    When `node_type` is provided, emission is gated through the registry's
+    capability table — properties not supported on that node type are
+    silently skipped. This prevents 'object is not extensible' runtime
+    errors from layout / clipsContent / text properties landing on wrong
+    native node types.
     """
-    return emit_from_registry(var, eid, visual, tokens, renderer="figma")
+    return emit_from_registry(
+        var, eid, visual, tokens, renderer="figma", node_type=node_type,
+    )
 
 
 # IR gradient type → Figma Plugin API type
@@ -1562,7 +1779,24 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     spec = ir_result["spec"]
     visuals = query_screen_visuals(conn, screen_id)
 
-    script, token_refs = generate_figma_script(spec, db_visuals=visuals)
+    # ADR-007 Session A: surface "CKR was not built" as a structured
+    # entry in the script preamble so the root cause of downstream
+    # Mode 2 degradations is visible in `__errors`.
+    ckr_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='component_key_registry'"
+    ).fetchone()
+    if ckr_exists:
+        ckr_row = conn.execute(
+            "SELECT COUNT(*) FROM component_key_registry"
+        ).fetchone()
+        ckr_built = bool(ckr_row and ckr_row[0] > 0)
+    else:
+        ckr_built = False
+
+    script, token_refs = generate_figma_script(
+        spec, db_visuals=visuals, ckr_built=ckr_built,
+    )
 
     return {
         "structure_script": script,

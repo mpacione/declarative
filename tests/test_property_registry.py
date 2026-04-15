@@ -1,6 +1,11 @@
 """Tests for the property registry — structural coverage and emit patterns."""
 
-from dd.property_registry import PROPERTIES, by_db_column, by_figma_name
+from dd.property_registry import (
+    PROPERTIES,
+    by_db_column,
+    by_figma_name,
+    is_capable,
+)
 
 
 class TestRegistryEmitCoverage:
@@ -65,6 +70,72 @@ class TestRegistryEmitCoverage:
                 assert not prop.emit, (
                     f"{prop.figma_name} is deferred but has emit={prop.emit}"
                 )
+
+
+class TestBackendCapabilities:
+    """Properties declare per-backend node-type capabilities.
+
+    Prevents emitting properties on node types that don't support them
+    (e.g. clipsContent on RECTANGLE → 'object is not extensible' at runtime).
+    Capability is the single source of truth queried at emission time; the
+    same table serves as constrained-decoding grammar for synthetic IR.
+    """
+
+    def test_clips_content_constrained_to_containers(self):
+        assert is_capable("clipsContent", "figma", "FRAME") is True
+        assert is_capable("clipsContent", "figma", "COMPONENT") is True
+        assert is_capable("clipsContent", "figma", "INSTANCE") is True
+        assert is_capable("clipsContent", "figma", "SECTION") is True
+        assert is_capable("clipsContent", "figma", "RECTANGLE") is False
+        assert is_capable("clipsContent", "figma", "ELLIPSE") is False
+        assert is_capable("clipsContent", "figma", "VECTOR") is False
+        assert is_capable("clipsContent", "figma", "LINE") is False
+        assert is_capable("clipsContent", "figma", "TEXT") is False
+
+    def test_layout_properties_constrained_to_containers(self):
+        for prop in ("layoutMode", "paddingTop", "paddingLeft",
+                     "itemSpacing", "layoutWrap",
+                     "primaryAxisAlignItems", "counterAxisAlignItems"):
+            assert is_capable(prop, "figma", "FRAME") is True, prop
+            assert is_capable(prop, "figma", "RECTANGLE") is False, prop
+            assert is_capable(prop, "figma", "TEXT") is False, prop
+
+    def test_text_properties_constrained_to_text(self):
+        for prop in ("characters", "fontSize", "textAlignHorizontal",
+                     "textAutoResize", "lineHeight"):
+            assert is_capable(prop, "figma", "TEXT") is True, prop
+            assert is_capable(prop, "figma", "FRAME") is False, prop
+            assert is_capable(prop, "figma", "RECTANGLE") is False, prop
+
+    def test_corner_radius_excludes_line_and_text(self):
+        assert is_capable("cornerRadius", "figma", "RECTANGLE") is True
+        assert is_capable("cornerRadius", "figma", "FRAME") is True
+        assert is_capable("cornerRadius", "figma", "LINE") is False
+        assert is_capable("cornerRadius", "figma", "TEXT") is False
+
+    def test_type_specific_props(self):
+        assert is_capable("arcData", "figma", "ELLIPSE") is True
+        assert is_capable("arcData", "figma", "RECTANGLE") is False
+        assert is_capable("booleanOperation", "figma", "BOOLEAN_OPERATION") is True
+        assert is_capable("booleanOperation", "figma", "FRAME") is False
+
+    def test_universal_props_capable_on_all_visible(self):
+        """Properties like fills, opacity apply to every visible node type."""
+        for node_type in ("FRAME", "RECTANGLE", "ELLIPSE", "VECTOR", "TEXT",
+                          "INSTANCE", "LINE"):
+            assert is_capable("opacity", "figma", node_type) is True, node_type
+            assert is_capable("visible", "figma", node_type) is True, node_type
+            assert is_capable("rotation", "figma", node_type) is True, node_type
+
+    def test_unknown_property_returns_false(self):
+        """Unknown properties must not pass capability check — fail closed here
+        because this IS the output gate, not extraction (which fails open)."""
+        assert is_capable("nonexistent", "figma", "FRAME") is False
+
+    def test_unknown_backend_returns_false(self):
+        """A property with no capability entry for a given backend is not
+        emittable on that backend — forces explicit backend support."""
+        assert is_capable("clipsContent", "react", "div") is False
 
 
 class TestRegistryLookups:
@@ -225,6 +296,113 @@ class TestRegistryEmitHelper:
         visual = {"opacity": 0.5}
         _, refs = emit_from_registry("v", "e1", visual, {})
         assert not any(prop == "opacity" for (_, prop, _) in refs)
+
+
+class TestCapabilityGatedEmission:
+    """emit_from_registry must skip properties whose capability set doesn't
+    include the given Figma native node_type. This is the output gate — it
+    prevents 'object is not extensible' runtime errors from properties landing
+    on node types that don't support them (e.g. clipsContent on RECTANGLE).
+    """
+
+    def test_clips_content_skipped_on_rectangle(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e", {"clipsContent": False}, {}, node_type="RECTANGLE",
+        )
+        assert not any("clipsContent" in l for l in lines)
+
+    def test_clips_content_emitted_on_frame(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e", {"clipsContent": False}, {}, node_type="FRAME",
+        )
+        assert any("clipsContent = false" in l for l in lines)
+
+    def test_layout_mode_skipped_on_text(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e", {"layoutMode": "VERTICAL"}, {}, node_type="TEXT",
+        )
+        assert not any("layoutMode" in l for l in lines)
+
+    def test_padding_skipped_on_rectangle(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e",
+            {"paddingTop": 10, "paddingLeft": 20, "itemSpacing": 8},
+            {}, node_type="RECTANGLE",
+        )
+        assert not any("padding" in l.lower() for l in lines)
+        assert not any("itemSpacing" in l for l in lines)
+
+    def test_text_align_skipped_on_frame(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e", {"textAlignHorizontal": "CENTER"}, {}, node_type="FRAME",
+        )
+        assert not any("textAlignHorizontal" in l for l in lines)
+
+    def test_corner_radius_skipped_on_line(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e", {"cornerRadius": 8}, {}, node_type="LINE",
+        )
+        assert not any("cornerRadius" in l for l in lines)
+
+    def test_arc_data_skipped_on_rectangle(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e",
+            {"arcData": {"startingAngle": 0, "endingAngle": 1.57, "innerRadius": 0}},
+            {}, node_type="RECTANGLE",
+        )
+        assert not any("arcData" in l for l in lines)
+
+    def test_arc_data_emitted_on_ellipse(self):
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry(
+            "v", "e",
+            {"arcData": {"startingAngle": 0, "endingAngle": 1.57, "innerRadius": 0}},
+            {}, node_type="ELLIPSE",
+        )
+        assert any("arcData" in l for l in lines)
+
+    def test_no_node_type_means_permissive(self):
+        """Backwards compatibility: callers without node_type get full emission.
+        Capability gating is opt-in at the call site (main generator passes it);
+        tests and legacy callers stay permissive."""
+        from dd.renderers.figma import emit_from_registry
+        lines, _ = emit_from_registry("v", "e", {"clipsContent": False}, {})
+        assert any("clipsContent = false" in l for l in lines)
+
+
+class TestIrToFigmaType:
+    """Maps IR node type strings ('rectangle', 'frame', 'text') to Figma
+    native Plugin API types ('RECTANGLE', 'FRAME', 'TEXT'). Used at the
+    emission site so the registry's capability table can gate correctly."""
+
+    def test_basic_shapes(self):
+        from dd.renderers.figma import ir_to_figma_type
+        assert ir_to_figma_type("rectangle") == "RECTANGLE"
+        assert ir_to_figma_type("ellipse") == "ELLIPSE"
+        assert ir_to_figma_type("line") == "LINE"
+        assert ir_to_figma_type("vector") == "VECTOR"
+        assert ir_to_figma_type("boolean_operation") == "BOOLEAN_OPERATION"
+
+    def test_text_types(self):
+        from dd.renderers.figma import ir_to_figma_type
+        assert ir_to_figma_type("text") == "TEXT"
+        assert ir_to_figma_type("heading") == "TEXT"
+        assert ir_to_figma_type("link") == "TEXT"
+
+    def test_containers_default_to_frame(self):
+        """Unknown / container-like IR types render as FRAME in Figma."""
+        from dd.renderers.figma import ir_to_figma_type
+        assert ir_to_figma_type("frame") == "FRAME"
+        assert ir_to_figma_type("container") == "FRAME"
+        assert ir_to_figma_type("screen") == "FRAME"
+        assert ir_to_figma_type("section") == "FRAME"
 
 
 class TestRegistryCompleteness:
