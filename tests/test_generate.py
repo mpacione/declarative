@@ -4177,8 +4177,10 @@ class TestGroupPositioning:
 class TestGradientFallback:
     """Verify gradients with computed transform from handlePositions render correctly."""
 
-    def test_gradient_with_computed_transform_emitted(self):
-        """Gradient fills with gradientTransform (even computed) should be emitted."""
+    def test_gradient_without_plugin_api_transform_not_emitted(self):
+        """Gradient fills with only REST handlePositions (no Plugin API
+        gradientTransform) must NOT be emitted — the REST→Plugin coordinate
+        convention mapping is wrong and produces incorrect gradient scale."""
         spec = _make_spec(
             elements={
                 "screen-1": {
@@ -4197,6 +4199,34 @@ class TestGradientFallback:
                         {"x": 1.0, "y": 0.0},
                         {"x": 0.0, "y": 1.0},
                     ],
+                    "gradientStops": [
+                        {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
+                        {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
+                    ],
+                }]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "GRADIENT_LINEAR" not in script, \
+            "gradient without Plugin API transform must not be emitted"
+
+    def test_gradient_with_plugin_api_transform_emitted(self):
+        """Gradient fills WITH Plugin API gradientTransform are emitted correctly."""
+        spec = _make_spec(
+            elements={
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"direction": "vertical", "sizing": {"width": 428, "height": 926}},
+                },
+            },
+        )
+        spec["_node_id_map"] = {"screen-1": 10}
+        db_visuals = {
+            10: {
+                "fills": json.dumps([{
+                    "type": "GRADIENT_LINEAR",
+                    "gradientTransform": [[0, 1, 0], [-1, 0, 1]],
                     "gradientStops": [
                         {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
                         {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},

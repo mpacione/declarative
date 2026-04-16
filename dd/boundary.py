@@ -81,6 +81,10 @@ KIND_STROKE_MISMATCH = "stroke_mismatch"
 # A node's IR declares effects (shadows, blurs) but the rendered node
 # has fewer effects. Catches dropped shadows, missing blurs, etc.
 KIND_EFFECT_MISSING = "effect_missing"
+# Gradient fill has no Plugin API gradientTransform — the REST API
+# handlePositions can't be reliably converted. Renderer skips the
+# gradient rather than emitting a wrong matrix.
+KIND_GRADIENT_TRANSFORM_MISSING = "gradient_transform_missing"
 
 
 @dataclass(frozen=True)

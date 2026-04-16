@@ -1663,6 +1663,10 @@ def _emit_fills(
         elif fill_type in _GRADIENT_EMIT_MAP:
             gradient_transform = fill.get("gradientTransform")
             if not gradient_transform:
+                # No Plugin API transform — REST handlePositions can't be
+                # converted reliably. Skip the gradient entirely rather
+                # than emitting a wrong matrix. Supplement extraction
+                # populates the correct transform from the Plugin API.
                 continue
             figma_type = _GRADIENT_EMIT_MAP[fill_type]
             stops = fill.get("stops", [])

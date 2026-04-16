@@ -2145,10 +2145,15 @@ class TestLayoutWrapInIR:
 
 
 class TestGradientTransformComputation:
-    """Verify gradientTransform is computed from handlePositions when missing."""
+    """gradientTransform must only come from the Plugin API, never computed
+    from REST handlePositions. The REST→Plugin coordinate convention mapping
+    is lossy and produces wrong gradient scales/orientations."""
 
-    def test_gradient_with_handle_positions_only_gets_transform(self):
-        """When handlePositions present but no gradientTransform, normalize_fills computes it."""
+    def test_handle_positions_alone_do_not_produce_transform(self):
+        """When only handlePositions present (no Plugin API gradientTransform),
+        normalize_fills must NOT compute a gradientTransform. The old formula
+        used different coordinate conventions and produced wrong results
+        (e.g. half-height gradients, wrong orientation)."""
         fills = json.dumps([{
             "type": "GRADIENT_LINEAR",
             "gradientHandlePositions": [
@@ -2163,13 +2168,14 @@ class TestGradientTransformComputation:
         }])
         result = normalize_fills(fills, {})
         assert len(result) == 1
-        gt = result[0].get("gradientTransform")
-        assert gt is not None, "gradientTransform should be computed from handlePositions"
-        # (0,0)→p0, (1,0)→p1, (0,1)→p2
-        assert gt == [[0.0, -0.5, 0.5], [1.0, 0.0, 0.0]]
+        assert "gradientTransform" not in result[0], \
+            "gradientTransform must not be computed from handlePositions"
+        assert "handlePositions" in result[0], \
+            "handlePositions should be preserved for backends that want them"
 
-    def test_gradient_with_existing_transform_not_overwritten(self):
-        """When both gradientTransform and handlePositions exist, existing transform preserved."""
+    def test_plugin_api_gradient_transform_preserved(self):
+        """When gradientTransform exists (from Plugin API supplement extraction),
+        it is preserved as-is. This is the only correct source."""
         fills = json.dumps([{
             "type": "GRADIENT_LINEAR",
             "gradientHandlePositions": [
@@ -2177,16 +2183,16 @@ class TestGradientTransformComputation:
                 {"x": 0.5, "y": 1.0},
                 {"x": 0.0, "y": 0.0},
             ],
-            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "gradientTransform": [[0, 1, 0], [-1, 0, 1]],
             "gradientStops": [
                 {"color": {"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
                 {"color": {"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
             ],
         }])
         result = normalize_fills(fills, {})
-        assert result[0]["gradientTransform"] == [[1, 0, 0], [0, 1, 0]]
+        assert result[0]["gradientTransform"] == [[0, 1, 0], [-1, 0, 1]]
 
-    def test_gradient_without_handle_positions_or_transform_skipped(self):
+    def test_gradient_without_handle_positions_or_transform_still_included(self):
         """Gradient fills with neither handlePositions nor gradientTransform are still included."""
         fills = json.dumps([{
             "type": "GRADIENT_LINEAR",

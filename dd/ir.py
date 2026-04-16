@@ -91,17 +91,15 @@ def normalize_fills(
             # Preserve Plugin API gradientTransform when available (added by
             # supplement extraction). Both representations are stored so each
             # renderer can use whichever maps best to its target format.
+            # gradientTransform: ONLY from Plugin API (supplement extraction).
+            # The REST API handlePositions and Plugin API gradientTransform
+            # use different coordinate conventions. Computing one from the
+            # other produces wrong gradient scale/orientation (e.g. half-height
+            # gradients, wrong axis mapping). handlePositions are preserved
+            # separately for backends that want to do their own math.
             gradient_transform = fill.get("gradientTransform")
             if gradient_transform:
                 entry["gradientTransform"] = gradient_transform
-            elif handle_positions and len(handle_positions) >= 3:
-                # Compute gradientTransform from REST API handlePositions.
-                # Maps gradient space (0,0)→p0, (1,0)→p1, (0,1)→p2.
-                p0, p1, p2 = handle_positions[0], handle_positions[1], handle_positions[2]
-                entry["gradientTransform"] = [
-                    [p1["x"] - p0["x"], p2["x"] - p0["x"], p0["x"]],
-                    [p1["y"] - p0["y"], p2["y"] - p0["y"], p0["y"]],
-                ]
             if paint_opacity < 1.0:
                 entry["opacity"] = paint_opacity
             result.append(entry)
