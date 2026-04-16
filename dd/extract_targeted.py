@@ -300,6 +300,102 @@ def apply_targeted(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) ->
     }
 
 
+def generate_transforms_script(screen_node_ids: list[str]) -> str:
+    """Generate JS to collect relativeTransform from rotated nodes
+    and styledTextSegments with OpenType features from TEXT nodes."""
+    ids_json = json.dumps(screen_node_ids)
+
+    return f'''
+const screenIds = {ids_json};
+const result = {{}};
+
+function safeRead(node, prop) {{
+  try {{ const v = node[prop]; return v === undefined ? undefined : v; }}
+  catch(e) {{ return undefined; }}
+}}
+
+async function walkNode(node) {{
+  const entry = {{}};
+
+  // relativeTransform for rotated nodes — distinguishes mirrors from rotations
+  const rot = safeRead(node, 'rotation');
+  if (rot !== undefined && rot !== 0) {{
+    const rt = safeRead(node, 'relativeTransform');
+    if (rt) {{
+      entry.rt = [[rt[0][0], rt[0][1], rt[0][2]], [rt[1][0], rt[1][1], rt[1][2]]];
+    }}
+  }}
+
+  // OpenType features per styled text segment
+  if (node.type === 'TEXT') {{
+    try {{
+      const segs = node.getStyledTextSegments(['openTypeFeatures']);
+      const otSegs = [];
+      for (const seg of segs) {{
+        const feats = seg.openTypeFeatures;
+        if (feats && Object.keys(feats).length > 0) {{
+          otSegs.push({{ s: seg.start, e: seg.end, f: feats }});
+        }}
+      }}
+      if (otSegs.length > 0) entry.ot = otSegs;
+    }} catch(e) {{}}
+  }}
+
+  if (Object.keys(entry).length > 0) {{
+    result[node.id] = entry;
+  }}
+
+  if ('children' in node) {{
+    for (const child of node.children) {{
+      await walkNode(child);
+    }}
+  }}
+}}
+
+for (const sid of screenIds) {{
+  const screen = await figma.getNodeByIdAsync(sid);
+  if (screen) {{
+    await walkNode(screen);
+  }}
+}}
+
+return result;
+'''
+
+
+def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) -> dict[str, int]:
+    """Apply relativeTransform and OpenType features to the nodes table."""
+    rt_count = 0
+    ot_count = 0
+
+    for figma_node_id, fields in data.items():
+        updates: dict[str, Any] = {}
+
+        if "rt" in fields:
+            updates["relative_transform"] = json.dumps(fields["rt"])
+            rt_count += 1
+
+        if "ot" in fields:
+            updates["opentype_features"] = json.dumps(fields["ot"])
+            ot_count += 1
+
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [figma_node_id]
+            conn.execute(
+                f"UPDATE nodes SET {set_clause} WHERE figma_node_id = ?",
+                values,
+            )
+
+    conn.commit()
+
+    return {
+        "relative_transform": rt_count,
+        "opentype_features": ot_count,
+        "total_nodes_updated": rt_count + ot_count,
+    }
+
+
 def run_targeted(
     conn: sqlite3.Connection,
     execute_fn: Any,
@@ -332,6 +428,10 @@ def run_targeted(
             "font_style": 0, "text_case": 0, "text_decoration": 0,
             "paragraph_spacing": 0, "layout_wrap": 0, "total_nodes_updated": 0,
         }
+    elif mode == "transforms":
+        script_fn = generate_transforms_script
+        apply_fn = apply_transforms
+        totals = {"relative_transform": 0, "opentype_features": 0, "total_nodes_updated": 0}
     else:
         script_fn = generate_targeted_script
         apply_fn = apply_targeted

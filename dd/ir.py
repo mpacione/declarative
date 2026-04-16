@@ -559,6 +559,12 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
     # Mode 1 path 2 eligibility and emitting degraded_to_mode2 entries.
     if "node_type" not in registry_cols and "node_type" in node_cols:
         registry_cols.append("node_type")
+    # relativeTransform disambiguates mirrors from rotations (ADR session)
+    if "relative_transform" not in registry_cols and "relative_transform" in node_cols:
+        registry_cols.append("relative_transform")
+    # OpenType features per text segment (SUPS, SUBS, LIGA, etc.)
+    if "opentype_features" not in registry_cols and "opentype_features" in node_cols:
+        registry_cols.append("opentype_features")
     # Note: x/y are NOT included here. Position is spatial encoding
     # (absolute canvas coords in DB, parent-relative in IR). Renderers
     # read position from the IR, not from the visual dict.

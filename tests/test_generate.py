@@ -1377,6 +1377,73 @@ class TestEmitVisualAdditiveProperties:
         # REST API stores -π/4 rad → Plugin API expects +45°
         assert float(format_js_value(-math.pi / 4, "number_radians")) == pytest.approx(45.0)
 
+    def test_relative_transform_emitted_instead_of_rotation_for_mirrors(self):
+        """When relative_transform is available AND indicates a mirror
+        (determinant of 2x2 submatrix = -1), emit relativeTransform
+        instead of rotation. Without this, a horizontal mirror is
+        indistinguishable from a 180° rotation at the scalar level."""
+        import math
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        # Horizontal mirror: [[-1, 0, tx], [0, +1, ty]]
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "rotation": math.pi,  # lossy: reports ±180° for both rotation and mirror
+                "relative_transform": json.dumps([[-1, 0, 166], [0, 1, 8]]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "relativeTransform" in script, "mirror should use relativeTransform"
+        assert "rotation = " not in script.split("relativeTransform")[0].split("frame-1")[-1], \
+            "rotation should not be emitted when relativeTransform is used"
+
+    def test_relative_transform_not_used_for_pure_rotation(self):
+        """When relative_transform indicates a pure rotation (det = +1),
+        the normal rotation emission path is fine — no need for the matrix."""
+        import math
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        # Pure 45° rotation: det = cos²+sin² = +1
+        c = math.cos(math.radians(45))
+        s = math.sin(math.radians(45))
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "rotation": math.radians(45),
+                "relative_transform": json.dumps([[c, -s, 0], [s, c, 0]]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "rotation = -45.0" in script or "rotation = -44.99" in script
+
+    def test_opentype_features_emitted_after_characters(self):
+        """OpenType features (SUPS, SUBS, etc.) must be applied after
+        .characters is set via setRangeOpenTypeFeatures()."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["text-1"]},
+            "text-1": {"type": "text", "props": {"text": "-250"}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "text-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "opentype_features": json.dumps([{"s": 3, "e": 4, "f": {"SUPS": True}}]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "setRangeOpenTypeFeatures" in script
+        assert "SUPS" in script
+
     def test_emit_constraints(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["frame-1"]},

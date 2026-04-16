@@ -1103,6 +1103,27 @@ def generate_figma_script(
             else:
                 raw_visual = {}
                 visual = {}
+
+            # Mirror detection: when relative_transform is available and
+            # its 2x2 submatrix has determinant = -1, the transform is a
+            # reflection (mirror). Figma's scalar .rotation is lossy for
+            # mirrors — setting .rotation = -180 produces a true rotation
+            # (both axes flipped) instead of the intended single-axis flip.
+            # In this case, suppress the registry-driven rotation emission
+            # and emit relativeTransform directly instead.
+            rt_json = raw_visual.get("relative_transform")
+            if rt_json and visual.get("rotation") is not None:
+                rt = json.loads(rt_json) if isinstance(rt_json, str) else rt_json
+                if isinstance(rt, list) and len(rt) == 2:
+                    det = rt[0][0] * rt[1][1] - rt[0][1] * rt[1][0]
+                    if det < 0:  # mirror — suppress rotation, emit matrix
+                        visual.pop("rotation", None)
+                        phase1_lines.append(
+                            f"{var}.relativeTransform = "
+                            f"[[{rt[0][0]},{rt[0][1]},{rt[0][2]}],"
+                            f"[{rt[1][0]},{rt[1][1]},{rt[1][2]}]];"
+                        )
+
             figma_type = ir_to_figma_type(etype)
             visual_lines, visual_refs = _emit_visual(
                 var, eid, visual, tokens, node_type=figma_type,
@@ -1221,6 +1242,28 @@ def generate_figma_script(
                 f'{_var}.characters = "{_text}";',
                 eid, "text_set_failed",
             ))
+            # OpenType features: apply per-character features (SUPS, SUBS,
+            # LIGA, etc.) after .characters is set. These are visual
+            # glyph substitutions — e.g. "0" with SUPS renders as "°".
+            if db_visuals is not None:
+                _nid = spec.get("_node_id_map", {}).get(eid)
+                _nv = db_visuals.get(_nid, {}) if _nid else {}
+                ot_json = _nv.get("opentype_features")
+                if ot_json:
+                    ot_segs = json.loads(ot_json) if isinstance(ot_json, str) else ot_json
+                    if isinstance(ot_segs, list):
+                        for seg in ot_segs:
+                            s, e = seg.get("s", 0), seg.get("e", 0)
+                            feats = seg.get("f", {})
+                            if feats and s < e:
+                                feats_js = ", ".join(
+                                    f"{k}: {'true' if v else 'false'}"
+                                    for k, v in feats.items()
+                                )
+                                phase2_lines.append(_guarded_op(
+                                    f'{_var}.setRangeOpenTypeFeatures({s}, {e}, {{{feats_js}}});',
+                                    eid, "text_set_failed",
+                                ))
 
         parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
