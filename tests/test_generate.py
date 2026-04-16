@@ -1431,28 +1431,108 @@ class TestEmitVisualAdditiveProperties:
             f"Got rt_pos={rt_pos}, append_pos={append_pos}"
         )
 
-    def test_relative_transform_not_used_for_pure_rotation(self):
-        """When relative_transform indicates a pure rotation (det = +1),
-        the normal rotation emission path is fine — no need for the matrix."""
+    def test_relative_transform_used_for_pure_rotation(self):
+        """Pure rotations also need relativeTransform — setting .rotation +
+        .x + .y on a rotated node is ambiguous about the pivot and produces
+        wrong AABB positions. Plugin API's .x/.y write the transform's
+        translation column, and the DB stores parent-relative coords that
+        assume identity-rotation parents. Use relativeTransform whenever
+        the 2x2 submatrix is non-identity."""
         import math
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["frame-1"]},
             "frame-1": {"type": "container"},
         })
         spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
-        # Pure 45° rotation: det = cos²+sin² = +1
-        c = math.cos(math.radians(45))
-        s = math.sin(math.radians(45))
+        # 90° rotation: relativeTransform = [[0,-1,tx],[1,0,ty]]
         db_visuals = {
             -1: {"bindings": []},
             -2: {
-                "rotation": math.radians(45),
-                "relative_transform": json.dumps([[c, -s, 0], [s, c, 0]]),
+                "rotation": math.pi / 2,
+                "relative_transform": json.dumps([[0, -1, 71], [1, 0, 180]]),
                 "bindings": [],
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "rotation = -45.0" in script or "rotation = -44.99" in script
+        assert "relativeTransform" in script, "pure rotation should also use relativeTransform"
+        # rotation must not be emitted (relativeTransform is sufficient)
+        frame_section = script.split('M["frame-1"]')[0]
+        assert ".rotation = " not in frame_section
+
+    def test_vector_without_strokes_clears_default_stroke(self):
+        """figma.createVector() ships with a default 1px black SOLID stroke.
+        Without clearing, nodes that should have no stroke get an unwanted
+        black outline (e.g. Rectangle 22280 on screen 206). Symmetric with
+        the fills=[] default-clearing for bounded shapes."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["vector-1"]},
+            "vector-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "vector-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},  # no strokes
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert ".strokes = [];" in script, \
+            "VECTOR without visible strokes must emit strokes=[] to clear the default black stroke"
+
+    def test_vector_with_visible_strokes_preserved(self):
+        """When VECTOR has visible strokes in DB, emit them — don't clear."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["vector-1"]},
+            "vector-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "vector-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "strokes": json.dumps([{
+                    "type": "SOLID", "color": {"r": 1, "g": 0, "b": 0}, "visible": True
+                }]),
+                "stroke_weight": 2,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "strokes = [{" in script, "visible strokes must be emitted"
+        # Should not emit the "clear" line in addition
+        assert script.count(".strokes = ") == 1
+
+    def test_rectangle_no_stroke_clearing_needed(self):
+        """RECTANGLE/ELLIPSE default to strokes=[] already, no clearing."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["rect-1"]},
+            "rect-1": {"type": "rectangle"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "rect-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # n1 here is the rect. Should NOT emit n1.strokes = []
+        rect_section = script[script.find("n1 = figma.createRectangle"):script.find('M["rect-1"]')]
+        assert ".strokes = " not in rect_section
+
+    def test_identity_transform_no_relative_transform(self):
+        """When relative_transform's 2x2 is identity (no rotation/mirror),
+        skip it entirely — ordinary .x/.y positioning handles it."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "rotation": 0,
+                "relative_transform": json.dumps([[1, 0, 50], [0, 1, 100]]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "relativeTransform" not in script
 
     def test_opentype_sups_substituted_with_degree_symbol(self):
         """Figma's Plugin API has getRangeOpenTypeFeatures but NO setter,

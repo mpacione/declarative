@@ -301,8 +301,16 @@ def apply_targeted(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) ->
 
 
 def generate_transforms_script(screen_node_ids: list[str]) -> str:
-    """Generate JS to collect relativeTransform from rotated nodes
-    and styledTextSegments with OpenType features from TEXT nodes."""
+    """Generate JS to collect Plugin API ground truth:
+    - relativeTransform (2x3 matrix, encodes rotation + mirror + position)
+    - local width/height (Plugin API returns local dims; REST returns AABB)
+    - styledTextSegments with OpenType features
+
+    The local width/height and relativeTransform together are sufficient
+    to reconstruct any node's layout — the REST API's absoluteBoundingBox
+    (stored in width/height columns during initial extraction) is wrong
+    for any node inside a rotated ancestor chain.
+    """
     ids_json = json.dumps(screen_node_ids)
 
     return f'''
@@ -317,13 +325,21 @@ function safeRead(node, prop) {{
 async function walkNode(node) {{
   const entry = {{}};
 
-  // relativeTransform for rotated nodes — distinguishes mirrors from rotations
-  const rot = safeRead(node, 'rotation');
-  if (rot !== undefined && rot !== 0) {{
-    const rt = safeRead(node, 'relativeTransform');
-    if (rt) {{
-      entry.rt = [[rt[0][0], rt[0][1], rt[0][2]], [rt[1][0], rt[1][1], rt[1][2]]];
-    }}
+  // Local width/height from Plugin API. node.width/height are LOCAL
+  // dimensions (what the user drew). REST API's absoluteBoundingBox
+  // is the world-axis projection of a rotated rect, which inflates
+  // dimensions when the node sits inside a rotated ancestor.
+  const w = safeRead(node, 'width');
+  const h = safeRead(node, 'height');
+  if (typeof w === 'number') entry.w = w;
+  if (typeof h === 'number') entry.h = h;
+
+  // relativeTransform encodes rotation + mirror + parent-relative position.
+  // Capture for every node so the renderer can use it uniformly rather
+  // than reconstructing from scalar rotation + x/y.
+  const rt = safeRead(node, 'relativeTransform');
+  if (rt && rt[0] && rt[1]) {{
+    entry.rt = [[rt[0][0], rt[0][1], rt[0][2]], [rt[1][0], rt[1][1], rt[1][2]]];
   }}
 
   // OpenType features per styled text segment
@@ -364,9 +380,13 @@ return result;
 
 
 def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) -> dict[str, int]:
-    """Apply relativeTransform and OpenType features to the nodes table."""
+    """Apply relativeTransform, local width/height, and OpenType features
+    to the nodes table. Overwrites width/height with Plugin API local
+    values (the REST-extracted absoluteBoundingBox values are wrong for
+    nodes inside rotated ancestors)."""
     rt_count = 0
     ot_count = 0
+    wh_count = 0
 
     for figma_node_id, fields in data.items():
         updates: dict[str, Any] = {}
@@ -378,6 +398,16 @@ def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) 
         if "ot" in fields:
             updates["opentype_features"] = json.dumps(fields["ot"])
             ot_count += 1
+
+        # Overwrite width/height with Plugin API local values.
+        # The initial REST extraction stored absoluteBoundingBox here,
+        # which is wrong for rotated-subtree nodes.
+        if "w" in fields:
+            updates["width"] = fields["w"]
+        if "h" in fields:
+            updates["height"] = fields["h"]
+        if "w" in fields or "h" in fields:
+            wh_count += 1
 
         if updates:
             set_clause = ", ".join(f"{k} = ?" for k in updates)
@@ -392,7 +422,8 @@ def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) 
     return {
         "relative_transform": rt_count,
         "opentype_features": ot_count,
-        "total_nodes_updated": rt_count + ot_count,
+        "width_height": wh_count,
+        "total_nodes_updated": max(rt_count, ot_count, wh_count),
     }
 
 
@@ -431,7 +462,7 @@ def run_targeted(
     elif mode == "transforms":
         script_fn = generate_transforms_script
         apply_fn = apply_transforms
-        totals = {"relative_transform": 0, "opentype_features": 0, "total_nodes_updated": 0}
+        totals = {"relative_transform": 0, "opentype_features": 0, "width_height": 0, "total_nodes_updated": 0}
     else:
         script_fn = generate_targeted_script
         apply_fn = apply_targeted

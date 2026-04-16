@@ -901,14 +901,16 @@ def generate_figma_script(
     # then layoutSizing sets the final width, then HEIGHT locks it.
     # See comment in Phase 1 text branch for the defect this avoids.
     text_autoresize_deferred: dict[str, str] = {}
-    # Deferred relativeTransform (for horizontal/vertical mirrors).
-    # Must be set AFTER appendChild — the translation component is
-    # parent-relative, and Figma recomputes it to preserve world-space
-    # position when the node's parent changes. Setting in Phase 1 (before
-    # appendChild) applies the translation in page space, then Phase 2
-    # appendChild re-writes it to keep the node at the same world point,
-    # effectively discarding the intended parent-relative position.
-    mirror_by_eid: dict[str, tuple[str, list]] = {}
+    # Deferred relativeTransform (for ANY non-identity 2x2 — mirrors AND
+    # rotations). Must be set AFTER appendChild:
+    # (a) The translation component is parent-relative; Figma recomputes
+    #     it on appendChild to preserve world-space position.
+    # (b) Setting .rotation + .x + .y on the Plugin API writes the
+    #     transform's translation column, NOT the AABB corner. The DB
+    #     stores parent-relative coords assuming identity-rotation parents,
+    #     which is wrong for any rotated ancestor chain.
+    # Emitting the full matrix after wiring sidesteps both.
+    deferred_transform_by_eid: dict[str, tuple[str, list]] = {}
 
     # -----------------------------------------------------------------------
     # Phase 1: Materialize — create all nodes with intrinsic properties
@@ -1151,22 +1153,28 @@ def generate_figma_script(
                 raw_visual = {}
                 visual = {}
 
-            # Mirror detection: when relative_transform is available and
-            # its 2x2 submatrix has determinant = -1, the transform is a
-            # reflection (mirror). Figma's scalar .rotation is lossy for
-            # mirrors — setting .rotation = -180 produces a true rotation
-            # (both axes flipped) instead of the intended single-axis flip.
-            # In this case, suppress the registry-driven rotation emission
-            # and defer relativeTransform emission to Phase 3 (after
-            # appendChild). See mirror_by_eid declaration for why.
+            # Transform detection: when relative_transform is available
+            # and its 2x2 submatrix is non-identity (any rotation OR
+            # mirror), defer relativeTransform emission to Phase 3.
+            # Covers both:
+            #   - Mirrors (det = -1): .rotation can't represent them
+            #   - Pure rotations (det = +1, 2x2 ≠ identity): .rotation +
+            #     .x/.y is ambiguous about pivot and produces wrong AABB
+            # See deferred_transform_by_eid declaration for full details.
             rt_json = raw_visual.get("relative_transform")
-            if rt_json and visual.get("rotation") is not None:
+            if rt_json:
                 rt = json.loads(rt_json) if isinstance(rt_json, str) else rt_json
                 if isinstance(rt, list) and len(rt) == 2:
-                    det = rt[0][0] * rt[1][1] - rt[0][1] * rt[1][0]
-                    if det < 0:  # mirror — suppress rotation, defer matrix emission
+                    # 2x2 is identity iff [a,b,c,d] ≈ [1,0,0,1]
+                    m00, m01 = rt[0][0], rt[0][1]
+                    m10, m11 = rt[1][0], rt[1][1]
+                    is_identity = (
+                        abs(m00 - 1) < 1e-9 and abs(m01) < 1e-9
+                        and abs(m10) < 1e-9 and abs(m11 - 1) < 1e-9
+                    )
+                    if not is_identity:
                         visual.pop("rotation", None)
-                        mirror_by_eid[eid] = (var, rt)
+                        deferred_transform_by_eid[eid] = (var, rt)
 
             figma_type = ir_to_figma_type(etype)
             visual_lines, visual_refs = _emit_visual(
@@ -1185,6 +1193,17 @@ def generate_figma_script(
             # If the DB has no visible fills, the original was transparent.
             if not is_text and not visual.get("fills"):
                 phase1_lines.append(f"{var}.fills = [];")
+
+            # Clear default strokes on path-based nodes (VECTOR, LINE).
+            # figma.createVector() and figma.createLine() ship with a
+            # default 1px black SOLID stroke so newly-created nodes are
+            # visible. When the DB has no visible strokes, the original
+            # was stroke-less — emit strokes=[] to match. Symmetric with
+            # the fills=[] clearing above. Bounded shapes (RECTANGLE,
+            # ELLIPSE, etc.) default to strokes=[] already, no clearing
+            # needed there.
+            if figma_type in ("VECTOR", "LINE") and not visual.get("strokes"):
+                phase1_lines.append(f"{var}.strokes = [];")
 
             # Clear default clipsContent on frames. createFrame() defaults
             # to clipsContent=true. When the DB has no value (NULL), emit
@@ -1352,8 +1371,12 @@ def generate_figma_script(
                 phase3_lines.append(_guarded_op(
                     f"{var}.resize({var}.width, {round(ph, 2)});", eid, "resize_failed",
                 ))
+            # Skip .x/.y when a full relativeTransform will be emitted
+            # below — the matrix includes translation, and scalar .x/.y
+            # setters write the SAME translation column, which is then
+            # overwritten. Emit one or the other, never both.
             position = element.get("layout", {}).get("position")
-            if position:
+            if position and eid not in deferred_transform_by_eid:
                 phase3_lines.append(_guarded_op(
                     f"{var}.x = {position.get('x', 0)};", eid, "position_failed",
                 ))
@@ -1361,13 +1384,14 @@ def generate_figma_script(
                     f"{var}.y = {position.get('y', 0)};", eid, "position_failed",
                 ))
 
-        # Mirror transforms: emit relativeTransform AFTER appendChild and
-        # position. The Plugin API's relativeTransform is parent-relative;
-        # setting it here (Phase 3) ensures the parent is already wired so
-        # the translation component isn't recomputed to preserve world-space
-        # position (which was dropping mirrored images outside their parents).
-        if eid in mirror_by_eid:
-            _var, _rt = mirror_by_eid[eid]
+        # Deferred transforms: emit relativeTransform AFTER appendChild and
+        # (suppressed) position. Covers both mirrors and pure rotations.
+        # The Plugin API's relativeTransform is parent-relative; setting
+        # it here ensures the parent is already wired so the translation
+        # component isn't recomputed. Replaces scalar rotation + x/y
+        # emission which is broken for rotated nodes.
+        if eid in deferred_transform_by_eid:
+            _var, _rt = deferred_transform_by_eid[eid]
             phase3_lines.append(_guarded_op(
                 f"{_var}.relativeTransform = "
                 f"[[{_rt[0][0]},{_rt[0][1]},{_rt[0][2]}],"
