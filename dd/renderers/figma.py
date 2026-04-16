@@ -111,7 +111,7 @@ def font_weight_to_style(weight: Any) -> str:
 _SEMIBOLD_NO_SPACE = frozenset({"SF Pro", "SF Pro Text", "SF Pro Display"})
 
 # Font families where "Semi Bold" should be "SemiBold" (camelCase)
-_SEMIBOLD_CAMEL = frozenset({"Baskerville"})
+_SEMIBOLD_CAMEL = frozenset({"Baskerville", "Inter Variable"})
 
 
 def normalize_font_style(family: str, style: str) -> str:
@@ -422,10 +422,14 @@ def _guarded_op(op: str, eid: str, kind: str) -> str:
 def _normalize_font_family(family: str) -> str:
     """Normalize font family names for Figma compatibility.
 
-    Figma uses "Inter" not "Inter Variable" for the variable font.
+    Historically this normalized "Inter Variable" → "Inter" on the
+    assumption they're interchangeable. They are not — Inter and
+    Inter Variable have slightly different glyph metrics (~1px drift
+    on some characters). For a "Medium" label at 17pt in an 86px-wide
+    FIXED parent (inner 66px), the 1px overflow caused a 2-line wrap.
+    Preserve the source family verbatim; font availability is the
+    responsibility of the Figma environment's font loader.
     """
-    if family == "Inter Variable":
-        return "Inter"
     return family
 
 
@@ -1456,6 +1460,23 @@ def generate_figma_script(
             phase2_lines.append(f"const {gvar} = figma.createFrame();")
             phase2_lines.append(f"{gp_var}.appendChild({gvar});")
 
+        # Z-order: figma.group() always appends the new group at the END
+        # of its parent's children. For groups that aren't the last
+        # sibling (common: illustration groups sitting mid-stack under
+        # overlays/chrome), this moves them on top of everything. Fix:
+        # insertChild the group at its intended sort_order. We compute
+        # this from the parent element's children list in the IR.
+        gp_element = spec.get("elements", {}).get(gp_eid)
+        if gp_element is not None:
+            gp_children = gp_element.get("children") or []
+            if group_eid in gp_children:
+                target_idx = gp_children.index(group_eid)
+                if target_idx != len(gp_children) - 1:
+                    phase2_lines.append(_guarded_op(
+                        f"{gp_var}.insertChild({target_idx}, {gvar});",
+                        group_eid, "position_failed",
+                    ))
+
         phase2_lines.append(f'{gvar}.name = "{_escape_js(original_name)}";')
         var_map[group_eid] = gvar
         phase2_lines.append(f'M["{_escape_js(group_eid)}"] = {gvar}.id;')
@@ -1618,12 +1639,28 @@ def _emit_layout(
 
     w = sizing.get("width")
     h = sizing.get("height")
-    # Emit resize() for pixel dimensions. For semantic sizing (hug/fill),
-    # pixel dimensions are stored as widthPixels/heightPixels but NOT used
-    # for resize here — auto-layout frames derive size from content/parent.
-    # The post-appendChild path sets layoutSizing when parent context is known.
+    # Always emit resize() with ground-truth pixel dimensions — even for
+    # semantic sizing (HUG/FILL). The pixel dims act as a SEED:
+    # - For HUG: if Figma's HUG recompute triggers, it overrides the seed.
+    #   If it doesn't (e.g. empty or only-invisible children), the seed
+    #   preserves the source dimensions instead of the createFrame() default.
+    # - For FILL: parent-context sizing will override once layoutSizing
+    #   is applied post-appendChild, but the seed prevents mid-render
+    #   width=0 artifacts.
+    # - For pixel: this is the only source of truth, no override needed.
+    # Architecturally: the IR's widthPixels/heightPixels ARE the ground
+    # truth dimensions. Semantic sizing is a layout hint, not a size source.
     rw = round(w, 2) if isinstance(w, (int, float)) else None
     rh = round(h, 2) if isinstance(h, (int, float)) else None
+    # Fall back to widthPixels/heightPixels when width/height is semantic
+    if rw is None:
+        pw = sizing.get("widthPixels")
+        if isinstance(pw, (int, float)):
+            rw = round(pw, 2)
+    if rh is None:
+        ph = sizing.get("heightPixels")
+        if isinstance(ph, (int, float)):
+            rh = round(ph, 2)
     # Text-node guard: in WIDTH_AND_HEIGHT auto-resize mode, the node's
     # size is derived from content. Calling resize() has the Plugin API
     # side effect of flipping autoResize to HEIGHT, which locks the
@@ -1691,17 +1728,42 @@ _GRADIENT_EMIT_MAP = {
 def _emit_vector_paths(
     var: str, raw_visual: dict[str, Any], lines: list[str]
 ) -> None:
-    """Emit vectorPaths assignment from asset ref SVG data."""
+    """Emit vectorPaths assignment from asset ref SVG data.
+
+    Priority: structured `svg_paths` (array of {windingRule, data})
+    over legacy `svg_data` (concatenated string, single winding).
+    Structured form preserves per-path windingRule — critical for
+    windingRule="NONE" stroke-only vectors whose fill would otherwise
+    render as a filled polygon of the expanded-stroke outline.
+    """
     asset_refs = raw_visual.get("_asset_refs", [])
-    svg_paths = [
-        ref["svg_data"]
-        for ref in asset_refs
-        if ref.get("kind") in ("svg_path", "svg_doc") and ref.get("svg_data")
-    ]
-    if svg_paths:
+    structured_paths: list[dict[str, Any]] = []
+    legacy_svg_data: list[str] = []
+
+    for ref in asset_refs:
+        if ref.get("kind") not in ("svg_path", "svg_doc"):
+            continue
+        sp = ref.get("svg_paths")
+        if isinstance(sp, list) and sp:
+            structured_paths.extend(sp)
+        elif ref.get("svg_data"):
+            legacy_svg_data.append(ref["svg_data"])
+
+    if structured_paths:
+        # Preserve per-path windingRule. "NONE" is a first-class value
+        # meaning "this path has no fillable regions" — the Figma Plugin
+        # API respects it and won't fill the path even if fills are set.
+        path_entries = ", ".join(
+            f'{{windingRule: "{p.get("windingRule", "NONZERO")}", '
+            f'data: "{_escape_js(p.get("data", ""))}"}}'
+            for p in structured_paths
+        )
+        lines.append(f"{var}.vectorPaths = [{path_entries}];")
+    elif legacy_svg_data:
+        # Backward compat for pre-supplement data: single winding assumed
         path_entries = ", ".join(
             f'{{windingRule: "NONZERO", data: "{_escape_js(p)}"}}'
-            for p in svg_paths
+            for p in legacy_svg_data
         )
         lines.append(f"{var}.vectorPaths = [{path_entries}];")
 

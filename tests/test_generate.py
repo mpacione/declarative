@@ -1402,6 +1402,187 @@ class TestEmitVisualAdditiveProperties:
         assert "rotation = " not in script.split("relativeTransform")[0].split("frame-1")[-1], \
             "rotation should not be emitted when relativeTransform is used"
 
+    def test_vector_paths_emit_per_path_winding_rule(self):
+        """vectorPaths with windingRule='NONE' must be emitted as NONE,
+        not coerced to NONZERO. NONE means 'no fillable regions' — a
+        stroke-only vector. Coercing to NONZERO makes Figma fill the
+        expanded-stroke outline, producing a black blob instead of an
+        L-shape."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["vector-1"]},
+            "vector-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "vector-1": -2}
+        # Asset ref carries structured svg_paths with per-path windingRule
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "bindings": [],
+                "_asset_refs": [{
+                    "kind": "svg_path",
+                    "svg_paths": [{
+                        "windingRule": "NONE",
+                        "data": "M 0 0 L 14 0 L 14 14 L 8 14 L 8 6 L 0 6 L 0 0 Z",
+                    }],
+                }],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'windingRule: "NONE"' in script, \
+            "NONE winding must be preserved, not coerced to NONZERO"
+
+    def test_vector_paths_emit_mixed_winding(self):
+        """Multiple paths with different windings (NONZERO + EVENODD)
+        must each emit their own windingRule, not be merged."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["vector-1"]},
+            "vector-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "vector-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "bindings": [],
+                "_asset_refs": [{
+                    "kind": "svg_path",
+                    "svg_paths": [
+                        {"windingRule": "NONZERO", "data": "M 0 0 L 10 0 Z"},
+                        {"windingRule": "EVENODD", "data": "M 5 5 L 15 5 Z"},
+                    ],
+                }],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'windingRule: "NONZERO"' in script
+        assert 'windingRule: "EVENODD"' in script
+
+    def test_legacy_svg_data_still_works(self):
+        """Backward compat: pre-supplement data stored in svg_data
+        (single string, no per-path winding) still renders with NONZERO
+        default, unchanged behavior."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["vector-1"]},
+            "vector-1": {"type": "vector"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "vector-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "bindings": [],
+                "_asset_refs": [{
+                    "kind": "svg_path",
+                    "svg_data": "M 0 0 L 10 0 L 10 10 L 0 10 Z",
+                    # No svg_paths — legacy data
+                }],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'windingRule: "NONZERO"' in script
+
+    def test_group_node_type_preserved_over_canonical_classification(self):
+        """A Figma GROUP classified by the SCI heuristic as 'container'
+        (e.g. because it's named 'Group') must still be emitted as a
+        GROUP semantic — figma.group() preserves the transparent-transform
+        semantics that GROUP children rely on. Emitting createFrame()
+        would break child coordinates (GROUP children are in the
+        grandparent's coord space)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["group-1"]},
+        })
+        # Simulate: DB has GROUP node_type but SCI classifier named it container
+        # We verify by checking the IR pipeline through build_composition_spec
+        # — but we can also validate directly via _resolve_element_type
+        from dd.ir import _resolve_element_type
+        node_group = {"node_type": "GROUP", "canonical_type": "container", "name": "Group"}
+        node_frame_as_container = {"node_type": "FRAME", "canonical_type": "container", "name": "Card"}
+        node_vector = {"node_type": "VECTOR", "name": "icon"}
+        assert _resolve_element_type(node_group) == "group", \
+            "GROUP node_type must always resolve to 'group' IR type"
+        assert _resolve_element_type(node_frame_as_container) == "container", \
+            "FRAME classifier heuristic should still work"
+        assert _resolve_element_type(node_vector) == "vector", \
+            "Other node_types fall back to canonical_type or lowercased node_type"
+
+    def test_group_insertChild_at_sort_order_for_zorder(self):
+        """figma.group() always appends the new group at the end of its
+        parent's children. For a group that sits mid-stack (not last),
+        insertChild must be called to restore the correct z-order."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1", "group-1", "frame-2"]},
+            "frame-1": {"type": "container"},
+            "group-1": {"type": "group", "children": ["rect-1"]},
+            "rect-1": {"type": "rectangle"},
+            "frame-2": {"type": "container"},
+        })
+        script, _ = generate_figma_script(spec)
+        # group-1 is at index 1 of screen-1's children (of 3)
+        # After figma.group(), it lands last (index 2). We must insertChild(1, ...)
+        assert "insertChild(1," in script, \
+            "Mid-stack group must be re-inserted at correct sort_order index"
+
+    def test_group_last_child_no_insertChild(self):
+        """When a group IS the last child in its parent, figma.group()
+        already puts it in the right z-order, no insertChild needed."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1", "group-1"]},
+            "frame-1": {"type": "container"},
+            "group-1": {"type": "group", "children": ["rect-1"]},
+            "rect-1": {"type": "rectangle"},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "insertChild" not in script
+
+    def test_hug_sizing_emits_pixel_seed(self):
+        """HUG sizing must emit resize() with widthPixels/heightPixels as
+        seed values. Figma's HUG doesn't re-measure after appendChild of
+        invisible-only children — without a seed, the frame stays at the
+        createFrame() default 100px. With a seed, the DB's ground-truth
+        dimensions survive even when HUG recompute doesn't trigger."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container", "layout": {
+                "direction": "vertical",
+                "sizing": {
+                    "height": "hug", "heightPixels": 40,
+                    "width": "fill", "widthPixels": 100,
+                },
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(100, 40)" in script, \
+            "HUG/FILL sizing must emit resize() with pixel seed values"
+
+    def test_fill_sizing_emits_pixel_seed(self):
+        """FILL sizing also emits pixel seed — parent-context sizing
+        overrides post-appendChild via layoutSizing."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container", "layout": {
+                "direction": "vertical",
+                "sizing": {
+                    "height": "fill", "heightPixels": 200,
+                    "width": "fill", "widthPixels": 300,
+                },
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "resize(300, 200)" in script
+
+    def test_semantic_sizing_without_pixels_skips_resize(self):
+        """When neither pixel dims nor numeric width/height present,
+        no resize() is emitted (unchanged behavior for pre-supplement data)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container", "layout": {
+                "direction": "vertical",
+                "sizing": {"height": "hug", "width": "fill"},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        # n1 is the frame; should have no resize call
+        frame_section = script[script.find("n1 = figma.createFrame"):script.find('M["frame-1"]')]
+        assert "resize" not in frame_section
+
     def test_relative_transform_emitted_after_appendchild(self):
         """relativeTransform's translation is parent-relative. Figma
         recomputes the translation to preserve world-space position when
@@ -1605,8 +1786,12 @@ class TestEmitVisualAdditiveProperties:
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert '"Inter"' in script  # Inter Variable normalized to Inter
-        assert '"Semi Bold"' in script  # weight 600 → Semi Bold
+        # "Inter Variable" and "Inter" have subtly different glyph metrics
+        # (~1px wider for some chars). Preserve the source family verbatim.
+        assert '"Inter Variable"' in script
+        # Inter Variable uses "SemiBold" (no space) for weight 600,
+        # distinct from Inter's "Semi Bold" (with space)
+        assert '"SemiBold"' in script
         assert "fontSize = 16" in script
 
     def test_mode2_text_defaults_when_no_font(self):

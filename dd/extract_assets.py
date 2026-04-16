@@ -120,10 +120,20 @@ def _hash_svg_paths(paths: list[dict]) -> tuple[str, str]:
 
 
 def process_vector_geometry(conn: sqlite3.Connection) -> int:
-    """Process fill_geometry/stroke_geometry from nodes into content-addressed assets.
+    """Process vector paths into content-addressed assets.
 
-    Reads vector geometry JSON from nodes, hashes path data, stores as svg_path
-    assets, and links nodes via node_asset_refs.
+    Priority order for path source (authoring truth first):
+    1. `vector_paths` column — Plugin API's node.vectorPaths, the
+       authoring primitive. Preserves per-path windingRule including
+       NONE (stroke-only, fill suppressed). THIS IS THE CORRECT SOURCE.
+    2. `fill_geometry` + `stroke_geometry` columns — Figma's derived
+       outline/expansion. Fallback for nodes where vectorPaths wasn't
+       captured (BOOLEAN_OPERATION or pre-supplement data).
+
+    Stores structured `svg_paths` in asset metadata as a JSON array of
+    `{windingRule, data}` objects — preserves per-path winding for the
+    renderer to emit faithfully. Legacy `svg_data` (concatenated string,
+    single winding) retained for backward compat with pre-migration data.
 
     Returns the number of nodes processed.
     """
@@ -131,33 +141,58 @@ def process_vector_geometry(conn: sqlite3.Connection) -> int:
     if "fill_geometry" not in has_columns:
         return 0
 
-    rows = conn.execute(
-        "SELECT id, fill_geometry, stroke_geometry FROM nodes "
-        "WHERE fill_geometry IS NOT NULL OR stroke_geometry IS NOT NULL"
-    ).fetchall()
+    has_vp = "vector_paths" in has_columns
+    if has_vp:
+        rows = conn.execute(
+            "SELECT id, vector_paths, fill_geometry, stroke_geometry FROM nodes "
+            "WHERE vector_paths IS NOT NULL OR fill_geometry IS NOT NULL "
+            "OR stroke_geometry IS NOT NULL"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, fill_geometry, stroke_geometry FROM nodes "
+            "WHERE fill_geometry IS NOT NULL OR stroke_geometry IS NOT NULL"
+        ).fetchall()
 
     processed = 0
     for row in rows:
         node_id = row["id"]
         all_paths: list[dict] = []
 
-        fg = row["fill_geometry"]
-        if fg:
-            all_paths.extend(json.loads(fg))
-
-        sg = row["stroke_geometry"]
-        if sg:
-            all_paths.extend(json.loads(sg))
+        # Prefer vector_paths (authoring truth). Falls back to derived
+        # geometries only when vectorPaths wasn't captured.
+        vp_json = row["vector_paths"] if has_vp else None
+        if vp_json:
+            vp = json.loads(vp_json)
+            # Each entry is {windingRule, data} already — store as-is
+            all_paths.extend(vp)
+        else:
+            fg = row["fill_geometry"]
+            if fg:
+                all_paths.extend(json.loads(fg))
+            sg = row["stroke_geometry"]
+            if sg:
+                all_paths.extend(json.loads(sg))
 
         if not all_paths:
             continue
 
         content_hash, svg_data = _hash_svg_paths(all_paths)
 
+        # Normalize each path for the renderer: preserve per-path winding,
+        # normalize the data string for Figma's strict parser
+        structured = [
+            {
+                "windingRule": p.get("windingRule", "NONZERO"),
+                "data": _normalize_svg_path(p.get("data") or p.get("path", "")),
+            }
+            for p in all_paths
+        ]
+
         store_asset(conn, hash=content_hash, kind="svg_path")
         conn.execute(
             "UPDATE assets SET metadata = ? WHERE hash = ? AND metadata IS NULL",
-            (json.dumps({"svg_data": svg_data}), content_hash),
+            (json.dumps({"svg_data": svg_data, "svg_paths": structured}), content_hash),
         )
 
         conn.execute(

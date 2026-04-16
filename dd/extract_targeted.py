@@ -342,6 +342,23 @@ async function walkNode(node) {{
     entry.rt = [[rt[0][0], rt[0][1], rt[0][2]], [rt[1][0], rt[1][1], rt[1][2]]];
   }}
 
+  // vectorPaths: the authoring-primitive path data. Includes per-path
+  // windingRule ("NONZERO", "EVENODD", or "NONE" for stroke-only vectors).
+  // Plugin API returns structured [{windingRule, data}, ...] arrays.
+  // fillGeometry/strokeGeometry are derivatives (Figma-computed outlines);
+  // using them as the authoring source drops the windingRule=NONE signal
+  // and double-strokes stroke-only vectors.
+  if (node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'POLYGON' ||
+      node.type === 'LINE' || node.type === 'BOOLEAN_OPERATION' || node.type === 'ELLIPSE') {{
+    const vp = safeRead(node, 'vectorPaths');
+    if (vp && Array.isArray(vp) && vp.length > 0) {{
+      entry.vp = vp.map(p => ({{
+        windingRule: p.windingRule || 'NONZERO',
+        data: p.data || ''
+      }}));
+    }}
+  }}
+
   // OpenType features per styled text segment
   if (node.type === 'TEXT') {{
     try {{
@@ -380,13 +397,18 @@ return result;
 
 
 def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) -> dict[str, int]:
-    """Apply relativeTransform, local width/height, and OpenType features
-    to the nodes table. Overwrites width/height with Plugin API local
-    values (the REST-extracted absoluteBoundingBox values are wrong for
-    nodes inside rotated ancestors)."""
+    """Apply relativeTransform, local width/height, OpenType features,
+    and vectorPaths to the nodes table. Overwrites width/height with
+    Plugin API local values (the REST-extracted absoluteBoundingBox
+    values are wrong for rotated-subtree nodes)."""
     rt_count = 0
     ot_count = 0
     wh_count = 0
+    vp_count = 0
+
+    # Check if vector_paths column exists
+    has_cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    has_vp = "vector_paths" in has_cols
 
     for figma_node_id, fields in data.items():
         updates: dict[str, Any] = {}
@@ -409,6 +431,11 @@ def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) 
         if "w" in fields or "h" in fields:
             wh_count += 1
 
+        # vectorPaths: authoring-primitive path data with per-path windingRule
+        if has_vp and "vp" in fields:
+            updates["vector_paths"] = json.dumps(fields["vp"])
+            vp_count += 1
+
         if updates:
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             values = list(updates.values()) + [figma_node_id]
@@ -423,7 +450,8 @@ def apply_transforms(conn: sqlite3.Connection, data: dict[str, dict[str, Any]]) 
         "relative_transform": rt_count,
         "opentype_features": ot_count,
         "width_height": wh_count,
-        "total_nodes_updated": max(rt_count, ot_count, wh_count),
+        "vector_paths": vp_count,
+        "total_nodes_updated": max(rt_count, ot_count, wh_count, vp_count),
     }
 
 
@@ -462,7 +490,7 @@ def run_targeted(
     elif mode == "transforms":
         script_fn = generate_transforms_script
         apply_fn = apply_transforms
-        totals = {"relative_transform": 0, "opentype_features": 0, "width_height": 0, "total_nodes_updated": 0}
+        totals = {"relative_transform": 0, "opentype_features": 0, "width_height": 0, "vector_paths": 0, "total_nodes_updated": 0}
     else:
         script_fn = generate_targeted_script
         apply_fn = apply_targeted

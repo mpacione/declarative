@@ -289,6 +289,22 @@ _LAYOUT_BINDING_PROPERTIES = frozenset({
 })
 
 
+def _resolve_element_type(node: dict[str, Any]) -> str:
+    """Determine the IR element type for a DB node.
+
+    GROUP is special: Figma's transform-transparent group container is a
+    distinct concept from FRAME-based layout containers. The SCI classifier
+    might name-classify a GROUP as "container" (e.g. anything named "Group"),
+    but the renderer needs the GROUP semantic preserved so children get
+    the right coordinate space (grandparent-relative) and the right
+    creation API (figma.group() not figma.createFrame()).
+    """
+    node_type_raw = node.get("node_type", "")
+    if node_type_raw == "GROUP":
+        return "group"
+    return node.get("canonical_type") or node_type_raw.lower() or "frame"
+
+
 def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     """Convert a classified node dict to an IR element.
 
@@ -299,7 +315,7 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     bindings = node.get("bindings", [])
     binding_index = _build_binding_index(bindings)
 
-    resolved_type = node.get("canonical_type") or node.get("node_type", "frame").lower()
+    resolved_type = _resolve_element_type(node)
 
     element: dict[str, Any] = {
         "type": resolved_type,
@@ -776,6 +792,10 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
                     svg_data = metadata.get("svg_data")
                     if svg_data:
                         ref_entry["svg_data"] = svg_data
+                    # Structured per-path data — preserves per-path windingRule
+                    svg_paths = metadata.get("svg_paths")
+                    if svg_paths:
+                        ref_entry["svg_paths"] = svg_paths
                 if "_asset_refs" not in result[nid]:
                     result[nid]["_asset_refs"] = []
                 result[nid]["_asset_refs"].append(ref_entry)
@@ -1238,7 +1258,7 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     elements: dict[str, dict[str, Any]] = {}
 
     for node in nodes:
-        resolved_type = node.get("canonical_type") or node.get("node_type", "frame").lower()
+        resolved_type = _resolve_element_type(node)
         type_counters[resolved_type] = type_counters.get(resolved_type, 0) + 1
         element_id = f"{resolved_type}-{type_counters[resolved_type]}"
 
