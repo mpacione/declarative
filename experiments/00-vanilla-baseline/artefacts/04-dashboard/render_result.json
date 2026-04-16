@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "returncode": 0,
+  "parsed": {
+    "type": "PROXY_EXECUTE_RESULT",
+    "id": "run_1776379673235",
+    "result": {
+      "success": true,
+      "result": {
+        "__phase": "script_error",
+        "error": "object is not extensible",
+        "before": 7,
+        "after": 12
+      }
+    }
+  },
+  "stdout": "[script.js] OK in 56ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776379673235\",\"result\":{\"success\":true,\"result\":{\"__phase\":\"script_error\",\"error\":\"object is not extensible\",\"before\":7,\"after\":12}}}\n",
+  "stderr": "",
+  "elapsed_ms": 97
+}

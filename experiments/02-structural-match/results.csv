@@ -1,0 +1,51 @@
+node_id,query_canonical_type,ground_truth_key,matcher_A_top1,matcher_A_top3,matcher_B_top1,matcher_B_top3,matcher_C_top1,matcher_C_top3,matcher_A_pick_name,matcher_B_pick_name,matcher_C_pick_name
+75534,icon,5decf04810fcb9d8494f7d41858574031763196a,False,False,False,False,True,True,icon/back,icon/back,icon/delete
+81769,icon,97b29e428d96ffa39aa2a51c63d3f1f58ab9fe09,False,False,False,False,False,True,icon/back,icon/back,icon/text-size
+80305,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+22908,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+30041,icon,1e00dac5d7e2eb449cc9bb68fd8068e21338110b,False,False,False,False,True,True,icon/back,icon/back,icon/close
+29029,icon,a32b94437bc23edd5b74a0db8e93bb506ecc5320,False,False,False,False,False,True,icon/back,icon/back,icon/edit
+15564,icon,5decf04810fcb9d8494f7d41858574031763196a,False,False,False,False,True,True,icon/back,icon/back,icon/delete
+51101,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+26015,icon,aed27e60c90b865d62b4d77f51a751e600f31227,False,False,False,False,True,True,icon/back,icon/back,icon/checkbox-filled
+44186,icon,0cfe0c0b32269948a71138a4a27983b4ba02b88a,False,False,False,False,True,True,icon/back,icon/back,icon/menu
+46407,icon,d501d4ad7d871f80fc9114a9fe90665b116d4b47,False,False,False,False,True,True,icon/back,icon/back,icon/rotate
+77887,icon,82a7bd3fef98186322f78f189b5e7e6bef5a6fd4,False,True,False,True,True,True,icon/back,icon/back,icon/chevron-down
+30925,icon,82a7bd3fef98186322f78f189b5e7e6bef5a6fd4,False,True,False,True,True,True,icon/back,icon/back,icon/chevron-down
+15735,icon,1b800e0c9a79376ad58c72f3cf63a5553058fb2b,False,False,False,False,True,True,icon/back,icon/back,icon/undo
+76614,icon,0cfe0c0b32269948a71138a4a27983b4ba02b88a,False,False,False,False,True,True,icon/back,icon/back,icon/menu
+77691,icon,aed27e60c90b865d62b4d77f51a751e600f31227,False,False,False,False,True,True,icon/back,icon/back,icon/checkbox-filled
+56161,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+12382,icon,bb612a9ba7506f22d33a7a37d0afab34b13bc60f,False,False,False,False,True,True,icon/back,icon/back,icon/phone
+22694,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+72517,icon,369b277c2aa36d72ab1ec499230a17a5bd5fe786,False,False,False,False,True,True,icon/back,icon/back,icon/checkbox-empty
+45782,icon,3d92dbb0ef3fb01c863f1329d3c2638d5d680b9e,False,False,False,False,True,True,icon/back,icon/back,icon/mirror-horiz
+2683,icon,902ef5626c2e54aa73fbfdc76c9b6e3f08bfbce6,False,False,False,False,True,True,icon/back,icon/back,icon/font
+71374,icon,c8c55cd89d49d2f825376eab62fa4b25a915392c,False,False,False,False,True,True,icon/back,icon/back,icon/text
+26494,icon,e5b52e4647bd0d968f22a0ce2c09cd14cf2af3ac,True,True,True,True,True,True,icon/back,icon/back,icon/back
+74676,icon,e7ceb36e2404d52c18768fc9b53fec8a07419c65,False,False,False,False,True,True,icon/back,icon/back,icon/wallet
+77551,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+25375,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+45437,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,False,True,button/large/translucent,button/large/translucent,button/small/translucent
+14631,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+81961,button,74a7396ef95439c83d69e125077ecd6afcde1fb4,False,True,True,True,True,True,button/large/translucent,button/small/translucent,button/small/translucent
+66685,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+5009,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+68193,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+31803,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,False,True,button/large/translucent,button/large/translucent,button/small/translucent
+58465,button,689e60bd3db9ef304a9304eb585566a888a18237,True,True,True,True,True,True,button/large/translucent,button/large/translucent,button/large/translucent
+47168,system_chrome,f3d7d39390ea1dd8a181e621090f8dfda713a04d,False,True,False,True,False,True,_Key,_Key,space
+11719,system_chrome,a0c9884e800c7905eb97d16eab5ceebaedd5d0d3,False,False,False,False,True,True,_Key,_Key,ios/safari-nav
+36819,system_chrome,bf9678a08614ebb987091f0e7369112e1a8a2d14,True,True,True,True,True,True,_Key,_Key,_Key
+39774,system_chrome,f3d7d39390ea1dd8a181e621090f8dfda713a04d,False,True,False,True,True,True,_Key,_Key,a
+37190,system_chrome,72270805bed4afe3ac65dbb842dfd1b1cce94cd5,False,True,False,True,True,True,_Key,_Key,_KeyContainer
+60626,system_chrome,64e2079eb138ecc9b2d164fa90d6a06603da3a3d,False,False,False,False,False,True,_Key,_Key,Home Indicator
+40359,system_chrome,4ae03351aa0e143c5062615eb718fbf2be2a0380,False,False,False,False,False,True,_Key,_Key,.?123
+47211,button_group,ce3151936e9f21552d023438df77cffe6b98db1e,False,True,False,True,True,True,Button Set - Trailing,Button Set - Trailing,Button Set - Leading
+46058,button_group,ce3151936e9f21552d023438df77cffe6b98db1e,False,True,False,True,True,True,Button Set - Trailing,Button Set - Trailing,Button Set - Leading
+47198,button_group,09d8e83ebb4fd4e3f7bce2bfb332a1f256f7a304,True,True,True,True,True,True,Button Set - Trailing,Button Set - Trailing,Button Set - Trailing
+40414,button_group,ce3151936e9f21552d023438df77cffe6b98db1e,False,True,False,True,True,True,Button Set - Trailing,Button Set - Trailing,Button Set - Leading
+82423,image,62830d15443d96bd22c8b7ff8da0ba503c38c3a6,True,True,True,True,True,True,logo/dank,logo/dank,logo/dank
+14357,image,62830d15443d96bd22c8b7ff8da0ba503c38c3a6,True,True,True,True,True,True,logo/dank,logo/dank,logo/dank
+31140,header,c14b6a409a519e9352545744ebcd547a213845a5,True,True,True,True,True,True,nav/top-nav,nav/top-nav,nav/top-nav
+6155,tabs,f6b13a46ef7474b26bc97ef8cb3afd791ab23162,True,True,True,True,True,True,nav/tabs,nav/tabs,nav/tabs

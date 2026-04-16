@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Menu"
+      }
+    },
+    "navigation_row-1": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Home"
+      }
+    },
+    "navigation_row-2": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Profile"
+      }
+    },
+    "navigation_row-3": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Settings"
+      }
+    },
+    "navigation_row-4": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Notifications"
+      }
+    },
+    "navigation_row-5": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Help"
+      }
+    },
+    "navigation_row-6": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Sign out"
+      }
+    },
+    "drawer-1": {
+      "type": "drawer",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "navigation_row-1",
+        "navigation_row-2",
+        "navigation_row-3",
+        "navigation_row-4",
+        "navigation_row-5",
+        "navigation_row-6"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "drawer-1"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "header-1": -1,
+    "navigation_row-1": -2,
+    "navigation_row-2": -3,
+    "navigation_row-3": -4,
+    "navigation_row-4": -5,
+    "navigation_row-5": -6,
+    "navigation_row-6": -7,
+    "drawer-1": -8,
+    "screen-1": -9
+  }
+}

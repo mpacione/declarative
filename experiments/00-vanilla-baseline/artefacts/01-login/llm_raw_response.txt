@@ -1,0 +1,10 @@
+[
+  {"type": "header", "props": {"text": "Sign In"}},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Welcome back"}},
+    {"type": "text_input", "props": {"label": "Email"}},
+    {"type": "text_input", "props": {"label": "Password"}},
+    {"type": "button", "props": {"text": "Sign In"}}
+  ]},
+  {"type": "link", "props": {"text": "Forgot password?"}}
+]

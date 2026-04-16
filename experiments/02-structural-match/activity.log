@@ -1,0 +1,40 @@
+2026-04-16T22:48:31Z | pipeline | START | experiment 02 begins
+2026-04-16T22:48:31Z | ckr_load | OK | 129 CKR entries; canonical dist: Counter({'icon': 91, 'system_chrome': 26, 'button': 7, 'button_group': 2, 'image': 1, 'header': 1, 'tabs': 1})
+2026-04-16T22:48:32Z | ckr_enrich | OK | children signatures added
+2026-04-16T22:48:32Z | holdout_sampling | OK | sampled 50 nodes across 7 canonical types
+2026-04-16T22:48:32Z | holdout_written | OK | 50 nodes -> holdout.csv
+2026-04-16T22:48:32Z | queries_built | OK | 50 queries constructed
+2026-04-16T22:48:32Z | embeddings | COMPUTE | encoding 129 new CKR entries (cached=0)
+2026-04-16T22:48:36Z | embedder | LOAD | loading all-MiniLM-L6-v2
+2026-04-16T22:48:39Z | embedder | OK | model loaded
+2026-04-16T22:48:41Z | embeddings_ready | OK | ckr embedding matrix (129, 384)
+2026-04-16T22:48:41Z | matcher_A_eval | OK | A top1=21/50
+2026-04-16T22:48:41Z | matcher_B_eval | OK | B top1=22/50
+2026-04-16T22:48:41Z | matcher_C_eval | OK | C top1=12/50
+2026-04-16T22:48:41Z | pipeline | DONE | summary=[{'matcher': 'A', 'accuracy_at_1': 0.42, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'B', 'accuracy_at_1': 0.44, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'C', 'accuracy_at_1': 0.24, 'accuracy_at_3': 0.4, 'canonical_type_accuracy_at_1': 0.94, 'n': 50}]
+2026-04-16T22:49:59Z | pipeline | START | experiment 02 begins
+2026-04-16T22:49:59Z | ckr_load | OK | 129 CKR entries; canonical dist: Counter({'icon': 91, 'system_chrome': 26, 'button': 7, 'button_group': 2, 'image': 1, 'header': 1, 'tabs': 1})
+2026-04-16T22:50:00Z | ckr_enrich | OK | children signatures added
+2026-04-16T22:50:00Z | holdout_sampling | OK | sampled 50 nodes across 7 canonical types
+2026-04-16T22:50:00Z | holdout_written | OK | 50 nodes -> holdout.csv
+2026-04-16T22:50:00Z | queries_built | OK | 50 queries constructed
+2026-04-16T22:50:00Z | embeddings | COMPUTE | encoding 129 new CKR entries (cached=0)
+2026-04-16T22:50:03Z | embedder | LOAD | loading all-MiniLM-L6-v2
+2026-04-16T22:50:06Z | embedder | OK | model loaded
+2026-04-16T22:50:06Z | embeddings_ready | OK | ckr embedding matrix (129, 384)
+2026-04-16T22:50:06Z | matcher_A_eval | OK | A top1=21/50
+2026-04-16T22:50:06Z | matcher_B_eval | OK | B top1=22/50
+2026-04-16T22:50:07Z | matcher_C_eval | OK | C top1=43/50
+2026-04-16T22:50:07Z | pipeline | DONE | summary=[{'matcher': 'A', 'accuracy_at_1': 0.42, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'B', 'accuracy_at_1': 0.44, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'C', 'accuracy_at_1': 0.86, 'accuracy_at_3': 1.0, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}]
+2026-04-16T22:50:43Z | pipeline | START | experiment 02 begins
+2026-04-16T22:50:43Z | ckr_load | OK | 129 CKR entries; canonical dist: Counter({'icon': 91, 'system_chrome': 26, 'button': 7, 'button_group': 2, 'image': 1, 'header': 1, 'tabs': 1})
+2026-04-16T22:50:44Z | ckr_enrich | OK | children signatures added
+2026-04-16T22:50:44Z | holdout_sampling | OK | sampled 50 nodes across 7 canonical types
+2026-04-16T22:50:44Z | holdout_written | OK | 50 nodes -> holdout.csv
+2026-04-16T22:50:44Z | queries_built | OK | 50 queries constructed
+2026-04-16T22:50:44Z | embeddings | CACHE_HIT | all 129 CKR entries cached
+2026-04-16T22:50:44Z | embeddings_ready | OK | ckr embedding matrix (129, 384)
+2026-04-16T22:50:44Z | matcher_A_eval | OK | A top1=21/50
+2026-04-16T22:50:44Z | matcher_B_eval | OK | B top1=22/50
+2026-04-16T22:50:44Z | matcher_C_eval | OK | C top1=43/50
+2026-04-16T22:50:44Z | pipeline | DONE | summary=[{'matcher': 'A', 'accuracy_at_1': 0.42, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'B', 'accuracy_at_1': 0.44, 'accuracy_at_3': 0.6, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}, {'matcher': 'C', 'accuracy_at_1': 0.86, 'accuracy_at_3': 1.0, 'canonical_type_accuracy_at_1': 1.0, 'n': 50}]

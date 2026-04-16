@@ -1,0 +1,27 @@
+[
+  {"type": "header", "props": {"text": "Memes"}},
+  {"type": "card", "children": [
+    {"type": "image", "props": {"label": "Meme image"}},
+    {"type": "text", "props": {"text": "Funny caption here"}},
+    {"type": "button_group", "children": [
+      {"type": "icon_button", "props": {"label": "Upvote"}},
+      {"type": "icon_button", "props": {"label": "Share"}}
+    ]}
+  ]},
+  {"type": "card", "children": [
+    {"type": "image", "props": {"label": "Meme image"}},
+    {"type": "text", "props": {"text": "Another caption"}},
+    {"type": "button_group", "children": [
+      {"type": "icon_button", "props": {"label": "Upvote"}},
+      {"type": "icon_button", "props": {"label": "Share"}}
+    ]}
+  ]},
+  {"type": "card", "children": [
+    {"type": "image", "props": {"label": "Meme image"}},
+    {"type": "text", "props": {"text": "Third caption"}},
+    {"type": "button_group", "children": [
+      {"type": "icon_button", "props": {"label": "Upvote"}},
+      {"type": "icon_button", "props": {"label": "Share"}}
+    ]}
+  ]}
+]

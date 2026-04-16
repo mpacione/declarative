@@ -1,0 +1,11 @@
+[
+  {"type": "header", "props": {"text": "Dashboard"}},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Revenue"}},
+    {"type": "image", "props": {"label": "Line chart"}}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Recent Transactions"}},
+    {"type": "table", "props": {"label": "Transactions"}}
+  ]}
+]

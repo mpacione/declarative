@@ -1,0 +1,80 @@
+2026-04-16T15:44:34 | 01-login | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/01-login
+2026-04-16T15:44:34 | 01-login | parse | fail | Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go
+2026-04-16T15:47:02 | 01-login | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/01-login
+2026-04-16T15:47:02 | 01-login | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:02 | 01-login | compose | ok | elements=8 tokens=0 warnings=7
+2026-04-16T15:47:03 | 01-login | render | fail | after=None errors=0 rc=0 elapsed_ms=244
+2026-04-16T15:47:03 | 01-login | walk | fail | rc=1 elapsed_ms=135 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379623286","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:03 | 01-login | done | ok | timings={"parse_ms": 0, "compose_ms": 8, "render_ms": 244, "walk_ms": 135}
+2026-04-16T15:47:52 | 01-login | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/01-login
+2026-04-16T15:47:52 | 01-login | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:52 | 01-login | compose | ok | elements=8 tokens=0 warnings=7
+2026-04-16T15:47:52 | 01-login | render | fail | after=None errors=0 rc=0 elapsed_ms=66
+2026-04-16T15:47:52 | 01-login | walk | fail | rc=1 elapsed_ms=153 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379672618","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:52 | 01-login | done | ok | timings={"parse_ms": 0, "compose_ms": 7, "render_ms": 66, "walk_ms": 153}
+2026-04-16T15:47:52 | 02-profile-settings | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/02-profile-settings
+2026-04-16T15:47:52 | 02-profile-settings | parse | ok | components=4 parse_ms=0 [substituted]
+2026-04-16T15:47:52 | 02-profile-settings | compose | ok | elements=12 tokens=0 warnings=11
+2026-04-16T15:47:52 | 02-profile-settings | render | fail | after=None errors=0 rc=0 elapsed_ms=118
+2026-04-16T15:47:52 | 02-profile-settings | walk | fail | rc=1 elapsed_ms=105 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379672897","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:52 | 02-profile-settings | done | ok | timings={"parse_ms": 0, "compose_ms": 1, "render_ms": 118, "walk_ms": 105}
+2026-04-16T15:47:52 | 03-meme-feed | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/03-meme-feed
+2026-04-16T15:47:52 | 03-meme-feed | parse | ok | components=4 parse_ms=0 [substituted]
+2026-04-16T15:47:52 | 03-meme-feed | compose | ok | elements=20 tokens=0 warnings=19
+2026-04-16T15:47:53 | 03-meme-feed | render | fail | after=None errors=0 rc=0 elapsed_ms=101
+2026-04-16T15:47:53 | 03-meme-feed | walk | fail | rc=1 elapsed_ms=126 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379673111","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:53 | 03-meme-feed | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 101, "walk_ms": 126}
+2026-04-16T15:47:53 | 04-dashboard | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/04-dashboard
+2026-04-16T15:47:53 | 04-dashboard | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:53 | 04-dashboard | compose | ok | elements=8 tokens=0 warnings=7
+2026-04-16T15:47:53 | 04-dashboard | render | fail | after=None errors=0 rc=0 elapsed_ms=97
+2026-04-16T15:47:53 | 04-dashboard | walk | fail | rc=1 elapsed_ms=93 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379673340","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:53 | 04-dashboard | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 97, "walk_ms": 93}
+2026-04-16T15:47:53 | 05-paywall | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/05-paywall
+2026-04-16T15:47:53 | 05-paywall | parse | ok | components=5 parse_ms=0 [substituted]
+2026-04-16T15:47:53 | 05-paywall | compose | ok | elements=20 tokens=0 warnings=19
+2026-04-16T15:47:53 | 05-paywall | render | fail | after=None errors=0 rc=0 elapsed_ms=106
+2026-04-16T15:47:53 | 05-paywall | walk | fail | rc=1 elapsed_ms=71 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379673547","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:53 | 05-paywall | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 106, "walk_ms": 71}
+2026-04-16T15:47:53 | 06-spa-minimal | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/06-spa-minimal
+2026-04-16T15:47:53 | 06-spa-minimal | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:53 | 06-spa-minimal | compose | ok | elements=9 tokens=0 warnings=8
+2026-04-16T15:47:53 | 06-spa-minimal | render | fail | after=None errors=0 rc=0 elapsed_ms=99
+2026-04-16T15:47:53 | 06-spa-minimal | walk | fail | rc=1 elapsed_ms=176 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379673776","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:53 | 06-spa-minimal | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 99, "walk_ms": 176}
+2026-04-16T15:47:53 | 07-search | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/07-search
+2026-04-16T15:47:53 | 07-search | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:53 | 07-search | compose | ok | elements=9 tokens=0 warnings=8
+2026-04-16T15:47:53 | 07-search | render | fail | after=None errors=0 rc=0 elapsed_ms=93
+2026-04-16T15:47:54 | 07-search | walk | fail | rc=1 elapsed_ms=92 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379673998","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:54 | 07-search | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 93, "walk_ms": 92}
+2026-04-16T15:47:54 | 08-explicit-structure | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/08-explicit-structure
+2026-04-16T15:47:54 | 08-explicit-structure | parse | ok | components=3 parse_ms=0 [substituted]
+2026-04-16T15:47:54 | 08-explicit-structure | compose | ok | elements=9 tokens=0 warnings=8
+2026-04-16T15:47:54 | 08-explicit-structure | render | fail | after=None errors=0 rc=0 elapsed_ms=67
+2026-04-16T15:47:54 | 08-explicit-structure | walk | fail | rc=1 elapsed_ms=67 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379674165","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:54 | 08-explicit-structure | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 67, "walk_ms": 67}
+2026-04-16T15:47:54 | 09-drawer-nav | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/09-drawer-nav
+2026-04-16T15:47:54 | 09-drawer-nav | parse | ok | components=2 parse_ms=0 [substituted]
+2026-04-16T15:47:54 | 09-drawer-nav | compose | ok | elements=9 tokens=0 warnings=8
+2026-04-16T15:47:54 | 09-drawer-nav | render | fail | after=None errors=0 rc=0 elapsed_ms=157
+2026-04-16T15:47:54 | 09-drawer-nav | walk | ok | rc=0 elapsed_ms=165 stderr_tail=''
+2026-04-16T15:47:54 | 09-drawer-nav | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 157, "walk_ms": 165}
+2026-04-16T15:47:54 | 10-onboarding-carousel | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/10-onboarding-carousel
+2026-04-16T15:47:54 | 10-onboarding-carousel | parse | ok | components=6 parse_ms=0 [substituted]
+2026-04-16T15:47:54 | 10-onboarding-carousel | compose | ok | elements=16 tokens=0 warnings=15
+2026-04-16T15:47:54 | 10-onboarding-carousel | render | fail | after=None errors=0 rc=0 elapsed_ms=101
+2026-04-16T15:47:54 | 10-onboarding-carousel | walk | fail | rc=1 elapsed_ms=97 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379674668","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:54 | 10-onboarding-carousel | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 101, "walk_ms": 97}
+2026-04-16T15:47:54 | 11-vague | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/11-vague
+2026-04-16T15:47:54 | 11-vague | parse | ok | components=2 parse_ms=0 [substituted]
+2026-04-16T15:47:54 | 11-vague | compose | ok | elements=7 tokens=0 warnings=6
+2026-04-16T15:47:54 | 11-vague | render | fail | after=None errors=0 rc=0 elapsed_ms=94
+2026-04-16T15:47:54 | 11-vague | walk | fail | rc=1 elapsed_ms=66 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379674866","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:54 | 11-vague | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 94, "walk_ms": 66}
+2026-04-16T15:47:54 | 12-round-trip-test | start | begin | out_dir=/Users/mattpacione/declarative-build/experiments/00-vanilla-baseline/artefacts/12-round-trip-test
+2026-04-16T15:47:54 | 12-round-trip-test | parse | ok | components=2 parse_ms=0 [substituted]
+2026-04-16T15:47:54 | 12-round-trip-test | compose | ok | elements=5 tokens=0 warnings=4
+2026-04-16T15:47:54 | 12-round-trip-test | render | fail | after=None errors=0 rc=0 elapsed_ms=95
+2026-04-16T15:47:55 | 12-round-trip-test | walk | fail | rc=1 elapsed_ms=66 stderr_tail='OXY_EXECUTE_RESULT","id":"walk_1776379675035","result":{"success":false,"error":"TypeError: object is not extensible"}}\n'
+2026-04-16T15:47:55 | 12-round-trip-test | done | ok | timings={"parse_ms": 0, "compose_ms": 0, "render_ms": 95, "walk_ms": 66}

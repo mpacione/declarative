@@ -1,0 +1,110 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Dashboard"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Revenue"
+      }
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Line chart"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "heading-1",
+        "image-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Recent Transactions"
+      }
+    },
+    "table-1": {
+      "type": "table",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Transactions"
+      }
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 100
+        }
+      },
+      "children": [
+        "heading-2",
+        "table-1"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "header-1": -1,
+    "heading-1": -2,
+    "image-1": -3,
+    "card-1": -4,
+    "heading-2": -5,
+    "table-1": -6,
+    "card-2": -7,
+    "screen-1": -8
+  }
+}

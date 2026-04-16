@@ -1,0 +1,7 @@
+[
+  {"type": "header", "props": {"text": "iPhone 13 Pro Max - 109"}},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Screen content"}},
+    {"type": "text", "props": {"text": "Rebuild from scratch."}}
+  ]}
+]

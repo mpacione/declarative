@@ -1,0 +1,49 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Menu"
+    }
+  },
+  {
+    "type": "drawer",
+    "children": [
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Home"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Profile"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Settings"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Notifications"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Help"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Sign out"
+        }
+      }
+    ]
+  }
+]

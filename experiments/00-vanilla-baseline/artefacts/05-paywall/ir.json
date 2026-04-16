@@ -1,0 +1,248 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Choose a plan"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Basic"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$5/month"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Essential features"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Choose Basic"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "heading-1",
+        "text-1",
+        "text-2",
+        "button-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pro"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$15/month"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Most popular"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Choose Pro"
+      }
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 100
+        }
+      },
+      "children": [
+        "heading-2",
+        "text-3",
+        "text-4",
+        "button-2"
+      ]
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Team"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$39/month"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "For teams of 5+"
+      }
+    },
+    "button-3": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Choose Team"
+      }
+    },
+    "card-3": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 150
+        }
+      },
+      "children": [
+        "heading-3",
+        "text-5",
+        "text-6",
+        "button-3"
+      ]
+    },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Customer avatar"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "\"This product changed my workflow.\" \u2014 Jamie R."
+      }
+    },
+    "card-4": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 200
+        }
+      },
+      "children": [
+        "avatar-1",
+        "text-7"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2",
+        "card-3",
+        "card-4"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "header-1": -1,
+    "heading-1": -2,
+    "text-1": -3,
+    "text-2": -4,
+    "button-1": -5,
+    "card-1": -6,
+    "heading-2": -7,
+    "text-3": -8,
+    "text-4": -9,
+    "button-2": -10,
+    "card-2": -11,
+    "heading-3": -12,
+    "text-5": -13,
+    "text-6": -14,
+    "button-3": -15,
+    "card-3": -16,
+    "avatar-1": -17,
+    "text-7": -18,
+    "card-4": -19,
+    "screen-1": -20
+  }
+}

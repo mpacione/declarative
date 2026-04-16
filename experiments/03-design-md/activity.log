@@ -1,0 +1,10 @@
+2026-04-16T22:53:49Z | run | start | db=Dank-EXP-02.declarative.db out=experiments/03-design-md/design.md
+2026-04-16T22:53:49Z | header | ok | screens=338, nodes=86766, ckr=129
+2026-04-16T22:53:57Z | component_inventory | ok | 129 CKR entries with adjacency context
+2026-04-16T22:53:57Z | token_palette | warning | tokens table empty; emitted raw census
+2026-04-16T22:53:58Z | typography | ok | 53 distinct combos, top 25 shown
+2026-04-16T22:53:58Z | spacing | ok | base_grid=2px, values=43303
+2026-04-16T22:53:58Z | adjacencies | ok | 12 containers analysed
+2026-04-16T22:53:58Z | archetypes | ok | 7 archetypes (top-7)
+2026-04-16T22:53:58Z | gaps | ok | 39/48 missing from CKR; 3 present only as raw node name
+2026-04-16T22:53:58Z | run | ok | wrote 36191 chars to experiments/03-design-md/design.md

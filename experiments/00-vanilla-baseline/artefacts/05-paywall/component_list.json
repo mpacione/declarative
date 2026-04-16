@@ -1,0 +1,112 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Choose a plan"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Basic"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "$5/month"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Essential features"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Choose Basic"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Pro"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "$15/month"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Most popular"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Choose Pro"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Team"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "$39/month"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "For teams of 5+"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Choose Team"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "avatar",
+        "props": {
+          "label": "Customer avatar"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "\"This product changed my workflow.\" \u2014 Jamie R."
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,4 @@
+matcher,accuracy_at_1,accuracy_at_3,canonical_type_accuracy_at_1,n
+A,0.42,0.6,1.0,50
+B,0.44,0.6,1.0,50
+C,0.86,1.0,1.0,50
