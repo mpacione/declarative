@@ -5165,6 +5165,42 @@ class TestMode1NullSafety:
         # The threshold must be applied at runtime inside the helper
         assert "_MAX_ASPECT" in script or "aspect" in script.lower()
 
+    def test_placeholder_uses_diagonal_hatch_pattern(self):
+        """Placeholder uses parallel diagonal lines (architectural hatching)
+        instead of the old single-X pattern. Hatch works at any aspect
+        ratio, reads as 'wireframe placeholder' convention, and doesn't
+        collide with content when the frame is large."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {-1: {"bindings": []},
+                      -2: {"component_key": "abc", "component_figma_id": "123:456",
+                           "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        helper_start = script.find("function _missingComponentPlaceholder")
+        helper_body = script[helper_start:helper_start + 3000]
+        # Hatch uses a loop to create multiple parallel lines
+        assert "for" in helper_body, "hatch must use a loop for parallel lines"
+        # Lines at 45° → rotation of -45 (or +45) in Plugin API
+        assert "-45" in helper_body or "45" in helper_body
+
+    def test_placeholder_hatch_skipped_on_tiny_frames(self):
+        """Below a minimum size, hatching looks like noise. Skip it and
+        just show the bordered rect (and label if it fits)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {-1: {"bindings": []},
+                      -2: {"component_key": "abc", "component_figma_id": "123:456",
+                           "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Must check minimum size before hatching
+        assert "_MIN_HATCH" in script or "minHatch" in script.lower()
+
     def test_placeholder_lines_use_contrast_color(self):
         """Lines use mid-grey so they remain visible even if downstream
         code clobbers the frame fill to black or sets it to any dark color.
