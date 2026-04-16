@@ -344,7 +344,7 @@ async function walkNode(node) {{
 
   // vectorPaths: the authoring-primitive path data. Includes per-path
   // windingRule ("NONZERO", "EVENODD", or "NONE" for stroke-only vectors).
-  // Plugin API returns structured [{windingRule, data}, ...] arrays.
+  // Plugin API returns structured path objects.
   // fillGeometry/strokeGeometry are derivatives (Figma-computed outlines);
   // using them as the authoring source drops the windingRule=NONE signal
   // and double-strokes stroke-only vectors.
@@ -564,8 +564,8 @@ if __name__ == "__main__":
     parser.add_argument("--db", required=True, help="Path to .declarative.db")
     parser.add_argument("--port", type=int, default=9223, help="WebSocket port")
     parser.add_argument("--batch", type=int, default=10, help="Screens per batch")
-    parser.add_argument("--mode", choices=["properties", "vector-geometry", "sizing"], default="properties",
-                        help="Extraction mode: properties (is_mask etc.), vector-geometry, or sizing (layoutSizingH/V, textAutoResize, etc.)")
+    parser.add_argument("--mode", choices=["properties", "vector-geometry", "sizing", "transforms"], default="properties",
+                        help="Extraction mode: properties (is_mask etc.), vector-geometry, sizing (layoutSizingH/V, textAutoResize, etc.), or transforms (relativeTransform, vectorPaths, openTypeFeatures, local width/height)")
     args = parser.parse_args()
 
     conn = sqlite3.connect(args.db)
@@ -654,6 +654,11 @@ ws.on('error', (err) => {{
         print(f"  text_decoration: {summary['text_decoration']}")
         print(f"  paragraph_spacing: {summary['paragraph_spacing']}")
         print(f"  layout_wrap: {summary['layout_wrap']}")
+    elif args.mode == "transforms":
+        print(f"  relative_transform: {summary['relative_transform']}")
+        print(f"  opentype_features: {summary['opentype_features']}")
+        print(f"  width_height: {summary['width_height']}")
+        print(f"  vector_paths: {summary['vector_paths']}")
     else:
         print(f"  is_mask: {summary['is_mask']}")
         print(f"  boolean_operation: {summary['boolean_operation']}")

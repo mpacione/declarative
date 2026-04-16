@@ -53,28 +53,36 @@ def run_extract(
     page_id: str | None = None,
     db_path: str | None = None,
 ) -> None:
+    from dd._timing import StageTimer
+
     if db_path is None:
         db_path = f"{file_key}.declarative.db"
 
     print(f"Extracting file {file_key} → {db_path}")
 
-    conn = init_db(db_path)
+    timer = StageTimer()
+    timer.meta(command="extract", file_key=file_key, db_path=db_path)
 
-    print("Fetching file structure...")
-    if page_id:
-        file_json = get_file_tree(file_key, token, page_id=page_id, depth=2)
-        frames = extract_top_level_frames(file_json, page_id=page_id, from_nodes_endpoint=True)
-        file_name = f"figma:{file_key}"
-    else:
-        file_json = get_file_tree(file_key, token, depth=2)
-        frames = extract_top_level_frames(file_json)
-        file_name = file_json.get("name", f"figma:{file_key}")
+    with timer.stage("init_db"):
+        conn = init_db(db_path)
+
+    with timer.stage("fetch_file_structure"):
+        if page_id:
+            file_json = get_file_tree(file_key, token, page_id=page_id, depth=2)
+            frames = extract_top_level_frames(file_json, page_id=page_id, from_nodes_endpoint=True)
+            file_name = f"figma:{file_key}"
+        else:
+            file_json = get_file_tree(file_key, token, depth=2)
+            frames = extract_top_level_frames(file_json)
+            file_name = file_json.get("name", f"figma:{file_key}")
 
     print(f"Found {len(frames)} top-level frames")
 
-    inventory = run_inventory(conn, file_key, file_name, frames)
+    with timer.stage("inventory", items=len(frames), unit="frames"):
+        inventory = run_inventory(conn, file_key, file_name, frames)
     run_id = inventory["run_id"]
     pending = inventory["pending_screens"]
+    timer.meta(screen_count=len(pending))
 
     print(f"Extracting {len(pending)} screens (run {run_id})...")
 
@@ -87,7 +95,15 @@ def run_extract(
     import time
     start = time.time()
 
-    ingest_result = adapter.extract_screens(list(by_id.keys()))
+    # Stage 2a: network fetch (REST API batched). Pure network round-trips
+    # and JSON-body decode. Isolated from the per-screen DB processing so
+    # we can see network vs parse time separately.
+    with timer.stage(
+        "rest_fetch_screens",
+        items=len(by_id), unit="screens",
+        batch_size=adapter.BATCH_SIZE if hasattr(adapter, "BATCH_SIZE") else None,
+    ):
+        ingest_result = adapter.extract_screens(list(by_id.keys()))
 
     # Record each adapter-level failure on the DB row so the run summary
     # is honest. Kind is preserved in the error text for downstream
@@ -106,37 +122,68 @@ def run_extract(
         )
     conn.commit()
 
-    # Process the screens the adapter successfully fetched.
+    # Stage 2b: per-screen processing. Tree walk → parse → DB inserts.
+    # This is where binding-creation O(nodes × tokens) lives — watch for
+    # screens with many bindings vs screens with many nodes.
     total = len(pending)
     processed_ok = 0
-    for entry in ingest_result.extracted:
-        figma_node_id = entry["id"]
-        screen = by_id[figma_node_id]
-        screen_id = screen["screen_id"]
-        name = screen["name"]
-        processed_ok += 1
+    total_nodes = 0
+    total_bindings = 0
+    parse_times: list[tuple[str, int, float]] = []  # (name, node_count, ms)
+    with timer.stage(
+        "process_screens",
+        items=len(ingest_result.extracted), unit="screens",
+    ):
+        for entry in ingest_result.extracted:
+            figma_node_id = entry["id"]
+            screen = by_id[figma_node_id]
+            screen_id = screen["screen_id"]
+            name = screen["name"]
+            processed_ok += 1
 
-        try:
-            raw_response = convert_node_tree(entry["document"])
-            result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
-            elapsed = time.time() - start
-            done_so_far = processed_ok + len(ingest_result.errors)
-            avg = elapsed / max(done_so_far, 1)
-            eta = avg * (total - done_so_far)
+            try:
+                t0 = time.monotonic()
+                raw_response = convert_node_tree(entry["document"])
+                result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
+                elapsed_screen = time.monotonic() - t0
+                total_nodes += result["node_count"]
+                total_bindings += result["binding_count"]
+                parse_times.append((name, result["node_count"], elapsed_screen * 1000))
+                elapsed = time.time() - start
+                done_so_far = processed_ok + len(ingest_result.errors)
+                avg = elapsed / max(done_so_far, 1)
+                eta = avg * (total - done_so_far)
+                print(
+                    f"  [{done_so_far}/{total}] {name} — "
+                    f"{result['node_count']} nodes, {result['binding_count']} bindings "
+                    f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
+                )
+            except Exception as e:
+                # process_screen already updates status to 'failed' in its
+                # inner except. We log here for visibility.
+                print(
+                    f"  {name} — FAILED during process_screen: {e}",
+                    file=sys.stderr,
+                )
+
+    timer.meta(total_nodes=total_nodes, total_bindings=total_bindings)
+
+    # Surface the slowest-per-node screens so we can see where binding
+    # creation or parsing is dominating. Sorted by ms/node descending.
+    if parse_times:
+        per_node = sorted(
+            ((n, c, t, t / max(c, 1)) for (n, c, t) in parse_times),
+            key=lambda x: -x[3],
+        )[:5]
+        print("\nTop 5 slowest screens (ms per node):", file=sys.stderr)
+        for name, ct, ms, per_n in per_node:
             print(
-                f"  [{done_so_far}/{total}] {name} — "
-                f"{result['node_count']} nodes, {result['binding_count']} bindings "
-                f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)"
-            )
-        except Exception as e:
-            # process_screen already updates status to 'failed' in its
-            # inner except. We log here for visibility.
-            print(
-                f"  {name} — FAILED during process_screen: {e}",
+                f"  {name[:50]:50s} {ct:4d} nodes  {ms:7.0f}ms  {per_n:5.2f} ms/node",
                 file=sys.stderr,
             )
 
-    summary = complete_run(conn, run_id)
+    with timer.stage("complete_run"):
+        summary = complete_run(conn, run_id)
     print(
         f"\nDone: {summary['completed']}/{summary['total_screens']} screens, "
         f"{summary['failed']} failed, {summary['skipped']} skipped"
@@ -156,8 +203,9 @@ def run_extract(
     # gate evaluates False for every INSTANCE and the renderer silently
     # falls through to Mode 2 (createFrame). See project_adr007_execution_plan.md.
     try:
-        from dd.templates import build_component_key_registry
-        ckr_count = build_component_key_registry(conn)
+        with timer.stage("component_key_registry"):
+            from dd.templates import build_component_key_registry
+            ckr_count = build_component_key_registry(conn)
         print(f"component_key_registry: {ckr_count} rows")
     except Exception as exc:
         print(
@@ -166,6 +214,7 @@ def run_extract(
         )
 
     conn.close()
+    timer.print_summary()
 
 
 def detect_db_path(explicit: str | None) -> str:
@@ -563,15 +612,21 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
 
     from dd.db import classify_screens
     from dd.extract_supplement import run_supplement
+    from dd._timing import StageTimer
+
+    timer = StageTimer()
+    timer.meta(command="extract-supplement", db_path=db_path,
+               port=args.port, batch_size=args.batch_size)
 
     conn = get_connection(db_path)
 
-    # Ensure screen_type is populated
-    classify_screens(conn)
+    with timer.stage("classify_screens"):
+        classify_screens(conn)
 
     screen_count = conn.execute(
         "SELECT COUNT(*) FROM screens WHERE screen_type = 'app_screen'"
     ).fetchone()[0]
+    timer.meta(screen_count=screen_count)
 
     if args.dry_run:
         print(f"Would extract Plugin API fields for {screen_count} app screens")
@@ -619,7 +674,8 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
 
     print(f"Supplemental extraction: {screen_count} app screens (port {args.port}, batch {args.batch_size})")
 
-    result = run_supplement(conn, execute_via_ws, batch_size=args.batch_size)
+    with timer.stage("run_supplement", items=screen_count, unit="screens"):
+        result = run_supplement(conn, execute_via_ws, batch_size=args.batch_size)
     conn.close()
 
     print(f"\nDone: {result['total_nodes']} nodes updated")
@@ -628,6 +684,13 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
     print(f"  grid: {result['grid']}")
     if result["failed"] > 0:
         print(f"  failed: {result['failed']} screens")
+    timer.meta(
+        total_nodes=result.get("total_nodes", 0),
+        component_key=result.get("component_key", 0),
+        layout_positioning=result.get("layout_positioning", 0),
+        failed=result.get("failed", 0),
+    )
+    timer.print_summary()
 
 
 def _run_verify(db_path: str, args: argparse.Namespace) -> None:

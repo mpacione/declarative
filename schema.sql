@@ -430,6 +430,11 @@ CREATE TABLE nodes (
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync
 
+    -- Plugin-API-only fields (REST cannot round-trip these)
+    relative_transform TEXT,                     -- JSON [[a,b,e],[c,d,f]] parent-local affine matrix
+    opentype_features  TEXT,                     -- JSON array of 4-char feature tags (e.g. ["ss01","liga"])
+    vector_paths       TEXT,                     -- JSON array of {path,windingRule} — authoring primitive for VECTOR nodes
+
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, figma_node_id)
 );

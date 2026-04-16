@@ -828,3 +828,101 @@ must be resolved by stable identifier (name/id) and asserted, never
 read from platform-level "current X" state that can be side-effected
 by unrelated API calls.** General across platforms; see memory
 for cross-platform examples.
+
+
+## Chapter epilogue (2026-04-16, pt 6) — Extract pipeline profiling baseline
+
+After pt 5's backup restore, the next chapter started with a
+deceptively simple ask: "a full re-extract — maybe we can instrument
+the extraction to think of ways to improve performance while we do?"
+
+The instrumentation (`dd/_timing.py`, `StageTimer`) was drop-in,
+zero-dep, and immediately surfaced a lopsided time distribution:
+
+```
+REST fetch_screens               79s   22%
+REST process_screens             24s    7%
+Plugin supplement               127s   35%
+Plugin transforms                34s    9%
+Plugin properties                28s    8%
+Plugin sizing                    28s    8%
+Plugin vector-geometry           40s   11%
+TOTAL                          361s
+```
+
+Three findings fell out of the baseline, each worth its own memory:
+
+### Finding 1: Plugin supplement does work REST already did
+
+The supplement pass's dominant cost is `getMainComponentAsync()` —
+25,860 async calls per run, one per INSTANCE, each a plugin-API
+round-trip. It exists because the code comment in `figma_api.py`
+says "Component key is available at the file level in the components
+map, not directly on the instance node in REST API."
+
+Half-true. `/files/:key` returns a file-level map. `/files/:key/nodes`
+returns one *per screen at the node-entry level*. Verified: the REST
+`components` map has 100% parity with the supplement-populated
+`component_key` column on the first 10 Dank Experimental screens
+(58/58 distinct keys, zero diff). The data we needed was one JSON
+level up from where we were reading, waiting 127 seconds every run.
+
+`feedback_rest_components_map.md` captures the discovery and the
+broader pattern: **every field currently filled via a Plugin-API
+supplement pass deserves a property-by-property audit against a
+fresh REST response.** "Plugin API is needed" is load-bearing for
+~260s of every run and most of it is probably wrong.
+
+### Finding 2: Five Plugin passes walk the same tree
+
+Five separate extraction passes (supplement + four `extract_targeted`
+modes) each spawn a Node subprocess, open a WebSocket, and walk the
+entire node tree to collect a different slice of properties. All are
+read-only, no ordering dependency between them.
+
+`feedback_plugin_passes_consolidation.md` captures the consolidation
+plan. The pattern is older than this chapter: whenever the pipeline
+grows an N+1th "single-purpose supplement" that walks the same data,
+treat it as a signal that the walker generation should become
+registry-driven and the N+1 passes should merge into one.
+
+### Finding 3: REST fetch is pointlessly serial
+
+`FigmaIngestAdapter.extract_screens()` batches at size 10 and runs
+batches sequentially. Measured 7.6× speedup going to 4 worker
+threads on the first 40 screens of Dank Experimental. Figma's
+published rate limit is ~50 req/s; we were sitting at ~0.4 req/s.
+The fix is drop-in ThreadPoolExecutor.
+
+### Combined impact
+
+| | Current | Target |
+|---|--:|--:|
+| REST fetch | 79s | ~15s |
+| REST process | 24s | 24s |
+| Plugin passes | 257s | ~35s |
+| **Total** | **361s** | **~74s** (~4.9×) |
+
+### What this chapter did NOT change
+
+No ADR amendments. The perf work touches implementation mechanics
+of ingest/supplement, not the ingress/egress contract. ADR-006's
+structured-error channel and ADR-007's unified verification loop
+stay unchanged; the REST-side component_key population will write
+through the same `boundary` adapter that the Plugin pass does today.
+
+The baseline also ratified the restored Dank Experimental file:
+screen 324 renders pixel-identical to source, `is_parity=True`,
+91/91 nodes, zero errors. Round-trip pipeline is sound; the time is
+in the extract, not the decode.
+
+### Cross-cutting invariants (updated)
+
+New invariant: **audit every Plugin-API supplement field against a
+fresh REST response before adding it**, and **consolidate repeated
+read-only walks of the same tree into one registry-driven pass**.
+Both generalize across backends — the same "we already have this
+from an earlier call" and "we're traversing the same structure N
+times" patterns will appear on the ingress side of every future
+backend (React AST from a bundler, SwiftUI from a Swift compiler
+plugin, Flutter from `flutter analyze --machine`).
