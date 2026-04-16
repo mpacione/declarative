@@ -596,3 +596,126 @@ new visual-loss class needs (a) a `kind` in the boundary vocabulary,
 (b) a walker signal to surface it, (c) a verifier check to attribute
 per-eid, (d) ideally a runtime guard at the emission layer so the
 script doesn't abort on it.
+
+## Chapter epilogue (2026-04-15, pt 4) — REST/Plugin convention divergence
+
+The pt 3 chapter added visual verification kinds (FILL_MISMATCH,
+STROKE_MISMATCH, EFFECT_MISSING) and drove the corpus to 204/204
+structural parity with visual-property checks active. Rendering a
+12-screen sample gallery for review surfaced visible defects the
+verifier didn't detect. Investigating them revealed a single
+underlying pattern: **REST API and Plugin API expose the same Figma
+data in different coordinate conventions, and we had silent
+arithmetic computing one from the other**. See the new memory
+`feedback_rest_plugin_coord_convention_divergence.md`.
+
+### Four convention mismatches fixed
+
+1. **gradientTransform**. REST returns `gradientHandlePositions`
+   (3 fractional points in node space). Plugin API returns
+   `gradientTransform` (2x3 affine mapping gradient-local →
+   node-relative). We had a formula `[[p1-p0, p2-p0, p0], ...]`
+   that computed the INVERSE of what the Plugin API needs. Axis-
+   aligned gradients worked by accident; a -15° overlay rendered
+   at half height. Fix: remove the computation; use Plugin API
+   values exclusively via supplement extraction (2,927 of 3,125
+   gradient fills now have correct transforms).
+
+2. **width/height**. REST returns `absoluteBoundingBox.width/height`
+   (world-axis projection). Plugin API's `node.width/height` return
+   local authoring dimensions. A 595×66 rect inside a -15° parent
+   has an AABB of 591.8×217.7. Storing AABB in width/height columns
+   made every rotated-subtree node's size wrong. Fix: new `--mode
+   transforms` captures Plugin API `node.width/height` and overwrites
+   (79,833 nodes).
+
+3. **parent-local position**. The IR computed `pos_x = node.x -
+   parent.x`. When the parent is rotated, this gives the world-space
+   delta, not the parent-local position. The Plugin API's
+   `relativeTransform[0][2], [1][2]` IS the parent-local translation.
+   Fix: IR prefers the rt translation column when available, falls
+   back to subtraction for pre-supplement data.
+
+4. **scalar rotation + .x/.y for rotated nodes**. Figma's `.rotation`
+   setter with scalar degrees + `.x/.y` writes the transform's
+   translation column but in a way that's ambiguous about the pivot.
+   For any rotated node (det=+1 OR det=-1), the full
+   `relativeTransform` is the only unambiguous encoding. Fix:
+   generalize the mirror check to ALL non-identity 2x2 matrices.
+   1,937 mirrors + 8,849 pure rotations (10,786 total) now use
+   `relativeTransform` emission in Phase 3 after `appendChild`.
+
+### Two factory-default fixes
+
+5. **Sub-pixel truncation**. `int(v)` at 5 resize() sites truncated
+   fractional pixel dimensions. 12,801 nodes (14.8%) have fractional
+   width; 1,073 lose more than 0.5px. Fix: `round(v, 2)`.
+
+6. **Default stroke leakage**. `figma.createVector()` ships with a
+   default 1px black SOLID stroke (Figma's design: a new vector
+   without a stroke is invisible, so the factory adds one). When DB
+   has no visible strokes, the renderer skipped `strokes = ...`
+   assignment, leaving the default. Symmetric with the existing
+   `fills = []` default-clearing for bounded shapes. Fix: emit
+   `strokes = []` for VECTOR/LINE when DB has no visible strokes.
+   Feedback memory: `feedback_figma_default_visibility.md`.
+
+### One Plugin API impossibility
+
+7. **OpenType features can't round-trip**. Plugin API has
+   `getRangeOpenTypeFeatures` but NO setter. The initial emission
+   of `setRangeOpenTypeFeatures(...)` silently threw. Fix: Unicode
+   substitution for well-known patterns (SUPS "0" → "°"), plus
+   `KIND_OPENTYPE_UNSUPPORTED` in the vocabulary for generic cases.
+   Preserves the DB `text_content` as source of truth while giving
+   correct visual output.
+
+### Outstanding defect classes (next chapter)
+
+Diagnosed in the pt 4 corpus-grid review, not yet fixed:
+
+- **GROUP-as-container**: 110 screens have illustration GROUPs that
+  the SCI heuristic reclassified to `canonical_type='container'`,
+  making the renderer emit `figma.createFrame()` instead of
+  `figma.group()`. But GROUP child coordinates are in the
+  **grandparent's** space (Figma's "groups are transparent" quirk),
+  so frame-emission places children hundreds of pixels outside.
+  Plus a z-order bug where `figma.group()` always appends last.
+- **Vector 485 double-stroke**: 7,414 VECTOR nodes have both
+  fillGeometry and strokeGeometry populated. We merge them into one
+  vectorPaths string with hardcoded NONZERO winding. Source nodes
+  with `windingRule: "NONE"` (stroke-only vectors) get their
+  expanded-stroke outline rendered as a filled polygon.
+- **Inter Variable → Inter substitution**: `_normalize_font_family`
+  rewrites the family name. The two fonts have 1px glyph-metric
+  drift. For "Medium" in an 86px-wide FIXED parent (inner 66px), the
+  1px overflow triggers 2-line wrapping on 21 screens.
+- **HUG sizing with only-invisible children**: Figma's HUG doesn't
+  re-measure after `appendChild` of an invisible node. The frame
+  stays at the `createFrame()` default 100px. Fix shape: emit
+  `resize(w, h)` as a SEED value before applying `layoutSizingVertical
+  = "HUG"` even for semantic sizing, so ground-truth dimensions are
+  preserved when Figma's HUG can't recompute.
+
+### Cross-cutting invariants (updated)
+
+The pt 4 chapter adds a new invariant to the table:
+
+| Position | Owner | Gate type | ADR |
+|---|---|---|---|
+| Pre-emit legality | Registry `capabilities` | Compile-time table lookup | 001 |
+| Emit runtime throws (null-guards) | `__errors` | Runtime structured channel | 002, 005 |
+| Emit runtime throws (per-op micro-guards) | `__errors` | Runtime structured channel | 007 |
+| Codegen-time degradations | `__errors` (emit-time push) | Generation-time structured channel | 007 |
+| Host state reads | Generator capture → local bindings | Scope discipline | 003 |
+| Ingest failures | `IngestAdapter.IngestResult` | Compile-time structured channel | 006 |
+| Catalog freshness | `ResourceProbe.FreshnessReport` | Pre-emit / pre-decode classification | 006 |
+| Post-render parity | `RenderVerifier.RenderReport` | Post-emit structured channel | 007 |
+| **API-convention boundary** | **Supplement extraction** | **Plugin API ground truth overrides REST** | **007 pt 4** |
+| Regression catching | Registry-derived lint + error channels | CI tests | 004 |
+
+The `feedback_supplement_extraction_is_ground_truth.md` memory
+generalizes: **REST for speed, Plugin API for correctness**. Four
+supplement extraction modes now composable: properties,
+vector-geometry, sizing, transforms. New modes are narrow additions —
+schema column + capture JS + Python apply function.
