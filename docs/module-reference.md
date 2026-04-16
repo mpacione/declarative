@@ -1,7 +1,7 @@
 # Module Reference — Complete Capability Inventory
 
 > Every module in the system, what it does, its public API, and how it maps to the four-layer architecture.
-> Reference document — for a high-level introduction see [`README.md`](README.md), for the architecture spec see [`compiler-architecture.md`](compiler-architecture.md).
+> Reference document — for a high-level introduction see the [repo README](../README.md), for the architecture spec see [`compiler-architecture.md`](compiler-architecture.md).
 > Updated 2026-04-16 (pt 6).
 
 ---

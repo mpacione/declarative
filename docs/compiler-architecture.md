@@ -1,8 +1,9 @@
 # Declarative Design Compiler — Architecture Specification
 
 > The authoritative technical specification. For a higher-level
-> introduction aimed at new readers, start with [`README.md`](README.md).
-> For what's coming next, see [`roadmap.md`](roadmap.md).
+> introduction aimed at new readers, start with the
+> [repo README](../README.md). For what's coming next, see
+> [`roadmap.md`](roadmap.md).
 >
 > Supersedes: t5-four-layer-architecture.md, t5-ir-design.md, t5-architecture-vision.md.
 
@@ -621,8 +622,8 @@ render_batch/
   sweep.py                   # Corpus driver: per-screen generate → walk →
                              #   verify → aggregate. Writes summary.json.
 
+README.md                    # High-level introduction (start here)
 docs/
-  README.md                  # High-level introduction (start here)
   compiler-architecture.md   # THIS document — technical spec
   architecture-decisions.md  # ADRs 001..007 + chapter history (pt 1..pt 6)
   module-reference.md        # Per-module inventory + public API
