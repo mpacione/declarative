@@ -2144,6 +2144,84 @@ class TestLayoutWrapInIR:
         assert element["layout"]["counterAxisGap"] == 10
 
 
+class TestPositionFromRelativeTransform:
+    """When a node has a captured relativeTransform, its parent-local
+    position must come from the transform's translation column, not
+    from world-space node.x - parent.x subtraction. The subtraction
+    produces wrong values when the parent is rotated."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        # relative_transform is added by migration; ensure it exists for tests
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if "relative_transform" not in cols:
+            conn.execute("ALTER TABLE nodes ADD COLUMN relative_transform TEXT")
+        return conn
+
+    def test_rt_translation_column_wins_over_xy_subtraction(self, db):
+        """Node has relativeTransform [[1,0,0],[0,1,84]] (parent-local
+        (0,84)) but world x,y give a different subtraction. The IR
+        must use the transform's translation column."""
+        db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        db.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Test', 1000, 1000)"
+        )
+        # Rotated parent at world (100, 100)
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, "
+            "depth, sort_order, node_type, name, x, y, width, height, "
+            "rotation, visible) VALUES "
+            "(1, 1, 'p1', NULL, 0, 0, 'FRAME', 'parent', 100, 100, 500, 500, 0.2618, 1)"
+        )
+        # Child at world (90, 200) but parent-local (0, 84) via relativeTransform.
+        # Naive x-subtraction would give (90-100, 200-100) = (-10, 100) — wrong.
+        # The rt says (0, 84) — correct.
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, "
+            "depth, sort_order, node_type, name, x, y, width, height, "
+            "relative_transform, visible) VALUES "
+            "(2, 1, 'c1', 1, 1, 0, 'FRAME', 'child', 90, 200, 16, 16, "
+            "'[[1,0,0],[0,1,84]]', 1)"
+        )
+        db.commit()
+
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        child = next(e for e in spec["elements"].values() if e.get("_original_name") == "child")
+        pos = child["layout"]["position"]
+        assert pos["x"] == 0.0
+        assert pos["y"] == 84.0
+
+    def test_no_rt_falls_back_to_subtraction(self, db):
+        """When relativeTransform isn't captured, fall back to the old
+        x-subtraction for backward compatibility."""
+        db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        db.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Test', 1000, 1000)"
+        )
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, "
+            "depth, sort_order, node_type, name, x, y, width, height, visible) "
+            "VALUES (1, 1, 'p1', NULL, 0, 0, 'FRAME', 'parent', 100, 100, 500, 500, 1)"
+        )
+        db.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, "
+            "depth, sort_order, node_type, name, x, y, width, height, visible) "
+            "VALUES (2, 1, 'c1', 1, 1, 0, 'FRAME', 'child', 150, 220, 16, 16, 1)"
+        )
+        db.commit()
+
+        data = query_screen_for_ir(db, screen_id=1)
+        spec = build_composition_spec(data)
+        child = next(e for e in spec["elements"].values() if e.get("_original_name") == "child")
+        pos = child["layout"]["position"]
+        assert pos["x"] == 50.0
+        assert pos["y"] == 120.0
+
+
 class TestGradientTransformComputation:
     """gradientTransform must only come from the Plugin API, never computed
     from REST handlePositions. The REST→Plugin coordinate convention mapping

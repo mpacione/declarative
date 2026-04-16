@@ -1121,6 +1121,9 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     if screen_row is None:
         return {"screen_name": "", "width": 0, "height": 0, "nodes": []}
 
+    # Include relative_transform if the column exists (migration-gated)
+    node_cols_local = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+    rt_col = "n.relative_transform, " if "relative_transform" in node_cols_local else ""
     cursor = conn.execute(
         "SELECT n.id as node_id, n.name, n.node_type, n.depth, n.sort_order, "
         "n.x, n.y, n.width, n.height, "
@@ -1130,6 +1133,7 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
         "n.text_content, n.corner_radius, n.opacity, n.fills, n.strokes, n.effects, "
         "n.font_family, n.font_weight, n.font_size, "
         "n.parent_id, n.component_key, n.visible, "
+        f"{rt_col}"
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "
         "FROM nodes n "
         "LEFT JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
@@ -1311,17 +1315,33 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         if parent_layout_mode in ("HORIZONTAL", "VERTICAL"):
             continue  # Auto-layout child — position comes from flow
 
-        # Parent has no auto-layout: set position relative to parent origin
-        parent_x = parent_node.get("x", 0) or 0
-        parent_y = parent_node.get("y", 0) or 0
-        node_x = node.get("x", 0) or 0
-        node_y = node.get("y", 0) or 0
+        # Parent has no auto-layout: set position relative to parent origin.
+        # Prefer the Plugin API relativeTransform's translation column
+        # (rt[0][2], rt[1][2]) — it's parent-local by construction. The
+        # old node_x - parent_x world-delta computation is wrong when the
+        # parent is rotated: it gives the world-space delta, not the
+        # parent-local position. Fall back to subtraction only when
+        # relativeTransform isn't captured.
+        rt_json = node.get("relative_transform")
+        pos_x: float
+        pos_y: float
+        if rt_json:
+            try:
+                rt = json.loads(rt_json) if isinstance(rt_json, str) else rt_json
+                pos_x = float(rt[0][2])
+                pos_y = float(rt[1][2])
+            except (json.JSONDecodeError, IndexError, TypeError, ValueError):
+                pos_x = (node.get("x", 0) or 0) - (parent_node.get("x", 0) or 0)
+                pos_y = (node.get("y", 0) or 0) - (parent_node.get("y", 0) or 0)
+        else:
+            pos_x = (node.get("x", 0) or 0) - (parent_node.get("x", 0) or 0)
+            pos_y = (node.get("y", 0) or 0) - (parent_node.get("y", 0) or 0)
 
         if "layout" not in elements[eid]:
             elements[eid]["layout"] = {}
         elements[eid]["layout"]["position"] = {
-            "x": node_x - parent_x,
-            "y": node_y - parent_y,
+            "x": pos_x,
+            "y": pos_y,
         }
 
     root_id = "screen-1"
