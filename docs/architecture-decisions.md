@@ -719,3 +719,112 @@ generalizes: **REST for speed, Plugin API for correctness**. Four
 supplement extraction modes now composable: properties,
 vector-geometry, sizing, transforms. New modes are narrow additions —
 schema column + capture JS + Python apply function.
+
+## Chapter epilogue (2026-04-16, pt 5) — Missing-component placeholder + destructive-op safeguards
+
+After the pt 4 convention-divergence fixes landed and the corpus
+grid was rendered for review, the user noticed the Figma source
+file's component library had been silently deleted mid-session.
+This chapter addresses two related concerns: **graceful degradation
+when components don't resolve at render time**, and **structural
+safeguards to prevent the destructive-op pattern that caused the
+file wipe**.
+
+### Root cause of the file wipe
+
+Forensic analysis identified a pattern I used repeatedly in ad-hoc
+`figma_execute` calls:
+
+```js
+const page = figma.currentPage;
+for (const c of [...page.children]) c.remove();
+```
+
+This trusts `figma.currentPage` to be the intended output page.
+But `figma.getNodeByIdAsync()` side-effects `currentPage` — when
+it resolves a node that lives on a different page, the current
+page flips. Generated scripts make many `getNodeByIdAsync` calls
+during prefetch, and a subsequent clear-op ran against the wrong
+page.
+
+See `memory/feedback_never_trust_currentpage.md` for the full
+analysis and safeguard pattern.
+
+### Missing-component wireframe placeholder
+
+Mode 1 `createInstance()` fallbacks used to return
+`figma.createFrame()` — a blank white frame that silently
+substitutes for the missing component. Two problems:
+
+1. Indistinguishable from intended blank output.
+2. Downstream DB visual overrides (fills/strokes for the *real*
+   component) were applied to the blank frame, producing
+   visually-wrong output like a giant black rectangle where a
+   wireframe was intended.
+
+New behavior: the fallback is a wireframe-convention placeholder —
+grey-stroked frame with 45° diagonal hatch pattern at 15% opacity
+and an optional name label (size-gated). The placeholder marks
+itself via `setPluginData('__ph', '1')`, and downstream self-target
+visual-property writes are wrapped in `if (!_isPh(var)) { ... }` so
+DB overrides can't clobber the wireframe.
+
+A per-eid `KIND_COMPONENT_MISSING` entry is pushed to `__errors` on
+every invocation, same verification contract as other ADR-007 kinds.
+
+See `memory/feedback_missing_component_placeholder.md` for the full
+pattern, including generalization to React/SwiftUI/Flutter.
+
+### Safeguards
+
+Two changes applied to `render_test/run.js` and
+`render_test/walk_ref.js`:
+
+1. **Hard page-identity assertion.** The output page is always
+   resolved by name (`"Generated Test"`) and asserted before any
+   destructive op. If resolution returns a different page (rename,
+   lookup collision), throw rather than risk clearing source
+   content. `figma.currentPage` is never a destructive-op target.
+
+2. **Explicit-ID relocate manifest.** The cross-page relocate loop
+   (which moves newly-created nodes that leaked to other pages via
+   `getNodeByIdAsync` side-effects) previously used "everything not
+   in `preIds`" as an allowlist. If the snapshot was incomplete,
+   legitimate source content could be moved. Now uses the generated
+   script's `M` id-map as an explicit manifest — refuses-by-default,
+   moves only nodes whose ids we minted.
+
+Both land in commit `a808e22`. Subsequent commits refined the
+placeholder visual design through several iterations:
+
+- `666e85f` — sentinel + `_isPh()` gate for clobbering; aspect-ratio
+  threshold for X; mid-grey contrast color.
+- `b5718a7` — replaced X diagonals with architectural hatch pattern.
+- `541acfb` — fixed Plugin API rotation sign (+45 for up-right).
+- `5a79b70` — subtle 15% opacity for stacked-placeholder graceful
+  compounding.
+
+### What this chapter did NOT solve
+
+The safeguards protect the test-wrapper scripts. Ad-hoc
+`figma_execute` calls the operator makes during a session aren't
+gated by file-level code — the safeguard there is operator
+discipline (always resolve output page by name, never trust
+`currentPage`).
+
+A plausible future safeguard: a Claude-side policy that rejects any
+`figma_execute` code containing `.remove()` or cross-page
+`appendChild` unless the code explicitly asserts the target page by
+name first. That's a session-level rule, not a code change.
+
+### Cross-cutting invariants (updated)
+
+No new invariants in the ADR table — the safeguards are local to
+the test wrappers. The KIND_COMPONENT_MISSING vocabulary extends
+the ADR-007 structured error channel; no architectural change.
+
+The pattern this chapter codified: **every destructive-op target
+must be resolved by stable identifier (name/id) and asserted, never
+read from platform-level "current X" state that can be side-effected
+by unrelated API calls.** General across platforms; see memory
+for cross-platform examples.
