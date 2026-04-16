@@ -487,6 +487,35 @@ class TestGenerateFigmaScript:
         script, _ = generate_figma_script(spec)
         assert "resize(1, " not in script  # should not force width to 1
 
+    def test_fractional_dimensions_preserved_in_resize(self):
+        """Figma's resize() accepts floats. Fractional dimensions must not be
+        truncated to integers — int(591.808) -> 591 loses 0.8px which
+        accumulates across nested frames. See screen 259 frame 338."""
+        spec = _make_spec({"screen-1": {
+            "type": "screen",
+            "layout": {"direction": "vertical", "sizing": {"width": 591.808, "height": 217.748}},
+        }})
+        script, _ = generate_figma_script(spec)
+        assert "591.81" in script, "fractional width must survive"
+        assert "217.75" in script, "fractional height must survive"
+        assert "resize(591," not in script, "int truncation must not occur"
+
+    def test_fractional_child_dimensions_in_stacked_parent(self):
+        """Children of non-auto-layout parents get pixel resize in Phase 3.
+        Fractional widthPixels/heightPixels must survive."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "layout": {"direction": "stacked"},
+                         "children": ["frame-1"]},
+            "frame-1": {"type": "frame", "layout": {
+                "direction": "stacked",
+                "sizing": {"width": 100.5, "height": 200.75,
+                           "widthPixels": 100.5, "heightPixels": 200.75},
+            }},
+        })
+        script, _ = generate_figma_script(spec)
+        assert "100.5" in script
+        assert "200.75" in script
+
     def test_escapes_text_quotes(self):
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["t-1"]},

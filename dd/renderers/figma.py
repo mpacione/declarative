@@ -1262,15 +1262,15 @@ def generate_figma_script(
             ph = elem_sizing.get("heightPixels")
             if pw is not None and ph is not None:
                 phase3_lines.append(_guarded_op(
-                    f"{var}.resize({int(pw)}, {int(ph)});", eid, "resize_failed",
+                    f"{var}.resize({round(pw, 2)}, {round(ph, 2)});", eid, "resize_failed",
                 ))
             elif pw is not None:
                 phase3_lines.append(_guarded_op(
-                    f"{var}.resize({int(pw)}, {var}.height);", eid, "resize_failed",
+                    f"{var}.resize({round(pw, 2)}, {var}.height);", eid, "resize_failed",
                 ))
             elif ph is not None:
                 phase3_lines.append(_guarded_op(
-                    f"{var}.resize({var}.width, {int(ph)});", eid, "resize_failed",
+                    f"{var}.resize({var}.width, {round(ph, 2)});", eid, "resize_failed",
                 ))
             position = element.get("layout", {}).get("position")
             if position:
@@ -1504,8 +1504,8 @@ def _emit_layout(
     # pixel dimensions are stored as widthPixels/heightPixels but NOT used
     # for resize here — auto-layout frames derive size from content/parent.
     # The post-appendChild path sets layoutSizing when parent context is known.
-    rw = int(w) if isinstance(w, (int, float)) else None
-    rh = int(h) if isinstance(h, (int, float)) else None
+    rw = round(w, 2) if isinstance(w, (int, float)) else None
+    rh = round(h, 2) if isinstance(h, (int, float)) else None
     # Text-node guard: in WIDTH_AND_HEIGHT auto-resize mode, the node's
     # size is derived from content. Calling resize() has the Plugin API
     # side effect of flipping autoResize to HEIGHT, which locks the
