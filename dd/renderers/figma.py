@@ -243,23 +243,23 @@ def _emit_override_op(
     if prop_name == "instance_swap":
         comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')
         value_js = _escape_js(value)
-        # When the swap target component is missing, replace the child
-        # with a wireframe placeholder sized to match. Preserves visual
-        # context (you can see where the icon should be) and surfaces
-        # the gap in __errors via component_missing.
+        # When the swap target is missing, we can't replace the child
+        # with a placeholder — swap targets usually live inside an
+        # instance (e.g. icon slot inside a button instance), and the
+        # Plugin API forbids insertChild into an instance's descendants.
+        # Instead, record the miss in __errors so the verification
+        # channel attributes the gap per-eid. The child stays as the
+        # master's default — at least it renders something, and the
+        # structured error channel makes the drift visible.
         return (
             f'if ({target_var}.type === "INSTANCE") {{ '
             f'const _comp = {comp_expr}; '
             f'if (_comp) {{ {target_var}.swapComponent(_comp); }} '
-            f'else {{ '
-            f'const _tw = {target_var}.width, _th = {target_var}.height; '
-            f'const _tname = {target_var}.name; '
-            f'const _tparent = {target_var}.parent; '
-            f'const _tidx = _tparent ? _tparent.children.indexOf({target_var}) : -1; '
-            f'const _ph = _missingComponentPlaceholder(_tname, _tw, _th, "swap:{value_js}"); '
-            f'_ph.x = {target_var}.x; _ph.y = {target_var}.y; '
-            f'if (_tparent && _tidx >= 0) {{ _tparent.insertChild(_tidx, _ph); {target_var}.remove(); }} '
-            f'}} }}'
+            f'else {{ __errors.push({{kind:"component_missing", '
+            f'eid:"swap:{value_js}", name:{target_var}.name, '
+            f'w:{target_var}.width, h:{target_var}.height, '
+            f'note:"swap target unavailable; kept master default"}}); }} '
+            f'}}'
         )
     if prop_name == "width":
         h_ref = f"{parent_var}.height" if is_self else f"{target_var}.height"
