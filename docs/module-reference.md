@@ -1,6 +1,8 @@
 # Module Reference — Complete Capability Inventory
 
-> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture. Updated 2026-04-07.
+> Every module in the system, what it does, its public API, and how it maps to the four-layer architecture.
+> Reference document — for a high-level introduction see [`README.md`](README.md), for the architecture spec see [`compiler-architecture.md`](compiler-architecture.md).
+> Updated 2026-04-16 (pt 6).
 
 ---
 
@@ -30,14 +32,24 @@ The `emit` field classifies each property's emission category:
 
 ---
 
-## Layer 1: Extraction (7 modules)
+## Layer 1: Extraction
 
 ### Extraction Workflow
 Two-step process covering all Figma properties:
 ```
-dd extract <figma-url>              # Step 1: REST API — fast, reliable, ~90% of properties
-dd extract-supplement --db <db>     # Step 2: Plugin API — componentKey, layoutPositioning, Grid
+dd extract <figma-url>              # Step 1: REST API via boundary adapter (ADR-006).
+                                    #   75% of properties. REST `components` map
+                                    #   now populates `component_key` at ingest
+                                    #   time — no Plugin-API round-trip needed
+                                    #   for that field.
+dd extract-plugin --port <N>        # Step 2: Unified Plugin-API pass (pt 6).
+                                    #   Single walker, two slices (light + heavy),
+                                    #   replaces the five legacy passes.
+                                    #   Post-processes: rebuilds content-addressed
+                                    #   SVG asset store + CKR.
 ```
+
+The legacy commands `dd extract-supplement` and `python -m dd.extract_targeted --mode {properties,sizing,transforms,vector-geometry}` are preserved for incremental re-extraction after a schema change (they re-populate a single field set without re-running the entire Plugin pipeline).
 
 ### dd/extract.py — Extraction Orchestrator
 Coordinates screen extraction + component extraction + binding extraction. Entry point for the `dd extract` CLI command. Uses the REST API path via `figma_api.py`.
@@ -48,6 +60,32 @@ Coordinates screen extraction + component extraction + binding extraction. Entry
 | `process_screen(conn, run_id, screen, file_key)` | Extract one screen's node tree |
 | `complete_run(conn, run_id)` | Finalize extraction run |
 | `process_components(conn, file_id, component_data)` | Extract components via `extract_components` module |
+
+### dd/boundary.py — ADR-006 Boundary Contract
+Backend-neutral protocols and structured-error vocabulary for every external-system edge. Defines `IngestAdapter`, `ResourceProbe`, `StructuredError`, `IngestResult`, `FreshnessReport`, and the `KIND_*` constants. Every frontend must implement `IngestAdapter` to participate in the pipeline; the contract's honest summary (requested / succeeded / failed counts matching `errors[]`) is the invariant downstream stages rely on.
+
+### dd/ingest_figma.py — ADR-006 Figma Adapter
+Figma-specific instantiation of the boundary protocols.
+
+| Class | Purpose |
+|----------|---------|
+| `FigmaIngestAdapter` | `extract_screens(ids)` → `IngestResult`. Auto-batches at ≤10 ids/call. Parallelism via `max_workers` constructor arg (default 1 — Figma's 429 limiter serializes parallel workers via backoff on moderate files; opt in for smaller files or higher API tiers). |
+| `FigmaResourceProbe` | `probe(ids)` → `FreshnessReport`. Classifies as valid / missing / unknown. |
+
+Structured-error kinds emitted: `KIND_API_ERROR` (network / 5xx), `KIND_NODE_NOT_FOUND` (API returned null for id), `KIND_MALFORMED_RESPONSE` (missing required keys). None raise exceptions; all are aggregated into the return `IngestResult`.
+
+### dd/extract_plugin.py — Unified Plugin-API Extraction (pt 6)
+Single-walker replacement for the 5-pass legacy Plugin-API pipeline. Collects every Plugin-only field set in two tree-walk slices.
+
+| Function | Purpose |
+|----------|---------|
+| `generate_plugin_script(ids, slice="all")` | Emit JS walker. Slice controls payload size: `light` (layout flags, grid, overrides, mask/bool/arc, typography strings, gradient enrichment), `heavy` (relativeTransform per node, vectorPaths, fillGeometry/strokeGeometry, OpenType segments), or `all`. |
+| `apply_plugin(conn, data)` | Dispatch walker output to target columns via the existing `apply_supplement` / `apply_targeted` / `apply_sizing` / `apply_transforms` / `apply_vector_geometry` functions. Reuse, not rewrite. |
+| `run_plugin_extract(conn, execute_fn, ...)` | Orchestrator: runs light slice then heavy slice; auto-halves batch on script-size truncation; runs `process_vector_geometry(conn)` at the end to rebuild the content-addressed SVG asset store. |
+
+Why two slices instead of one: a single unified walk exceeded Figma's ~64 KB PROXY_EXECUTE result buffer on moderate screens. The light slice's small per-node payload fits in the buffer; the heavy slice (relativeTransform for every node, per-vector geometries) needs a smaller batch size to fit.
+
+Critical secondary fix landed alongside: the Node.js runner's `console.log(JSON.stringify(msg)); process.exit(0)` pattern silently truncated at the macOS 64 KB pipe buffer (process.exit doesn't flush stdout). Replaced with `process.stdout.write(..., callback)`. Applied to the legacy supplement runner too.
 
 ### dd/extract_screens.py — Plugin API Screen Extraction (36 tests)
 Generates async Figma Plugin JS to walk node trees and extract 72 columns per node. Uses `getNodeByIdAsync` and `getMainComponentAsync` (Figma's async API).
@@ -123,8 +161,17 @@ Converts Figma properties to normalized binding rows with hierarchical property 
 | `normalize_paragraph_spacing(node)` | paragraphSpacing | same |
 | `normalize_font_style(node)` | fontStyle (skips "Regular") | same |
 
-### dd/figma_api.py — Figma API Bridge (32 tests)
-REST API wrapper + MCP bridge for Figma file access. Includes `_reconstruct_logical_dimensions()` for AABB→logical dimension conversion on rotated nodes, and fillGeometry/strokeGeometry extraction.
+### dd/figma_api.py — Figma API Bridge
+REST API wrapper + MCP bridge for Figma file access.
+
+| Function | Purpose |
+|----------|---------|
+| `_request_with_retry(method, url, **kwargs)` | GET/POST with 429 handling. Exponential backoff (initial 2 s, up to 8 attempts), **jittered** to ±50% so concurrent workers don't re-sync their retries and re-trip the limiter. Honours `Retry-After` header. |
+| `get_file_tree(file_key, token, page_id, depth)` | `/v1/files/:key` or `/v1/files/:key/nodes`. Returns JSON including the `components` map. |
+| `get_screen_nodes(file_key, token, screen_ids)` | `/v1/files/:key/nodes?ids=...`. Returns `{nodes: {id: {document, components, ...}}}`. |
+| `extract_top_level_frames(file_json, page_id, from_nodes_endpoint)` | Top-level FRAME / COMPONENT / COMPONENT_SET list. |
+| `convert_node_tree(api_node, ..., components_map)` | Recursive node → extraction-format conversion. **Perf pt 6 #2**: when `components_map` is supplied, INSTANCE nodes resolve `componentId` → `component_key` at ingest time (no Plugin-API round-trip needed). |
+| `_reconstruct_logical_dimensions(w, h, rot)` | Inverts AABB envelope back to logical dims for rotated nodes. |
 
 ### dd/extract_assets.py — Asset Extraction & Resolution (20 tests)
 Content-addressed asset pipeline for raster images and SVG vector paths.
@@ -399,7 +446,52 @@ Token export to W3C Design Token Community Group format.
 
 ---
 
-## Supporting Infrastructure (8 modules)
+## Verification — ADR-007
+
+### dd/verify_figma.py — RenderVerifier (ADR-007 Position 3)
+Post-render verification. Walks a rendered subtree payload (produced by `render_test/walk_ref.js`) and diffs against the IR node-by-node.
+
+| Function / Class | Purpose |
+|----------|---------|
+| `FigmaRenderVerifier` | Backend-specific verifier. `verify(spec, rendered_ref) → RenderReport`. |
+| `RenderReport` | `{backend, ir_node_count, rendered_node_count, is_parity, parity_ratio(), errors[]}`. |
+| Error kinds emitted | `KIND_DEGRADED_TO_MODE2`, `KIND_CKR_UNBUILT`, `KIND_BOUNDS_MISMATCH`, `KIND_FILL_MISMATCH`, `KIND_STROKE_MISMATCH`, `KIND_EFFECT_MISSING`, `KIND_MISSING_ASSET`, `KIND_OPENTYPE_UNSUPPORTED`, `KIND_GRADIENT_TRANSFORM_MISSING`, `KIND_COMPONENT_MISSING`, plus per-op runtime kinds (`text_set_failed`, `resize_failed`, `position_failed`, `constraint_failed`, ...). |
+
+`is_parity = True` iff every IR node has a matching rendered node with matching structural and visual properties AND zero structured errors were recorded anywhere (codegen, runtime, post-render). This is the foundational correctness criterion.
+
+### render_test/ — Script Runner + Walker Harness
+Node.js scripts that execute generated JS on the Figma Desktop Bridge and produce rendered-ref payloads for `dd verify`.
+
+| Script | Purpose |
+|--------|---------|
+| `run.js` | Executes a generated script on the bridge. Hard-asserts the output page by name (never trusts `figma.currentPage`, which `getNodeByIdAsync` side-effects). Cross-page relocate uses an explicit id manifest. |
+| `walk_ref.js` | Runs script + walks the rendered subtree → rendered-ref JSON. Captures per-eid `{type, name, width, height, characters, textAutoResize, fillGeometryCount, strokeGeometryCount, fills, strokes, effectCount}`. Safeguard pattern identical to `run.js`. |
+
+### render_batch/sweep.py — Corpus Driver
+Per-screen generate → walk → verify → aggregate. Writes per-screen outputs under `render_batch/{scripts,walks,reports}/` and a `summary.json` aggregate (kinds distribution, parity counts, failures).
+
+```bash
+python3 render_batch/sweep.py --port 9231            # Full corpus
+python3 render_batch/sweep.py --limit 10             # First 10
+python3 render_batch/sweep.py --since 250            # Resume from id
+python3 render_batch/sweep.py --skip-existing        # Reuse cached outputs
+```
+
+Latest (pt 6 verified): 204 / 204 is_parity=True, 0 failures, 449 s.
+
+## Supporting Infrastructure
+
+### dd/_timing.py — StageTimer
+Zero-dependency pipeline profiler. Context-manager API; writes JSONL longitudinal log to `~/.cache/dd/extract_timings.jsonl` for cross-run comparison.
+
+```python
+timer = StageTimer()
+with timer.stage("fetch_screens", items=338, unit="screens"):
+    ...
+timer.print_summary()   # tabulated output
+```
+
+Records `{timestamp, meta, stages[{name, duration_s, items, unit, **extra}]}`.
 
 ### dd/color.py — Color Conversions (28 tests)
 | Function | Purpose |
@@ -432,10 +524,10 @@ Token export to W3C Design Token Community Group format.
 | Binding-token consistency | WARNING | Bound binding values match token values |
 
 ### dd/db.py — Database Management
-Schema initialization from `schema.sql`, connection management, WAL mode. Schema includes 74 node columns + `assets` table (content-addressed) + `node_asset_refs` junction table.
+Schema initialization from `schema.sql`, connection management, WAL mode, migration runner. Current schema includes 77 node columns + `assets` + `node_asset_refs` + `component_key_registry` + ADR-007 extraction_runs / extraction_locks. Migrations 001..010 are additive and idempotent.
 
 ### dd/cli.py — CLI Commands (19 tests)
-Entry points: extract, cluster, accept-all, validate, export, push, status, classify, generate-ir, seed-catalog, maintenance.
+Entry points: `extract`, `extract-plugin`, `extract-supplement`, `cluster`, `accept-all`, `validate`, `export`, `push`, `status`, `classify`, `generate-ir`, `generate`, `generate-prompt`, `verify`, `seed-catalog`, `maintenance`, `curate-report`.
 
 ### dd/status.py — Status Reporting (18 tests)
 Dashboard data: token counts by tier, binding coverage, sync status summary.

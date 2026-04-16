@@ -926,3 +926,86 @@ from an earlier call" and "we're traversing the same structure N
 times" patterns will appear on the ingress side of every future
 backend (React AST from a bundler, SwiftUI from a Swift compiler
 plugin, Flutter from `flutter analyze --machine`).
+
+
+## Round-trip foundation milestone (2026-04-16)
+
+With pt 6's perf work + regression fix landed, the "round-trip
+foundation" phase is complete. The full corpus sweep passes with
+zero drift, zero failures, and zero structured errors:
+
+```
+=== SUMMARY ===
+total:            204
+is_parity=True:   204
+is_parity=False:    0
+generate_failed:    0
+walk_failed:        0
+elapsed:          449.4s  (2.2 s/screen)
+error_kinds:      {}
+```
+
+This is the gating criterion the rest of the roadmap has been
+waiting on. Everything downstream — the React renderer, the
+SwiftUI renderer, synthetic screen generation — builds on a
+verified round-trip contract.
+
+### What the milestone actually proves
+
+- **L0 is complete and lossless.** 86,766 nodes extracted, 204
+  screens reproduced from the DB alone, no visible or structural
+  drift.
+- **L1 classification is accurate enough to drive Mode 1
+  rendering.** Every INSTANCE with a resolvable master renders
+  via `createInstance()` with full override application.
+- **The Mode 1 → Mode 2 → placeholder fall-through is
+  observable.** When a master can't resolve, the wireframe
+  placeholder appears on the rendered screen and a
+  `KIND_COMPONENT_MISSING` entry appears in `__errors`. Zero
+  silent drops.
+- **The verifier's kind vocabulary is load-bearing.** The
+  mid-sweep regression (empty asset store after the unified
+  plugin pass shipped without `process_vector_geometry`)
+  surfaced as `KIND_MISSING_ASSET` on iteration 3, not as a
+  "looks off" that a human might miss. That's the contract
+  ADR-007 was written to enforce, working.
+- **The pipeline is reproducible.** `python3 render_batch/sweep.py`
+  produces the same summary, the same per-screen
+  `RenderReport`s, and the same `is_parity` verdict every run.
+
+### What comes next
+
+From the roadmap, in priority order:
+
+1. **React + HTML/CSS renderer.** Second backend. Validates the
+   IR's cross-platform claim. The M × N → M + N property has
+   been claimed since section 5 of the spec; a second backend
+   proves it.
+2. **Synthetic screen generation.** Prompt → IR → (existing)
+   deterministic renderer. The architecture was positioned for
+   this from ADR-001 onward (capability gate as constrained-
+   decoding grammar; verifier as dense training signal). The
+   infrastructure is now in place; the plan needs fleshing out.
+3. **Additional backends, additional extractors.** Both are
+   routine at this point — same registry-driven shape.
+
+### Cross-cutting invariants (restated)
+
+Carried forward from the chapter's work, now baked in:
+
+- **Capability-gated emission is non-negotiable** (ADR-001).
+- **Null-safe Mode 1 + per-op micro-guards are non-negotiable**
+  (ADR-002).
+- **Explicit-state harness at script entry is non-negotiable**
+  (ADR-003).
+- **Boundary contract on every external edge is non-negotiable**
+  (ADR-006). Symmetric on ingress and egress.
+- **Unified verification channel with per-node granularity is
+  non-negotiable** (ADR-007). `is_parity = True` is the
+  criterion for "round-trip successful"; it does not degrade
+  to "no exception thrown."
+- **Every consolidated pipeline stage owns its post-processing
+  tail, not just its collection code** (pt 6 lesson, no ADR —
+  too specific to lifting-and-shifting pipeline stages, but
+  permanent in the consolidation-review checklist). See
+  `feedback_consolidation_audits_post_processing.md`.
