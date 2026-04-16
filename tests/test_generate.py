@@ -2799,7 +2799,10 @@ class TestMode1L0Properties:
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "rotation" not in script
+        # Rotation is never ASSIGNED on the instance node (n1). The
+        # placeholder helper contains "rotation" in its body for diagonal
+        # lines, but that's a library function — not a per-node emission.
+        assert "n1.rotation" not in script
 
     def test_opacity_applied_to_mode1_instance(self):
         spec = _make_spec({
@@ -3062,7 +3065,9 @@ class TestOverrideGrouping:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         swap_pos = script.find("swapComponent")
-        strokes_pos = script.find(".strokes =")
+        # Find the stroke override applied to `_c` (the override's child target
+        # variable) — not the `.strokes` calls in the placeholder helper body.
+        strokes_pos = script.find("_c.strokes =")
         assert swap_pos > 0, "Expected swapComponent in output"
         assert strokes_pos > 0, "Expected strokes override in output"
         assert swap_pos < strokes_pos, (
@@ -5055,6 +5060,97 @@ class TestMode1NullSafety:
         assert "__errors" in script
         # Must not be the old bare double-await that crashes on null
         assert ".getMainComponentAsync()).createInstance()" not in script
+
+    def test_missing_component_renders_wireframe_placeholder(self):
+        """When a Mode 1 createInstance falls back because the source
+        component is missing, the fallback must be a wireframe placeholder
+        (frame with black stroke + X diagonals) at the instance's
+        dimensions — NOT a blank white frame. Catches the case where a
+        source file's component library has been stripped/deleted."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button",
+                         "layout": {"sizing": {"width": 48, "height": 52}}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Must declare the helper once per script
+        assert "_missingComponentPlaceholder" in script, \
+            "wireframe placeholder helper must be emitted"
+        # Must be used in the createInstance fallback (not figma.createFrame())
+        # Look for the fallback call — it should invoke the helper, not return createFrame()
+        # Find the createInstance() block for button-1
+        btn_section = script[script.find("const n1 ="):script.find("M[\"button-1\"]")]
+        assert "_missingComponentPlaceholder" in btn_section, \
+            "createInstance fallback must use placeholder helper"
+
+    def test_placeholder_helper_has_x_diagonals_and_stroke(self):
+        """Placeholder renders: frame with black stroke + 2 diagonal lines."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The helper definition must include the drawing logic
+        helper_start = script.find("function _missingComponentPlaceholder")
+        assert helper_start != -1
+        # Grab the helper body (up to next top-level function or const M)
+        helper_body = script[helper_start:helper_start + 2000]
+        assert "createLine" in helper_body, "diagonals are LINE nodes"
+        assert "createFrame" in helper_body, "outer frame"
+        # Stroke color is black
+        assert "{r:0,g:0,b:0}" in helper_body or '"r":0,"g":0,"b":0' in helper_body
+
+    def test_placeholder_emits_component_missing_error(self):
+        """When the placeholder fires, __errors gets a component_missing entry
+        so the verification channel can attribute per-eid."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "component_missing" in script
+
+    def test_placeholder_text_label_only_when_size_permits(self):
+        """Placeholder text label (component name) is suppressed when the
+        frame is too small to fit it. Threshold: width >= 64 AND height >= 32.
+        Prevents text overlap on tiny icons."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "abc", "component_figma_id": "123:456",
+                 "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The helper must conditionally create text based on dimensions
+        helper_start = script.find("function _missingComponentPlaceholder")
+        assert helper_start != -1
+        helper_body = script[helper_start:helper_start + 2000]
+        # The size guard must be present
+        assert ">= 64" in helper_body or ">=64" in helper_body or \
+               "MIN_LABEL_W" in helper_body, \
+            "placeholder must gate label text on minimum frame size"
 
     def test_generated_script_declares_errors_array(self):
         """Every generated script declares __errors so the runtime harness

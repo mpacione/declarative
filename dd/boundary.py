@@ -92,6 +92,13 @@ KIND_GRADIENT_TRANSFORM_MISSING = "gradient_transform_missing"
 # do a lossy Unicode substitution (e.g. "0"+SUPS -> "°"), but generic
 # features surface as this kind.
 KIND_OPENTYPE_UNSUPPORTED = "opentype_unsupported"
+# A component referenced by an INSTANCE node's swap target doesn't
+# resolve at runtime (e.g. the component was deleted from the source
+# file after extraction, or the file's component library was stripped).
+# The renderer emits a wireframe placeholder (black-stroked frame with
+# X diagonals) in place of the missing component and pushes this entry
+# so the verification channel attributes the gap per-eid.
+KIND_COMPONENT_MISSING = "component_missing"
 
 
 @dataclass(frozen=True)

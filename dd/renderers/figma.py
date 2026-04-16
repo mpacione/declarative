@@ -242,10 +242,24 @@ def _emit_override_op(
         )
     if prop_name == "instance_swap":
         comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')
+        value_js = _escape_js(value)
+        # When the swap target component is missing, replace the child
+        # with a wireframe placeholder sized to match. Preserves visual
+        # context (you can see where the icon should be) and surfaces
+        # the gap in __errors via component_missing.
         return (
             f'if ({target_var}.type === "INSTANCE") {{ '
-            f"const _comp = {comp_expr}; "
-            f"if (_comp) {target_var}.swapComponent(_comp); }}"
+            f'const _comp = {comp_expr}; '
+            f'if (_comp) {{ {target_var}.swapComponent(_comp); }} '
+            f'else {{ '
+            f'const _tw = {target_var}.width, _th = {target_var}.height; '
+            f'const _tname = {target_var}.name; '
+            f'const _tparent = {target_var}.parent; '
+            f'const _tidx = _tparent ? _tparent.children.indexOf({target_var}) : -1; '
+            f'const _ph = _missingComponentPlaceholder(_tname, _tw, _th, "swap:{value_js}"); '
+            f'_ph.x = {target_var}.x; _ph.y = {target_var}.y; '
+            f'if (_tparent && _tidx >= 0) {{ _tparent.insertChild(_tidx, _ph); {target_var}.remove(); }} '
+            f'}} }}'
         )
     if prop_name == "width":
         h_ref = f"{parent_var}.height" if is_self else f"{target_var}.height"
@@ -839,6 +853,13 @@ def generate_figma_script(
     # state once prefetch has started. See feedback_figma_api_quirks.md.
     preamble.append("const _rootPage = figma.currentPage;")
 
+    # Placeholder helper is emitted lazily — only when a call site
+    # references `_missingComponentPlaceholder` somewhere in the output.
+    # Reserve a slot in the preamble so we can inject it later without
+    # re-walking and without polluting scripts that never use Mode 1.
+    placeholder_slot_index = len(preamble)
+    preamble.append("")  # filled at end if _missingComponentPlaceholder appears
+
     # Pre-fetch all unique Figma node IDs needed for createInstance/swapComponent.
     # Batching into a single preamble avoids redundant async lookups (50→27 calls
     # on screen 184, more on complex screens with deep component nesting).
@@ -966,12 +987,24 @@ def generate_figma_script(
         if use_mode1:
             # Mode 1 null-safety contract: every createInstance() call sits
             # behind an async guard that records missing-node failures in
-            # __errors and falls back to a placeholder createFrame(). This
+            # __errors and falls back to a wireframe placeholder. This
             # prevents one deleted/unpublished component from aborting the
-            # entire script with "cannot read property 'x' of null". The
-            # script surfaces partial success; the harness diffs __errors
-            # against the IR and decides whether to accept or fail.
+            # entire script with "cannot read property 'x' of null", AND
+            # makes the missing component visually obvious (black-stroked
+            # frame with X diagonals at the instance's dimensions) instead
+            # of a blank white frame that looks like intended output.
             eid_lit = _escape_js(eid)
+            # Dimensions for the placeholder — pull from IR sizing if known
+            sizing = element.get("layout", {}).get("sizing", {})
+            pw = sizing.get("widthPixels") or sizing.get("width")
+            ph = sizing.get("heightPixels") or sizing.get("height")
+            pw_js = pw if isinstance(pw, (int, float)) else 24
+            ph_js = ph if isinstance(ph, (int, float)) else 24
+            name_for_placeholder = element.get("_original_name", eid)
+            name_lit = _escape_js(name_for_placeholder)
+            fallback_js = (
+                f'_missingComponentPlaceholder("{name_lit}", {pw_js}, {ph_js}, "{eid_lit}")'
+            )
             if component_figma_id:
                 node_expr = node_id_vars.get(
                     component_figma_id,
@@ -981,9 +1014,9 @@ def generate_figma_script(
                 phase1_lines.append(
                     f'const {var} = await (async () => {{ '
                     f'const __src = {node_expr}; '
-                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_node", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_node", id:"{id_lit}"}}); return {fallback_js}; }} '
                     f'try {{ return __src.createInstance(); }} '
-                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return figma.createFrame(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
                     f'}})();'
                 )
             elif instance_figma_node_id:
@@ -991,12 +1024,12 @@ def generate_figma_script(
                 phase1_lines.append(
                     f'const {var} = await (async () => {{ '
                     f'const __src = await figma.getNodeByIdAsync("{id_lit}"); '
-                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_instance_node", id:"{id_lit}"}}); return figma.createFrame(); }} '
-                    f'if (typeof __src.getMainComponentAsync !== "function") {{ __errors.push({{eid:"{eid_lit}", kind:"not_an_instance", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_instance_node", id:"{id_lit}"}}); return {fallback_js}; }} '
+                    f'if (typeof __src.getMainComponentAsync !== "function") {{ __errors.push({{eid:"{eid_lit}", kind:"not_an_instance", id:"{id_lit}"}}); return {fallback_js}; }} '
                     f'const __master = await __src.getMainComponentAsync(); '
-                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"no_main_component", id:"{id_lit}"}}); return figma.createFrame(); }} '
+                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"no_main_component", id:"{id_lit}"}}); return {fallback_js}; }} '
                     f'try {{ return __master.createInstance(); }} '
-                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return figma.createFrame(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
                     f'}})();'
                 )
             else:
@@ -1552,6 +1585,60 @@ def generate_figma_script(
     # exception. Empty array means clean run.
     lines.append('M["__errors"] = __errors;')
     lines.append("return M;")
+
+    # Inject the missing-component placeholder helper only if any emitted
+    # code path actually references it. This keeps scripts without Mode 1
+    # or instance_swap emissions free of the helper's "rotation" and
+    # "appendChild" keywords that static tests search for.
+    uses_placeholder = any("_missingComponentPlaceholder" in ln for ln in lines)
+    if uses_placeholder:
+        preamble[placeholder_slot_index] = (
+            "// Missing-component wireframe placeholder: emitted when a Mode 1\n"
+            "// createInstance falls back (deleted/unpublished/stripped component).\n"
+            "// Black-stroked frame with X diagonals at the instance's dimensions.\n"
+            "// Name label appears only when the frame is large enough to fit it.\n"
+            "const _MIN_LABEL_W = 64, _MIN_LABEL_H = 32;\n"
+            "function _missingComponentPlaceholder(name, w, h, eid) {\n"
+            "  __errors.push({kind:\"component_missing\", eid, name, w, h});\n"
+            "  const f = figma.createFrame();\n"
+            "  f.resize(w || 24, h || 24);\n"
+            "  f.fills = [];\n"
+            "  f.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "  f.strokeWeight = 1;\n"
+            "  f.clipsContent = true;\n"
+            "  const actualW = f.width, actualH = f.height;\n"
+            "  const diag = Math.hypot(actualW, actualH);\n"
+            "  const ang = Math.atan2(actualH, actualW) * 180 / Math.PI;\n"
+            "  const l1 = figma.createLine();\n"
+            "  l1.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "  l1.strokeWeight = 1;\n"
+            "  l1.resize(diag, 0);\n"
+            "  l1.rotation = -ang;\n"
+            "  l1.x = 0; l1.y = actualH;\n"
+            "  f.appendChild(l1);\n"
+            "  const l2 = figma.createLine();\n"
+            "  l2.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "  l2.strokeWeight = 1;\n"
+            "  l2.resize(diag, 0);\n"
+            "  l2.rotation = ang;\n"
+            "  l2.x = 0; l2.y = 0;\n"
+            "  f.appendChild(l2);\n"
+            "  if (actualW >= _MIN_LABEL_W && actualH >= _MIN_LABEL_H && name) {\n"
+            "    try {\n"
+            "      const t = figma.createText();\n"
+            "      t.fontName = {family:\"Inter\", style:\"Regular\"};\n"
+            "      t.fontSize = 10;\n"
+            "      t.characters = String(name);\n"
+            "      t.x = 4; t.y = 4;\n"
+            "      t.fills = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "      f.appendChild(t);\n"
+            "    } catch (__e) {}\n"
+            "  }\n"
+            "  return f;\n"
+            "}"
+        )
+        # Rebuild the combined script with the updated preamble
+        lines = preamble + lines[len(preamble):]
 
     return ("\n".join(lines), all_token_refs)
 

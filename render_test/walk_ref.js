@@ -37,10 +37,18 @@ async function run() {
   const body = userCode.replace(/return M;\s*$/, '');
 
   const wrapped = `
+// Safeguard: resolve __page by NAME (never trust figma.currentPage —
+// figma.getNodeByIdAsync side-effects it). Hard-assert identity before
+// any destructive operation. If this ever trips, the file state is
+// unexpected — refuse to run rather than risk clearing a source page.
+const __OUTPUT_PAGE = 'Generated Test';
 await figma.loadAllPagesAsync();
-let __page = figma.root.children.find(p => p.name === 'Generated Test');
-if (!__page) { __page = figma.createPage(); __page.name = 'Generated Test'; }
+let __page = figma.root.children.find(p => p.name === __OUTPUT_PAGE);
+if (!__page) { __page = figma.createPage(); __page.name = __OUTPUT_PAGE; }
 await figma.setCurrentPageAsync(__page);
+if (__page.name !== __OUTPUT_PAGE) {
+  throw new Error('refusing to clear: resolved page is not ' + __OUTPUT_PAGE);
+}
 for (const c of [...__page.children]) c.remove();
 
 ${body}
