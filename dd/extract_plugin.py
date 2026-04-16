@@ -514,4 +514,21 @@ def run_plugin_extract(
     totals["failed"] = len(all_failed)
     totals["failed_screens"] = all_failed
 
+    # Post-processing: the heavy slice populated fill_geometry /
+    # stroke_geometry / vector_paths on nodes, but the renderer reads
+    # vectors via the content-addressed asset store (node_asset_refs ->
+    # assets). Without this step, node_asset_refs stays empty and every
+    # VECTOR node renders as KIND_MISSING_ASSET at verify time.
+    # The old extract_targeted --mode vector-geometry called this at the
+    # end of its CLI handler; the unified pass owns both collection and
+    # post-processing.
+    try:
+        from dd.extract_assets import process_vector_geometry
+        asset_count = process_vector_geometry(conn)
+        totals["vector_assets_built"] = asset_count
+    except Exception as exc:
+        # Don't fail the whole run — record but keep going.
+        totals["vector_assets_built"] = 0
+        totals["vector_assets_error"] = str(exc)
+
     return totals

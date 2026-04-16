@@ -28,7 +28,9 @@ WALKS = ROOT / "walks"
 REPORTS = ROOT / "reports"
 DB_PATH = ROOT.parent / "Dank-EXP-02.declarative.db"
 WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
-BRIDGE_PORT = "9228"
+# Default port; override via --port. The Desktop Bridge picks between
+# 9223-9231 on startup depending on what's already bound.
+BRIDGE_PORT_DEFAULT = "9228"
 GENERATE_TIMEOUT = 60
 WALK_TIMEOUT = 180
 VERIFY_TIMEOUT = 30
@@ -57,7 +59,7 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
         return 125, "", f"EXCEPTION in {label}: {e!r}"
 
 
-def process_screen(sid: int, name: str, skip_existing: bool) -> dict:
+def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
     script_p = SCRIPTS / f"{sid}.js"
     walk_p = WALKS / f"{sid}.json"
     report_p = REPORTS / f"{sid}.json"
@@ -105,7 +107,7 @@ def process_screen(sid: int, name: str, skip_existing: bool) -> dict:
         code, out, err = run_step(
             [
                 "node", str(WALK_WRAPPER),
-                str(script_p), str(walk_p), BRIDGE_PORT,
+                str(script_p), str(walk_p), port,
             ],
             WALK_TIMEOUT,
             "walk",
@@ -178,6 +180,8 @@ def main() -> int:
                     help="Reuse existing scripts/walks if present")
     ap.add_argument("--since", type=int, default=None,
                     help="Start at this screen id (for resume)")
+    ap.add_argument("--port", default=BRIDGE_PORT_DEFAULT,
+                    help="Desktop Bridge WebSocket port")
     args = ap.parse_args()
 
     for p in (SCRIPTS, WALKS, REPORTS):
@@ -189,12 +193,16 @@ def main() -> int:
     if args.limit:
         screens = screens[: args.limit]
 
-    print(f"Sweeping {len(screens)} app_screens (skip_existing={args.skip_existing})", flush=True)
+    print(
+        f"Sweeping {len(screens)} app_screens "
+        f"(skip_existing={args.skip_existing}, port={args.port})",
+        flush=True,
+    )
     rows: list[dict] = []
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
-        row = process_screen(sid, name, args.skip_existing)
+        row = process_screen(sid, name, args.skip_existing, args.port)
         elapsed = time.time() - t1
         status = (
             "PARITY" if row["is_parity"] is True

@@ -212,6 +212,54 @@ class TestApplyPluginDispatch:
         ):
             assert counts[key] == 0, f"expected 0 for {key}, got {counts[key]}"
 
+    def test_run_plugin_extract_builds_vector_asset_store(self, monkeypatch):
+        """Regression guard: the unified pass must rebuild the
+        content-addressed asset store after collecting fill/stroke
+        geometries. Without this, VECTOR nodes render as
+        KIND_MISSING_ASSET even though nodes.fill_geometry is populated.
+
+        The old ``extract_targeted --mode vector-geometry`` ran
+        ``process_vector_geometry`` as its last step; the unified pass
+        must do the same.
+        """
+        from dd.extract_plugin import run_plugin_extract
+        import dd.extract_plugin as mod
+        import dd.extract_assets as assets_mod
+
+        called = {"count": 0}
+
+        def fake_process(conn):
+            called["count"] += 1
+            return 42
+
+        monkeypatch.setattr(assets_mod, "process_vector_geometry", fake_process)
+
+        conn = sqlite3.connect(":memory:")
+        _make_empty_nodes_schema(conn)
+        # Need a screens table for the query in run_plugin_extract
+        conn.executescript("""
+            CREATE TABLE screens (
+                id INTEGER PRIMARY KEY,
+                figma_node_id TEXT,
+                name TEXT,
+                screen_type TEXT
+            );
+            INSERT INTO screens (figma_node_id, name, screen_type)
+            VALUES ('1:1', 'Test', 'app_screen');
+        """)
+        conn.commit()
+
+        def fake_exec(script):
+            return {}  # no nodes touched
+
+        totals = run_plugin_extract(conn, fake_exec, batch_size=1, delay=0.0)
+
+        assert called["count"] == 1, (
+            "process_vector_geometry must be called exactly once "
+            "after run_plugin_extract finishes."
+        )
+        assert totals.get("vector_assets_built") == 42
+
     def test_full_slice_payload_writes_to_expected_columns(self):
         from dd.extract_plugin import apply_plugin
 

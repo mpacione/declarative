@@ -824,6 +824,10 @@ def _run_extract_plugin(db_path: str, args: argparse.Namespace) -> None:
     print(f"  transforms : rt={result['relative_transform']}  ot={result['opentype_features']}  "
           f"w/h={result['width_height']}  vp={result['vector_paths']}")
     print(f"  vector-geo : fill={result['fill_geometry']}  stroke={result['stroke_geometry']}")
+    if "vector_assets_built" in result:
+        print(f"  asset store: {result['vector_assets_built']} content-addressed SVG paths")
+    if "vector_assets_error" in result:
+        print(f"  asset store: FAILED — {result['vector_assets_error'][:120]}")
     if result["failed"] > 0:
         print(f"  failed: {result['failed']} screens")
 
