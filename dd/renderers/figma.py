@@ -263,20 +263,44 @@ def _emit_override_op(
         )
     if prop_name == "width":
         h_ref = f"{parent_var}.height" if is_self else f"{target_var}.height"
-        return f"{target_var}.resize({value}, {h_ref});"
+        op = f"{target_var}.resize({value}, {h_ref});"
+        return _gate_if_not_placeholder(op, target_var) if is_self else op
     if prop_name == "height":
         w_ref = f"{parent_var}.width" if is_self else f"{target_var}.width"
-        return f"{target_var}.resize({w_ref}, {value});"
+        op = f"{target_var}.resize({w_ref}, {value});"
+        return _gate_if_not_placeholder(op, target_var) if is_self else op
     if prop_name in ("layoutSizingHorizontal", "layoutSizingVertical") and is_self:
-        deferred_lines.append(f'{target_var}.{prop_name} = {format_js_value(value, "enum")};')
+        deferred_lines.append(
+            _gate_if_not_placeholder(
+                f'{target_var}.{prop_name} = {format_js_value(value, "enum")};',
+                target_var,
+            )
+        )
         return ""
 
     from dd.property_registry import by_figma_name
     prop = by_figma_name(prop_name)
     if prop:
         formatted = format_js_value(value, prop.value_type)
-        return f"{target_var}.{prop.figma_name} = {formatted};"
+        op = f"{target_var}.{prop.figma_name} = {formatted};"
+        # Gate self-target writes on runtime placeholder check. When the
+        # instance fell back to our wireframe placeholder (missing source
+        # component), these DB-sourced visual properties would otherwise
+        # clobber the wireframe (e.g. a black `.fills` over the X diagonals
+        # turns the placeholder into a giant black box).
+        return _gate_if_not_placeholder(op, target_var) if is_self else op
     return ""
+
+
+def _gate_if_not_placeholder(op: str, var: str) -> str:
+    """Wrap a JS statement so it only runs when `var` is NOT a placeholder.
+
+    Uses the runtime `_isPh(node)` helper (emitted in the preamble alongside
+    `_missingComponentPlaceholder`). If the node has pluginData '__ph'='1',
+    it's a wireframe placeholder from the Mode 1 fallback path, and we
+    should not apply the DB's visual properties to it.
+    """
+    return f"if (!_isPh({var})) {{ {op} }}"
 
 
 def _collect_swap_targets_from_tree(
@@ -1595,34 +1619,52 @@ def generate_figma_script(
         preamble[placeholder_slot_index] = (
             "// Missing-component wireframe placeholder: emitted when a Mode 1\n"
             "// createInstance falls back (deleted/unpublished/stripped component).\n"
-            "// Black-stroked frame with X diagonals at the instance's dimensions.\n"
-            "// Name label appears only when the frame is large enough to fit it.\n"
+            "// Mid-grey stroke + X diagonals at the instance's dimensions.\n"
+            "//\n"
+            "// Design notes:\n"
+            "// - Lines use mid-grey (0.5) so they stay visible even if downstream\n"
+            "//   DB overrides clobber the frame fill (e.g. to black or any\n"
+            "//   color the original component was supposed to have).\n"
+            "// - X diagonals are skipped for extreme aspect ratios (> 3:1) —\n"
+            "//   they collapse to near-parallel lines that look like noise.\n"
+            "// - Name label appears only when the frame is >= 64x32.\n"
+            "// - setPluginData('__ph', '1') marks the returned frame so the\n"
+            "//   caller can gate subsequent visual-property writes (the DB's\n"
+            "//   overrides for the real component shouldn't be applied to the\n"
+            "//   placeholder — they'd turn the wireframe into a filled shape).\n"
             "const _MIN_LABEL_W = 64, _MIN_LABEL_H = 32;\n"
+            "const _MAX_ASPECT = 3;\n"
             "function _missingComponentPlaceholder(name, w, h, eid) {\n"
             "  __errors.push({kind:\"component_missing\", eid, name, w, h});\n"
             "  const f = figma.createFrame();\n"
             "  f.resize(w || 24, h || 24);\n"
             "  f.fills = [];\n"
-            "  f.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "  f.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
             "  f.strokeWeight = 1;\n"
             "  f.clipsContent = true;\n"
+            "  try { f.setPluginData('__ph', '1'); } catch (__e) {}\n"
             "  const actualW = f.width, actualH = f.height;\n"
-            "  const diag = Math.hypot(actualW, actualH);\n"
-            "  const ang = Math.atan2(actualH, actualW) * 180 / Math.PI;\n"
-            "  const l1 = figma.createLine();\n"
-            "  l1.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
-            "  l1.strokeWeight = 1;\n"
-            "  l1.resize(diag, 0);\n"
-            "  l1.rotation = -ang;\n"
-            "  l1.x = 0; l1.y = actualH;\n"
-            "  f.appendChild(l1);\n"
-            "  const l2 = figma.createLine();\n"
-            "  l2.strokes = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
-            "  l2.strokeWeight = 1;\n"
-            "  l2.resize(diag, 0);\n"
-            "  l2.rotation = ang;\n"
-            "  l2.x = 0; l2.y = 0;\n"
-            "  f.appendChild(l2);\n"
+            "  // Only draw X when aspect is reasonable — at extreme ratios\n"
+            "  // the diagonals collapse to near-parallel lines.\n"
+            "  const aspect = Math.max(actualW / actualH, actualH / actualW);\n"
+            "  if (aspect <= _MAX_ASPECT) {\n"
+            "    const diag = Math.hypot(actualW, actualH);\n"
+            "    const ang = Math.atan2(actualH, actualW) * 180 / Math.PI;\n"
+            "    const l1 = figma.createLine();\n"
+            "    l1.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
+            "    l1.strokeWeight = 1;\n"
+            "    l1.resize(diag, 0);\n"
+            "    l1.rotation = -ang;\n"
+            "    l1.x = 0; l1.y = actualH;\n"
+            "    f.appendChild(l1);\n"
+            "    const l2 = figma.createLine();\n"
+            "    l2.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
+            "    l2.strokeWeight = 1;\n"
+            "    l2.resize(diag, 0);\n"
+            "    l2.rotation = ang;\n"
+            "    l2.x = 0; l2.y = 0;\n"
+            "    f.appendChild(l2);\n"
+            "  }\n"
             "  if (actualW >= _MIN_LABEL_W && actualH >= _MIN_LABEL_H && name) {\n"
             "    try {\n"
             "      const t = figma.createText();\n"
@@ -1630,12 +1672,16 @@ def generate_figma_script(
             "      t.fontSize = 10;\n"
             "      t.characters = String(name);\n"
             "      t.x = 4; t.y = 4;\n"
-            "      t.fills = [{type:\"SOLID\", color:{r:0,g:0,b:0}}];\n"
+            "      t.fills = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
             "      f.appendChild(t);\n"
             "    } catch (__e) {}\n"
             "  }\n"
             "  return f;\n"
-            "}"
+            "}\n"
+            "// Helper to gate a setter on whether the target is a placeholder.\n"
+            "// Used to prevent DB visual overrides (fills/strokes/effects) from\n"
+            "// clobbering the placeholder's wireframe appearance.\n"
+            "function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }"
         )
         # Rebuild the combined script with the updated preamble
         lines = preamble + lines[len(preamble):]

@@ -5110,7 +5110,8 @@ class TestMode1NullSafety:
         assert "createLine" in helper_body, "diagonals are LINE nodes"
         assert "createFrame" in helper_body, "outer frame"
         # Stroke color is black
-        assert "{r:0,g:0,b:0}" in helper_body or '"r":0,"g":0,"b":0' in helper_body
+        # Frame stroke uses mid-grey for contrast (works on any fill color)
+        assert "{r:0.5,g:0.5,b:0.5}" in helper_body
 
     def test_placeholder_emits_component_missing_error(self):
         """When the placeholder fires, __errors gets a component_missing entry
@@ -5127,6 +5128,61 @@ class TestMode1NullSafety:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "component_missing" in script
+
+    def test_placeholder_marks_node_with_plugin_data_sentinel(self):
+        """Placeholder helper must mark its returned frame with a pluginData
+        sentinel so downstream visual-property writes (that are intended for
+        the REAL component instance) can be gated at runtime and skipped.
+        Without this, DB overrides clobber the placeholder's appearance
+        (e.g. black fill over the wireframe X = giant black box)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {-1: {"bindings": []},
+                      -2: {"component_key": "abc", "component_figma_id": "123:456",
+                           "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Helper must set a pluginData marker on the returned frame
+        assert "setPluginData" in script
+        assert "__ph" in script
+
+    def test_placeholder_skips_x_on_extreme_aspect_ratio(self):
+        """When width:height is > 3:1 or < 1:3, the X diagonals become
+        nearly-parallel lines and look like noise. Skip them at runtime;
+        render just the bordered rect + label. Threshold gate lives in
+        the helper body."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {-1: {"bindings": []},
+                      -2: {"component_key": "abc", "component_figma_id": "123:456",
+                           "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The threshold must be applied at runtime inside the helper
+        assert "_MAX_ASPECT" in script or "aspect" in script.lower()
+
+    def test_placeholder_lines_use_contrast_color(self):
+        """Lines use mid-grey so they remain visible even if downstream
+        code clobbers the frame fill to black or sets it to any dark color.
+        Mid-grey #808080 contrasts with both black (0) and white (255)."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["button-1"]},
+            "button-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "button-1": -2}
+        db_visuals = {-1: {"bindings": []},
+                      -2: {"component_key": "abc", "component_figma_id": "123:456",
+                           "bindings": []}}
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        helper_start = script.find("function _missingComponentPlaceholder")
+        helper_body = script[helper_start:helper_start + 3000]
+        # Must use mid-grey, not pure black (r:0,g:0,b:0) on line strokes
+        # Accept 0.5 (mid-grey) as a line stroke color
+        assert "0.5" in helper_body, "lines must use mid-grey for contrast"
 
     def test_placeholder_text_label_only_when_size_permits(self):
         """Placeholder text label (component name) is suppressed when the
