@@ -85,6 +85,13 @@ KIND_EFFECT_MISSING = "effect_missing"
 # handlePositions can't be reliably converted. Renderer skips the
 # gradient rather than emitting a wrong matrix.
 KIND_GRADIENT_TRANSFORM_MISSING = "gradient_transform_missing"
+# Figma's Plugin API has getRangeOpenTypeFeatures() but no setter —
+# OpenType features (SUPS, SUBS, LIGA, etc.) on specific text ranges
+# are read-only from the plugin side. When IR has per-range features,
+# we can't apply them via the plugin. For some specific features we
+# do a lossy Unicode substitution (e.g. "0"+SUPS -> "°"), but generic
+# features surface as this kind.
+KIND_OPENTYPE_UNSUPPORTED = "opentype_unsupported"
 
 
 @dataclass(frozen=True)

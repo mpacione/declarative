@@ -354,6 +354,45 @@ def _escape_js(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
+# OpenType feature -> Unicode glyph substitutions.
+# Figma's Plugin API doesn't let us apply per-range OpenType features, so
+# we substitute at the character level for well-known patterns. Each entry
+# is (feature_name, source_char) -> target_unicode_char. Inter's SUPS
+# feature renders "0" and "o" as the degree symbol — the most common case
+# in this codebase's meme-creator UI (-25°, 270°, etc.).
+_OPENTYPE_SUBSTITUTIONS: dict[tuple[str, str], str] = {
+    ("SUPS", "0"): "\u00b0",  # degree (most common in this file)
+    ("SUPS", "o"): "\u00b0",
+}
+
+
+def _apply_opentype_substitution(text: str, segments: list[dict]) -> str:
+    """Substitute characters in `text` per Unicode glyph mappings keyed by
+    (OpenType feature, source character). Segments are {s, e, f: {feature: bool}}
+    objects from Plugin API getStyledTextSegments(['openTypeFeatures']).
+
+    Used because Figma's Plugin API has getRangeOpenTypeFeatures but NO
+    setter — per-range features cannot be re-applied programmatically.
+    """
+    if not segments:
+        return text
+    chars = list(text)
+    for seg in segments:
+        start = seg.get("s", 0)
+        end = seg.get("e", 0)
+        features = seg.get("f") or {}
+        if not (features and 0 <= start < end <= len(chars)):
+            continue
+        for feat_name, feat_on in features.items():
+            if not feat_on:
+                continue
+            for i in range(start, end):
+                sub = _OPENTYPE_SUBSTITUTIONS.get((feat_name, chars[i]))
+                if sub:
+                    chars[i] = sub
+    return "".join(chars)
+
+
 def _guarded_op(op: str, eid: str, kind: str) -> str:
     """Wrap a single JS statement in an inline try/catch that pushes a
     structured entry to __errors on throw.
@@ -862,6 +901,14 @@ def generate_figma_script(
     # then layoutSizing sets the final width, then HEIGHT locks it.
     # See comment in Phase 1 text branch for the defect this avoids.
     text_autoresize_deferred: dict[str, str] = {}
+    # Deferred relativeTransform (for horizontal/vertical mirrors).
+    # Must be set AFTER appendChild — the translation component is
+    # parent-relative, and Figma recomputes it to preserve world-space
+    # position when the node's parent changes. Setting in Phase 1 (before
+    # appendChild) applies the translation in page space, then Phase 2
+    # appendChild re-writes it to keep the node at the same world point,
+    # effectively discarding the intended parent-relative position.
+    mirror_by_eid: dict[str, tuple[str, list]] = {}
 
     # -----------------------------------------------------------------------
     # Phase 1: Materialize — create all nodes with intrinsic properties
@@ -1110,19 +1157,16 @@ def generate_figma_script(
             # mirrors — setting .rotation = -180 produces a true rotation
             # (both axes flipped) instead of the intended single-axis flip.
             # In this case, suppress the registry-driven rotation emission
-            # and emit relativeTransform directly instead.
+            # and defer relativeTransform emission to Phase 3 (after
+            # appendChild). See mirror_by_eid declaration for why.
             rt_json = raw_visual.get("relative_transform")
             if rt_json and visual.get("rotation") is not None:
                 rt = json.loads(rt_json) if isinstance(rt_json, str) else rt_json
                 if isinstance(rt, list) and len(rt) == 2:
                     det = rt[0][0] * rt[1][1] - rt[0][1] * rt[1][0]
-                    if det < 0:  # mirror — suppress rotation, emit matrix
+                    if det < 0:  # mirror — suppress rotation, defer matrix emission
                         visual.pop("rotation", None)
-                        phase1_lines.append(
-                            f"{var}.relativeTransform = "
-                            f"[[{rt[0][0]},{rt[0][1]},{rt[0][2]}],"
-                            f"[{rt[1][0]},{rt[1][1]},{rt[1][2]}]];"
-                        )
+                        mirror_by_eid[eid] = (var, rt)
 
             figma_type = ir_to_figma_type(etype)
             visual_lines, visual_refs = _emit_visual(
@@ -1238,13 +1282,13 @@ def generate_figma_script(
         # incorrectly and wrap to "M/o/r/e"-style columns.
         if eid in text_by_eid:
             _var, _text = text_by_eid[eid]
-            phase2_lines.append(_guarded_op(
-                f'{_var}.characters = "{_text}";',
-                eid, "text_set_failed",
-            ))
-            # OpenType features: apply per-character features (SUPS, SUBS,
-            # LIGA, etc.) after .characters is set. These are visual
-            # glyph substitutions — e.g. "0" with SUPS renders as "°".
+            # OpenType feature substitution: Figma's Plugin API has
+            # getRangeOpenTypeFeatures but NO setRangeOpenTypeFeatures —
+            # per-range features can't be applied programmatically. For
+            # specific well-known substitutions (e.g. SUPS "0" renders as
+            # degree symbol in Inter), we replace the underlying character
+            # with the Unicode equivalent so the visual matches without
+            # needing the OpenType feature.
             if db_visuals is not None:
                 _nid = spec.get("_node_id_map", {}).get(eid)
                 _nv = db_visuals.get(_nid, {}) if _nid else {}
@@ -1252,18 +1296,11 @@ def generate_figma_script(
                 if ot_json:
                     ot_segs = json.loads(ot_json) if isinstance(ot_json, str) else ot_json
                     if isinstance(ot_segs, list):
-                        for seg in ot_segs:
-                            s, e = seg.get("s", 0), seg.get("e", 0)
-                            feats = seg.get("f", {})
-                            if feats and s < e:
-                                feats_js = ", ".join(
-                                    f"{k}: {'true' if v else 'false'}"
-                                    for k, v in feats.items()
-                                )
-                                phase2_lines.append(_guarded_op(
-                                    f'{_var}.setRangeOpenTypeFeatures({s}, {e}, {{{feats_js}}});',
-                                    eid, "text_set_failed",
-                                ))
+                        _text = _apply_opentype_substitution(_text, ot_segs)
+            phase2_lines.append(_guarded_op(
+                f'{_var}.characters = "{_text}";',
+                eid, "text_set_failed",
+            ))
 
         parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
@@ -1323,6 +1360,20 @@ def generate_figma_script(
                 phase3_lines.append(_guarded_op(
                     f"{var}.y = {position.get('y', 0)};", eid, "position_failed",
                 ))
+
+        # Mirror transforms: emit relativeTransform AFTER appendChild and
+        # position. The Plugin API's relativeTransform is parent-relative;
+        # setting it here (Phase 3) ensures the parent is already wired so
+        # the translation component isn't recomputed to preserve world-space
+        # position (which was dropping mirrored images outside their parents).
+        if eid in mirror_by_eid:
+            _var, _rt = mirror_by_eid[eid]
+            phase3_lines.append(_guarded_op(
+                f"{_var}.relativeTransform = "
+                f"[[{_rt[0][0]},{_rt[0][1]},{_rt[0][2]}],"
+                f"[{_rt[1][0]},{_rt[1][1]},{_rt[1][2]}]];",
+                eid, "position_failed",
+            ))
 
         # Constraints deferred to Phase 3 (after position)
         if db_visuals is not None:

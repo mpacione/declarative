@@ -1402,6 +1402,35 @@ class TestEmitVisualAdditiveProperties:
         assert "rotation = " not in script.split("relativeTransform")[0].split("frame-1")[-1], \
             "rotation should not be emitted when relativeTransform is used"
 
+    def test_relative_transform_emitted_after_appendchild(self):
+        """relativeTransform's translation is parent-relative. Figma
+        recomputes the translation to preserve world-space position when
+        appendChild happens. So if we set relativeTransform BEFORE
+        appendChild (Phase 1), the intended parent-relative position is
+        lost. Must be emitted in Phase 3, after appendChild."""
+        import math
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["frame-1"]},
+            "frame-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "frame-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "rotation": math.pi,
+                "relative_transform": json.dumps([[-1, 0, 166], [0, 1, 8]]),
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # The relativeTransform line must appear AFTER the appendChild line
+        rt_pos = script.find("relativeTransform")
+        append_pos = script.find("appendChild(n1)")
+        assert rt_pos > append_pos, (
+            f"relativeTransform must be emitted after appendChild. "
+            f"Got rt_pos={rt_pos}, append_pos={append_pos}"
+        )
+
     def test_relative_transform_not_used_for_pure_rotation(self):
         """When relative_transform indicates a pure rotation (det = +1),
         the normal rotation emission path is fine — no need for the matrix."""
@@ -1425,9 +1454,11 @@ class TestEmitVisualAdditiveProperties:
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert "rotation = -45.0" in script or "rotation = -44.99" in script
 
-    def test_opentype_features_emitted_after_characters(self):
-        """OpenType features (SUPS, SUBS, etc.) must be applied after
-        .characters is set via setRangeOpenTypeFeatures()."""
+    def test_opentype_sups_substituted_with_degree_symbol(self):
+        """Figma's Plugin API has getRangeOpenTypeFeatures but NO setter,
+        so per-range features can't be applied programmatically. For the
+        common SUPS-on-zero pattern (-250 -> -25°), substitute the
+        Unicode degree symbol directly into the emitted characters."""
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["text-1"]},
             "text-1": {"type": "text", "props": {"text": "-250"}},
@@ -1441,8 +1472,10 @@ class TestEmitVisualAdditiveProperties:
             },
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert "setRangeOpenTypeFeatures" in script
-        assert "SUPS" in script
+        # The degree symbol is substituted for "0" with SUPS
+        assert "-25\u00b0" in script, "SUPS '0' should become degree symbol"
+        # The broken setRangeOpenTypeFeatures must not be emitted
+        assert "setRangeOpenTypeFeatures" not in script
 
     def test_emit_constraints(self):
         spec = _make_spec({
