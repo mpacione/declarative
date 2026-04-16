@@ -96,6 +96,53 @@ pass drops to ~30–40s.
 | **Total** | **361s** | **296s** | **239s** | **74s** |
 | **Speedup** | 1.0× | 1.2× | 1.5× | **4.9×** |
 
+## Measured results (post-implementation)
+
+| Stage | Baseline | After | Delta |
+|---|--:|--:|--:|
+| REST extract (fetch + process) | 104s | 107s | — |
+| Plugin pipeline | 257s (5 passes) | **114s** (unified) | **−143s (−56%)** |
+| **Total** | **361s** | **221s** | **−140s (−39%, 1.63×)** |
+
+### Deltas vs the projection
+
+- **#1 didn't deliver.** Figma's 429 rate limiter aggressively
+  throttles parallel fetch. At max_workers=4 the burst trips 429s
+  mid-run and drops ~30 screens after the retry budget is
+  exhausted. At max_workers=2 the jittered backoff serializes the
+  workers and wall time lands at 81s (same as sequential 79s). The
+  code path is preserved for callers on higher-tier API plans, but
+  the default is now max_workers=1.
+
+- **#2 delivered fully.** REST ingest now populates `component_key`
+  for 27,811 / 27,811 INSTANCE nodes (100%). The supplement's per-
+  INSTANCE `getMainComponentAsync()` call is no longer on the hot
+  path — the rare swap-detection case is still covered by the
+  light-slice walker.
+
+- **#3 delivered but had to split.** A single unified walk of every
+  Plugin field exceeds Figma's ~64KB PROXY_EXECUTE result buffer on
+  moderate-sized screens. Solution: split into a "light" slice
+  (small per-node payload) and a "heavy" slice (per-node transforms
+  + per-vector geometries). Still 2 passes instead of 5; still a
+  2.25× speedup on the Plugin-API stage (257s → 114s).
+
+### Also landed in this chapter
+
+- **Pipe-drain bug fix**: the old Node.js runner called
+  `process.exit(0)` immediately after `console.log(JSON.stringify(msg))`.
+  `process.exit()` does not wait for stdout to flush, and macOS
+  pipes default to a 64KB buffer — any payload larger than that was
+  silently truncated at the 64KB boundary. Replaced with
+  `process.stdout.write(..., callback)` in both
+  `_run_extract_supplement` and `_run_extract_plugin`. This was a
+  latent bug affecting any sufficiently large supplement output.
+
+- **Backoff jitter**: `_request_with_retry` now adds up to 50%
+  jitter on the 429 backoff so concurrent workers don't synchronize
+  their retry attempts and re-trip the limiter at the same tick.
+  Retry budget raised from 5 → 8 attempts.
+
 ## Secondary improvements (lower priority)
 
 4. **Daemonize Node.js/WebSocket** — currently every batch spawns a fresh

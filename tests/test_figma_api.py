@@ -356,6 +356,127 @@ class TestConvertNodeTree:
         result = convert_node_tree(api_node)
         assert result[0]["component_figma_id"] == "1334:10840"
 
+    def test_instance_component_key_from_components_map(self):
+        """Perf pt 6 improvement #2: resolve componentId -> component_key
+        from the per-response components map, eliminating the supplement
+        pass's 25K+ async getMainComponentAsync() calls."""
+        api_node = {
+            "id": "100:12",
+            "name": "button/large/solid",
+            "type": "INSTANCE",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 200, "height": 48},
+            "fills": [],
+            "strokes": [],
+            "effects": [],
+            "componentId": "1334:10840",
+            "children": [],
+        }
+        components_map = {
+            "1334:10840": {
+                "key": "abc123def456deadbeef",
+                "name": "button/large/solid",
+                "remote": False,
+            },
+        }
+
+        result = convert_node_tree(api_node, components_map=components_map)
+
+        assert result[0]["component_figma_id"] == "1334:10840"
+        assert result[0]["component_key"] == "abc123def456deadbeef"
+
+    def test_instance_without_components_map_omits_component_key(self):
+        """Older callers / detached instances: component_key absent."""
+        api_node = {
+            "id": "100:12",
+            "name": "button/large/solid",
+            "type": "INSTANCE",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 200, "height": 48},
+            "fills": [],
+            "strokes": [],
+            "effects": [],
+            "componentId": "1334:10840",
+            "children": [],
+        }
+
+        # no components_map argument
+        result = convert_node_tree(api_node)
+
+        assert result[0]["component_figma_id"] == "1334:10840"
+        assert "component_key" not in result[0]
+
+    def test_instance_with_unknown_component_id_omits_component_key(self):
+        """componentId not in the map (detached / orphaned instance)."""
+        api_node = {
+            "id": "100:12",
+            "name": "orphan",
+            "type": "INSTANCE",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 200, "height": 48},
+            "fills": [],
+            "strokes": [],
+            "effects": [],
+            "componentId": "9999:9999",
+            "children": [],
+        }
+
+        result = convert_node_tree(
+            api_node,
+            components_map={"1334:10840": {"key": "x", "name": "y"}},
+        )
+
+        assert result[0]["component_figma_id"] == "9999:9999"
+        assert "component_key" not in result[0]
+
+    def test_components_map_resolves_nested_instances(self):
+        """A components map is shared across the whole tree walk."""
+        api_node = {
+            "id": "1:1",
+            "name": "Screen",
+            "type": "FRAME",
+            "absoluteBoundingBox": {"x": 0, "y": 0, "width": 428, "height": 926},
+            "fills": [],
+            "strokes": [],
+            "effects": [],
+            "children": [
+                {
+                    "id": "1:2",
+                    "name": "icon/star",
+                    "type": "INSTANCE",
+                    "absoluteBoundingBox": {"x": 0, "y": 0, "width": 24, "height": 24},
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "componentId": "comp:star",
+                    "children": [],
+                },
+                {
+                    "id": "1:3",
+                    "name": "button/primary",
+                    "type": "INSTANCE",
+                    "absoluteBoundingBox": {"x": 0, "y": 40, "width": 100, "height": 48},
+                    "fills": [],
+                    "strokes": [],
+                    "effects": [],
+                    "componentId": "comp:btn",
+                    "children": [],
+                },
+            ],
+        }
+        components_map = {
+            "comp:star": {"key": "star-key", "name": "icon/star"},
+            "comp:btn": {"key": "btn-key", "name": "button/primary"},
+        }
+
+        result = convert_node_tree(api_node, components_map=components_map)
+
+        # [0] is the root FRAME, [1] and [2] are the two instances
+        instance_nodes = [n for n in result if n["node_type"] == "INSTANCE"]
+        assert len(instance_nodes) == 2
+        keys_by_name = {n["name"]: n.get("component_key") for n in instance_nodes}
+        assert keys_by_name == {
+            "icon/star": "star-key",
+            "button/primary": "btn-key",
+        }
+
     def test_visibility_false(self):
         api_node = {
             "id": "100:13",

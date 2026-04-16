@@ -161,6 +161,103 @@ class TestIngestAdapterContract:
         assert adapter.backend == "figma"
 
 
+@pytest.mark.unit
+class TestIngestAdapterParallelFetch:
+    """Parallel REST batching (perf pt 6 improvement #1).
+
+    Extracts the same set of ids in parallel across batches. Must
+    preserve every guarantee of the sequential implementation:
+
+    - extracted[] and errors[] shape identical to sequential run
+    - `extracted` is returned in the request id order (or at worst,
+      in a stable deterministic order) so downstream processing
+      sees the same sequence every run
+    - Each batch's failure is contained: one batch raising does not
+      cascade into other batches
+    """
+
+    def test_parallel_mode_produces_same_results_as_sequential(self):
+        from dd.ingest_figma import FigmaIngestAdapter
+
+        ids = [f"{i}:0" for i in range(50)]
+
+        seq = FigmaIngestAdapter(
+            file_key="test", token="tok",
+            api_client=make_fake_api(),
+            max_workers=1,
+        )
+        par = FigmaIngestAdapter(
+            file_key="test", token="tok",
+            api_client=make_fake_api(),
+            max_workers=8,
+        )
+
+        seq_result = seq.extract_screens(ids)
+        par_result = par.extract_screens(ids)
+
+        assert seq_result.summary.requested == par_result.summary.requested
+        assert seq_result.summary.succeeded == par_result.summary.succeeded
+        assert seq_result.summary.failed == par_result.summary.failed
+        assert [e["id"] for e in seq_result.extracted] == [
+            e["id"] for e in par_result.extracted
+        ]
+
+    def test_parallel_mode_preserves_structured_errors(self):
+        """Errors in some batches must not prevent other batches from succeeding."""
+        from dd.ingest_figma import FigmaIngestAdapter
+
+        ids = [f"{i}:0" for i in range(30)]
+
+        adapter = FigmaIngestAdapter(
+            file_key="test", token="tok",
+            api_client=make_fake_api(null_ids={"7:0", "19:0", "24:0"}),
+            max_workers=4,
+        )
+
+        result = adapter.extract_screens(ids)
+
+        assert len(result.extracted) == 27
+        assert len(result.errors) == 3
+        assert {e.id for e in result.errors} == {"7:0", "19:0", "24:0"}
+        assert all(e.kind == "node_not_found" for e in result.errors)
+
+    def test_parallel_mode_isolates_batch_network_failures(self):
+        """A raised exception in one batch doesn't crash the whole call."""
+        from dd.ingest_figma import FigmaIngestAdapter
+
+        ids = [f"{i}:0" for i in range(20)]
+
+        adapter = FigmaIngestAdapter(
+            file_key="test", token="tok",
+            api_client=make_fake_api(
+                raise_for_ids={"15:0"},
+                raise_exc=ConnectionError("boom"),
+            ),
+            max_workers=4,
+        )
+
+        result = adapter.extract_screens(ids)
+
+        # 15:0 is in batch [10:0..19:0]; that whole batch gets api_error entries
+        assert result.summary.requested == 20
+        assert len(result.extracted) >= 10  # other batches survive
+        assert any(e.kind == "api_error" for e in result.errors)
+        assert "boom" in (result.errors[0].error or "")
+
+    def test_default_worker_count_is_valid(self):
+        """Default is sequential (1) because Figma's rate limiter
+        aggressively eats parallel gains on moderate files. The
+        parallel path is available via explicit ``max_workers=N`` for
+        callers on higher-tier API plans or smaller files.
+        """
+        from dd.ingest_figma import FigmaIngestAdapter
+
+        adapter = FigmaIngestAdapter(
+            file_key="test", token="tok", api_client=make_fake_api()
+        )
+        assert adapter._max_workers >= 1
+
+
 # ---------------------------------------------------------------------------
 # Freshness-probe contract — exercised through FigmaResourceProbe
 # ---------------------------------------------------------------------------

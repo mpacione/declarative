@@ -14,12 +14,19 @@ from typing import Any
 import requests
 
 FIGMA_API_BASE = "https://api.figma.com/v1"
-MAX_RETRIES = 5
+MAX_RETRIES = 8
 INITIAL_BACKOFF = 2.0
 
 
 def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
-    """Make an HTTP request with exponential backoff on 429 rate limits."""
+    """Make an HTTP request with exponential backoff on 429 rate limits.
+
+    With parallel fetch (perf pt 6 #1) we can hit Figma's burst limit
+    even at moderate worker counts. Retries use exponential backoff
+    with a small random jitter so concurrent workers don't synchronize
+    their retry attempts and re-trip the limiter at the same instant.
+    """
+    import random
     backoff = INITIAL_BACKOFF
     for attempt in range(MAX_RETRIES):
         resp = requests.request(method, url, **kwargs)
@@ -27,8 +34,13 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
             resp.raise_for_status()
             return resp
         retry_after = float(resp.headers.get("Retry-After", backoff))
-        wait = max(retry_after, backoff)
-        print(f"  Rate limited, waiting {wait:.0f}s (attempt {attempt + 1}/{MAX_RETRIES})...")
+        # Jitter: up to 50% extra so N workers don't wake at the same tick.
+        jitter = random.uniform(0.0, backoff * 0.5)
+        wait = max(retry_after, backoff) + jitter
+        print(
+            f"  Rate limited, waiting {wait:.1f}s "
+            f"(attempt {attempt + 1}/{MAX_RETRIES})...",
+        )
         time.sleep(wait)
         backoff *= 2
     resp.raise_for_status()
@@ -128,21 +140,39 @@ def convert_node_tree(
     depth: int = 0,
     sort_order: int = 0,
     result: list | None = None,
+    components_map: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict]:
     """Recursively convert a Figma REST API node tree to extraction format.
 
     Each node becomes a dict matching the contract of parse_extraction_response().
+
+    ``components_map`` is the per-response ``components`` block from
+    Figma's ``/v1/files/:key/nodes`` response. Passing it in lets
+    INSTANCE nodes resolve ``componentId -> component_key`` at ingest
+    time (perf pt 6 improvement #2: eliminates the biggest cost in the
+    supplement pass). Older call sites that omit it still work —
+    ``component_key`` is simply left empty and the supplement pass can
+    still fill it later if run.
     """
     if result is None:
         result = []
+    if components_map is None:
+        components_map = {}
 
     my_idx = len(result)
 
-    node = _convert_single_node(api_node, parent_idx, depth, sort_order)
+    node = _convert_single_node(api_node, parent_idx, depth, sort_order, components_map)
     result.append(node)
 
     for i, child in enumerate(api_node.get("children", [])):
-        convert_node_tree(child, parent_idx=my_idx, depth=depth + 1, sort_order=i, result=result)
+        convert_node_tree(
+            child,
+            parent_idx=my_idx,
+            depth=depth + 1,
+            sort_order=i,
+            result=result,
+            components_map=components_map,
+        )
 
     return result
 
@@ -181,7 +211,11 @@ def _reconstruct_logical_dimensions(
 
 
 def _convert_single_node(
-    api_node: dict, parent_idx: int | None, depth: int, sort_order: int
+    api_node: dict,
+    parent_idx: int | None,
+    depth: int,
+    sort_order: int,
+    components_map: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     """Convert a single REST API node dict to extraction format."""
     bbox = api_node.get("absoluteBoundingBox")
@@ -211,7 +245,7 @@ def _convert_single_node(
     _add_visual_properties(node, api_node)
     _add_layout_properties(node, api_node)
     _add_typography_properties(node, api_node)
-    _add_component_reference(node, api_node)
+    _add_component_reference(node, api_node, components_map)
 
     return node
 
@@ -468,10 +502,29 @@ def _add_letter_spacing(node: dict, style: dict) -> None:
     })
 
 
-def _add_component_reference(node: dict, api_node: dict) -> None:
+def _add_component_reference(
+    node: dict,
+    api_node: dict,
+    components_map: dict[str, dict[str, Any]] | None = None,
+) -> None:
     if api_node.get("type") == "INSTANCE":
-        if api_node.get("componentId"):
-            node["component_figma_id"] = api_node["componentId"]
-        # Component key is available at the file level in the components map,
-        # not directly on the instance node in REST API.
-        # It gets populated via Plugin API extraction (mainComponent.key).
+        component_id = api_node.get("componentId")
+        if component_id:
+            node["component_figma_id"] = component_id
+            # perf pt 6 improvement #2: the per-response `components`
+            # block at the /v1/files/:key/nodes top level maps
+            # componentId -> {key, name, remote, ...}. When this map
+            # is available we populate component_key at ingest time
+            # rather than making the supplement pass do 25K+ async
+            # getMainComponentAsync() calls to re-discover it.
+            # Verified 100% parity with supplement output on Dank
+            # Experimental. If the map is absent (older callers, or
+            # the API didn't include it), we leave component_key
+            # empty and the supplement pass can still fill it as a
+            # fallback.
+            if components_map:
+                entry = components_map.get(component_id)
+                if isinstance(entry, dict):
+                    key = entry.get("key")
+                    if key:
+                        node["component_key"] = key

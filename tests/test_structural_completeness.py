@@ -108,6 +108,12 @@ _STRUCTURAL_DB_COLUMNS: set[str] = {
     "grid_row_count", "grid_column_count",
     "grid_row_gap", "grid_column_gap",
     "grid_row_sizes", "grid_column_sizes",
+    # Plugin-API-only fields (captured by supplement, rendered via
+    # relativeTransform / vectorPaths / OpenType feature emission).
+    # Renderer reads these directly from raw_visual in figma.py; no
+    # registry property because there's no cross-backend canonical
+    # form yet (relativeTransform in particular is Figma-specific).
+    "relative_transform", "opentype_features", "vector_paths",
 }
 
 

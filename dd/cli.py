@@ -143,7 +143,15 @@ def run_extract(
 
             try:
                 t0 = time.monotonic()
-                raw_response = convert_node_tree(entry["document"])
+                # Pass the per-response `components` map through so
+                # INSTANCE nodes resolve componentId -> component_key
+                # at ingest time (perf pt 6 improvement #2). The
+                # FigmaIngestAdapter captures this during REST fetch;
+                # empty dict if older ingest.
+                components_map = entry.get("components") or {}
+                raw_response = convert_node_tree(
+                    entry["document"], components_map=components_map
+                )
                 result = process_screen(conn, run_id, screen_id, figma_node_id, raw_response)
                 elapsed_screen = time.monotonic() - t0
                 total_nodes += result["node_count"]
@@ -637,7 +645,14 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
         return
 
     def execute_via_ws(script: str) -> dict:
-        """Execute JS in Figma via PROXY_EXECUTE WebSocket."""
+        """Execute JS in Figma via PROXY_EXECUTE WebSocket.
+
+        Uses process.stdout.write with a drain callback before exit —
+        Node's process.exit() doesn't wait for pipe flush, and on
+        macOS the default pipe buffer is 64KB. Without the callback,
+        large result payloads get silently truncated at the 64KB
+        boundary.
+        """
         import subprocess
         node_js = (
             'const WebSocket = require("ws");'
@@ -651,12 +666,13 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
             'ws.on("message", (data) => {'
             '  const msg = JSON.parse(data);'
             '  if (msg.type === "PROXY_EXECUTE_RESULT") {'
-            '    console.log(JSON.stringify(msg));'
-            '    ws.close(); process.exit(0);'
+            '    process.stdout.write(JSON.stringify(msg), () => {'
+            '      ws.close(); process.exit(0);'
+            '    });'
             '  }'
             '});'
-            'ws.on("error", (err) => { console.log(JSON.stringify({error: err.message})); process.exit(1); });'
-            'setTimeout(() => { console.log(JSON.stringify({error: "timeout"})); process.exit(1); }, 65000);'
+            'ws.on("error", (err) => { process.stdout.write(JSON.stringify({error: err.message}), () => process.exit(1)); });'
+            'setTimeout(() => { process.stdout.write(JSON.stringify({error: "timeout"}), () => process.exit(1)); }, 65000);'
         )
         result = subprocess.run(
             [_find_node_binary(), "-e", node_js],
@@ -688,6 +704,131 @@ def _run_extract_supplement(db_path: str, args: argparse.Namespace) -> None:
         total_nodes=result.get("total_nodes", 0),
         component_key=result.get("component_key", 0),
         layout_positioning=result.get("layout_positioning", 0),
+        failed=result.get("failed", 0),
+    )
+    timer.print_summary()
+
+
+def _run_extract_plugin(db_path: str, args: argparse.Namespace) -> None:
+    """Unified Plugin-API extraction (pt 6 #3).
+
+    One WebSocket round-trip per batch replaces the five separate passes
+    (supplement + 4x targeted). Reuses the same WS executor helper as
+    ``_run_extract_supplement`` and dispatches every field set through
+    the existing apply_* functions via ``apply_plugin``.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.db import classify_screens
+    from dd.extract_plugin import run_plugin_extract
+    from dd._timing import StageTimer
+
+    timer = StageTimer()
+    timer.meta(
+        command="extract-plugin", db_path=db_path,
+        port=args.port, batch_size=args.batch_size,
+        collect_component_key=args.collect_component_key,
+    )
+
+    conn = get_connection(db_path)
+
+    with timer.stage("classify_screens"):
+        classify_screens(conn)
+
+    screen_count = conn.execute(
+        "SELECT COUNT(*) FROM screens WHERE screen_type = 'app_screen'"
+    ).fetchone()[0]
+    timer.meta(screen_count=screen_count)
+
+    if args.dry_run:
+        print(f"Would run unified plugin extract for {screen_count} app screens")
+        print(f"  Port: {args.port}")
+        print(f"  Batch size: {args.batch_size}")
+        print(f"  collect_component_key: {args.collect_component_key}")
+        conn.close()
+        return
+
+    def execute_via_ws(script: str) -> dict:
+        """Execute JS in Figma via PROXY_EXECUTE WebSocket (pt 6 #3 path).
+
+        Identical mechanism to ``_run_extract_supplement`` — the single
+        unified script is just longer than any individual pass's script.
+        Timeout is bumped accordingly.
+        """
+        import subprocess
+        # IMPORTANT: the unified plugin extract can return payloads
+        # well over 64KB (relativeTransform for every node, vector
+        # geometries, etc.). macOS pipes default to a 64KB buffer,
+        # and Node's process.exit() DOES NOT wait for the stdout
+        # stream to drain — any unflushed data beyond the buffer
+        # boundary is silently dropped. The write callback below
+        # fires only after the kernel has accepted the entire
+        # payload, so we exit cleanly with the full JSON intact.
+        node_js = (
+            'const WebSocket = require("ws");'
+            f'const ws = new WebSocket("ws://localhost:{args.port}");'
+            f'const code = {json.dumps(script)};'
+            'ws.on("open", () => {'
+            '  ws.send(JSON.stringify({ type: "PROXY_EXECUTE", id: "plugin", code, timeout: 90000 }));'
+            '});'
+            'ws.on("message", (data) => {'
+            '  const msg = JSON.parse(data);'
+            '  if (msg.type === "PROXY_EXECUTE_RESULT") {'
+            '    process.stdout.write(JSON.stringify(msg), () => {'
+            '      ws.close(); process.exit(0);'
+            '    });'
+            '  }'
+            '});'
+            'ws.on("error", (err) => { process.stdout.write(JSON.stringify({error: err.message}), () => process.exit(1)); });'
+            'setTimeout(() => { process.stdout.write(JSON.stringify({error: "timeout"}), () => process.exit(1)); }, 95000);'
+        )
+        result = subprocess.run(
+            [_find_node_binary(), "-e", node_js],
+            capture_output=True, text=True, timeout=100,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr[:200] or "node process failed")
+        msg = json.loads(result.stdout.strip())
+        if "error" in msg and isinstance(msg["error"], str):
+            raise RuntimeError(msg["error"])
+        inner = msg.get("result", {})
+        if inner.get("success") is False:
+            raise RuntimeError(inner.get("error", "execution failed"))
+        return inner.get("result", inner)
+
+    print(
+        f"Unified plugin extract: {screen_count} app screens "
+        f"(port {args.port}, batch {args.batch_size}, "
+        f"collect_component_key={args.collect_component_key})"
+    )
+
+    with timer.stage("run_plugin_extract", items=screen_count, unit="screens"):
+        result = run_plugin_extract(
+            conn,
+            execute_via_ws,
+            batch_size=args.batch_size,
+            collect_component_key=args.collect_component_key,
+        )
+    conn.close()
+
+    print(f"\nDone: {result['total_nodes_touched']} nodes touched")
+    print(f"  supplement : lp={result['layout_positioning']}  ck={result['component_key']}  "
+          f"grid={result['grid']}  overrides={result['overrides']}")
+    print(f"  properties : mask={result['is_mask']}  bool_op={result['boolean_operation']}  "
+          f"corner_sm={result['corner_smoothing']}  arc={result['arc_data']}")
+    print(f"  sizing     : lsh={result['layout_sizing_h']}  lsv={result['layout_sizing_v']}  "
+          f"tar={result['text_auto_resize']}  fst={result['font_style']}  "
+          f"lw={result['layout_wrap']}")
+    print(f"  transforms : rt={result['relative_transform']}  ot={result['opentype_features']}  "
+          f"w/h={result['width_height']}  vp={result['vector_paths']}")
+    print(f"  vector-geo : fill={result['fill_geometry']}  stroke={result['stroke_geometry']}")
+    if result["failed"] > 0:
+        print(f"  failed: {result['failed']} screens")
+
+    timer.meta(
+        total_nodes_touched=result.get("total_nodes_touched", 0),
         failed=result.get("failed", 0),
     )
     timer.print_summary()
@@ -923,6 +1064,24 @@ def main(argv: list | None = None) -> None:
     supp_parser.add_argument("--batch-size", type=int, default=5, help="Screens per batch")
     supp_parser.add_argument("--dry-run", action="store_true", help="Show what would be extracted, don't execute")
 
+    plugin_parser = subparsers.add_parser(
+        "extract-plugin",
+        help="Unified Plugin-API extraction (perf pt 6 #3): supplement + properties + "
+             "sizing + transforms + vector-geometry in one walk.",
+    )
+    plugin_parser.add_argument("--db", help="Database path")
+    plugin_parser.add_argument("--port", type=int, default=9227, help="WebSocket port for PROXY_EXECUTE")
+    plugin_parser.add_argument("--batch-size", type=int, default=10, help="Screens per batch")
+    plugin_parser.add_argument(
+        "--collect-component-key",
+        action="store_true",
+        help="Fall back to getMainComponentAsync per INSTANCE. Default off — "
+             "REST ingest now populates component_key from the response's "
+             "components map (see perf pt 6 #2). Enable only if the REST "
+             "map was unavailable for your extract.",
+    )
+    plugin_parser.add_argument("--dry-run", action="store_true", help="Show what would be extracted, don't execute")
+
     gen_prompt_parser = subparsers.add_parser("generate-prompt", help="Generate Figma script from natural language prompt")
     gen_prompt_parser.add_argument("prompt", help="Natural language description of the screen to build")
     gen_prompt_parser.add_argument("--db", help="Database path")
@@ -1004,6 +1163,9 @@ def main(argv: list | None = None) -> None:
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)
         _run_extract_supplement(db_path, args)
+    elif args.command == "extract-plugin":
+        db_path = detect_db_path(args.db)
+        _run_extract_plugin(db_path, args)
     elif args.command == "generate-prompt":
         db_path = detect_db_path(args.db)
         _run_generate_prompt(db_path, args.prompt, out=args.out, page_name=args.page)
