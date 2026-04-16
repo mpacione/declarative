@@ -5254,6 +5254,58 @@ class TestMode1NullSafety:
         script, _ = generate_figma_script(spec, db_visuals={-1: {"bindings": []}})
         assert "__errors" in script
 
+    def test_generated_script_wraps_body_in_outer_try_catch(self):
+        """ADR-007 outer guard: Phases 1-3 live inside a try block whose
+        catch pushes a `render_thrown` structured error into __errors.
+        Script-level exceptions (e.g. Plugin API rejecting an illegal
+        property) would otherwise bypass the per-op micro-guards
+        entirely and reach the runtime harness as a raw throw — producing
+        zero KIND_* entries despite a failed render.
+
+        Exp 0 of the synthetic-generation sprint surfaced this: 11 of
+        12 vanilla prompts threw at script level (TEXT.layoutMode) and
+        zero errors reached __errors.
+        """
+        spec = _make_spec({
+            "screen-1": {
+                "type": "screen",
+                "children": ["c1"],
+                "layout": {"sizing": {"width": 400, "height": 800}},
+            },
+            "c1": {"type": "text", "text": "hello"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "c1": -2}
+        script, _ = generate_figma_script(
+            spec, db_visuals={-1: {"bindings": []}, -2: {"bindings": []}},
+        )
+        assert "try {" in script, (
+            "Phases 1-3 must be wrapped in an outer try block"
+        )
+        assert "} catch (__thrown)" in script, (
+            "Outer catch must exist"
+        )
+        assert 'kind: "render_thrown"' in script, (
+            "Outer catch must push a `render_thrown` structured error"
+        )
+
+    def test_outer_guard_catch_pushes_before_return(self):
+        """The outer catch block is positioned BEFORE the
+        `M["__errors"] = __errors` and `return M;` lines. Otherwise the
+        caught error would never make it onto the return payload."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": []},
+        })
+        spec["_node_id_map"] = {"screen-1": -1}
+        script, _ = generate_figma_script(spec, db_visuals={-1: {"bindings": []}})
+
+        idx_catch = script.index("} catch (__thrown)")
+        idx_errors_attach = script.index('M["__errors"] = __errors;')
+        idx_return = script.index("return M;")
+
+        assert idx_catch < idx_errors_attach < idx_return, (
+            "Outer catch must run before __errors is attached to M and M is returned"
+        )
+
 
 def _make_spec(elements: dict, tokens: dict | None = None) -> dict:
     root_id = next(iter(elements)) if elements else "root"

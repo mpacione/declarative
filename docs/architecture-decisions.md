@@ -1009,3 +1009,113 @@ Carried forward from the chapter's work, now baked in:
   too specific to lifting-and-shifting pipeline stages, but
   permanent in the consolidation-review checklist). See
   `feedback_consolidation_audits_post_processing.md`.
+
+
+## ADR-007 extension (2026-04-16) — outer render guard + leaf-type layout gate
+
+Two latent bugs in the round-trip foundation surfaced during Wave 1 of
+the synthetic-generation research sprint. Both survived 204/204 parity
+because the extractor never produces the IR shapes that trigger them
+— only synthetic IR does.
+
+### The leaf-type layout-property gate
+
+The existing renderer emits `node.layoutMode = "..."` whenever the
+element's `layout.direction` is set. Auto-layout is only valid on
+FRAME / COMPONENT / COMPONENT_SET / INSTANCE. Setting `layoutMode`
+(or `itemSpacing`, `padding*`, `primaryAxisAlignItems`,
+`counterAxisAlignItems`) on TEXT / RECTANGLE / ELLIPSE / VECTOR /
+LINE / BOOLEAN_OPERATION / GROUP is rejected by the Plugin API with
+`"object is not extensible"`.
+
+**Why this slipped through the 204/204 sweep:** the extractor does
+not populate `layout.direction` on leaf-type IR elements, because
+the DB columns for layout properties are NULL on those nodes in
+Figma. The round-trip test corpus therefore never exercised the
+code path. Synthetic generation DID — via `compose.py`'s template
+lookup — because compose doesn't gate template defaults on the
+element's type. It emits `direction: "vertical"` on a `"text"`
+element because that's the default.
+
+**Fix:** a `_LEAF_TYPES` frozenset in `dd/renderers/figma.py` plus
+an `etype` parameter threaded to `_emit_layout`. When the element's
+type maps to a leaf Figma node, the auto-layout-only properties
+are skipped entirely. The resize() path still runs (width / height
+are universally supported).
+
+Regression tests live in `tests/test_property_registry.py`
+(`TestCapabilityGating`), parameterised across every leaf type,
+with positive cases confirming FRAME-typed elements still emit
+auto-layout correctly.
+
+This is a specific instance of the general ADR-001 principle
+(capability-gated emission) applied to the non-registry-driven
+`_emit_layout` code path. The registry-driven emission already
+had this gate via `node_type` filtering in `emit_from_registry`;
+this fix extends the same discipline to the layout emission.
+
+### The outer render-guard: `KIND_RENDER_THROWN`
+
+ADR-007 Position 2 wraps every runtime write in a per-op
+micro-guard that pushes `{eid, kind, error}` into `__errors`
+without aborting the render. The per-op pattern assumes failures
+are per-property; it does not defend against script-level throws
+that bypass every per-op wrapping and reach the runtime harness as
+a raw exception.
+
+The leaf-type layout bug produced exactly this class of failure:
+an illegal property setter on a TEXT node threw at Phase 1, before
+any per-op guards ran. Zero `KIND_*` entries reached `__errors`
+despite a total render failure — the harness saw only the Node-
+level "script aborted" signal with no structured cause.
+
+**Fix:** wrap Phases 1-3 of every generated script in an outer
+`try { ... } catch (__thrown) { ... }` that pushes a
+`render_thrown` structured error into `__errors`:
+
+```js
+try {
+  // Phase 1: Materialize
+  // Phase 2: Compose
+  // Phase 3: Hydrate
+} catch (__thrown) {
+  __errors.push({
+    kind: "render_thrown",
+    error: String(__thrown && __thrown.message || __thrown),
+    stack: __thrown && __thrown.stack ?
+      String(__thrown.stack).split("\n").slice(0, 6).join(" | ") : null
+  });
+}
+M["__errors"] = __errors;
+return M;
+```
+
+The catch does NOT re-raise. Instead it falls through to the
+existing `M["__errors"] = __errors` attachment and `return M;`.
+The runtime harness sees the script "succeeded" from Node's
+perspective but the returned payload carries the structured
+failure — which is consistent with every other `KIND_*` on the
+ADR-007 channel. A raw exception would discard every
+`__errors` entry the script had accumulated before the throw.
+
+### New kind vocabulary
+
+- `render_thrown` — script-level throw that bypassed the per-op
+  micro-guards. Carries `error` (the thrown message) and `stack`
+  (first 6 frames, pipe-separated).
+
+### What this changes about the invariants
+
+Restated with the new guard in place: **every failure mode in the
+pipeline has exactly one `KIND_*`.** Per-op failures → per-op
+kinds. Script-level failures → `render_thrown`. Content-missing
+→ `component_missing` / `missing_asset`. Verifier-time failures
+→ `bounds_mismatch` / `fill_mismatch` / etc. Nothing reaches the
+harness as an unstructured exception unless something genuinely
+pathological (e.g. Plugin API disconnection mid-call) occurs —
+and even those should in principle be wrapped as the pipeline
+matures.
+
+This closes the one known class of invisible failure that the
+204/204 parity claim allowed. Synthetic generation wouldn't have
+been usable without it.

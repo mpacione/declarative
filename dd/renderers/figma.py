@@ -44,6 +44,18 @@ _NODE_CREATE_MAP = {
 # Vector-capable node types that can have SVG path data from the asset pipeline
 _VECTOR_TYPES = frozenset({"vector", "boolean_operation"})
 
+# Element types whose underlying Figma node type does NOT support
+# auto-layout (TEXT, RECTANGLE, ELLIPSE, LINE, VECTOR, BOOLEAN_OPERATION,
+# GROUP, STAR, POLYGON). Setting `layoutMode`, `itemSpacing`, `padding*`,
+# `primaryAxisAlignItems`, or `counterAxisAlignItems` on these is rejected
+# by the Plugin API with "object is not extensible". Gate emission
+# accordingly — both when the extractor didn't populate those fields and
+# when synthetic generation does.
+_LEAF_TYPES = frozenset({
+    "text", "rectangle", "ellipse", "line", "vector",
+    "boolean_operation", "group", "star", "polygon",
+})
+
 _WEIGHT_TO_STYLE = {
     100: "Thin",
     200: "Extra Light",
@@ -1202,6 +1214,7 @@ def generate_figma_script(
             layout_lines, layout_refs = _emit_layout(
                 var, eid, layout, tokens,
                 text_auto_resize=text_resize_for_layout,
+                etype=etype,
             )
             phase1_lines.extend(layout_lines)
             all_token_refs.extend(layout_refs)
@@ -1591,7 +1604,25 @@ def generate_figma_script(
     # when FILL children resolve. No Phase 3 emission needed; the
     # Phase 3 block only holds deferred position/constraint ops.
 
-    lines: list[str] = preamble + phase1_lines + phase2_lines
+    # ADR-007 outer guard: script-level throws (e.g. Plugin API rejecting
+    # an illegal property on a node type that doesn't accept it) bypass
+    # the per-op micro-guards entirely and reach the runtime harness as
+    # a raw exception — producing zero KIND_* entries despite a failed
+    # render. Wrap Phases 1-3 in one try/catch so script-level throws
+    # capture into __errors as `render_thrown` before we return the
+    # partially-built M. The catch DOES NOT re-raise — the harness uses
+    # __errors to distinguish "clean run" from "lossy run"; a raw
+    # exception would lose everything __errors had accumulated.
+    #
+    # Scoping: const declarations in Phase 1 bind inside the try block,
+    # but Phases 2 and 3 reference them, so all three phases must live
+    # in the SAME try. Indentation is kept flat — valid JS, matches the
+    # rest of the generator's output style.
+    lines: list[str] = list(preamble)
+    lines.append("")
+    lines.append("try {")
+    lines.extend(phase1_lines)
+    lines.extend(phase2_lines)
 
     if hydrate_ops:
         lines.append("")
@@ -1599,10 +1630,21 @@ def generate_figma_script(
         lines.append("await new Promise(r => setTimeout(r, 0));")
         lines.append("")
         # ADR-007 Session B: each op carries its own inline try/catch
-        # (see _guarded_op). No coarse Phase 3 try/catch, no M["__canary"];
-        # one failure channel (__errors) with per-node granularity.
+        # (see _guarded_op). The inner per-op guards catch per-property
+        # failures; the outer try catches script-level throws that bypass
+        # those guards (e.g. unsupported property setters, syntax-level
+        # issues in emitted JS).
         for op in hydrate_ops:
             lines.append(op)
+
+    lines.append("} catch (__thrown) {")
+    lines.append(
+        '  __errors.push({kind: "render_thrown", '
+        'error: String(__thrown && __thrown.message || __thrown), '
+        'stack: (__thrown && __thrown.stack) ? '
+        'String(__thrown.stack).split("\\n").slice(0, 6).join(" | ") : null});'
+    )
+    lines.append("}")
 
     # Expose structured error channel on the return payload so the harness
     # can distinguish "script finished with recoverable errors" from a raw
@@ -1721,6 +1763,7 @@ def _walk_elements(spec: dict[str, Any]) -> list[tuple[str, dict, str | None]]:
 def _emit_layout(
     var: str, eid: str, layout: dict[str, Any], tokens: dict[str, Any],
     text_auto_resize: str | None = None,
+    etype: str | None = None,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
     """Emit layout-related JS for a node.
 
@@ -1730,45 +1773,62 @@ def _emit_layout(
     the Plugin API side effect of flipping autoResize to HEIGHT,
     locking the width and causing subsequent `.characters` to wrap at
     the locked width.
+
+    ``etype`` is the element's type (e.g. "text", "frame", "card",
+    "rectangle"). When it maps to a leaf Figma node type (TEXT,
+    RECTANGLE, ELLIPSE, VECTOR, LINE, BOOLEAN_OPERATION, GROUP), the
+    auto-layout-only properties (layoutMode, itemSpacing, padding*,
+    primaryAxisAlign*, counterAxisAlign*) are skipped entirely —
+    setting them is rejected by the Plugin API with "object is not
+    extensible". The resize() path still runs for leaf types since
+    width/height are universally supported.
+
+    When etype is None (legacy callers) we emit all properties; extracted
+    IR never has layout.direction set on leaf nodes so this preserves
+    existing behaviour for the extraction path. Synthetic-generation
+    callers must pass etype to get the gate.
     """
     lines: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
-    direction = layout.get("direction", "")
-    figma_dir = _DIRECTION_MAP.get(direction)
-    if figma_dir:
-        lines.append(f'{var}.layoutMode = "{figma_dir}";')
+    is_leaf = etype in _LEAF_TYPES if etype is not None else False
 
-    wrap = layout.get("wrap")
-    if wrap and wrap != "NO_WRAP":
-        lines.append(f'{var}.layoutWrap = "{wrap}";')
+    if not is_leaf:
+        direction = layout.get("direction", "")
+        figma_dir = _DIRECTION_MAP.get(direction)
+        if figma_dir:
+            lines.append(f'{var}.layoutMode = "{figma_dir}";')
 
-    gap_val = layout.get("gap")
-    if gap_val is not None:
-        resolved, token_name = resolve_style_value(gap_val, tokens)
-        if resolved is not None:
-            lines.append(f"{var}.itemSpacing = {resolved};")
-        if token_name:
-            refs.append((eid, "itemSpacing", token_name))
+        wrap = layout.get("wrap")
+        if wrap and wrap != "NO_WRAP":
+            lines.append(f'{var}.layoutWrap = "{wrap}";')
 
-    cas_val = layout.get("counterAxisGap")
-    if cas_val is not None:
-        resolved, token_name = resolve_style_value(cas_val, tokens)
-        if resolved is not None:
-            lines.append(f"{var}.counterAxisSpacing = {resolved};")
-        if token_name:
-            refs.append((eid, "counterAxisSpacing", token_name))
-
-    padding = layout.get("padding", {})
-    for side in ("top", "right", "bottom", "left"):
-        val = padding.get(side)
-        if val is not None:
-            resolved, token_name = resolve_style_value(val, tokens)
-            figma_prop = f"padding{side.capitalize()}"
+        gap_val = layout.get("gap")
+        if gap_val is not None:
+            resolved, token_name = resolve_style_value(gap_val, tokens)
             if resolved is not None:
-                lines.append(f"{var}.{figma_prop} = {resolved};")
+                lines.append(f"{var}.itemSpacing = {resolved};")
             if token_name:
-                refs.append((eid, f"padding.{side}", token_name))
+                refs.append((eid, "itemSpacing", token_name))
+
+        cas_val = layout.get("counterAxisGap")
+        if cas_val is not None:
+            resolved, token_name = resolve_style_value(cas_val, tokens)
+            if resolved is not None:
+                lines.append(f"{var}.counterAxisSpacing = {resolved};")
+            if token_name:
+                refs.append((eid, "counterAxisSpacing", token_name))
+
+        padding = layout.get("padding", {})
+        for side in ("top", "right", "bottom", "left"):
+            val = padding.get(side)
+            if val is not None:
+                resolved, token_name = resolve_style_value(val, tokens)
+                figma_prop = f"padding{side.capitalize()}"
+                if resolved is not None:
+                    lines.append(f"{var}.{figma_prop} = {resolved};")
+                if token_name:
+                    refs.append((eid, f"padding.{side}", token_name))
 
     sizing = layout.get("sizing", {})
     # layoutSizing is NOT emitted here. It's a parent-context-dependent
@@ -1816,15 +1876,16 @@ def _emit_layout(
     elif rh is not None:
         lines.append(f"{var}.resize({var}.width, {rh});")
 
-    main_align = layout.get("mainAxisAlignment")
-    if main_align:
-        mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
-        lines.append(f'{var}.primaryAxisAlignItems = "{mapped}";')
+    if not is_leaf:
+        main_align = layout.get("mainAxisAlignment")
+        if main_align:
+            mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
+            lines.append(f'{var}.primaryAxisAlignItems = "{mapped}";')
 
-    cross_align = layout.get("crossAxisAlignment")
-    if cross_align:
-        mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
-        lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
+        cross_align = layout.get("crossAxisAlignment")
+        if cross_align:
+            mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
+            lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
 
     # Position is NOT emitted here — it must be set AFTER appendChild
     # because Figma interprets x/y as parent-relative only when the

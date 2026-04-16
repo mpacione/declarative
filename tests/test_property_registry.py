@@ -326,6 +326,69 @@ class TestCapabilityGatedEmission:
         )
         assert not any("layoutMode" in l for l in lines)
 
+    def test_emit_layout_skips_auto_layout_props_on_text_etype(self):
+        """Regression: _emit_layout is a separate code path from
+        emit_from_registry (it handles the IR's `layout` dict: direction,
+        gap, padding, alignment). Synthetic-generation IR can have
+        `layout.direction="vertical"` on a text element, which produces
+        `text.layoutMode = "VERTICAL"` — rejected by the Plugin API with
+        "object is not extensible". Gate the auto-layout-only emissions
+        on the element type."""
+        from dd.renderers.figma import _emit_layout
+        layout = {
+            "direction": "vertical",
+            "gap": 16,
+            "padding": {"top": 8, "left": 16, "right": 16, "bottom": 8},
+            "mainAxisAlignment": "center",
+            "crossAxisAlignment": "start",
+        }
+        lines, _refs = _emit_layout(
+            "v", "eid", layout, {}, etype="text",
+        )
+        assert not any("layoutMode" in l for l in lines)
+        assert not any("itemSpacing" in l for l in lines)
+        assert not any("padding" in l.lower() for l in lines)
+        assert not any("primaryAxisAlignItems" in l for l in lines)
+        assert not any("counterAxisAlignItems" in l for l in lines)
+
+    def test_emit_layout_emits_auto_layout_on_frame_etype(self):
+        """Positive case: FRAME-typed elements still get auto-layout
+        emission. Ensures the leaf-type gate didn't over-filter."""
+        from dd.renderers.figma import _emit_layout
+        layout = {
+            "direction": "vertical",
+            "gap": 16,
+            "padding": {"top": 8},
+        }
+        lines, _refs = _emit_layout(
+            "v", "eid", layout, {}, etype="frame",
+        )
+        assert any("layoutMode" in l and "VERTICAL" in l for l in lines)
+        assert any("itemSpacing = 16" in l for l in lines)
+        assert any("paddingTop = 8" in l for l in lines)
+
+    def test_emit_layout_preserves_resize_on_leaf_types(self):
+        """Leaf types (text, rectangle, vector, ...) should still get
+        resize() — width/height are universally supported on Figma nodes."""
+        from dd.renderers.figma import _emit_layout
+        layout = {
+            "direction": "vertical",  # should be skipped
+            "sizing": {"widthPixels": 120, "heightPixels": 40},
+        }
+        lines, _ = _emit_layout("v", "eid", layout, {}, etype="text")
+        assert not any("layoutMode" in l for l in lines)
+        assert any("resize(120" in l for l in lines)
+
+    def test_emit_layout_skips_all_leaf_types(self):
+        """Every type in _LEAF_TYPES is gated. Parameterised sanity check."""
+        from dd.renderers.figma import _emit_layout, _LEAF_TYPES
+        layout = {"direction": "vertical"}
+        for leaf_type in _LEAF_TYPES:
+            lines, _ = _emit_layout("v", "eid", layout, {}, etype=leaf_type)
+            assert not any("layoutMode" in l for l in lines), (
+                f"leaf type {leaf_type!r} should not get layoutMode"
+            )
+
     def test_padding_skipped_on_rectangle(self):
         from dd.renderers.figma import emit_from_registry
         lines, _ = emit_from_registry(
