@@ -19,7 +19,8 @@
 //     }
 //   }
 
-const WebSocket = require('/Users/mattpacione/.npm/_npx/b547afed9fcf6dcb/node_modules/ws');
+// Resolve `ws` via Node module resolution (see package.json).
+const WebSocket = require('ws');
 const fs = require('fs');
 
 async function run() {

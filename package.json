@@ -1,0 +1,9 @@
+{
+  "name": "declarative-design-bridge-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js dependencies for the Figma Desktop Bridge runner scripts (render_test/*.js). The Python package in dd/ is separate — see pyproject.toml.",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

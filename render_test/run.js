@@ -2,7 +2,9 @@
 // Execute a generated Figma script via PROXY_EXECUTE WebSocket bridge.
 // Usage: node run.js <script.js> [port]
 
-const WebSocket = require('/Users/mattpacione/.npm/_npx/b547afed9fcf6dcb/node_modules/ws');
+// Resolve the `ws` package via normal Node module resolution. Install
+// with `npm install` in the repo root (see package.json).
+const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 

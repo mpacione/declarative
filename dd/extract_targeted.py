@@ -576,10 +576,9 @@ if __name__ == "__main__":
         import subprocess
         import os
 
-        node_path = os.environ.get(
-            "NODE_PATH",
-            os.path.expanduser("~/.npm/_npx/b547afed9fcf6dcb/node_modules"),
-        )
+        # Respect caller-supplied NODE_PATH; otherwise rely on normal
+        # Node module resolution (npm install ws in project root).
+        node_path = os.environ.get("NODE_PATH", "")
 
         def execute(code: str) -> dict:
             runner_js = f'''
@@ -611,12 +610,15 @@ ws.on('error', (err) => {{
   process.exit(1);
 }});
 '''
+            subprocess_env = {**os.environ}
+            if node_path:
+                subprocess_env["NODE_PATH"] = node_path
             result = subprocess.run(
                 ["node", "-e", runner_js],
                 capture_output=True,
                 text=True,
                 timeout=65,
-                env={**os.environ, "NODE_PATH": node_path},
+                env=subprocess_env,
             )
 
             if result.returncode != 0:

@@ -52,6 +52,68 @@ Each backend reads from the highest level available and falls back to lower leve
 - React renderer: L2 → L1 → L0 (tokens as CSS vars, components as JSX, raw values as fallback)
 - Cross-platform output: L3 → L2 → L1 (semantic tree, with token and type references)
 
+### Full-system view
+
+```mermaid
+graph TB
+    subgraph Extraction["Frontends"]
+        REST["Figma REST API<br/>+ per-response components map"]
+        PLUGIN["Figma Plugin API<br/>unified two-slice walker"]
+        PROMPT["LLM / prompt<br/>→ L3 YAML"]
+    end
+
+    subgraph IR["Multi-Level IR (SQLite)"]
+        direction TB
+        NODES["L0 — nodes table<br/>77 cols per node"]
+        SCI["L1 — screen_component_instances<br/>48 canonical types"]
+        NTB["L2 — node_token_bindings<br/>before curation: raw values<br/>after curation: token refs"]
+        SEM["L3 — semantic tree<br/>YAML, ~20 elements/screen"]
+    end
+
+    subgraph Pipeline["Compiler passes"]
+        CLASSIFY["Classification cascade<br/>rules + heuristics + LLM + vision"]
+        CLUSTER["Token clustering<br/>OKLCH perceptual grouping"]
+        CURATE["Curation<br/>rename, merge, split, alias"]
+        VALIDATE["Validation gate<br/>8 checks before export"]
+    end
+
+    subgraph Verify["Verification channel (ADR-007)"]
+        CODEGEN_KINDS["Codegen kinds<br/>e.g. KIND_DEGRADED_TO_MODE2"]
+        RUNTIME_KINDS["Runtime micro-guards<br/>per-op __errors push"]
+        POST_KINDS["RenderVerifier kinds<br/>KIND_BOUNDS_MISMATCH, ..."]
+    end
+
+    subgraph Renderers["Backends"]
+        FIGMA_R["Figma renderer<br/>three-phase emit (live)"]
+        REACT_R["React + HTML/CSS<br/>(priority 1 next)"]
+        SWIFT_R["SwiftUI (later)"]
+        FLUTTER_R["Flutter (later)"]
+    end
+
+    REST --> NODES
+    PLUGIN --> NODES
+    PROMPT --> SEM
+
+    NODES --> CLASSIFY --> SCI
+    NODES --> CLUSTER --> NTB
+    NTB --> CURATE --> VALIDATE
+
+    NODES --> FIGMA_R
+    SCI --> FIGMA_R
+    NTB --> FIGMA_R
+    SEM --> REACT_R
+
+    FIGMA_R --> CODEGEN_KINDS
+    FIGMA_R --> RUNTIME_KINDS
+    FIGMA_R --> POST_KINDS
+
+    style IR fill:#f0f0f0,color:#000,stroke:#333
+    style Pipeline fill:#e0e0e0,color:#000,stroke:#333
+    style Verify fill:#e8e8f0,color:#000,stroke:#333
+    style Extraction fill:#fff,color:#000,stroke:#999
+    style Renderers fill:#fff,color:#000,stroke:#999
+```
+
 ---
 
 ## 3. The Multi-Level IR
