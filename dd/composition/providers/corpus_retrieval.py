@@ -205,7 +205,15 @@ def _resolve_element_type(row: dict[str, Any]) -> str:
 
 
 def _build_element(row: dict[str, Any], etype: str) -> dict[str, Any]:
-    """Assemble the element dict: type + visual + layout + props."""
+    """Assemble the element dict: type + visual + layout + props.
+
+    ``visual`` uses DB snake_case keys (fills/strokes/effects/
+    corner_radius/stroke_weight/opacity) so ``build_template_visuals``
+    can consume it directly as a ``db_visuals`` entry — same shape as
+    ``query_screen_visuals`` produces for round-trip. Values are
+    pre-parsed lists/numbers, but ``normalize_fills``/``normalize_strokes``
+    tolerate both JSON strings and already-parsed lists.
+    """
     element: dict[str, Any] = {"type": etype}
 
     visual: dict[str, Any] = {}
@@ -218,15 +226,15 @@ def _build_element(row: dict[str, Any], etype: str) -> dict[str, Any]:
     effects = _parse_json(row.get("effects"))
     if effects:
         visual["effects"] = effects
-    cr = _parse_corner_radius(row.get("corner_radius"))
-    if cr is not None:
-        visual["cornerRadius"] = cr
+    if row.get("corner_radius") is not None:
+        visual["corner_radius"] = row["corner_radius"]
     if row.get("stroke_weight") is not None:
-        visual["strokeWeight"] = row["stroke_weight"]
+        visual["stroke_weight"] = row["stroke_weight"]
     if row.get("opacity") is not None and row["opacity"] != 1.0:
         visual["opacity"] = row["opacity"]
     if visual:
         element["visual"] = visual
+        element["_corpus_source_node_id"] = row["id"]
 
     layout: dict[str, Any] = {}
     if row.get("layout_mode"):

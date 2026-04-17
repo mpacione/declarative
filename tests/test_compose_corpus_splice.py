@@ -134,7 +134,7 @@ class TestComposeSplicesCorpusSubtree:
         # The card carries real DB visual properties
         assert "visual" in card
         assert card["visual"]["fills"]  # non-empty
-        assert card["visual"]["cornerRadius"] == 12
+        assert card["visual"]["corner_radius"] in ("12", 12, 12.0)
 
     def test_spliced_subtree_includes_children(
         self, corpus_conn, monkeypatch,
@@ -198,8 +198,8 @@ class TestComposeSplicesCorpusSubtree:
         )
         assert card_eid is not None
         card = elements[card_eid]
-        # Universal template emits token refs, not literal cornerRadius
-        # from the DB. If the corpus path had fired, visual.cornerRadius
-        # would be the literal 12.
+        # Universal template emits token refs, not literal corner_radius
+        # from the DB. If the corpus path had fired, visual.corner_radius
+        # would be the literal "12" / 12.
         if "visual" in card:
-            assert card["visual"].get("cornerRadius") != 12
+            assert card["visual"].get("corner_radius") not in ("12", 12, 12.0)

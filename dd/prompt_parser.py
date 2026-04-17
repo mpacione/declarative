@@ -419,9 +419,30 @@ def prompt_to_figma(
             "spec": None,
         }
 
-    result = _generate_from_prompt(conn, components, page_name=page_name)
+    result = _generate_from_prompt(
+        conn, components, page_name=page_name,
+        registry=_build_mode3_registry(conn),
+    )
     result["components"] = components
     if plan_meta is not None:
         result["plan"] = plan_meta["plan"]
         result["plan_retried"] = plan_meta["retried"]
     return result
+
+
+def _build_mode3_registry(conn: sqlite3.Connection):
+    """Assemble the Mode-3 provider cascade.
+
+    CorpusRetrievalProvider (priority 150) is always included — its
+    ``supports()`` gates on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally,
+    so when the flag is off it returns False and the registry falls
+    through to UniversalCatalogProvider (priority 10).
+    """
+    from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.universal import UniversalCatalogProvider
+    from dd.composition.registry import ProviderRegistry
+
+    return ProviderRegistry(providers=[
+        CorpusRetrievalProvider(conn=conn),
+        UniversalCatalogProvider(),
+    ])

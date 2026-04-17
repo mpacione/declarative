@@ -264,11 +264,12 @@ class TestResolveReturnsSubtree:
         root_eid = subtree["root"]
         root_elem = subtree["elements"][root_eid]
         assert root_elem["type"] == "card"
-        # Visual dict present with fills/strokes/radius
+        # Visual dict present with fills/strokes/radius (DB snake_case)
         assert "visual" in root_elem
         assert root_elem["visual"]["fills"]  # non-empty
         assert root_elem["visual"]["strokes"]  # non-empty
-        assert root_elem["visual"]["cornerRadius"] == 12
+        # corner_radius is DB-native: either a JSON string or a number
+        assert root_elem["visual"]["corner_radius"] in ("12", 12, 12.0)
 
     def test_resolve_includes_children(self, corpus_conn, minimal_context):
         from dd.composition.providers.corpus_retrieval import (

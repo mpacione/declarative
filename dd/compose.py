@@ -500,6 +500,23 @@ def _default_provider_registry():
     return build_registry_from_env([UniversalCatalogProvider()])
 
 
+def _build_default_mode3_registry(conn: sqlite3.Connection):
+    """Build the default Mode-3 cascade with corpus retrieval.
+
+    Always includes CorpusRetrievalProvider — its ``supports()`` gates
+    on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally, so when the flag is
+    off the provider quietly falls through to UniversalCatalogProvider.
+    """
+    from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.universal import UniversalCatalogProvider
+    from dd.composition.registry import build_registry_from_env
+
+    return build_registry_from_env([
+        CorpusRetrievalProvider(conn=conn),
+        UniversalCatalogProvider(),
+    ])
+
+
 def _apply_template_to_parent(
     comp_type: str,
     variant: str | None,
@@ -835,17 +852,36 @@ def build_template_visuals(
         if ir_component_key and ir_component_key in ckr_by_name:
             resolved_component_figma_id = ckr_by_name[ir_component_key]
 
-        visual_entry: dict[str, Any] = {
-            "fills": tmpl.get("fills") if tmpl else None,
-            "strokes": tmpl.get("strokes") if tmpl else None,
-            "effects": tmpl.get("effects") if tmpl else None,
-            "corner_radius": tmpl.get("corner_radius") if tmpl else None,
-            "opacity": tmpl.get("opacity") if tmpl else None,
-            "stroke_weight": None,
-            "component_key": resolved_component_key,
-            "component_figma_id": resolved_component_figma_id,
-            "bindings": bindings,
-        }
+        # v0.2 retrieval: when compose spliced a real DB subtree into
+        # this element (via CorpusRetrievalProvider), element["visual"]
+        # carries DB-native fills/strokes/effects/corner_radius/etc.
+        # Prefer those over template lookup so the renderer paints with
+        # real round-trip visuals instead of token refs.
+        corpus_visual = element.get("visual") if isinstance(element, dict) else None
+        if corpus_visual:
+            visual_entry = {
+                "fills": corpus_visual.get("fills"),
+                "strokes": corpus_visual.get("strokes"),
+                "effects": corpus_visual.get("effects"),
+                "corner_radius": corpus_visual.get("corner_radius"),
+                "opacity": corpus_visual.get("opacity"),
+                "stroke_weight": corpus_visual.get("stroke_weight"),
+                "component_key": resolved_component_key,
+                "component_figma_id": resolved_component_figma_id,
+                "bindings": bindings,
+            }
+        else:
+            visual_entry = {
+                "fills": tmpl.get("fills") if tmpl else None,
+                "strokes": tmpl.get("strokes") if tmpl else None,
+                "effects": tmpl.get("effects") if tmpl else None,
+                "corner_radius": tmpl.get("corner_radius") if tmpl else None,
+                "opacity": tmpl.get("opacity") if tmpl else None,
+                "stroke_weight": None,
+                "component_key": resolved_component_key,
+                "component_figma_id": resolved_component_figma_id,
+                "bindings": bindings,
+            }
         if font_data:
             visual_entry["font"] = font_data
 
@@ -1094,16 +1130,28 @@ def generate_from_prompt(
     conn: sqlite3.Connection,
     components: list[dict[str, Any]],
     page_name: str | None = None,
+    registry: Any | None = None,
 ) -> dict[str, Any]:
     """Generate Figma JS from a component list using templates.
 
     Orchestrates: query_templates → validate → compose_screen → build_template_visuals
     → generate_figma_script. Returns dict with structure_script and metadata.
     When page_name is provided, the script creates a new Figma page.
+
+    ``registry`` is an optional :class:`ProviderRegistry` for Mode-3
+    composition — pass one from callers that have a DB connection
+    (e.g. prompt_to_figma) to enable corpus-subtree retrieval via
+    :class:`CorpusRetrievalProvider`. When None, compose_screen uses
+    its internal default registry (universal catalog only).
     """
     templates = query_templates(conn)
     components, warnings = validate_components(components, templates)
-    spec = compose_screen(components, templates=templates)
+    # When no registry passed, build the default Mode-3 cascade here so
+    # direct callers (experiments/00g run_parse_compose, tests) share
+    # the same provider stack as prompt_to_figma. Corpus retrieval
+    # remains flag-gated inside the provider itself.
+    effective_registry = registry if registry is not None else _build_default_mode3_registry(conn)
+    spec = compose_screen(components, templates=templates, registry=effective_registry)
     # Pass conn through so build_template_visuals can resolve IR-level
     # component_key refs against component_key_registry (ADR-008 Mode-3).
     visuals = build_template_visuals(spec, templates, conn=conn)
