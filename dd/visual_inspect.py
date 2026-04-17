@@ -327,7 +327,7 @@ def inspect_walk(walk: dict[str, Any]) -> RuleBasedScore:
 
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-3.1-pro-preview:generateContent"
+    "gemini-2.5-pro:generateContent"
 )
 
 
