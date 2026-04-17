@@ -44,7 +44,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Basic features"}
+                "props": {"text": "5 projects"}
               }
             ]
           },
@@ -57,7 +57,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Up to 10 projects"}
+                "props": {"text": "Basic analytics"}
               }
             ]
           },
@@ -78,7 +78,7 @@
       },
       {
         "type": "button",
-        "variant": "primary",
+        "component_key": "button/small/translucent",
         "props": {"text": "Get Started"}
       }
     ]
@@ -95,25 +95,8 @@
         "props": {"text": "$29/month"}
       },
       {
-        "type": "badge",
-        "props": {"text": "Most Popular"}
-      },
-      {
         "type": "list",
         "children": [
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Advanced features"}
-              }
-            ]
-          },
           {
             "type": "list_item",
             "children": [
@@ -136,7 +119,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Priority support"}
+                "props": {"text": "Advanced analytics"}
               }
             ]
           },
@@ -149,7 +132,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Team collaboration"}
+                "props": {"text": "Priority support"}
               }
             ]
           }
@@ -157,6 +140,7 @@
       },
       {
         "type": "button",
+        "component_key": "button/small/solid",
         "variant": "primary",
         "props": {"text": "Subscribe Now"}
       }
@@ -185,20 +169,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "All features included"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Dedicated account manager"}
+                "props": {"text": "Everything in Professional"}
               }
             ]
           },
@@ -224,7 +195,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "24/7 phone support"}
+                "props": {"text": "Dedicated account manager"}
               }
             ]
           }
@@ -232,7 +203,7 @@
       },
       {
         "type": "button",
-        "variant": "primary",
+        "component_key": "button/small/translucent",
         "props": {"text": "Contact Sales"}
       }
     ]
@@ -241,15 +212,15 @@
     "type": "card",
     "children": [
       {
-        "type": "text",
-        "props": {"text": "\"This service transformed how we manage our workflow. Highly recommended!\""}
-      },
-      {
         "type": "avatar"
       },
       {
         "type": "text",
-        "props": {"text": "Sarah Johnson, CEO at TechCorp"}
+        "props": {"text": "\"This service transformed how we manage our projects. Highly recommended!\""}
+      },
+      {
+        "type": "text",
+        "props": {"text": "— Sarah Chen, Product Manager"}
       }
     ]
   }

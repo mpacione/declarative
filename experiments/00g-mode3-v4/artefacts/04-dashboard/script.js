@@ -75,7 +75,7 @@ function _missingComponentPlaceholder(name, w, h, eid) {
 // clobbering the placeholder's wireframe appearance.
 function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }
 // Pre-fetch component nodes (deduplicated, null-safe)
-const _p0 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82234"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82234", error: String(__e && __e.message || __e)}); return null; } })();
+const _p0 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82323"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82323", error: String(__e && __e.message || __e)}); return null; } })();
 const _p1 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82457"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82457", error: String(__e && __e.message || __e)}); return null; } })();
 
 
@@ -150,7 +150,7 @@ n5.name = "text-1";
 try { n5.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 M["text-1"] = n5.id;
 
-const n6 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon_button-1", kind:"missing_component_node", id:"5749:82234"}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon_button-1", kind:"create_instance_failed", id:"5749:82234", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } })();
+const n6 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon_button-1", kind:"missing_component_node", id:"5749:82323"}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon_button-1", kind:"create_instance_failed", id:"5749:82323", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } })();
 n6.name = "icon_button-1";
 M["icon_button-1"] = n6.id;
 
@@ -500,61 +500,61 @@ n10.appendChild(n19);
 n19.layoutSizingHorizontal = "FILL";
 n19.layoutSizingVertical = "HUG";
 n15.appendChild(n20);
-try { n20.characters = "Jan 15, 2024"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n20.characters = "2024-01-15"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.layoutSizingHorizontal = "FILL";
 n15.appendChild(n21);
 try { n21.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n15.appendChild(n22);
-try { n22.characters = "$2,450.00"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n22.characters = "$2,500.00"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n22.layoutSizingHorizontal = "FILL";
 n15.appendChild(n23);
 n23.layoutSizingHorizontal = "HUG";
 n23.layoutSizingVertical = "HUG";
 n16.appendChild(n24);
-try { n24.characters = "Jan 14, 2024"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n24.characters = "2024-01-14"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n24.layoutSizingHorizontal = "FILL";
 n16.appendChild(n25);
-try { n25.characters = "Subscription renewal"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n25.characters = "Invoice #1024"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n25.layoutSizingHorizontal = "FILL";
 n16.appendChild(n26);
-try { n26.characters = "$99.99"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n26.characters = "$1,800.00"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n26.layoutSizingHorizontal = "FILL";
 n16.appendChild(n27);
 n27.layoutSizingHorizontal = "HUG";
 n27.layoutSizingVertical = "HUG";
 n17.appendChild(n28);
-try { n28.characters = "Jan 13, 2024"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n28.characters = "2024-01-13"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n28.layoutSizingHorizontal = "FILL";
 n17.appendChild(n29);
-try { n29.characters = "Refund issued"; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n29.characters = "Refund processed"; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n29.layoutSizingHorizontal = "FILL";
 n17.appendChild(n30);
-try { n30.characters = "-$150.00"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n30.characters = "-$450.00"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n30.layoutSizingHorizontal = "FILL";
 n17.appendChild(n31);
 n31.layoutSizingHorizontal = "HUG";
 n31.layoutSizingVertical = "HUG";
 n18.appendChild(n32);
-try { n32.characters = "Jan 12, 2024"; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n32.characters = "2024-01-12"; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n32.layoutSizingHorizontal = "FILL";
 n18.appendChild(n33);
-try { n33.characters = "Invoice payment"; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n33.characters = "Invoice #1023"; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n33.layoutSizingHorizontal = "FILL";
 n18.appendChild(n34);
-try { n34.characters = "$5,200.00"; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n34.characters = "$3,200.00"; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n34.layoutSizingHorizontal = "FILL";
 n18.appendChild(n35);
 n35.layoutSizingHorizontal = "HUG";
 n35.layoutSizingVertical = "HUG";
 n19.appendChild(n36);
-try { n36.characters = "Jan 11, 2024"; } catch (__e) { __errors.push({eid:"text-22", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n36.characters = "2024-01-11"; } catch (__e) { __errors.push({eid:"text-22", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n36.layoutSizingHorizontal = "FILL";
 n19.appendChild(n37);
-try { n37.characters = "Transfer out"; } catch (__e) { __errors.push({eid:"text-23", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n37.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-23", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n37.layoutSizingHorizontal = "FILL";
 n19.appendChild(n38);
-try { n38.characters = "-$1,000.00"; } catch (__e) { __errors.push({eid:"text-24", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n38.characters = "$1,200.00"; } catch (__e) { __errors.push({eid:"text-24", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n38.layoutSizingHorizontal = "FILL";
 n19.appendChild(n39);
 n39.layoutSizingHorizontal = "HUG";
@@ -566,13 +566,13 @@ n27.appendChild(n41);
 try { n41.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n41.layoutSizingHorizontal = "FILL";
 n31.appendChild(n42);
-try { n42.characters = "Processed"; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n42.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n42.layoutSizingHorizontal = "FILL";
 n35.appendChild(n43);
-try { n43.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n43.characters = "Pending"; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n43.layoutSizingHorizontal = "FILL";
 n39.appendChild(n44);
-try { n44.characters = "Pending"; } catch (__e) { __errors.push({eid:"text-25", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n44.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-25", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n44.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

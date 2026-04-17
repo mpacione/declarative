@@ -1,10 +1,10 @@
 {
-  "total_node_count": 26,
+  "total_node_count": 24,
   "top_level_count": 6,
   "max_depth": 4,
   "container_coverage": 2,
-  "component_key_rate": 0.11538461538461539,
-  "variant_rate": 0.038461538461538464,
+  "component_key_rate": 0.08333333333333333,
+  "variant_rate": 0.041666666666666664,
   "json_valid": 1,
   "empty_output": 0,
   "clarification_refusal": 0

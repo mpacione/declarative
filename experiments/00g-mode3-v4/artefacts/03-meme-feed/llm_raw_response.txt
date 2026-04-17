@@ -2,9 +2,15 @@
 [
   {
     "type": "header",
-    "props": {"title": "Meme Feed"},
     "children": [
-      {"type": "icon_button", "component_key": "icon/back"}
+      {
+        "type": "text",
+        "props": {"text": "Memes"}
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/new"
+      }
     ]
   },
   {
@@ -13,15 +19,35 @@
       {
         "type": "card",
         "children": [
-          {"type": "avatar", "props": {"initials": "U"}},
-          {"type": "text", "props": {"text": "user_memes"}},
-          {"type": "image", "props": {"src": "meme1.jpg"}},
-          {"type": "text", "props": {"text": "When you finally understand the assignment"}},
+          {
+            "type": "avatar",
+            "props": {"initials": "JD"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "john_doe"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme1.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "When you finally understand the assignment"}
+          },
           {
             "type": "button_group",
             "children": [
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "👍 Upvote"}},
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Share"}}
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
             ]
           }
         ]
@@ -29,15 +55,35 @@
       {
         "type": "card",
         "children": [
-          {"type": "avatar", "props": {"initials": "M"}},
-          {"type": "text", "props": {"text": "meme_lord"}},
-          {"type": "image", "props": {"src": "meme2.jpg"}},
-          {"type": "text", "props": {"text": "POV: You're about to make a terrible decision"}},
+          {
+            "type": "avatar",
+            "props": {"initials": "SM"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "sarah_memes"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme2.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "POV: You're reading this in your head"}
+          },
           {
             "type": "button_group",
             "children": [
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "👍 Upvote"}},
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Share"}}
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
             ]
           }
         ]
@@ -45,31 +91,35 @@
       {
         "type": "card",
         "children": [
-          {"type": "avatar", "props": {"initials": "D"}},
-          {"type": "text", "props": {"text": "dank_memes"}},
-          {"type": "image", "props": {"src": "meme3.jpg"}},
-          {"type": "text", "props": {"text": "Me pretending to understand what's happening"}},
+          {
+            "type": "avatar",
+            "props": {"initials": "MC"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "meme_central"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme3.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "Me pretending to understand what's happening"}
+          },
           {
             "type": "button_group",
             "children": [
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "👍 Upvote"}},
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Share"}}
-            ]
-          }
-        ]
-      },
-      {
-        "type": "card",
-        "children": [
-          {"type": "avatar", "props": {"initials": "C"}},
-          {"type": "text", "props": {"text": "comedy_gold"}},
-          {"type": "image", "props": {"src": "meme4.jpg"}},
-          {"type": "text", "props": {"text": "Scrolling at 3 AM be like"}},
-          {
-            "type": "button_group",
-            "children": [
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "👍 Upvote"}},
-              {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Share"}}
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
             ]
           }
         ]

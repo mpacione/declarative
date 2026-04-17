@@ -1,19 +1,21 @@
 {
   "returncode": 0,
-  "latency_ms": 247,
+  "latency_ms": 231,
   "timeout": false,
-  "stdout": "[script.js] OK in 201ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776450448776\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":1,\"after\":6,\"moved\":0,\"errors\":[{\"kind\":\"render_thrown\",\"error\":\"not a function\",\"stack\":\"    at <anonymous> (<input>:343:15) | \"}]}}}\n",
+  "stdout": "[script.js] OK in 188ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776453306784\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":1,\"after\":3,\"moved\":0,\"errors\":[{\"kind\":\"leaf_type_append_skipped\",\"parent_eid\":\"link-1\",\"parent_type\":\"link\",\"child_eid\":\"text-9\",\"child_type\":\"text\"}]}}}\n",
   "stderr": "",
   "parsed": {
     "__ok": true,
     "before": 1,
-    "after": 6,
+    "after": 3,
     "moved": 0,
     "errors": [
       {
-        "kind": "render_thrown",
-        "error": "not a function",
-        "stack": "    at <anonymous> (<input>:343:15) | "
+        "kind": "leaf_type_append_skipped",
+        "parent_eid": "link-1",
+        "parent_type": "link",
+        "child_eid": "text-9",
+        "child_type": "text"
       }
     ]
   }

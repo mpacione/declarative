@@ -226,13 +226,13 @@ n2.appendChild(n7);
 try { n7.characters = "Heading"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n7.layoutSizingHorizontal = "FILL";
 n2.appendChild(n8);
-try { n8.characters = "First line of body text"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n8.characters = "First line of body text."; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n8.layoutSizingHorizontal = "FILL";
 n2.appendChild(n9);
-try { n9.characters = "Second line of body text"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n9.characters = "Second line of body text."; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "FILL";
 n2.appendChild(n10);
-try { n10.characters = "Third line of body text"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n10.characters = "Third line of body text."; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.layoutSizingHorizontal = "FILL";
 n2.appendChild(n11);
 n11.layoutSizingHorizontal = "HUG";

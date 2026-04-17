@@ -111,7 +111,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "People"
+        "text": "Recent"
       }
     },
     "text-4": {
@@ -120,7 +120,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Places"
+        "text": "Saved"
       }
     },
     "tabs-1": {
@@ -148,24 +148,11 @@
         "text-4"
       ]
     },
-    "avatar-1": {
-      "type": "avatar",
+    "icon-1": {
+      "type": "icon",
+      "component_key": "icon/new",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
+        "direction": "vertical"
       }
     },
     "text-5": {
@@ -174,10 +161,10 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "John Smith"
+        "text": "Search result item 1"
       }
     },
-    "icon-1": {
+    "icon-2": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
@@ -206,29 +193,16 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-1",
+        "icon-1",
         "text-5",
-        "icon-1"
+        "icon-2"
       ]
     },
-    "avatar-2": {
-      "type": "avatar",
+    "icon-3": {
+      "type": "icon",
+      "component_key": "icon/new",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
+        "direction": "vertical"
       }
     },
     "text-6": {
@@ -237,10 +211,10 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Sarah Johnson"
+        "text": "Search result item 2"
       }
     },
-    "icon-2": {
+    "icon-4": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
@@ -269,29 +243,16 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-2",
+        "icon-3",
         "text-6",
-        "icon-2"
+        "icon-4"
       ]
     },
-    "avatar-3": {
-      "type": "avatar",
+    "icon-5": {
+      "type": "icon",
+      "component_key": "icon/new",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
+        "direction": "vertical"
       }
     },
     "text-7": {
@@ -300,10 +261,10 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Mike Chen"
+        "text": "Search result item 3"
       }
     },
-    "icon-3": {
+    "icon-6": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
@@ -332,29 +293,16 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-3",
+        "icon-5",
         "text-7",
-        "icon-3"
+        "icon-6"
       ]
     },
-    "avatar-4": {
-      "type": "avatar",
+    "icon-7": {
+      "type": "icon",
+      "component_key": "icon/new",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
+        "direction": "vertical"
       }
     },
     "text-8": {
@@ -363,10 +311,10 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Emma Davis"
+        "text": "Search result item 4"
       }
     },
-    "icon-4": {
+    "icon-8": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
@@ -395,9 +343,9 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-4",
+        "icon-7",
         "text-8",
-        "icon-4"
+        "icon-8"
       ]
     },
     "list-1": {
@@ -588,21 +536,21 @@
     "text-3": -7,
     "text-4": -8,
     "tabs-1": -9,
-    "avatar-1": -10,
+    "icon-1": -10,
     "text-5": -11,
-    "icon-1": -12,
+    "icon-2": -12,
     "list_item-1": -13,
-    "avatar-2": -14,
+    "icon-3": -14,
     "text-6": -15,
-    "icon-2": -16,
+    "icon-4": -16,
     "list_item-2": -17,
-    "avatar-3": -18,
+    "icon-5": -18,
     "text-7": -19,
-    "icon-3": -20,
+    "icon-6": -20,
     "list_item-3": -21,
-    "avatar-4": -22,
+    "icon-7": -22,
     "text-8": -23,
-    "icon-4": -24,
+    "icon-8": -24,
     "list_item-4": -25,
     "list-1": -26,
     "screen-1": -27

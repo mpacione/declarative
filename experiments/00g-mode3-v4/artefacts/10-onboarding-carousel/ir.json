@@ -50,6 +50,9 @@
         },
         "height_pixels": 160
       },
+      "props": {
+        "src": "illustration-1"
+      },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
@@ -61,7 +64,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 1 Headline"
+        "text": "Welcome to Our App"
       }
     },
     "text-2": {
@@ -70,7 +73,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 1 subtext description goes here"
+        "text": "Discover amazing features designed to make your life easier"
       }
     },
     "card-1": {
@@ -111,6 +114,9 @@
         },
         "height_pixels": 160
       },
+      "props": {
+        "src": "illustration-2"
+      },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
@@ -122,7 +128,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 2 Headline"
+        "text": "Stay Connected"
       }
     },
     "text-3": {
@@ -131,7 +137,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 2 subtext description goes here"
+        "text": "Keep up with everything that matters to you in one place"
       }
     },
     "card-2": {
@@ -172,6 +178,9 @@
         },
         "height_pixels": 160
       },
+      "props": {
+        "src": "illustration-3"
+      },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
@@ -183,7 +192,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 3 Headline"
+        "text": "Get Started Now"
       }
     },
     "text-4": {
@@ -192,7 +201,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Slide 3 subtext description goes here"
+        "text": "Join thousands of users enjoying a better experience"
       }
     },
     "card-3": {
@@ -399,7 +408,7 @@
     "text-8": {
       "type": "text",
       "props": {
-        "text": "Get Started"
+        "text": "Next"
       },
       "layout": {
         "direction": "vertical"
@@ -439,7 +448,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Get Started"
+        "text": "Next"
       },
       "style": {
         "fill": "{color.action.primary.bg}",
@@ -453,7 +462,7 @@
     "text-9": {
       "type": "text",
       "props": {
-        "text": "Skip for now"
+        "text": "Skip"
       },
       "layout": {
         "direction": "vertical"
@@ -483,7 +492,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Skip for now"
+        "text": "Skip"
       },
       "style": {
         "fill": null,

@@ -174,13 +174,23 @@ n7.cornerRadius = 999;
 n7.clipsContent = false;
 M["avatar-1"] = n7.id;
 
-const n8 = figma.createText();
-n8.name = "heading-1";
-try { n8.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["heading-1"] = n8.id;
+const n8 = figma.createFrame();
+n8.name = "text_input-1";
+n8.layoutMode = "VERTICAL";
+n8.itemSpacing = 6;
+n8.paddingTop = 10;
+n8.paddingRight = 12;
+n8.paddingBottom = 10;
+n8.paddingLeft = 12;
+n8.resize(n8.width, 48);
+n8.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n8.strokes = [{type: "SOLID", color: {r:0.7961,g:0.8353,b:0.8824}}];
+n8.cornerRadius = 8;
+n8.clipsContent = false;
+M["text_input-1"] = n8.id;
 
 const n9 = figma.createFrame();
-n9.name = "text_input-1";
+n9.name = "text_input-2";
 n9.layoutMode = "VERTICAL";
 n9.itemSpacing = 6;
 n9.paddingTop = 10;
@@ -192,122 +202,107 @@ n9.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n9.strokes = [{type: "SOLID", color: {r:0.7961,g:0.8353,b:0.8824}}];
 n9.cornerRadius = 8;
 n9.clipsContent = false;
-M["text_input-1"] = n9.id;
+M["text_input-2"] = n9.id;
 
-const n10 = figma.createFrame();
-n10.name = "text_input-2";
-n10.layoutMode = "VERTICAL";
-n10.itemSpacing = 6;
-n10.paddingTop = 10;
-n10.paddingRight = 12;
-n10.paddingBottom = 10;
-n10.paddingLeft = 12;
-n10.resize(n10.width, 48);
-n10.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
-n10.strokes = [{type: "SOLID", color: {r:0.7961,g:0.8353,b:0.8824}}];
-n10.cornerRadius = 8;
-n10.clipsContent = false;
-M["text_input-2"] = n10.id;
+const n10 = figma.createText();
+n10.name = "heading-1";
+try { n10.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["heading-1"] = n10.id;
 
-const n11 = figma.createText();
-n11.name = "heading-2";
-try { n11.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["heading-2"] = n11.id;
+const n11 = figma.createFrame();
+n11.name = "toggle-1";
+n11.layoutMode = "VERTICAL";
+n11.itemSpacing = 8;
+n11.counterAxisAlignItems = "CENTER";
+n11.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n11.cornerRadius = 999;
+n11.clipsContent = false;
+M["toggle-1"] = n11.id;
 
 const n12 = figma.createFrame();
-n12.name = "toggle-1";
+n12.name = "toggle-2";
 n12.layoutMode = "VERTICAL";
 n12.itemSpacing = 8;
 n12.counterAxisAlignItems = "CENTER";
 n12.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
 n12.cornerRadius = 999;
 n12.clipsContent = false;
-M["toggle-1"] = n12.id;
+M["toggle-2"] = n12.id;
 
 const n13 = figma.createFrame();
-n13.name = "toggle-2";
+n13.name = "toggle-3";
 n13.layoutMode = "VERTICAL";
 n13.itemSpacing = 8;
 n13.counterAxisAlignItems = "CENTER";
 n13.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
 n13.cornerRadius = 999;
 n13.clipsContent = false;
-M["toggle-2"] = n13.id;
+M["toggle-3"] = n13.id;
 
 const n14 = figma.createFrame();
-n14.name = "toggle-3";
+n14.name = "toggle-4";
 n14.layoutMode = "VERTICAL";
 n14.itemSpacing = 8;
 n14.counterAxisAlignItems = "CENTER";
 n14.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
 n14.cornerRadius = 999;
 n14.clipsContent = false;
-M["toggle-3"] = n14.id;
+M["toggle-4"] = n14.id;
 
-const n15 = figma.createFrame();
-n15.name = "toggle-4";
-n15.layoutMode = "VERTICAL";
-n15.itemSpacing = 8;
-n15.counterAxisAlignItems = "CENTER";
-n15.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
-n15.cornerRadius = 999;
-n15.clipsContent = false;
-M["toggle-4"] = n15.id;
+const n15 = figma.createText();
+n15.name = "text-10";
+n15.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
+try { n15.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n15.fontSize = 14;
+M["text-10"] = n15.id;
 
 const n16 = figma.createText();
-n16.name = "text-10";
-n16.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
-try { n16.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n16.name = "text-2";
+try { n16.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.fontSize = 14;
-M["text-10"] = n16.id;
+M["text-2"] = n16.id;
 
 const n17 = figma.createText();
-n17.name = "text-2";
-try { n17.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n17.name = "text-3";
+try { n17.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n17.fontSize = 14;
-M["text-2"] = n17.id;
+M["text-3"] = n17.id;
 
 const n18 = figma.createText();
-n18.name = "text-3";
-try { n18.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n18.name = "text-4";
+try { n18.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n18.fontSize = 14;
-M["text-3"] = n18.id;
+M["text-4"] = n18.id;
 
 const n19 = figma.createText();
-n19.name = "text-4";
-try { n19.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n19.name = "text-5";
+try { n19.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.fontSize = 14;
-M["text-4"] = n19.id;
+M["text-5"] = n19.id;
 
 const n20 = figma.createText();
-n20.name = "text-5";
-try { n20.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n20.name = "text-6";
+try { n20.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.fontSize = 14;
-M["text-5"] = n20.id;
+M["text-6"] = n20.id;
 
 const n21 = figma.createText();
-n21.name = "text-6";
-try { n21.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n21.name = "text-7";
+try { n21.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.fontSize = 14;
-M["text-6"] = n21.id;
+M["text-7"] = n21.id;
 
 const n22 = figma.createText();
-n22.name = "text-7";
-try { n22.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n22.name = "text-8";
+try { n22.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n22.fontSize = 14;
-M["text-7"] = n22.id;
+M["text-8"] = n22.id;
 
 const n23 = figma.createText();
-n23.name = "text-8";
-try { n23.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n23.name = "text-9";
+try { n23.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n23.fontSize = 14;
-M["text-8"] = n23.id;
-
-const n24 = figma.createText();
-n24.name = "text-9";
-try { n24.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n24.fontSize = 14;
-M["text-9"] = n24.id;
+M["text-9"] = n23.id;
 
 
 // Phase 2: Compose — wire tree, set layoutSizing
@@ -333,17 +328,17 @@ n2.appendChild(n7);
 n7.layoutSizingHorizontal = "FIXED";
 n7.layoutSizingVertical = "FIXED";
 n2.appendChild(n8);
-try { n8.characters = "Profile Information"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n8.layoutSizingHorizontal = "FILL";
+n8.layoutSizingVertical = "HUG";
 n2.appendChild(n9);
 n9.layoutSizingHorizontal = "FILL";
 n9.layoutSizingVertical = "HUG";
-n2.appendChild(n10);
+n3.appendChild(n10);
+try { n10.characters = "Notifications"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.layoutSizingHorizontal = "FILL";
-n10.layoutSizingVertical = "HUG";
 n3.appendChild(n11);
-try { n11.characters = "Notifications"; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n11.layoutSizingHorizontal = "FILL";
+n11.layoutSizingHorizontal = "HUG";
+n11.layoutSizingVertical = "HUG";
 n3.appendChild(n12);
 n12.layoutSizingHorizontal = "HUG";
 n12.layoutSizingVertical = "HUG";
@@ -353,36 +348,33 @@ n13.layoutSizingVertical = "HUG";
 n3.appendChild(n14);
 n14.layoutSizingHorizontal = "HUG";
 n14.layoutSizingVertical = "HUG";
-n3.appendChild(n15);
-n15.layoutSizingHorizontal = "HUG";
-n15.layoutSizingVertical = "HUG";
-n4.appendChild(n16);
-try { n16.characters = "Save Changes"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n4.appendChild(n15);
+try { n15.characters = "Save Changes"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n15.layoutSizingHorizontal = "FILL";
+n8.appendChild(n16);
+try { n16.characters = "Name"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
-n9.appendChild(n17);
-try { n17.characters = "Name"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n8.appendChild(n17);
+try { n17.characters = "Enter your name"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n17.layoutSizingHorizontal = "FILL";
 n9.appendChild(n18);
-try { n18.characters = "Enter your name"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n18.characters = "Email"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n18.layoutSizingHorizontal = "FILL";
-n10.appendChild(n19);
-try { n19.characters = "Email"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n9.appendChild(n19);
+try { n19.characters = "Enter your email"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
-n10.appendChild(n20);
-try { n20.characters = "Enter your email"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n11.appendChild(n20);
+try { n20.characters = "Push notifications"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.layoutSizingHorizontal = "FILL";
 n12.appendChild(n21);
-try { n21.characters = "Push notifications"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "Email alerts"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n13.appendChild(n22);
-try { n22.characters = "Email alerts"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n22.characters = "Marketing emails"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n22.layoutSizingHorizontal = "FILL";
 n14.appendChild(n23);
-try { n23.characters = "Marketing emails"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n23.characters = "Weekly digest"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n23.layoutSizingHorizontal = "FILL";
-n15.appendChild(n24);
-try { n24.characters = "Weekly digest"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n24.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {
   __errors.push({kind: "render_thrown", error: String(__thrown && __thrown.message || __thrown), stack: (__thrown && __thrown.stack) ? String(__thrown.stack).split("\n").slice(0, 6).join(" | ") : null});

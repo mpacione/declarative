@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5784:47069",
+  "rendered_root": "5789:52376",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -35,12 +35,27 @@
       ],
       "effectCount": 1
     },
-    "text-22": {
+    "text-16": {
       "type": "TEXT",
-      "name": "text-22",
+      "name": "text-16",
       "width": 364,
       "height": 15,
-      "characters": "Sarah Johnson, CEO at TechCorp",
+      "characters": "— Sarah Chen, Product Manager",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-15": {
+      "type": "TEXT",
+      "name": "text-15",
+      "width": 364,
+      "height": 30,
+      "characters": "\"This service transformed how we manage our projects. Highly recommended!\"",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -63,26 +78,11 @@
       ],
       "effectCount": 0
     },
-    "text-21": {
-      "type": "TEXT",
-      "name": "text-21",
-      "width": 364,
-      "height": 30,
-      "characters": "\"This service transformed how we manage our workflow. Highly recommended!\"",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 466,
+      "height": 383,
       "fills": [
         {
           "type": "solid",
@@ -98,29 +98,14 @@
       "effectCount": 1
     },
     "button-3": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "button-3",
-      "width": 127,
-      "height": 44,
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-20": {
-      "type": "TEXT",
-      "name": "text-20",
-      "width": 95,
-      "height": 17,
-      "characters": "Contact Sales",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -129,77 +114,7 @@
       "type": "FRAME",
       "name": "list-3",
       "width": 364,
-      "height": 324,
-      "effectCount": 0
-    },
-    "list_item-11": {
-      "type": "FRAME",
-      "name": "list_item-11",
-      "width": 340,
-      "height": 71,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-19": {
-      "type": "TEXT",
-      "name": "text-19",
-      "width": 308,
-      "height": 15,
-      "characters": "24/7 phone support",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "icon-11": {
-      "type": "INSTANCE",
-      "name": "icon-11",
-      "width": 20,
-      "height": 20,
-      "effectCount": 0
-    },
-    "list_item-10": {
-      "type": "FRAME",
-      "name": "list_item-10",
-      "width": 340,
-      "height": 71,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-18": {
-      "type": "TEXT",
-      "name": "text-18",
-      "width": 308,
-      "height": 15,
-      "characters": "Custom integrations",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "icon-10": {
-      "type": "INSTANCE",
-      "name": "icon-10",
-      "width": 20,
-      "height": 20,
+      "height": 245,
       "effectCount": 0
     },
     "list_item-9": {
@@ -215,9 +130,9 @@
       ],
       "effectCount": 0
     },
-    "text-17": {
+    "text-14": {
       "type": "TEXT",
-      "name": "text-17",
+      "name": "text-14",
       "width": 308,
       "height": 15,
       "characters": "Dedicated account manager",
@@ -250,12 +165,12 @@
       ],
       "effectCount": 0
     },
-    "text-16": {
+    "text-13": {
       "type": "TEXT",
-      "name": "text-16",
+      "name": "text-13",
       "width": 308,
       "height": 15,
-      "characters": "All features included",
+      "characters": "Custom integrations",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -272,9 +187,44 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-15": {
+    "list_item-7": {
+      "type": "FRAME",
+      "name": "list_item-7",
+      "width": 340,
+      "height": 71,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-12": {
       "type": "TEXT",
-      "name": "text-15",
+      "name": "text-12",
+      "width": 308,
+      "height": 15,
+      "characters": "Everything in Professional",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-7": {
+      "type": "INSTANCE",
+      "name": "icon-7",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
       "width": 364,
       "height": 15,
       "characters": "Custom pricing",
@@ -306,7 +256,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 501,
+      "height": 383,
       "fills": [
         {
           "type": "solid",
@@ -322,29 +272,14 @@
       "effectCount": 1
     },
     "button-2": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "button-2",
-      "width": 135,
-      "height": 44,
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-14": {
-      "type": "TEXT",
-      "name": "text-14",
-      "width": 103,
-      "height": 17,
-      "characters": "Subscribe Now",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
+          "color": "#D4D4D8"
         }
       ],
       "effectCount": 0
@@ -353,42 +288,7 @@
       "type": "FRAME",
       "name": "list-2",
       "width": 364,
-      "height": 324,
-      "effectCount": 0
-    },
-    "list_item-7": {
-      "type": "FRAME",
-      "name": "list_item-7",
-      "width": 340,
-      "height": 71,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-13": {
-      "type": "TEXT",
-      "name": "text-13",
-      "width": 308,
-      "height": 15,
-      "characters": "Team collaboration",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "icon-7": {
-      "type": "INSTANCE",
-      "name": "icon-7",
-      "width": 20,
-      "height": 20,
+      "height": 245,
       "effectCount": 0
     },
     "list_item-6": {
@@ -404,9 +304,9 @@
       ],
       "effectCount": 0
     },
-    "text-12": {
+    "text-10": {
       "type": "TEXT",
-      "name": "text-12",
+      "name": "text-10",
       "width": 308,
       "height": 15,
       "characters": "Priority support",
@@ -439,12 +339,12 @@
       ],
       "effectCount": 0
     },
-    "text-11": {
+    "text-9": {
       "type": "TEXT",
-      "name": "text-11",
+      "name": "text-9",
       "width": 308,
       "height": 15,
-      "characters": "Unlimited projects",
+      "characters": "Advanced analytics",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -474,12 +374,12 @@
       ],
       "effectCount": 0
     },
-    "text-10": {
+    "text-8": {
       "type": "TEXT",
-      "name": "text-10",
+      "name": "text-8",
       "width": 308,
       "height": 15,
-      "characters": "Advanced features",
+      "characters": "Unlimited projects",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -496,37 +396,9 @@
       "height": 20,
       "effectCount": 0
     },
-    "badge-1": {
-      "type": "FRAME",
-      "name": "badge-1",
-      "width": 93,
-      "height": 23,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F1F5F9"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-9": {
+    "text-7": {
       "type": "TEXT",
-      "name": "text-9",
-      "width": 77,
-      "height": 15,
-      "characters": "Most Popular",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-8": {
-      "type": "TEXT",
-      "name": "text-8",
+      "name": "text-7",
       "width": 364,
       "height": 15,
       "characters": "$29/month",
@@ -558,7 +430,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 387,
+      "height": 383,
       "fills": [
         {
           "type": "solid",
@@ -574,29 +446,14 @@
       "effectCount": 1
     },
     "button-1": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "button-1",
-      "width": 111,
-      "height": 44,
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-7": {
-      "type": "TEXT",
-      "name": "text-7",
-      "width": 79,
-      "height": 17,
-      "characters": "Get Started",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -661,7 +518,7 @@
       "name": "text-5",
       "width": 308,
       "height": 15,
-      "characters": "Up to 10 projects",
+      "characters": "Basic analytics",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -696,7 +553,7 @@
       "name": "text-4",
       "width": 308,
       "height": 15,
-      "characters": "Basic features",
+      "characters": "5 projects",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

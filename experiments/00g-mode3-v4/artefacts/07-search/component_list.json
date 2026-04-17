@@ -30,13 +30,13 @@
       {
         "type": "text",
         "props": {
-          "text": "People"
+          "text": "Recent"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Places"
+          "text": "Saved"
         }
       }
     ]
@@ -48,12 +48,13 @@
         "type": "list_item",
         "children": [
           {
-            "type": "avatar"
+            "type": "icon",
+            "component_key": "icon/new"
           },
           {
             "type": "text",
             "props": {
-              "text": "John Smith"
+              "text": "Search result item 1"
             }
           },
           {
@@ -66,12 +67,13 @@
         "type": "list_item",
         "children": [
           {
-            "type": "avatar"
+            "type": "icon",
+            "component_key": "icon/new"
           },
           {
             "type": "text",
             "props": {
-              "text": "Sarah Johnson"
+              "text": "Search result item 2"
             }
           },
           {
@@ -84,12 +86,13 @@
         "type": "list_item",
         "children": [
           {
-            "type": "avatar"
+            "type": "icon",
+            "component_key": "icon/new"
           },
           {
             "type": "text",
             "props": {
-              "text": "Mike Chen"
+              "text": "Search result item 3"
             }
           },
           {
@@ -102,12 +105,13 @@
         "type": "list_item",
         "children": [
           {
-            "type": "avatar"
+            "type": "icon",
+            "component_key": "icon/new"
           },
           {
             "type": "text",
             "props": {
-              "text": "Emma Davis"
+              "text": "Search result item 4"
             }
           },
           {

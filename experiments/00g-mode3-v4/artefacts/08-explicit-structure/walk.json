@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5784:47299",
+  "rendered_root": "5789:52622",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -96,7 +96,7 @@
       "name": "text-4",
       "width": 364,
       "height": 15,
-      "characters": "Third line of body text",
+      "characters": "Third line of body text.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -111,7 +111,7 @@
       "name": "text-3",
       "width": 364,
       "height": 15,
-      "characters": "Second line of body text",
+      "characters": "Second line of body text.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -126,7 +126,7 @@
       "name": "text-2",
       "width": 364,
       "height": 15,
-      "characters": "First line of body text",
+      "characters": "First line of body text.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

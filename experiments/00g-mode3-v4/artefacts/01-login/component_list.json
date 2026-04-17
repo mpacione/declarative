@@ -54,7 +54,6 @@
     "variant": "primary",
     "props": {
       "text": "Sign In"
-    },
-    "component_key": "button/large/translucent"
+    }
   }
 ]

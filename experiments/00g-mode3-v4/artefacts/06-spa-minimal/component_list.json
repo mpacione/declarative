@@ -8,10 +8,6 @@
       {
         "type": "icon_button",
         "component_key": "icon/back"
-      },
-      {
-        "type": "icon_button",
-        "component_key": "icon/close"
       }
     ]
   },
@@ -49,27 +45,10 @@
         }
       },
       {
-        "type": "segmented_control",
-        "children": [
-          {
-            "type": "text",
-            "props": {
-              "text": "10:00 AM"
-            }
-          },
-          {
-            "type": "text",
-            "props": {
-              "text": "2:00 PM"
-            }
-          },
-          {
-            "type": "text",
-            "props": {
-              "text": "6:00 PM"
-            }
-          }
-        ]
+        "type": "date_picker",
+        "props": {
+          "label": "Choose your date"
+        }
       }
     ]
   },
@@ -91,13 +70,13 @@
               {
                 "type": "avatar",
                 "props": {
-                  "name": "Elena"
+                  "initials": "AM"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Elena - Swedish Specialist"
+                  "text": "Alexandra M."
                 }
               }
             ]
@@ -108,13 +87,13 @@
               {
                 "type": "avatar",
                 "props": {
-                  "name": "Sophia"
+                  "initials": "JL"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Sophia - Deep Tissue Expert"
+                  "text": "James L."
                 }
               }
             ]
@@ -127,15 +106,30 @@
     "type": "card",
     "children": [
       {
-        "type": "text",
+        "type": "heading",
         "props": {
-          "text": "$180"
+          "text": "Add-ons"
         }
       },
       {
-        "type": "text",
+        "type": "checkbox",
         "props": {
-          "text": "Includes complimentary tea & aromatherapy"
+          "label": "Aromatherapy",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Hot stone therapy",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Facial treatment",
+          "checked": false
         }
       }
     ]
@@ -143,9 +137,9 @@
   {
     "type": "button",
     "variant": "primary",
-    "component_key": "button/large/translucent",
     "props": {
       "text": "Book Appointment"
-    }
+    },
+    "component_key": "button/large/translucent"
   }
 ]

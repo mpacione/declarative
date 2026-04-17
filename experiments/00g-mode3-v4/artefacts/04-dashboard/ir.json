@@ -13,7 +13,7 @@
     },
     "icon_button-1": {
       "type": "icon_button",
-      "component_key": "icon/wallet",
+      "component_key": "icon/close",
       "layout": {
         "direction": "vertical"
       }
@@ -153,7 +153,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 15, 2024"
+        "text": "2024-01-15"
       }
     },
     "text-7": {
@@ -171,7 +171,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$2,450.00"
+        "text": "$2,500.00"
       }
     },
     "text-9": {
@@ -259,7 +259,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 14, 2024"
+        "text": "2024-01-14"
       }
     },
     "text-11": {
@@ -268,7 +268,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Subscription renewal"
+        "text": "Invoice #1024"
       }
     },
     "text-12": {
@@ -277,7 +277,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$99.99"
+        "text": "$1,800.00"
       }
     },
     "text-13": {
@@ -365,7 +365,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 13, 2024"
+        "text": "2024-01-13"
       }
     },
     "text-15": {
@@ -374,7 +374,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Refund issued"
+        "text": "Refund processed"
       }
     },
     "text-16": {
@@ -383,13 +383,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$150.00"
+        "text": "-$450.00"
       }
     },
     "text-17": {
       "type": "text",
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -426,7 +426,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -471,7 +471,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 12, 2024"
+        "text": "2024-01-12"
       }
     },
     "text-19": {
@@ -480,7 +480,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice payment"
+        "text": "Invoice #1023"
       }
     },
     "text-20": {
@@ -489,13 +489,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$5,200.00"
+        "text": "$3,200.00"
       }
     },
     "text-21": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "layout": {
         "direction": "vertical"
@@ -532,7 +532,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -577,7 +577,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 11, 2024"
+        "text": "2024-01-11"
       }
     },
     "text-23": {
@@ -586,7 +586,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Transfer out"
+        "text": "Payment received"
       }
     },
     "text-24": {
@@ -595,13 +595,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$1,000.00"
+        "text": "$1,200.00"
       }
     },
     "text-25": {
       "type": "text",
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -638,7 +638,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",

@@ -30,19 +30,19 @@
       {
         "type": "text",
         "props": {
-          "text": "First line of body text"
+          "text": "First line of body text."
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Second line of body text"
+          "text": "Second line of body text."
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Third line of body text"
+          "text": "Third line of body text."
         }
       },
       {

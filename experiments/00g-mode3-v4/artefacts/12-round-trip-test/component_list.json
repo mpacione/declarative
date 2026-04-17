@@ -21,22 +21,162 @@
         }
       },
       {
-        "type": "text",
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Model: iPhone 13 Pro Max"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Storage: 256GB"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Color: Sierra Blue"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "iOS Version: 16.0"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
         "props": {
-          "text": "Model: iPhone 13 Pro Max"
+          "text": "Battery & Performance"
         }
       },
       {
-        "type": "text",
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Battery Health: 98%"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Processor: A15 Bionic"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "RAM: 6GB"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
         "props": {
-          "text": "Storage: 256GB"
+          "text": "Camera System"
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "Color: Sierra Blue"
-        }
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Main: 12MP Wide"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Ultra Wide: 12MP"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Telephoto: 12MP (3x)"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Front: 12MP TrueDepth"
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -50,112 +190,42 @@
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "6.7-inch Super Retina XDR"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Resolution: 2796 x 1290"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "120Hz ProMotion"
-        }
-      }
-    ]
-  },
-  {
-    "type": "card",
-    "children": [
-      {
-        "type": "heading",
-        "props": {
-          "text": "Camera"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Rear: 12MP Triple Camera"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Front: 12MP TrueDepth"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Night Mode & ProRAW"
-        }
-      }
-    ]
-  },
-  {
-    "type": "card",
-    "children": [
-      {
-        "type": "heading",
-        "props": {
-          "text": "Performance"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Chip: A15 Bionic"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "RAM: 6GB"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Battery: 4373 mAh"
-        }
-      }
-    ]
-  },
-  {
-    "type": "card",
-    "children": [
-      {
-        "type": "heading",
-        "props": {
-          "text": "Connectivity"
-        }
-      },
-      {
-        "type": "toggle",
-        "props": {
-          "label": "5G",
-          "checked": true
-        }
-      },
-      {
-        "type": "toggle",
-        "props": {
-          "label": "WiFi 6E",
-          "checked": true
-        }
-      },
-      {
-        "type": "toggle",
-        "props": {
-          "label": "Bluetooth 5.3",
-          "checked": true
-        }
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Size: 6.7 inches"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Resolution: 2796 x 1290"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "ProMotion: 120Hz"
+                }
+              }
+            ]
+          }
+        ]
       }
     ]
   },
@@ -164,7 +234,14 @@
     "variant": "primary",
     "component_key": "button/large/translucent",
     "props": {
-      "text": "View Full Specs"
+      "text": "Settings"
+    }
+  },
+  {
+    "type": "button",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "About"
     }
   }
 ]

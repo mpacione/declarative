@@ -14,18 +14,21 @@
     "type": "card",
     "children": [
       {
-        "type": "image"
+        "type": "image",
+        "props": {
+          "src": "illustration-1"
+        }
       },
       {
         "type": "heading",
         "props": {
-          "text": "Slide 1 Headline"
+          "text": "Welcome to Our App"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Slide 1 subtext description goes here"
+          "text": "Discover amazing features designed to make your life easier"
         }
       }
     ]
@@ -34,18 +37,21 @@
     "type": "card",
     "children": [
       {
-        "type": "image"
+        "type": "image",
+        "props": {
+          "src": "illustration-2"
+        }
       },
       {
         "type": "heading",
         "props": {
-          "text": "Slide 2 Headline"
+          "text": "Stay Connected"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Slide 2 subtext description goes here"
+          "text": "Keep up with everything that matters to you in one place"
         }
       }
     ]
@@ -54,18 +60,21 @@
     "type": "card",
     "children": [
       {
-        "type": "image"
+        "type": "image",
+        "props": {
+          "src": "illustration-3"
+        }
       },
       {
         "type": "heading",
         "props": {
-          "text": "Slide 3 Headline"
+          "text": "Get Started Now"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Slide 3 subtext description goes here"
+          "text": "Join thousands of users enjoying a better experience"
         }
       }
     ]
@@ -97,13 +106,13 @@
     "type": "button",
     "variant": "primary",
     "props": {
-      "text": "Get Started"
+      "text": "Next"
     }
   },
   {
     "type": "link",
     "props": {
-      "text": "Skip for now"
+      "text": "Skip"
     }
   }
 ]

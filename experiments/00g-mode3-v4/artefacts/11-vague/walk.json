@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5784:47463",
+  "rendered_root": "5789:52789",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,18 +16,39 @@
       ],
       "effectCount": 0
     },
-    "fab-1": {
-      "type": "INSTANCE",
-      "name": "fab-1",
-      "width": 396,
-      "height": 20,
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 111,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 79,
+      "height": 17,
+      "characters": "Get Started",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 191,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -46,61 +67,18 @@
       "type": "FRAME",
       "name": "button_group-1",
       "width": 100,
-      "height": 132,
-      "effectCount": 0
-    },
-    "button-3": {
-      "type": "FRAME",
-      "name": "button-3",
-      "width": 72,
-      "height": 44,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-8": {
-      "type": "TEXT",
-      "name": "text-8",
-      "width": 40,
-      "height": 17,
-      "characters": "Share",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
+      "height": 84,
       "effectCount": 0
     },
     "button-2": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "button-2",
-      "width": 65,
-      "height": 44,
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-7": {
-      "type": "TEXT",
-      "name": "text-7",
-      "width": 33,
-      "height": 17,
-      "characters": "Save",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -108,7 +86,7 @@
     "button-1": {
       "type": "FRAME",
       "name": "button-1",
-      "width": 83,
+      "width": 78,
       "height": 44,
       "fills": [
         {
@@ -118,12 +96,12 @@
       ],
       "effectCount": 0
     },
-    "text-6": {
+    "text-5": {
       "type": "TEXT",
-      "name": "text-6",
-      "width": 51,
+      "name": "text-5",
+      "width": 46,
       "height": 17,
-      "characters": "Explore",
+      "characters": "Create",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -152,7 +130,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 614,
+      "height": 304,
       "fills": [
         {
           "type": "solid",
@@ -171,14 +149,14 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 364,
-      "height": 555,
+      "height": 245,
       "effectCount": 0
     },
     "list_item-3": {
       "type": "FRAME",
       "name": "list_item-3",
       "width": 340,
-      "height": 151,
+      "height": 71,
       "fills": [
         {
           "type": "solid",
@@ -187,30 +165,24 @@
       ],
       "effectCount": 0
     },
-    "text-5": {
+    "icon-3": {
+      "type": "INSTANCE",
+      "name": "icon-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-4": {
       "type": "TEXT",
-      "name": "text-5",
+      "name": "text-4",
       "width": 308,
       "height": 15,
-      "characters": "AR Prototyping",
+      "characters": "Illustration",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "avatar-3": {
-      "type": "FRAME",
-      "name": "avatar-3",
-      "width": 100,
-      "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
         }
       ],
       "effectCount": 0
@@ -219,7 +191,7 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 340,
-      "height": 186,
+      "height": 71,
       "fills": [
         {
           "type": "solid",
@@ -228,32 +200,11 @@
       ],
       "effectCount": 0
     },
-    "badge-2": {
-      "type": "FRAME",
-      "name": "badge-2",
-      "width": 43,
-      "height": 23,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F1F5F9"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-4": {
-      "type": "TEXT",
-      "name": "text-4",
-      "width": 27,
-      "height": 15,
-      "characters": "New",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
+    "icon-2": {
+      "type": "INSTANCE",
+      "name": "icon-2",
+      "width": 20,
+      "height": 20,
       "effectCount": 0
     },
     "text-3": {
@@ -261,25 +212,12 @@
       "name": "text-3",
       "width": 308,
       "height": 15,
-      "characters": "3D Web Experiences",
+      "characters": "Photography",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "avatar-2": {
-      "type": "FRAME",
-      "name": "avatar-2",
-      "width": 100,
-      "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
         }
       ],
       "effectCount": 0
@@ -288,7 +226,7 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 340,
-      "height": 186,
+      "height": 71,
       "fills": [
         {
           "type": "solid",
@@ -297,58 +235,24 @@
       ],
       "effectCount": 0
     },
-    "badge-1": {
-      "type": "FRAME",
-      "name": "badge-1",
-      "width": 37,
-      "height": 23,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F1F5F9"
-        }
-      ],
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
       "effectCount": 0
     },
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 21,
-      "height": 15,
-      "characters": "Hot",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-1": {
-      "type": "TEXT",
-      "name": "text-1",
       "width": 308,
       "height": 15,
-      "characters": "AI Design Tools",
+      "characters": "Design",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "avatar-1": {
-      "type": "FRAME",
-      "name": "avatar-1",
-      "width": 100,
-      "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
         }
       ],
       "effectCount": 0
@@ -358,7 +262,7 @@
       "name": "heading-2",
       "width": 364,
       "height": 15,
-      "characters": "Trending Now",
+      "characters": "Categories",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -372,7 +276,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 159,
+      "height": 201,
       "fills": [
         {
           "type": "solid",
@@ -386,6 +290,21 @@
         }
       ],
       "effectCount": 1
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 30,
+      "characters": "Explore trending collections and new releases curated just for you.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
     },
     "image-1": {
       "type": "FRAME",

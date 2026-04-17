@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5784:46941",
+  "rendered_root": "5789:52243",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -33,7 +33,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 909,
+      "height": 834,
       "fills": [
         {
           "type": "solid",
@@ -52,14 +52,14 @@
       "type": "FRAME",
       "name": "table-1",
       "width": 100,
-      "height": 850,
+      "height": 775,
       "effectCount": 0
     },
     "list_item-5": {
       "type": "FRAME",
       "name": "list_item-5",
       "width": 100,
-      "height": 158,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -71,7 +71,7 @@
     "badge-5": {
       "type": "FRAME",
       "name": "badge-5",
-      "width": 64,
+      "width": 80,
       "height": 23,
       "fills": [
         {
@@ -84,9 +84,9 @@
     "text-25": {
       "type": "TEXT",
       "name": "text-25",
-      "width": 48,
+      "width": 64,
       "height": 15,
-      "characters": "Pending",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -101,7 +101,7 @@
       "name": "text-24",
       "width": 68,
       "height": 15,
-      "characters": "-$1,000.00",
+      "characters": "$1,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -116,7 +116,7 @@
       "name": "text-23",
       "width": 68,
       "height": 30,
-      "characters": "Transfer out",
+      "characters": "Payment received",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -130,8 +130,8 @@
       "type": "TEXT",
       "name": "text-22",
       "width": 68,
-      "height": 30,
-      "characters": "Jan 11, 2024",
+      "height": 15,
+      "characters": "2024-01-11",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -145,7 +145,7 @@
       "type": "FRAME",
       "name": "list_item-4",
       "width": 100,
-      "height": 158,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -157,7 +157,7 @@
     "badge-4": {
       "type": "FRAME",
       "name": "badge-4",
-      "width": 80,
+      "width": 64,
       "height": 23,
       "fills": [
         {
@@ -170,9 +170,9 @@
     "text-21": {
       "type": "TEXT",
       "name": "text-21",
-      "width": 64,
+      "width": 48,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Pending",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -187,7 +187,7 @@
       "name": "text-20",
       "width": 68,
       "height": 15,
-      "characters": "$5,200.00",
+      "characters": "$3,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -202,7 +202,7 @@
       "name": "text-19",
       "width": 68,
       "height": 30,
-      "characters": "Invoice payment",
+      "characters": "Invoice #1023",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -216,8 +216,8 @@
       "type": "TEXT",
       "name": "text-18",
       "width": 68,
-      "height": 30,
-      "characters": "Jan 12, 2024",
+      "height": 15,
+      "characters": "2024-01-12",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -231,7 +231,7 @@
       "type": "FRAME",
       "name": "list_item-3",
       "width": 100,
-      "height": 158,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -243,7 +243,7 @@
     "badge-3": {
       "type": "FRAME",
       "name": "badge-3",
-      "width": 78,
+      "width": 80,
       "height": 23,
       "fills": [
         {
@@ -256,9 +256,9 @@
     "text-17": {
       "type": "TEXT",
       "name": "text-17",
-      "width": 62,
+      "width": 64,
       "height": 15,
-      "characters": "Processed",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -273,7 +273,7 @@
       "name": "text-16",
       "width": 68,
       "height": 15,
-      "characters": "-$150.00",
+      "characters": "-$450.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -288,7 +288,7 @@
       "name": "text-15",
       "width": 68,
       "height": 30,
-      "characters": "Refund issued",
+      "characters": "Refund processed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -302,8 +302,8 @@
       "type": "TEXT",
       "name": "text-14",
       "width": 68,
-      "height": 30,
-      "characters": "Jan 13, 2024",
+      "height": 15,
+      "characters": "2024-01-13",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -317,7 +317,7 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 100,
-      "height": 158,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -359,7 +359,7 @@
       "name": "text-12",
       "width": 68,
       "height": 15,
-      "characters": "$99.99",
+      "characters": "$1,800.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -374,7 +374,7 @@
       "name": "text-11",
       "width": 68,
       "height": 30,
-      "characters": "Subscription renewal",
+      "characters": "Invoice #1024",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -388,8 +388,8 @@
       "type": "TEXT",
       "name": "text-10",
       "width": 68,
-      "height": 30,
-      "characters": "Jan 14, 2024",
+      "height": 15,
+      "characters": "2024-01-14",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -403,7 +403,7 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 100,
-      "height": 158,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -445,7 +445,7 @@
       "name": "text-8",
       "width": 68,
       "height": 15,
-      "characters": "$2,450.00",
+      "characters": "$2,500.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -474,8 +474,8 @@
       "type": "TEXT",
       "name": "text-6",
       "width": 68,
-      "height": 30,
-      "characters": "Jan 15, 2024",
+      "height": 15,
+      "characters": "2024-01-15",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

@@ -23,8 +23,14 @@
       {
         "type": "image",
         "props": {
-          "src": "featured-hero.jpg",
+          "src": "https://via.placeholder.com/400x200",
           "alt": "Featured content"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Explore trending collections and new releases curated just for you."
         }
       }
     ]
@@ -35,7 +41,7 @@
       {
         "type": "heading",
         "props": {
-          "text": "Trending Now"
+          "text": "Categories"
         }
       },
       {
@@ -45,22 +51,14 @@
             "type": "list_item",
             "children": [
               {
-                "type": "avatar",
-                "props": {
-                  "initials": "AI"
-                }
-              },
-              {
                 "type": "text",
                 "props": {
-                  "text": "AI Design Tools"
+                  "text": "Design"
                 }
               },
               {
-                "type": "badge",
-                "props": {
-                  "text": "Hot"
-                }
+                "type": "icon",
+                "component_key": "icon/chevron-down"
               }
             ]
           },
@@ -68,22 +66,14 @@
             "type": "list_item",
             "children": [
               {
-                "type": "avatar",
-                "props": {
-                  "initials": "3D"
-                }
-              },
-              {
                 "type": "text",
                 "props": {
-                  "text": "3D Web Experiences"
+                  "text": "Photography"
                 }
               },
               {
-                "type": "badge",
-                "props": {
-                  "text": "New"
-                }
+                "type": "icon",
+                "component_key": "icon/chevron-down"
               }
             ]
           },
@@ -91,16 +81,14 @@
             "type": "list_item",
             "children": [
               {
-                "type": "avatar",
+                "type": "text",
                 "props": {
-                  "initials": "AR"
+                  "text": "Illustration"
                 }
               },
               {
-                "type": "text",
-                "props": {
-                  "text": "AR Prototyping"
-                }
+                "type": "icon",
+                "component_key": "icon/chevron-down"
               }
             ]
           }
@@ -124,21 +112,14 @@
             "type": "button",
             "variant": "primary",
             "props": {
+              "text": "Create"
+            }
+          },
+          {
+            "type": "button",
+            "component_key": "button/small/translucent",
+            "props": {
               "text": "Explore"
-            }
-          },
-          {
-            "type": "button",
-            "variant": "primary",
-            "props": {
-              "text": "Save"
-            }
-          },
-          {
-            "type": "button",
-            "variant": "primary",
-            "props": {
-              "text": "Share"
             }
           }
         ]
@@ -146,10 +127,10 @@
     ]
   },
   {
-    "type": "fab",
+    "type": "button",
+    "variant": "primary",
     "props": {
-      "label": "Create"
-    },
-    "component_key": "icon/new"
+      "text": "Get Started"
+    }
   }
 ]

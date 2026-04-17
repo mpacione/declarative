@@ -2,12 +2,14 @@
   "__ok": true,
   "errors": [
     {
-      "kind": "render_thrown",
-      "error": "not a function",
-      "stack": "    at <anonymous> (<input>:334:15) | "
+      "kind": "leaf_type_append_skipped",
+      "parent_eid": "link-1",
+      "parent_type": "link",
+      "child_eid": "text-9",
+      "child_type": "text"
     }
   ],
-  "rendered_root": "5784:47403",
+  "rendered_root": "5789:52726",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -25,9 +27,9 @@
     "link-1": {
       "type": "TEXT",
       "name": "link-1",
-      "width": 71,
+      "width": 25,
       "height": 15,
-      "characters": "Skip for now",
+      "characters": "Skip",
       "textAutoResize": "WIDTH_AND_HEIGHT",
       "fills": [
         {
@@ -40,7 +42,7 @@
     "button-4": {
       "type": "FRAME",
       "name": "button-4",
-      "width": 111,
+      "width": 64,
       "height": 44,
       "fills": [
         {
@@ -53,9 +55,9 @@
     "text-8": {
       "type": "TEXT",
       "name": "text-8",
-      "width": 79,
+      "width": 32,
       "height": 17,
-      "characters": "Get Started",
+      "characters": "Next",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -75,12 +77,27 @@
     "button-3": {
       "type": "FRAME",
       "name": "button-3",
-      "width": 100,
+      "width": 42,
       "height": 44,
       "fills": [
         {
           "type": "solid",
           "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 10,
+      "height": 17,
+      "characters": "3",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
         }
       ],
       "effectCount": 0
@@ -88,7 +105,7 @@
     "button-2": {
       "type": "FRAME",
       "name": "button-2",
-      "width": 100,
+      "width": 41,
       "height": 44,
       "fills": [
         {
@@ -98,15 +115,45 @@
       ],
       "effectCount": 0
     },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 9,
+      "height": 17,
+      "characters": "2",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
     "button-1": {
       "type": "FRAME",
       "name": "button-1",
-      "width": 100,
+      "width": 39,
       "height": 44,
       "fills": [
         {
           "type": "solid",
           "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 7,
+      "height": 17,
+      "characters": "1",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
         }
       ],
       "effectCount": 0
@@ -135,7 +182,7 @@
       "name": "text-4",
       "width": 364,
       "height": 15,
-      "characters": "Slide 3 subtext description goes here",
+      "characters": "Join thousands of users enjoying a better experience",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -150,7 +197,7 @@
       "name": "heading-3",
       "width": 364,
       "height": 15,
-      "characters": "Slide 3 Headline",
+      "characters": "Get Started Now",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -197,7 +244,7 @@
       "name": "text-3",
       "width": 364,
       "height": 15,
-      "characters": "Slide 2 subtext description goes here",
+      "characters": "Keep up with everything that matters to you in one place",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -212,7 +259,7 @@
       "name": "heading-2",
       "width": 364,
       "height": 15,
-      "characters": "Slide 2 Headline",
+      "characters": "Stay Connected",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -259,7 +306,7 @@
       "name": "text-2",
       "width": 364,
       "height": 15,
-      "characters": "Slide 1 subtext description goes here",
+      "characters": "Discover amazing features designed to make your life easier",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -274,7 +321,7 @@
       "name": "heading-1",
       "width": 364,
       "height": 15,
-      "characters": "Slide 1 Headline",
+      "characters": "Welcome to Our App",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

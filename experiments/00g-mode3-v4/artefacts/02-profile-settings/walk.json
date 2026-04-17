@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5784:46686",
+  "rendered_root": "5789:52094",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -175,9 +175,9 @@
       ],
       "effectCount": 0
     },
-    "heading-2": {
+    "heading-1": {
       "type": "TEXT",
-      "name": "heading-2",
+      "name": "heading-1",
       "width": 364,
       "height": 15,
       "characters": "Notifications",
@@ -194,7 +194,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 303,
+      "height": 276,
       "fills": [
         {
           "type": "solid",
@@ -298,21 +298,6 @@
       "width": 340,
       "height": 17,
       "characters": "Name",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-1": {
-      "type": "TEXT",
-      "name": "heading-1",
-      "width": 364,
-      "height": 15,
-      "characters": "Profile Information",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

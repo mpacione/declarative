@@ -26,15 +26,15 @@
       },
       {
         "type": "text",
-        "props": {"text": "First line of body text"}
+        "props": {"text": "First line of body text."}
       },
       {
         "type": "text",
-        "props": {"text": "Second line of body text"}
+        "props": {"text": "Second line of body text."}
       },
       {
         "type": "text",
-        "props": {"text": "Third line of body text"}
+        "props": {"text": "Third line of body text."}
       },
       {
         "type": "button",

@@ -21,10 +21,6 @@
         "props": {"initials": "JD"}
       },
       {
-        "type": "heading",
-        "props": {"text": "Profile Information"}
-      },
-      {
         "type": "text_input",
         "props": {"label": "Name", "placeholder": "Enter your name"}
       },

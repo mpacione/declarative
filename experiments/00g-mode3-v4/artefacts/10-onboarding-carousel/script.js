@@ -271,7 +271,7 @@ n0.appendChild(n6);
 n6.layoutSizingHorizontal = "HUG";
 n6.layoutSizingVertical = "FIXED";
 n0.appendChild(n7);
-try { n7.characters = "Skip for now"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n7.characters = "Skip"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n7.layoutSizingHorizontal = "HUG";
 n7.layoutSizingVertical = "HUG";
 n1.appendChild(n8);
@@ -280,28 +280,28 @@ n2.appendChild(n9);
 n9.layoutSizingHorizontal = "FILL";
 n9.layoutSizingVertical = "FIXED";
 n2.appendChild(n10);
-try { n10.characters = "Slide 1 Headline"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n10.characters = "Welcome to Our App"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.layoutSizingHorizontal = "FILL";
 n2.appendChild(n11);
-try { n11.characters = "Slide 1 subtext description goes here"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n11.characters = "Discover amazing features designed to make your life easier"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.layoutSizingHorizontal = "FILL";
 n3.appendChild(n12);
 n12.layoutSizingHorizontal = "FILL";
 n12.layoutSizingVertical = "FIXED";
 n3.appendChild(n13);
-try { n13.characters = "Slide 2 Headline"; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n13.characters = "Stay Connected"; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.layoutSizingHorizontal = "FILL";
 n3.appendChild(n14);
-try { n14.characters = "Slide 2 subtext description goes here"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "Keep up with everything that matters to you in one place"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n4.appendChild(n15);
 n15.layoutSizingHorizontal = "FILL";
 n15.layoutSizingVertical = "FIXED";
 n4.appendChild(n16);
-try { n16.characters = "Slide 3 Headline"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n16.characters = "Get Started Now"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
 n4.appendChild(n17);
-try { n17.characters = "Slide 3 subtext description goes here"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n17.characters = "Join thousands of users enjoying a better experience"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n17.layoutSizingHorizontal = "FILL";
 n5.appendChild(n18);
 n18.layoutSizingHorizontal = "HUG";
@@ -313,11 +313,10 @@ n5.appendChild(n20);
 n20.layoutSizingHorizontal = "HUG";
 n20.layoutSizingVertical = "FIXED";
 n6.appendChild(n21);
-try { n21.characters = "Get Started"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "Next"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
-n7.appendChild(n22);
-try { n22.characters = "Skip for now"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n22.layoutSizingHorizontal = "FILL";
+// leaf_type_append skipped: parent='link-1' ('link') cannot accept child 'text-9' ('text')
+__errors.push({kind:"leaf_type_append_skipped", parent_eid:"link-1", parent_type:"link", child_eid:"text-9", child_type:"text"});
 n18.appendChild(n23);
 try { n23.characters = "1"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n23.layoutSizingHorizontal = "FILL";

@@ -280,6 +280,71 @@ activation, or a renderer-side `_imagePlaceholder()` helper that
 emits the hatched-pattern inline without a second paint pass on
 the frame fill.
 
+## Round 5 — 5-subagent parallel forensic + Fix #1 (leaf-parent gate)
+
+User pushback: VLM-ok 12/12 on 00g wasn't the real quality bar.
+Screenshots on 00i breadth-test revealed persistent defects:
+empty text_input rectangles, blank blue image placeholders, "×"
+icon glyphs, horizontal layout collapse.
+
+Spawned 5 parallel Explore subagents, each investigating one defect
+class against the working round-trip path:
+
+| # | defect | subagent finding | status |
+|---|---|---|---|
+| 1 | render_thrown on signup/2fa/reset | Parent IS a TEXT leaf (`link` → createText); has no `.appendChild`. Abort orphans the entire tree. | **Fixed (`a54a3ed`)** |
+| 2 | empty text_input render | Subsumed by #1 — the orphaned tree is invisible to walk_ref. | **Fixed via #1** |
+| 3 | blank blue image placeholders | `_missingComponentPlaceholder` pattern (fills=[] + line children) avoids paint cascade. | Deferred — cosmetic, not broken |
+| 4 | "×" icon fallback glyph | Not a text-fallback — it's BAKED INTO Dank's `button/large/translucent` component. Inherited via `createInstance`. | Deferred — Dank-data fix needed |
+| 5 | horizontal layout collapse | `dd/compose.py:147` hard-codes vertical. LLM doesn't emit horizontal wrappers; table template doesn't do column layout. | Deferred — deeper LLM/template work |
+
+### Fix #1 impact (landed)
+
+1. Gate `parent.appendChild(child)` on `parent_etype in _LEAF_TYPES`
+   in `dd/renderers/figma.py::generate_figma_script` Phase 2 loop.
+2. Soft-error filter in `dd/visual_inspect.py::inspect_walk` so
+   `leaf_type_append_skipped` (a content-loss warning) doesn't flip
+   combined verdict to broken.
+
+**Visible win**: 12-signup-form now renders all 5 text_input labels
+and placeholders ("Full Name / Enter your full name" etc.) — was
+previously 5 blank rectangles.
+
+**Quiet win**: 01-login, 10-onboarding-carousel, 13-password-reset,
+14-2fa-verify no longer trip `had_render_errors` from the leaf-
+append throw.
+
+### Parity + test state
+
+- 1,932 unit tests green
+- 204/204 round-trip parity preserved (33.3 s sweep)
+- 00g re-run: 11/12 rendered (12-round-trip-test occasionally
+  refuses at T=0.3 — LLM noise). Render-fidelity 0.728 (was 0.752
+  — 3% drop explained by classifier variance this run)
+- 00i re-run: 20/20 rendered, 2 soft diagnostics, 0 hard errors
+- VLM: Gemini still 429 throughout (rate-limit from earlier heavy
+  use) — fidelity numbers serve as proxy
+
+### Deferred defect analysis
+
+- **"×" baked into Dank button components** is a PROJECT-DATA
+  issue — when a generic prompt uses `button/large/translucent`
+  (the most common Dank button per CKR instance count), it
+  inherits the component's baked-in X icon. Fixes:
+  - Override child count after createInstance (remove the X)
+  - Rank CKR suggestions by "cleanness" (prefer components
+    without baked content)
+  - Source-fix: edit the Dank components themselves
+- **Horizontal-layout** requires either a structured "table
+  layout" template (column count awareness) or LLM prompt guidance
+  for when to emit horizontal wrappers. Both are deeper than
+  a renderer-side fix.
+- **Image placeholder visual** is cosmetic; current solid-blue
+  reads as "unfilled image area" which is acceptable as a
+  wireframe. H3-style hatched helper is a v0.2 polish item.
+
+Shipped at `a54a3ed`.
+
 ## Final ship state (v0.1.5 closed at R3 / f16dfc0)
 
 | round | VLM ok | partial | broken | render-fid | render timeouts |
