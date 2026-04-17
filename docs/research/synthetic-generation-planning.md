@@ -587,3 +587,59 @@ we plan v0.1 against reality instead of intuition.
   [`docs/research/t5-compositional-analysis.md`](t5-compositional-analysis.md)
 - **Experiments (to be created):** `experiments/` (this directory
   does not yet exist — each subagent creates its own subdirectory).
+
+
+---
+
+## Wave 1.5 + Wave 2 reality check (2026-04-16 late-session)
+
+After three Wave 1.5 runs (v1 credits, v2 partial fix, v3 properly
+fixed renderer), all 12 prompts now render structurally — 12/12
+`__ok:true`, 229 walked eids, zero script errors. The pipeline is
+structurally sound.
+
+**But the output is categorically broken at the visual level.** When
+the screenshots were actually examined (which I should have done before
+writing the rating template), every one of the 12 renders as:
+
+- A handful of `text`/`heading` labels at top-left.
+- Everything else (buttons, inputs, cards, icons, images) renders as
+  invisible 100×100 grey frames.
+- No visible UI structure at all.
+
+This is consistent with the Wave 1.5 v3 memo's warning — 212 of 229
+non-screen nodes at Figma's `createFrame()` default, Mode-2 has no
+internal templates — but the impact is more categorical than "low
+structural quality." There's literally nothing for a designer to
+rate. The rating template at
+`experiments/00c-vanilla-v3/RATING.md` was premature.
+
+**Process correction going forward:**
+
+1. **Auto-inspect before human-rate.** Any experiment that produces
+   rendered output must run a cheap visual sanity check (VLM score,
+   or even a rule-based "% non-background pixels" metric) BEFORE
+   escalating to human review. If the output is categorically
+   broken, fix the pipeline first. Never ask a human to rate empty
+   grey rectangles.
+
+2. **Re-run with gating before assuming a baseline is a baseline.**
+   Wave 1.5 v3's "12/12 success" was about script execution, not
+   visual output. A fresh baseline needs BOTH gates (script
+   completes AND VLM sees non-trivial content) before it's a
+   useful comparator.
+
+## What unblocks synthetic generation now
+
+The single highest-leverage next step is **Exp H Step 1 — ingest
+shadcn/ui** (spec at `experiments/H-design-systems/spec.md`). Until
+the pipeline has real component templates to fall through to,
+generation will keep producing empty-frames-plus-text-labels
+regardless of LLM quality.
+
+Estimated 2-3 engineer-days for shadcn MVP, following the spec's
+five-step rollout. Step 2 is measuring impact; Step 3 adds Material
+Design 3 to cover the 36 catalog gaps Dank can't supply.
+
+After H lands, re-run Wave 1.5 v3's 12 prompts with shadcn linked —
+now Exp D (retrieval impact) and Wave 2 (rating) become meaningful.
