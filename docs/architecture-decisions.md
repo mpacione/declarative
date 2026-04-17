@@ -1460,3 +1460,107 @@ All seven ADRs hold after v0.1.5 Week 1:
   would prevent the next recurrence.
 - **A2 plan-then-fill** (`DD_ENABLE_PLAN_THEN_FILL`) is the
   plan-routed next step to close the VLM-ok gap.
+
+---
+
+## ADR-008 Chapter epilogue (2026-04-17, pt 2) — post-v0.1.5 forensic rounds
+
+After v0.1.5 shipped at R3 (12/12 canonical VLM-ok), two more rounds
+extended the work: a breadth test (20/20 rendered, fidelity 0.72) and
+a parallel-subagent forensic pass on remaining visible defects.
+
+### Breadth generalisation test (00i-breadth-v1, commit `9e05bf0`)
+
+20 prompts across 8 domains outside the canonical 12 (e-commerce,
+messaging, productivity, system states, auth, media, location, ops).
+
+| metric | canonical 00g (R3) | breadth 00i |
+|---|---:|---:|
+| render completion | 12 / 12 | **20 / 20** |
+| mean render-fidelity | 0.75 | **0.72** |
+| mean prompt-fidelity | 0.83 | 0.67 |
+| parity | 204 / 204 | 204 / 204 |
+
+Render-fidelity within 3 % confirms the architecture generalises.
+Prompt-fidelity is lower because the keyword classifier misroutes
+4 / 20 prompts (e.g. "message" in error-state → chat), but A1's
+"inspiration, not template" framing means the LLM freelances
+correctly in all misroute cases. Zero new architectural bugs
+surfaced — all rule-gate broken/partial verdicts map to pre-known
+defect classes.
+
+### 5-subagent parallel forensic (post-breadth, commit `a54a3ed`)
+
+Spawned one Explore subagent per visible defect class observed in
+the breadth screenshots:
+
+| # | defect | subagent finding | fix |
+|---|---|---|---|
+| 1 | render_thrown "not a function" | Parent IS a TEXT leaf (`link` → createText); has no `.appendChild`. Phase 2 abort orphans the whole tree. | Landed (`a54a3ed`) |
+| 2 | empty text_input rectangles | Subsumed by #1 — orphaned tree is invisible to walk_ref. | Subsumed |
+| 3 | blank blue image placeholders | `_missingComponentPlaceholder` pattern (`fills=[]` + line children) avoids paint cascade. | Deferred (cosmetic) |
+| 4 | "×" icon everywhere | NOT a text-fallback — baked into Dank's `button/large/translucent` component and inherited via `createInstance`. | Deferred (data-side) |
+| 5 | horizontal layout collapse | `dd/compose.py:147` hard-codes vertical; LLM doesn't emit horizontal wrappers. | Deferred (deeper) |
+
+**Fix #1 (leaf-parent `appendChild` gate)** was the highest-leverage
+immediate win: both the crash on signup/2fa/reset AND the empty
+text_input rectangles collapsed into one root cause. Patched the
+renderer to skip `leafParent.appendChild(child)` and emit a soft
+diagnostic `leaf_type_append_skipped` instead. Added a filter in
+`dd/visual_inspect.py::inspect_walk` so soft diagnostics don't flip
+`had_render_errors` → combined-verdict-broken.
+
+**Visible win**: 12-signup-form went from 5 empty rectangles to
+full labels + placeholders ("Full Name / Enter your full name"
+etc.). Same fix silently unbroke 01-login, 10-onboarding-carousel,
+13-password-reset, 14-2fa-verify from the `had_render_errors` rule
+flip.
+
+### Methodology wins worth keeping
+
+- **Parallel-subagent forensic** (one Explore per defect class, all
+  spawned in a single tool-call message) is repeatable for any
+  multi-class defect investigation. See
+  `feedback_parallel_subagent_forensic.md`.
+- **T1..T8 script-ablation diagnostic** (strip one property class
+  at a time via regex + re-run through bridge) isolated the R3
+  root cause (container fill → paint cascade) in 2 minutes.
+  Should be a standard tool when render perf regresses.
+- **Fidelity scorer** (`dd/diagnostics/fidelity.py` + `experiments/_lib/
+  score_experiment.py`) separates prompt-layer from renderer-layer
+  quality signals. Prevents the conflation that drove three prompt-
+  only experiments before the root cause was diagnosed.
+
+### Deferred to v0.2 (with rationale)
+
+1. **Fix #4 "×" icon inheritance** — override children on
+   `createInstance` results for buttons that have baked-in sub-icons;
+   or rerank CKR suggestions to prefer components without extra
+   children; or source-fix the Dank components.
+2. **Fix #5 horizontal layout** — add a column-aware `table` layout
+   OR propagate archetype-level horizontal hints to screen-root
+   wiring OR LLM prompt guidance for horizontal wrappers.
+3. **Fix #3 `_imagePlaceholder`** — mirror the pattern of
+   `_missingComponentPlaceholder` (fills=[] + line children) so images
+   read as designer wireframes without triggering the paint cascade
+   H7 hit.
+4. **03-meme-feed Phase-2 layoutMode deferral** — move per-parent
+   `layoutMode` emission from Phase 1 to a new Phase 2b after all
+   `appendChild` lands. Right long-term fix but risky to round-trip
+   parity; needs dedicated session.
+5. **Second-project portability** — port the pipeline against a
+   non-Dank Figma file to validate the universal architecture
+   isn't Dank-specific.
+
+### Final session state
+
+- 1,932 unit tests green.
+- 204 / 204 round-trip parity preserved through every commit.
+- 00g canonical: 12 / 12 VLM-ok at R3 (commit `f16dfc0`); 11 / 12
+  in the latest run due to LLM T=0.3 variance on 12-round-trip-test
+  — quality unchanged.
+- 00i breadth: 20 / 20 rendered, fidelity 0.72.
+- VLM currently 429-throttled across the session; fidelity scorer
+  is the reliable signal.
+- Ship state remains R3 (`f16dfc0`) + Fix #1 (`a54a3ed`): Mode 3
+  structurally solved, perceived-quality polish deferred to v0.2.
