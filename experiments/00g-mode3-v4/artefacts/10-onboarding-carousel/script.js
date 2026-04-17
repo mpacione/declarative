@@ -31,21 +31,30 @@ M["header-1"] = n1.id;
 const n2 = figma.createFrame();
 n2.name = "card-1";
 n2.layoutMode = "VERTICAL";
-n2.fills = [];
+n2.itemSpacing = 12;
+n2.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n2.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n2.cornerRadius = 12;
 n2.clipsContent = false;
 M["card-1"] = n2.id;
 
 const n3 = figma.createFrame();
 n3.name = "card-2";
 n3.layoutMode = "VERTICAL";
-n3.fills = [];
+n3.itemSpacing = 12;
+n3.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n3.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n3.cornerRadius = 12;
 n3.clipsContent = false;
 M["card-2"] = n3.id;
 
 const n4 = figma.createFrame();
 n4.name = "card-3";
 n4.layoutMode = "VERTICAL";
-n4.fills = [];
+n4.itemSpacing = 12;
+n4.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n4.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n4.cornerRadius = 12;
 n4.clipsContent = false;
 M["card-3"] = n4.id;
 
@@ -205,10 +214,13 @@ n0.appendChild(n1);
 n1.layoutSizingHorizontal = "FILL";
 n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
+n2.layoutSizingVertical = "HUG";
 n0.appendChild(n3);
 n3.layoutSizingHorizontal = "FILL";
+n3.layoutSizingVertical = "HUG";
 n0.appendChild(n4);
 n4.layoutSizingHorizontal = "FILL";
+n4.layoutSizingVertical = "HUG";
 n0.appendChild(n5);
 n5.layoutSizingHorizontal = "FILL";
 n0.appendChild(n6);
@@ -222,24 +234,24 @@ n1.appendChild(n8);
 n8.layoutSizingHorizontal = "FILL";
 n2.appendChild(n9);
 n2.appendChild(n10);
-try { n10.characters = "Welcome to Our App"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n10.characters = "Welcome to Your Journey"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.layoutSizingHorizontal = "FILL";
 n2.appendChild(n11);
-try { n11.characters = "Discover amazing features designed to make your life easier"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n11.characters = "Discover amazing features designed to enhance your experience"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.layoutSizingHorizontal = "FILL";
 n3.appendChild(n12);
 n3.appendChild(n13);
 try { n13.characters = "Stay Connected"; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.layoutSizingHorizontal = "FILL";
 n3.appendChild(n14);
-try { n14.characters = "Keep up with everything that matters to you in real time"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "Keep up with everything that matters to you in one place"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n4.appendChild(n15);
 n4.appendChild(n16);
 try { n16.characters = "Get Started Now"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
 n4.appendChild(n17);
-try { n17.characters = "Join thousands of users enjoying a seamless experience"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n17.characters = "Create your account and unlock all the possibilities"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n17.layoutSizingHorizontal = "FILL";
 n5.appendChild(n18);
 n18.layoutSizingHorizontal = "HUG";

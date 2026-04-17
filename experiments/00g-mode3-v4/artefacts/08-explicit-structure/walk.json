@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:34264",
+  "rendered_root": "5776:38557",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -48,7 +48,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 104,
+      "height": 152,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "button-1": {

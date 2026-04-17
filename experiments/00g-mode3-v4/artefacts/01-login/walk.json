@@ -4,10 +4,10 @@
     {
       "kind": "render_thrown",
       "error": "not a function",
-      "stack": "    at <anonymous> (<input>:260:15) | "
+      "stack": "    at <anonymous> (<input>:264:15) | "
     }
   ],
-  "rendered_root": "5772:33621",
+  "rendered_root": "5776:37931",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -54,7 +54,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 125,
+      "height": 173,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "link-1": {

@@ -29,7 +29,7 @@
           {
             "type": "text",
             "props": {
-              "text": "john_doe"
+              "text": "John Doe"
             }
           },
           {
@@ -78,7 +78,7 @@
           {
             "type": "text",
             "props": {
-              "text": "sarah_memes"
+              "text": "Sarah Miller"
             }
           },
           {
@@ -91,7 +91,7 @@
           {
             "type": "text",
             "props": {
-              "text": "POV: You're scrolling at 3 AM"
+              "text": "POV: You're trying to be productive on Monday"
             }
           },
           {
@@ -121,13 +121,13 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "MC"
+              "initials": "TC"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "meme_creator"
+              "text": "Tom Chen"
             }
           },
           {
@@ -140,7 +140,7 @@
           {
             "type": "text",
             "props": {
-              "text": "Me pretending to understand what's happening"
+              "text": "Me explaining why I need another coffee"
             }
           },
           {

@@ -4,10 +4,10 @@
     {
       "kind": "render_thrown",
       "error": "not a function",
-      "stack": "    at <anonymous> (<input>:272:15) | "
+      "stack": "    at <anonymous> (<input>:284:15) | "
     }
   ],
-  "rendered_root": "5772:34368",
+  "rendered_root": "5776:38661",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -115,7 +115,19 @@
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 130,
+      "height": 154,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "text-4": {
@@ -123,7 +135,7 @@
       "name": "text-4",
       "width": 396,
       "height": 15,
-      "characters": "Join thousands of users enjoying a seamless experience",
+      "characters": "Create your account and unlock all the possibilities",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -159,7 +171,19 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 130,
+      "height": 154,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "text-3": {
@@ -167,7 +191,7 @@
       "name": "text-3",
       "width": 396,
       "height": 15,
-      "characters": "Keep up with everything that matters to you in real time",
+      "characters": "Keep up with everything that matters to you in one place",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -203,7 +227,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 130,
+      "height": 154,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "text-2": {
@@ -211,7 +247,7 @@
       "name": "text-2",
       "width": 396,
       "height": 15,
-      "characters": "Discover amazing features designed to make your life easier",
+      "characters": "Discover amazing features designed to enhance your experience",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -226,7 +262,7 @@
       "name": "heading-1",
       "width": 396,
       "height": 15,
-      "characters": "Welcome to Our App",
+      "characters": "Welcome to Your Journey",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

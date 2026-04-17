@@ -60,7 +60,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "john_doe"
+        "text": "John Doe"
       }
     },
     "image-1": {
@@ -115,7 +115,21 @@
     "card-1": {
       "type": "card",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "avatar-1",
@@ -154,7 +168,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "sarah_memes"
+        "text": "Sarah Miller"
       }
     },
     "image-2": {
@@ -173,7 +187,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "POV: You're scrolling at 3 AM"
+        "text": "POV: You're trying to be productive on Monday"
       }
     },
     "button-3": {
@@ -209,7 +223,21 @@
     "card-2": {
       "type": "card",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "avatar-2",
@@ -234,7 +262,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "MC"
+        "initials": "TC"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -248,7 +276,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "meme_creator"
+        "text": "Tom Chen"
       }
     },
     "image-3": {
@@ -267,7 +295,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Me pretending to understand what's happening"
+        "text": "Me explaining why I need another coffee"
       }
     },
     "button-5": {
@@ -303,7 +331,21 @@
     "card-3": {
       "type": "card",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "avatar-3",
@@ -318,8 +360,18 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "card-1",
@@ -361,6 +413,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -369,8 +424,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,

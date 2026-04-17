@@ -13,7 +13,7 @@
     },
     "icon_button-1": {
       "type": "icon_button",
-      "component_key": "icon/wallet",
+      "component_key": "icon/close",
       "layout": {
         "direction": "vertical"
       }
@@ -54,8 +54,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-1",
@@ -113,7 +124,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 15, 2024"
+        "text": "2024-01-15"
       }
     },
     "text-7": {
@@ -186,7 +197,21 @@
     "list_item-1": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "text-6",
@@ -201,7 +226,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 14, 2024"
+        "text": "2024-01-14"
       }
     },
     "text-11": {
@@ -210,7 +235,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice #1024"
+        "text": "Invoice issued"
       }
     },
     "text-12": {
@@ -225,7 +250,7 @@
     "text-13": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "layout": {
         "direction": "vertical"
@@ -260,7 +285,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -274,7 +299,21 @@
     "list_item-2": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "text-10",
@@ -289,7 +328,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 13, 2024"
+        "text": "2024-01-13"
       }
     },
     "text-15": {
@@ -298,7 +337,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Refund issued"
+        "text": "Refund processed"
       }
     },
     "text-16": {
@@ -307,13 +346,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$450.00"
+        "text": "-$500.00"
       }
     },
     "text-17": {
       "type": "text",
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -348,7 +387,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -362,7 +401,21 @@
     "list_item-3": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "text-14",
@@ -377,7 +430,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 12, 2024"
+        "text": "2024-01-12"
       }
     },
     "text-19": {
@@ -386,7 +439,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Subscription renewal"
+        "text": "Payment received"
       }
     },
     "text-20": {
@@ -395,7 +448,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$99.00"
+        "text": "$3,200.00"
       }
     },
     "text-21": {
@@ -450,7 +503,21 @@
     "list_item-4": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "text-18",
@@ -465,7 +532,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jan 11, 2024"
+        "text": "2024-01-11"
       }
     },
     "text-23": {
@@ -474,7 +541,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Payment received"
+        "text": "Invoice issued"
       }
     },
     "text-24": {
@@ -483,13 +550,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$3,200.00"
+        "text": "$1,200.00"
       }
     },
     "text-25": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "layout": {
         "direction": "vertical"
@@ -524,7 +591,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -538,7 +605,21 @@
     "list_item-5": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "text-22",
@@ -569,27 +650,24 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-2",
         "table-1"
       ]
-    },
-    "button-1": {
-      "type": "button",
-      "variant": "primary",
-      "component_key": "button/large/translucent",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill"
-        }
-      },
-      "props": {
-        "text": "View All Transactions"
-      }
     },
     "screen-1": {
       "type": "screen",
@@ -613,8 +691,7 @@
       "children": [
         "header-1",
         "card-1",
-        "card-2",
-        "button-1"
+        "card-2"
       ]
     }
   },
@@ -627,6 +704,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -635,8 +715,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,
@@ -787,7 +865,6 @@
     "list_item-5": -41,
     "table-1": -42,
     "card-2": -43,
-    "button-1": -44,
-    "screen-1": -45
+    "screen-1": -44
   }
 }

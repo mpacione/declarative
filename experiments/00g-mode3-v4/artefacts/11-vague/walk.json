@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:34435",
+  "rendered_root": "5776:38730",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,18 +16,30 @@
       ],
       "effectCount": 0
     },
-    "fab-1": {
-      "type": "INSTANCE",
-      "name": "fab-1",
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
       "width": 396,
-      "height": 20,
+      "height": 100,
       "effectCount": 0
     },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 119,
+      "height": 131,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "button_group-1": {
@@ -82,57 +94,60 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 135,
+      "height": 510,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "list-1": {
       "type": "FRAME",
       "name": "list-1",
-      "width": 100,
-      "height": 120,
+      "width": 396,
+      "height": 483,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "list_item-3": {
       "type": "FRAME",
       "name": "list_item-3",
-      "width": 100,
-      "height": 45,
-      "effectCount": 0
-    },
-    "badge-3": {
-      "type": "FRAME",
-      "name": "badge-3",
-      "width": 45,
-      "height": 15,
+      "width": 396,
+      "height": 159,
       "fills": [
         {
           "type": "solid",
-          "color": "#F1F5F9"
+          "color": "#FFFFFF"
         }
       ],
       "effectCount": 0
     },
-    "text-6": {
-      "type": "TEXT",
-      "name": "text-6",
-      "width": 45,
-      "height": 15,
-      "characters": "Popular",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
       "effectCount": 0
     },
     "text-5": {
       "type": "TEXT",
       "name": "text-5",
-      "width": 100,
-      "height": 30,
-      "characters": "Motion Design Tips",
+      "width": 396,
+      "height": 15,
+      "characters": "AR Prototyping",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -142,11 +157,30 @@
       ],
       "effectCount": 0
     },
+    "avatar-3": {
+      "type": "FRAME",
+      "name": "avatar-3",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
     "list_item-2": {
       "type": "FRAME",
       "name": "list_item-2",
-      "width": 100,
-      "height": 45,
+      "width": 396,
+      "height": 154,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-2": {
@@ -180,9 +214,9 @@
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 100,
-      "height": 30,
-      "characters": "Web3 Design Patterns",
+      "width": 396,
+      "height": 15,
+      "characters": "3D Web Experiences",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -192,11 +226,30 @@
       ],
       "effectCount": 0
     },
+    "avatar-2": {
+      "type": "FRAME",
+      "name": "avatar-2",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
     "list_item-1": {
       "type": "FRAME",
       "name": "list_item-1",
-      "width": 100,
-      "height": 30,
+      "width": 396,
+      "height": 154,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-1": {
@@ -230,14 +283,27 @@
     "text-1": {
       "type": "TEXT",
       "name": "text-1",
-      "width": 100,
+      "width": 396,
       "height": 15,
-      "characters": "Neural Networks",
+      "characters": "AI Design Tools",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
         }
       ],
       "effectCount": 0
@@ -261,7 +327,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 115,
+      "height": 127,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "image-1": {

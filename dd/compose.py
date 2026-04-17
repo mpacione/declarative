@@ -109,18 +109,26 @@ def compose_screen(
         if props:
             element["props"] = dict(props)
 
+        # ADR-008 v0.1.5 H1: apply PresentationTemplate.layout +
+        # .style to the parent element *unconditionally* when this
+        # node isn't a Mode-1 instance (component_key wins). Before
+        # H1 this only happened inside _mode3_synthesise_children,
+        # which is gated on "no LLM children" — so any LLM-supplied
+        # parent silently lost its fill / stroke / radius / padding.
+        if not component_key:
+            _apply_template_to_parent(comp_type, variant, element)
+
         children = comp.get("children", [])
         if children:
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
         elif not component_key and not _mode3_disabled():
-            # Mode-3 fall-through: synthesise children + apply the
-            # PresentationTemplate's layout/style to the parent IR.
-            # Mode-1 (component_key) and LLM-provided children always
-            # win over Mode-3.
+            # Mode-3 fall-through: synthesise children when the LLM
+            # provided none. Template-to-parent merge already happened
+            # above via _apply_template_to_parent.
             synthetic_ids = _mode3_synthesise_children(
                 comp_type, variant, props or {}, elements, _allocate_id,
-                parent_element=element,
+                parent_element=None,
             )
             if synthetic_ids:
                 element["children"] = synthetic_ids
@@ -248,6 +256,9 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 12,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -391,6 +402,61 @@ def _default_provider_registry():
     return build_registry_from_env([UniversalCatalogProvider()])
 
 
+def _apply_template_to_parent(
+    comp_type: str,
+    variant: str | None,
+    element: dict[str, Any],
+) -> None:
+    """Merge a resolved ``PresentationTemplate``'s layout + style onto
+    the parent element.
+
+    Called unconditionally from ``_build_element`` for every non-Mode-1
+    node, regardless of whether the LLM or synthesis provides the
+    children. Before v0.1.5 H1 this merge was embedded in
+    ``_mode3_synthesise_children`` and so never fired when the LLM
+    supplied children — the root-cause of the "cards render as
+    invisible rectangles" forensic finding at
+    ``docs/research/mode3-forensic-analysis.md``.
+
+    Tokens remain as ``{name}`` refs; the renderer's
+    ``resolve_style_value`` resolves them against the spec-level
+    ``tokens`` dict seeded with :data:`_UNIVERSAL_MODE3_TOKENS`.
+    """
+    if _mode3_disabled():
+        return
+    registry = _default_provider_registry()
+    template, _errors = registry.resolve(comp_type, variant, {})
+    if template is None:
+        return
+
+    parent_layout = element.setdefault("layout", {})
+    for key, value in (template.layout or {}).items():
+        # Don't clobber caller-supplied overrides (direction from
+        # layout_direction, width/height explicitly set).
+        if key == "sizing":
+            sizing = parent_layout.setdefault("sizing", {})
+            for sk, sv in (value or {}).items():
+                sizing.setdefault(sk, sv)
+        elif key not in parent_layout:
+            parent_layout[key] = value
+    # Seed pixel dims from the template's style.height_pixels /
+    # width_pixels — these are concrete numbers even before
+    # token resolution, and give the renderer a resize() seed
+    # that beats the 100×100 createFrame default.
+    style = template.style or {}
+    sizing = parent_layout.setdefault("sizing", {})
+    if "heightPixels" not in sizing and isinstance(style.get("height_pixels"), (int, float)):
+        sizing["heightPixels"] = style["height_pixels"]
+    if "widthPixels" not in sizing and isinstance(style.get("width_pixels"), (int, float)):
+        sizing["widthPixels"] = style["width_pixels"]
+    # Surface fills / radius / stroke refs as IR style so the
+    # renderer's _emit_visual path picks them up.
+    parent_style = element.setdefault("style", {})
+    for key in ("fill", "fg", "stroke", "radius"):
+        if key in style and key not in parent_style:
+            parent_style[key] = style[key]
+
+
 def _mode3_synthesise_children(
     comp_type: str,
     variant: str | None,
@@ -399,56 +465,24 @@ def _mode3_synthesise_children(
     allocate_id,
     parent_element: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Produce synthetic child IR eids + apply the template to the parent.
+    """Produce synthetic child IR eids for a parent that has no LLM
+    children.
 
     Walks the resolved ``PresentationTemplate``'s slot grammar; for
     each text-typed slot with a matching prop in ``props`` (directly by
     slot name or via the ``_TEXT_SLOT_PROP_ALIASES`` fallbacks), allocates
     a text-child IR element and returns its eid.
 
-    When ``parent_element`` is supplied, merges the template's
-    ``layout``/``style`` onto the parent's existing fields so the
-    parent frame gets the template's sizing, padding, fills, and
-    radius. Tokens remain as ``{name}`` refs — the renderer's
-    ``resolve_style_value`` resolves them against the spec-level
-    ``tokens`` dict seeded with :data:`_UNIVERSAL_MODE3_TOKENS`.
-
-    Returns a list of child eids the caller should attach under
-    ``children``.
+    Historically this also applied the template to the parent element
+    — that merge is now factored out into
+    :func:`_apply_template_to_parent` and called unconditionally by
+    ``_build_element`` (H1). The ``parent_element`` kwarg is retained
+    for API compat but no longer applies template layout/style.
     """
     registry = _default_provider_registry()
     template, _errors = registry.resolve(comp_type, variant, {})
     if template is None:
         return []
-
-    # Apply template to parent element: merge layout + style.
-    if parent_element is not None:
-        parent_layout = parent_element.setdefault("layout", {})
-        for key, value in (template.layout or {}).items():
-            # Don't clobber caller-supplied overrides (direction from
-            # layout_direction, width/height explicitly set).
-            if key == "sizing":
-                sizing = parent_layout.setdefault("sizing", {})
-                for sk, sv in (value or {}).items():
-                    sizing.setdefault(sk, sv)
-            elif key not in parent_layout:
-                parent_layout[key] = value
-        # Seed pixel dims from the template's style.height_pixels /
-        # width_pixels — these are concrete numbers even before
-        # token resolution, and give the renderer a resize() seed
-        # that beats the 100×100 createFrame default.
-        style = template.style or {}
-        sizing = parent_layout.setdefault("sizing", {})
-        if "heightPixels" not in sizing and isinstance(style.get("height_pixels"), (int, float)):
-            sizing["heightPixels"] = style["height_pixels"]
-        if "widthPixels" not in sizing and isinstance(style.get("width_pixels"), (int, float)):
-            sizing["widthPixels"] = style["width_pixels"]
-        # Surface fills / radius / stroke refs as IR style so the
-        # renderer's _emit_visual path picks them up.
-        parent_style = parent_element.setdefault("style", {})
-        for key in ("fill", "fg", "stroke", "radius"):
-            if key in style and key not in parent_style:
-                parent_style[key] = style[key]
 
     if not template.slots:
         return []

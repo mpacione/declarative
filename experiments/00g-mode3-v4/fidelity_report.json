@@ -1,11 +1,11 @@
 {
   "experiment": "00g-mode3-v4",
   "aggregate": {
-    "mean_render_fidelity": 0.2513,
+    "mean_render_fidelity": 0.4525,
     "mean_prompt_fidelity": 0.8344,
-    "vlm_ok": 6,
-    "vlm_partial": 4,
-    "vlm_broken": 2,
+    "vlm_ok": 9,
+    "vlm_partial": 3,
+    "vlm_broken": 0,
     "n_prompts": 12
   },
   "per_prompt": {
@@ -14,12 +14,12 @@
       "archetype": "login",
       "component_count": 3,
       "prompt_fidelity": 0.8182,
-      "render_fidelity": 0.3611,
+      "render_fidelity": 0.4611,
       "render_by_type": {
         "icon_button": 0.0,
         "text_input": 0.75,
         "link": 0.0,
-        "card": 0.0,
+        "card": 0.6,
         "button": 0.6667
       },
       "vlm_verdict": "ok",
@@ -31,12 +31,12 @@
       "archetype": "settings",
       "component_count": 4,
       "prompt_fidelity": 0.5357,
-      "render_fidelity": 0.6515,
+      "render_fidelity": 0.7606,
       "render_by_type": {
         "icon_button": 0.0,
         "avatar": 1.0,
         "text_input": 0.75,
-        "card": 0.0,
+        "card": 0.6,
         "toggle": 1.0,
         "button": 0.6667
       },
@@ -49,71 +49,68 @@
       "archetype": "feed",
       "component_count": 2,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.2143,
+      "render_fidelity": 0.3905,
       "render_by_type": {
         "icon_button": 0.0,
         "avatar": 1.0,
         "button": 0.0,
-        "card": 0.0,
-        "list": 0.0
+        "card": 0.6,
+        "list": 0.6667
       },
       "vlm_verdict": "partial",
-      "vlm_score": 4,
+      "vlm_score": 5,
       "combined_verdict": "partial"
     },
     "04-dashboard": {
       "slug": "04-dashboard",
       "archetype": "dashboard",
-      "component_count": 4,
+      "component_count": 3,
       "prompt_fidelity": 0.96,
-      "render_fidelity": 0.2381,
+      "render_fidelity": 0.541,
       "render_by_type": {
         "icon_button": 0.0,
-        "card": 0.0,
+        "card": 0.6,
         "badge": 0.6667,
-        "list_item": 0.0,
-        "button": 0.0
+        "list_item": 0.5
       },
-      "vlm_verdict": "broken",
-      "vlm_score": 3,
-      "combined_verdict": "broken"
+      "vlm_verdict": "partial",
+      "vlm_score": 5,
+      "combined_verdict": "partial"
     },
     "05-paywall": {
       "slug": "05-paywall",
       "archetype": "paywall",
       "component_count": 7,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.0294,
+      "render_fidelity": 0.3305,
       "render_by_type": {
         "icon_button": 0.0,
         "icon": 0.0,
-        "list_item": 0.0,
-        "list": 0.0,
+        "list_item": 0.5,
+        "list": 0.6667,
         "button": 0.0,
-        "card": 0.0,
+        "card": 0.6,
+        "badge": 0.6667,
         "avatar": 1.0
       },
       "vlm_verdict": "ok",
       "vlm_score": 8,
-      "combined_verdict": "partial"
+      "combined_verdict": "ok"
     },
     "06-spa-minimal": {
       "slug": "06-spa-minimal",
       "archetype": "none",
       "component_count": 6,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.1538,
+      "render_fidelity": 0.2667,
       "render_by_type": {
         "icon_button": 0.0,
-        "card": 0.0,
-        "avatar": 1.0,
+        "card": 0.6,
         "icon": 0.0,
-        "list_item": 0.0,
-        "list": 0.0,
         "button": 0.0
       },
-      "vlm_verdict": "partial",
-      "vlm_score": 5,
+      "vlm_verdict": "ok",
+      "vlm_score": 8,
       "combined_verdict": "partial"
     },
     "07-search": {
@@ -121,14 +118,14 @@
       "archetype": "search",
       "component_count": 3,
       "prompt_fidelity": 0.84,
-      "render_fidelity": 0.25,
+      "render_fidelity": 0.4583,
       "render_by_type": {
         "icon_button": 0.0,
-        "tabs": 0.0,
+        "tabs": 0.6667,
         "avatar": 1.0,
         "icon": 0.0,
-        "list_item": 0.0,
-        "list": 0.0
+        "list_item": 0.5,
+        "list": 0.6667
       },
       "vlm_verdict": "ok",
       "vlm_score": 8,
@@ -139,45 +136,45 @@
       "archetype": "detail",
       "component_count": 3,
       "prompt_fidelity": 0.4583,
-      "render_fidelity": 0.2667,
+      "render_fidelity": 0.3867,
       "render_by_type": {
         "icon_button": 0.0,
         "button": 0.6667,
-        "card": 0.0
+        "card": 0.6
       },
       "vlm_verdict": "ok",
       "vlm_score": 8,
-      "combined_verdict": "partial"
+      "combined_verdict": "ok"
     },
     "09-drawer-nav": {
       "slug": "09-drawer-nav",
       "archetype": "drawer-nav",
       "component_count": 1,
       "prompt_fidelity": 0.6,
-      "render_fidelity": 0.0,
+      "render_fidelity": 0.2619,
       "render_by_type": {
         "icon_button": 0.0,
         "icon": 0.0,
-        "list_item": 0.0,
-        "list": 0.0
+        "list_item": 0.5,
+        "list": 0.6667
       },
-      "vlm_verdict": "partial",
-      "vlm_score": 4,
-      "combined_verdict": "broken"
+      "vlm_verdict": "ok",
+      "vlm_score": 8,
+      "combined_verdict": "partial"
     },
     "10-onboarding-carousel": {
       "slug": "10-onboarding-carousel",
       "archetype": "onboarding-carousel",
       "component_count": 7,
       "prompt_fidelity": 0.8,
-      "render_fidelity": 0.3333,
+      "render_fidelity": 0.5583,
       "render_by_type": {
-        "card": 0.0,
+        "card": 0.6,
         "button": 0.6667,
         "link": 0.0
       },
-      "vlm_verdict": "broken",
-      "vlm_score": 2,
+      "vlm_verdict": "partial",
+      "vlm_score": 4,
       "combined_verdict": "broken"
     },
     "11-vague": {
@@ -185,28 +182,32 @@
       "archetype": "none",
       "component_count": 5,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.1538,
+      "render_fidelity": 0.4882,
       "render_by_type": {
         "icon_button": 0.0,
-        "card": 0.0,
+        "card": 0.6,
+        "avatar": 1.0,
         "badge": 0.6667,
-        "list_item": 0.0,
-        "list": 0.0,
+        "list_item": 0.5,
+        "icon": 0.0,
+        "list": 0.6667,
         "button": 0.0
       },
-      "vlm_verdict": "partial",
-      "vlm_score": 4,
-      "combined_verdict": "partial"
+      "vlm_verdict": "ok",
+      "vlm_score": 8,
+      "combined_verdict": "ok"
     },
     "12-round-trip-test": {
       "slug": "12-round-trip-test",
       "archetype": "none",
       "component_count": 7,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.3636,
+      "render_fidelity": 0.5267,
       "render_by_type": {
         "icon_button": 0.0,
-        "card": 0.0,
+        "list_item": 0.5,
+        "list": 0.6667,
+        "card": 0.6,
         "toggle": 1.0,
         "button": 0.0
       },

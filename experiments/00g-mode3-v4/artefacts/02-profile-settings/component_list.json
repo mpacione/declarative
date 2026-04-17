@@ -64,7 +64,7 @@
       {
         "type": "toggle",
         "props": {
-          "label": "Email digest",
+          "label": "Email alerts",
           "checked": true
         }
       },
@@ -78,8 +78,8 @@
       {
         "type": "toggle",
         "props": {
-          "label": "SMS alerts",
-          "checked": false
+          "label": "Weekly digest",
+          "checked": true
         }
       }
     ]

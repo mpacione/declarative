@@ -39,7 +39,7 @@
         "direction": "vertical"
       },
       "props": {
-        "src": "https://via.placeholder.com/400x200",
+        "src": "featured-hero.jpg",
         "alt": "Featured content"
       }
     },
@@ -48,8 +48,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-1",
@@ -65,13 +76,36 @@
         "text": "Trending Now"
       }
     },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "AI"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
+    },
     "text-1": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Neural Networks"
+        "text": "AI Design Tools"
       }
     },
     "text-2": {
@@ -126,12 +160,50 @@
     "list_item-1": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
+        "avatar-1",
         "text-1",
         "badge-1"
       ]
+    },
+    "avatar-2": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "3D"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
     },
     "text-3": {
       "type": "text",
@@ -139,7 +211,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Web3 Design Patterns"
+        "text": "3D Web Experiences"
       }
     },
     "text-4": {
@@ -194,12 +266,50 @@
     "list_item-2": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
+        "avatar-2",
         "text-3",
         "badge-2"
       ]
+    },
+    "avatar-3": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "AR"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
     },
     "text-5": {
       "type": "text",
@@ -207,72 +317,58 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Motion Design Tips"
+        "text": "AR Prototyping"
       }
     },
-    "text-6": {
-      "type": "text",
-      "props": {
-        "text": "Popular"
-      },
+    "icon-1": {
+      "type": "icon",
+      "component_key": "icon/chevron-down",
       "layout": {
         "direction": "vertical"
-      },
-      "_synthesised_from": {
-        "parent_type": "badge",
-        "parent_variant": null,
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.body.fontFamily}",
-        "fontSize": "{typography.badge.fontSize}",
-        "fontWeight": "{typography.badge.fontWeight}",
-        "fill": "{color.text.default}"
       }
-    },
-    "badge-3": {
-      "type": "badge",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "hug",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
-        },
-        "gap": "{space.badge.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "props": {
-        "text": "Popular"
-      },
-      "style": {
-        "fill": "{color.surface.badge}",
-        "fg": "{color.text.default}",
-        "radius": "{radius.badge}"
-      },
-      "children": [
-        "text-6"
-      ]
     },
     "list_item-3": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
+        "avatar-3",
         "text-5",
-        "badge-3"
+        "icon-1"
       ]
     },
     "list-1": {
       "type": "list",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "list_item-1",
@@ -285,8 +381,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-2",
@@ -315,7 +422,7 @@
     },
     "button-2": {
       "type": "button",
-      "variant": "primary",
+      "variant": "secondary",
       "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical"
@@ -339,17 +446,29 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-3",
         "button_group-1"
       ]
     },
-    "fab-1": {
-      "type": "fab",
-      "component_key": "icon/new",
+    "button-3": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/solid",
       "layout": {
         "direction": "vertical",
         "sizing": {
@@ -357,7 +476,7 @@
         }
       },
       "props": {
-        "text": "Create"
+        "text": "Get Started"
       }
     },
     "screen-1": {
@@ -384,7 +503,7 @@
         "card-1",
         "card-2",
         "card-3",
-        "fab-1"
+        "button-3"
       ]
     }
   },
@@ -397,6 +516,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -405,8 +527,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,
@@ -520,26 +640,28 @@
     "image-1": -4,
     "card-1": -5,
     "heading-2": -6,
-    "text-1": -7,
-    "text-2": -8,
-    "badge-1": -9,
-    "list_item-1": -10,
-    "text-3": -11,
-    "text-4": -12,
-    "badge-2": -13,
-    "list_item-2": -14,
-    "text-5": -15,
-    "text-6": -16,
-    "badge-3": -17,
-    "list_item-3": -18,
-    "list-1": -19,
-    "card-2": -20,
-    "heading-3": -21,
-    "button-1": -22,
-    "button-2": -23,
-    "button_group-1": -24,
-    "card-3": -25,
-    "fab-1": -26,
-    "screen-1": -27
+    "avatar-1": -7,
+    "text-1": -8,
+    "text-2": -9,
+    "badge-1": -10,
+    "list_item-1": -11,
+    "avatar-2": -12,
+    "text-3": -13,
+    "text-4": -14,
+    "badge-2": -15,
+    "list_item-2": -16,
+    "avatar-3": -17,
+    "text-5": -18,
+    "icon-1": -19,
+    "list_item-3": -20,
+    "list-1": -21,
+    "card-2": -22,
+    "heading-3": -23,
+    "button-1": -24,
+    "button-2": -25,
+    "button_group-1": -26,
+    "card-3": -27,
+    "button-3": -28,
+    "screen-1": -29
   }
 }

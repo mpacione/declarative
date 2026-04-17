@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:33664",
+  "rendered_root": "5776:37974",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -48,13 +48,25 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 83,
+      "height": 131,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "toggle-4": {
       "type": "FRAME",
       "name": "toggle-4",
-      "width": 72,
+      "width": 93,
       "height": 17,
       "fills": [
         {
@@ -67,9 +79,9 @@
     "text-9": {
       "type": "TEXT",
       "name": "text-9",
-      "width": 72,
+      "width": 93,
       "height": 17,
-      "characters": "SMS alerts",
+      "characters": "Weekly digest",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -110,7 +122,7 @@
     "toggle-2": {
       "type": "FRAME",
       "name": "toggle-2",
-      "width": 81,
+      "width": 77,
       "height": 17,
       "fills": [
         {
@@ -123,9 +135,9 @@
     "text-7": {
       "type": "TEXT",
       "name": "text-7",
-      "width": 81,
+      "width": 77,
       "height": 17,
-      "characters": "Email digest",
+      "characters": "Email alerts",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -182,7 +194,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 195,
+      "height": 231,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "text_input-2": {

@@ -23,7 +23,7 @@
       {
         "type": "image",
         "props": {
-          "src": "https://via.placeholder.com/400x200",
+          "src": "featured-hero.jpg",
           "alt": "Featured content"
         }
       }
@@ -45,9 +45,15 @@
             "type": "list_item",
             "children": [
               {
+                "type": "avatar",
+                "props": {
+                  "initials": "AI"
+                }
+              },
+              {
                 "type": "text",
                 "props": {
-                  "text": "Neural Networks"
+                  "text": "AI Design Tools"
                 }
               },
               {
@@ -62,9 +68,15 @@
             "type": "list_item",
             "children": [
               {
+                "type": "avatar",
+                "props": {
+                  "initials": "3D"
+                }
+              },
+              {
                 "type": "text",
                 "props": {
-                  "text": "Web3 Design Patterns"
+                  "text": "3D Web Experiences"
                 }
               },
               {
@@ -79,16 +91,20 @@
             "type": "list_item",
             "children": [
               {
-                "type": "text",
+                "type": "avatar",
                 "props": {
-                  "text": "Motion Design Tips"
+                  "initials": "AR"
                 }
               },
               {
-                "type": "badge",
+                "type": "text",
                 "props": {
-                  "text": "Popular"
+                  "text": "AR Prototyping"
                 }
+              },
+              {
+                "type": "icon",
+                "component_key": "icon/chevron-down"
               }
             ]
           }
@@ -111,28 +127,29 @@
           {
             "type": "button",
             "variant": "primary",
-            "component_key": "button/large/translucent",
             "props": {
               "text": "Explore"
-            }
+            },
+            "component_key": "button/large/translucent"
           },
           {
             "type": "button",
-            "variant": "primary",
-            "component_key": "button/large/translucent",
+            "variant": "secondary",
             "props": {
               "text": "Save"
-            }
+            },
+            "component_key": "button/large/translucent"
           }
         ]
       }
     ]
   },
   {
-    "type": "fab",
+    "type": "button",
+    "variant": "primary",
     "props": {
-      "text": "Create"
+      "text": "Get Started"
     },
-    "component_key": "icon/new"
+    "component_key": "button/large/solid"
   }
 ]

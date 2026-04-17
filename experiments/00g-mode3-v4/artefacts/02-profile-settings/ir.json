@@ -206,8 +206,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "avatar-1",
@@ -272,7 +283,7 @@
     "text-7": {
       "type": "text",
       "props": {
-        "text": "Email digest"
+        "text": "Email alerts"
       },
       "layout": {
         "direction": "vertical"
@@ -302,7 +313,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "label": "Email digest",
+        "label": "Email alerts",
         "checked": true
       },
       "style": {
@@ -360,7 +371,7 @@
     "text-9": {
       "type": "text",
       "props": {
-        "text": "SMS alerts"
+        "text": "Weekly digest"
       },
       "layout": {
         "direction": "vertical"
@@ -390,8 +401,8 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "label": "SMS alerts",
-        "checked": false
+        "label": "Weekly digest",
+        "checked": true
       },
       "style": {
         "fill": "{color.toggle.track.off}",
@@ -406,8 +417,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-2",
@@ -505,6 +527,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -513,8 +538,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,

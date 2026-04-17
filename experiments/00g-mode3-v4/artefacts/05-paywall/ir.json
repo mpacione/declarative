@@ -92,7 +92,21 @@
     "list_item-1": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-1",
@@ -118,7 +132,21 @@
     "list_item-2": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-2",
@@ -144,7 +172,21 @@
     "list_item-3": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-3",
@@ -154,7 +196,20 @@
     "list-1": {
       "type": "list",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "list_item-1",
@@ -164,7 +219,6 @@
     },
     "button-1": {
       "type": "button",
-      "variant": "primary",
       "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical"
@@ -178,8 +232,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-2",
@@ -206,33 +271,56 @@
         "text": "$29/month"
       }
     },
-    "icon-4": {
-      "type": "icon",
-      "component_key": "icon/check",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
     "text-8": {
       "type": "text",
+      "props": {
+        "text": "Most Popular"
+      },
       "layout": {
         "direction": "vertical"
       },
-      "props": {
-        "text": "Advanced features"
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
       }
     },
-    "list_item-4": {
-      "type": "list_item",
+    "badge-1": {
+      "type": "badge",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Most Popular"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
       },
       "children": [
-        "icon-4",
         "text-8"
       ]
     },
-    "icon-5": {
+    "icon-4": {
       "type": "icon",
       "component_key": "icon/check",
       "layout": {
@@ -245,20 +333,34 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Unlimited projects"
+        "text": "Advanced features"
       }
     },
-    "list_item-5": {
+    "list_item-4": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "icon-5",
+        "icon-4",
         "text-9"
       ]
     },
-    "icon-6": {
+    "icon-5": {
       "type": "icon",
       "component_key": "icon/check",
       "layout": {
@@ -271,20 +373,34 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Priority support"
+        "text": "Unlimited projects"
       }
     },
-    "list_item-6": {
+    "list_item-5": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "icon-6",
+        "icon-5",
         "text-10"
       ]
     },
-    "icon-7": {
+    "icon-6": {
       "type": "icon",
       "component_key": "icon/check",
       "layout": {
@@ -297,23 +413,90 @@
         "direction": "vertical"
       },
       "props": {
+        "text": "Priority support"
+      }
+    },
+    "list_item-6": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "icon-6",
+        "text-11"
+      ]
+    },
+    "icon-7": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-12": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
         "text": "Team collaboration"
       }
     },
     "list_item-7": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-7",
-        "text-11"
+        "text-12"
       ]
     },
     "list-2": {
       "type": "list",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "list_item-4",
@@ -324,7 +507,6 @@
     },
     "button-2": {
       "type": "button",
-      "variant": "primary",
       "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical"
@@ -338,12 +520,24 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-3",
         "text-7",
+        "badge-1",
         "list-2",
         "button-2"
       ]
@@ -357,7 +551,7 @@
         "text": "Enterprise"
       }
     },
-    "text-12": {
+    "text-13": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -373,7 +567,7 @@
         "direction": "vertical"
       }
     },
-    "text-13": {
+    "text-14": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -385,40 +579,28 @@
     "list_item-8": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-8",
-        "text-13"
-      ]
-    },
-    "icon-9": {
-      "type": "icon",
-      "component_key": "icon/check",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "text-14": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Dedicated account manager"
-      }
-    },
-    "list_item-9": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical"
-      },
-      "children": [
-        "icon-9",
         "text-14"
       ]
     },
-    "icon-10": {
+    "icon-9": {
       "type": "icon",
       "component_key": "icon/check",
       "layout": {
@@ -431,20 +613,34 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Custom integrations"
+        "text": "Dedicated account manager"
       }
     },
-    "list_item-10": {
+    "list_item-9": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "icon-10",
+        "icon-9",
         "text-15"
       ]
     },
-    "icon-11": {
+    "icon-10": {
       "type": "icon",
       "component_key": "icon/check",
       "layout": {
@@ -457,23 +653,90 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "24/7 phone support"
+        "text": "Custom integrations"
+      }
+    },
+    "list_item-10": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "icon-10",
+        "text-16"
+      ]
+    },
+    "icon-11": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-17": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "SLA guarantee"
       }
     },
     "list_item-11": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "icon-11",
-        "text-16"
+        "text-17"
       ]
     },
     "list-3": {
       "type": "list",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "list_item-8",
@@ -484,7 +747,6 @@
     },
     "button-3": {
       "type": "button",
-      "variant": "primary",
       "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical"
@@ -498,12 +760,23 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-4",
-        "text-12",
+        "text-13",
         "list-3",
         "button-3"
       ]
@@ -528,22 +801,22 @@
         "radius": 999
       }
     },
-    "text-17": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "\"This service transformed how we manage our projects. Highly recommended!\""
-      }
-    },
     "text-18": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "\u2014 Sarah Chen, Product Manager"
+        "text": "\"This service transformed how we manage our workflow. Highly recommended!\""
+      }
+    },
+    "text-19": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Sarah Chen, Product Manager"
       }
     },
     "card-4": {
@@ -551,13 +824,24 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "avatar-1",
-        "text-17",
-        "text-18"
+        "text-18",
+        "text-19"
       ]
     },
     "screen-1": {
@@ -599,6 +883,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -607,8 +894,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,
@@ -737,42 +1022,44 @@
     "card-1": -19,
     "heading-3": -20,
     "text-7": -21,
-    "icon-4": -22,
-    "text-8": -23,
-    "list_item-4": -24,
-    "icon-5": -25,
-    "text-9": -26,
-    "list_item-5": -27,
-    "icon-6": -28,
-    "text-10": -29,
-    "list_item-6": -30,
-    "icon-7": -31,
-    "text-11": -32,
-    "list_item-7": -33,
-    "list-2": -34,
-    "button-2": -35,
-    "card-2": -36,
-    "heading-4": -37,
-    "text-12": -38,
-    "icon-8": -39,
+    "text-8": -22,
+    "badge-1": -23,
+    "icon-4": -24,
+    "text-9": -25,
+    "list_item-4": -26,
+    "icon-5": -27,
+    "text-10": -28,
+    "list_item-5": -29,
+    "icon-6": -30,
+    "text-11": -31,
+    "list_item-6": -32,
+    "icon-7": -33,
+    "text-12": -34,
+    "list_item-7": -35,
+    "list-2": -36,
+    "button-2": -37,
+    "card-2": -38,
+    "heading-4": -39,
     "text-13": -40,
-    "list_item-8": -41,
-    "icon-9": -42,
-    "text-14": -43,
-    "list_item-9": -44,
-    "icon-10": -45,
-    "text-15": -46,
-    "list_item-10": -47,
-    "icon-11": -48,
-    "text-16": -49,
-    "list_item-11": -50,
-    "list-3": -51,
-    "button-3": -52,
-    "card-3": -53,
-    "avatar-1": -54,
-    "text-17": -55,
-    "text-18": -56,
-    "card-4": -57,
-    "screen-1": -58
+    "icon-8": -41,
+    "text-14": -42,
+    "list_item-8": -43,
+    "icon-9": -44,
+    "text-15": -45,
+    "list_item-9": -46,
+    "icon-10": -47,
+    "text-16": -48,
+    "list_item-10": -49,
+    "icon-11": -50,
+    "text-17": -51,
+    "list_item-11": -52,
+    "list-3": -53,
+    "button-3": -54,
+    "card-3": -55,
+    "avatar-1": -56,
+    "text-18": -57,
+    "text-19": -58,
+    "card-4": -59,
+    "screen-1": -60
   }
 }

@@ -78,7 +78,6 @@
       },
       {
         "type": "button",
-        "variant": "primary",
         "component_key": "button/large/translucent",
         "props": {"text": "Get Started"}
       }
@@ -94,6 +93,10 @@
       {
         "type": "text",
         "props": {"text": "$29/month"}
+      },
+      {
+        "type": "badge",
+        "props": {"text": "Most Popular"}
       },
       {
         "type": "list",
@@ -154,7 +157,6 @@
       },
       {
         "type": "button",
-        "variant": "primary",
         "component_key": "button/large/translucent",
         "props": {"text": "Subscribe Now"}
       }
@@ -222,7 +224,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "24/7 phone support"}
+                "props": {"text": "SLA guarantee"}
               }
             ]
           }
@@ -230,7 +232,6 @@
       },
       {
         "type": "button",
-        "variant": "primary",
         "component_key": "button/large/translucent",
         "props": {"text": "Contact Sales"}
       }
@@ -244,11 +245,11 @@
       },
       {
         "type": "text",
-        "props": {"text": "\"This service transformed how we manage our projects. Highly recommended!\""}
+        "props": {"text": "\"This service transformed how we manage our workflow. Highly recommended!\""}
       },
       {
         "type": "text",
-        "props": {"text": "— Sarah Chen, Product Manager"}
+        "props": {"text": "Sarah Chen, Product Manager"}
       }
     ]
   }

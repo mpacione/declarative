@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:33879",
+  "rendered_root": "5776:38182",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,44 +16,49 @@
       ],
       "effectCount": 0
     },
-    "button-1": {
-      "type": "INSTANCE",
-      "name": "button-1",
-      "width": 396,
-      "height": 52,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
     "card-2": {
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 420,
+      "height": 612,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "table-1": {
       "type": "FRAME",
       "name": "table-1",
       "width": 100,
-      "height": 405,
+      "height": 585,
       "effectCount": 0
     },
     "list_item-5": {
       "type": "FRAME",
       "name": "list_item-5",
       "width": 100,
-      "height": 75,
+      "height": 96,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-5": {
       "type": "FRAME",
       "name": "badge-5",
-      "width": 64,
+      "width": 48,
       "height": 15,
       "fills": [
         {
@@ -66,9 +71,9 @@
     "text-25": {
       "type": "TEXT",
       "name": "text-25",
-      "width": 64,
+      "width": 48,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Pending",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -83,7 +88,7 @@
       "name": "text-24",
       "width": 100,
       "height": 15,
-      "characters": "$3,200.00",
+      "characters": "$1,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -97,8 +102,8 @@
       "type": "TEXT",
       "name": "text-23",
       "width": 100,
-      "height": 30,
-      "characters": "Payment received",
+      "height": 15,
+      "characters": "Invoice issued",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -113,7 +118,7 @@
       "name": "text-22",
       "width": 100,
       "height": 15,
-      "characters": "Jan 11, 2024",
+      "characters": "2024-01-11",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -127,7 +132,13 @@
       "type": "FRAME",
       "name": "list_item-4",
       "width": 100,
-      "height": 75,
+      "height": 111,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-4": {
@@ -163,7 +174,7 @@
       "name": "text-20",
       "width": 100,
       "height": 15,
-      "characters": "$99.00",
+      "characters": "$3,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -178,7 +189,7 @@
       "name": "text-19",
       "width": 100,
       "height": 30,
-      "characters": "Subscription renewal",
+      "characters": "Payment received",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -193,7 +204,7 @@
       "name": "text-18",
       "width": 100,
       "height": 15,
-      "characters": "Jan 12, 2024",
+      "characters": "2024-01-12",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -207,13 +218,19 @@
       "type": "FRAME",
       "name": "list_item-3",
       "width": 100,
-      "height": 60,
+      "height": 111,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-3": {
       "type": "FRAME",
       "name": "badge-3",
-      "width": 62,
+      "width": 64,
       "height": 15,
       "fills": [
         {
@@ -226,9 +243,9 @@
     "text-17": {
       "type": "TEXT",
       "name": "text-17",
-      "width": 62,
+      "width": 64,
       "height": 15,
-      "characters": "Processed",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -243,7 +260,7 @@
       "name": "text-16",
       "width": 100,
       "height": 15,
-      "characters": "-$450.00",
+      "characters": "-$500.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -257,8 +274,8 @@
       "type": "TEXT",
       "name": "text-15",
       "width": 100,
-      "height": 15,
-      "characters": "Refund issued",
+      "height": 30,
+      "characters": "Refund processed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -273,7 +290,7 @@
       "name": "text-14",
       "width": 100,
       "height": 15,
-      "characters": "Jan 13, 2024",
+      "characters": "2024-01-13",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -287,13 +304,19 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 100,
-      "height": 60,
+      "height": 96,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-2": {
       "type": "FRAME",
       "name": "badge-2",
-      "width": 64,
+      "width": 48,
       "height": 15,
       "fills": [
         {
@@ -306,9 +329,9 @@
     "text-13": {
       "type": "TEXT",
       "name": "text-13",
-      "width": 64,
+      "width": 48,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Pending",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -338,7 +361,7 @@
       "name": "text-11",
       "width": 100,
       "height": 15,
-      "characters": "Invoice #1024",
+      "characters": "Invoice issued",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -353,7 +376,7 @@
       "name": "text-10",
       "width": 100,
       "height": 15,
-      "characters": "Jan 14, 2024",
+      "characters": "2024-01-14",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -367,7 +390,13 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 100,
-      "height": 75,
+      "height": 111,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "badge-1": {
@@ -433,7 +462,7 @@
       "name": "text-6",
       "width": 100,
       "height": 15,
-      "characters": "Jan 15, 2024",
+      "characters": "2024-01-15",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -522,7 +551,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 115,
+      "height": 127,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "image-1": {

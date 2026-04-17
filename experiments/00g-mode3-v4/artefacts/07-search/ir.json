@@ -66,31 +66,92 @@
         "text": "Places"
       }
     },
+    "tabs-1": {
+      "type": "tabs",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-1",
+        "text-2",
+        "text-3"
+      ]
+    },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
+    },
     "text-4": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Posts"
+        "text": "John Smith"
       }
     },
-    "tabs-1": {
-      "type": "tabs",
+    "icon-1": {
+      "type": "icon",
+      "component_key": "icon/chevron-down",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-1",
-        "text-2",
-        "text-3",
-        "text-4"
+        "avatar-1",
+        "text-4",
+        "icon-1"
       ]
     },
-    "avatar-1": {
+    "avatar-2": {
       "type": "avatar",
       "layout": {
         "direction": "vertical",
@@ -119,25 +180,39 @@
         "text": "Sarah Johnson"
       }
     },
-    "icon-1": {
+    "icon-2": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
         "direction": "vertical"
       }
     },
-    "list_item-1": {
+    "list_item-2": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-1",
+        "avatar-2",
         "text-5",
-        "icon-1"
+        "icon-2"
       ]
     },
-    "avatar-2": {
+    "avatar-3": {
       "type": "avatar",
       "layout": {
         "direction": "vertical",
@@ -163,28 +238,42 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Design Conference 2024"
+        "text": "Mike Chen"
       }
     },
-    "icon-2": {
+    "icon-3": {
       "type": "icon",
       "component_key": "icon/chevron-down",
       "layout": {
         "direction": "vertical"
       }
     },
-    "list_item-2": {
+    "list_item-3": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-2",
+        "avatar-3",
         "text-6",
-        "icon-2"
+        "icon-3"
       ]
     },
-    "avatar-3": {
+    "avatar-4": {
       "type": "avatar",
       "layout": {
         "direction": "vertical",
@@ -210,54 +299,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "New Product Launch"
-      }
-    },
-    "icon-3": {
-      "type": "icon",
-      "component_key": "icon/chevron-down",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "list_item-3": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical"
-      },
-      "children": [
-        "avatar-3",
-        "text-7",
-        "icon-3"
-      ]
-    },
-    "avatar-4": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
-    },
-    "text-8": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Team Meeting Notes"
+        "text": "Emma Davis"
       }
     },
     "icon-4": {
@@ -270,11 +312,25 @@
     "list_item-4": {
       "type": "list_item",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.list_item.padding_x}",
+          "y": "{space.list_item.padding_y}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
       },
       "children": [
         "avatar-4",
-        "text-8",
+        "text-7",
         "icon-4"
       ]
     },
@@ -283,8 +339,18 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
       },
       "children": [
         "list_item-1",
@@ -328,6 +394,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -336,8 +405,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,
@@ -452,25 +519,24 @@
     "text-1": -5,
     "text-2": -6,
     "text-3": -7,
-    "text-4": -8,
-    "tabs-1": -9,
-    "avatar-1": -10,
-    "text-5": -11,
-    "icon-1": -12,
-    "list_item-1": -13,
-    "avatar-2": -14,
-    "text-6": -15,
-    "icon-2": -16,
-    "list_item-2": -17,
-    "avatar-3": -18,
-    "text-7": -19,
-    "icon-3": -20,
-    "list_item-3": -21,
-    "avatar-4": -22,
-    "text-8": -23,
-    "icon-4": -24,
-    "list_item-4": -25,
-    "list-1": -26,
-    "screen-1": -27
+    "tabs-1": -8,
+    "avatar-1": -9,
+    "text-4": -10,
+    "icon-1": -11,
+    "list_item-1": -12,
+    "avatar-2": -13,
+    "text-5": -14,
+    "icon-2": -15,
+    "list_item-2": -16,
+    "avatar-3": -17,
+    "text-6": -18,
+    "icon-3": -19,
+    "list_item-3": -20,
+    "avatar-4": -21,
+    "text-7": -22,
+    "icon-4": -23,
+    "list_item-4": -24,
+    "list-1": -25,
+    "screen-1": -26
   }
 }

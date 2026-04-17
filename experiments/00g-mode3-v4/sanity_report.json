@@ -1,8 +1,8 @@
 {
   "total": 12,
-  "broken": 4,
-  "partial": 6,
-  "ok": 2,
+  "broken": 2,
+  "partial": 5,
+  "ok": 5,
   "gate_passes": true,
   "per_prompt": {
     "01-login": {
@@ -11,9 +11,9 @@
         "total_text_nodes": 8,
         "default_sized_frame_nodes": 0,
         "visible_text_nodes": 8,
-        "frames_with_visible_content": 3,
+        "frames_with_visible_content": 4,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.7857,
+        "visible_ratio": 0.8571,
         "verdict": "broken",
         "had_render_errors": true,
         "total_node_count": 14,
@@ -23,7 +23,7 @@
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear and coherent login form with recognizable input fields, labels, and a submit button, making it a plausible UI starting point."
+        "reason": "The screen displays a clear and coherent login form with recognizable input fields, labels, and a submit button, making it a plausible UI structure."
       }
     },
     "02-profile-settings": {
@@ -32,9 +32,9 @@
         "total_text_nodes": 12,
         "default_sized_frame_nodes": 1,
         "visible_text_nodes": 12,
-        "frames_with_visible_content": 8,
+        "frames_with_visible_content": 10,
         "default_frame_ratio": 0.0833,
-        "visible_ratio": 0.8333,
+        "visible_ratio": 0.9167,
         "verdict": "ok",
         "had_render_errors": false,
         "total_node_count": 24,
@@ -53,9 +53,9 @@
         "total_text_nodes": 7,
         "default_sized_frame_nodes": 6,
         "visible_text_nodes": 7,
-        "frames_with_visible_content": 9,
+        "frames_with_visible_content": 13,
         "default_frame_ratio": 0.2857,
-        "visible_ratio": 0.5714,
+        "visible_ratio": 0.7143,
         "verdict": "partial",
         "had_render_errors": false,
         "total_node_count": 28,
@@ -63,47 +63,47 @@
       },
       "verdict": "partial",
       "vlm": {
-        "score": 4,
+        "score": 5,
         "verdict": "partial",
-        "reason": "The screen contains some UI elements like text labels, circular placeholders, and 'x' buttons, but the layout is disjointed and lacks a cohesive structure, making it appear incomplete."
+        "reason": "The UI has a recognizable list structure with cards containing avatars, text, and buttons, but the layout is poorly spaced and the duplicate 'X' buttons suggest malformed elements."
       }
     },
     "04-dashboard": {
       "rule": {
-        "total_content_nodes": 17,
+        "total_content_nodes": 16,
         "total_text_nodes": 27,
         "default_sized_frame_nodes": 1,
         "visible_text_nodes": 27,
-        "frames_with_visible_content": 6,
-        "default_frame_ratio": 0.0588,
-        "visible_ratio": 0.75,
+        "frames_with_visible_content": 12,
+        "default_frame_ratio": 0.0625,
+        "visible_ratio": 0.907,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 44,
+        "total_node_count": 43,
         "container_coverage": 2
       },
-      "verdict": "broken",
+      "verdict": "partial",
       "vlm": {
-        "score": 3,
-        "verdict": "broken",
-        "reason": "The screen lacks any meaningful UI structure, presenting mostly as a vertical list of unformatted text with a single button at the bottom."
+        "score": 5,
+        "verdict": "partial",
+        "reason": "The screen has some UI structure like a header and a list of transactions, but the layout is malformed with overlapping text and missing elements like a chart in the 'Revenue Trend' section."
       }
     },
     "05-paywall": {
       "rule": {
-        "total_content_nodes": 35,
-        "total_text_nodes": 22,
+        "total_content_nodes": 36,
+        "total_text_nodes": 23,
         "default_sized_frame_nodes": 1,
-        "visible_text_nodes": 22,
-        "frames_with_visible_content": 4,
-        "default_frame_ratio": 0.0286,
-        "visible_ratio": 0.4561,
-        "verdict": "partial",
+        "visible_text_nodes": 23,
+        "frames_with_visible_content": 23,
+        "default_frame_ratio": 0.0278,
+        "visible_ratio": 0.7797,
+        "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 57,
+        "total_node_count": 59,
         "container_coverage": 2
       },
-      "verdict": "partial",
+      "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
@@ -112,44 +112,44 @@
     },
     "06-spa-minimal": {
       "rule": {
-        "total_content_nodes": 16,
-        "total_text_nodes": 8,
-        "default_sized_frame_nodes": 4,
-        "visible_text_nodes": 8,
-        "frames_with_visible_content": 3,
-        "default_frame_ratio": 0.25,
-        "visible_ratio": 0.4583,
+        "total_content_nodes": 14,
+        "total_text_nodes": 7,
+        "default_sized_frame_nodes": 2,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 5,
+        "default_frame_ratio": 0.1429,
+        "visible_ratio": 0.5714,
         "verdict": "partial",
         "had_render_errors": false,
-        "total_node_count": 24,
-        "container_coverage": 2
+        "total_node_count": 21,
+        "container_coverage": 1
       },
       "verdict": "partial",
       "vlm": {
-        "score": 5,
-        "verdict": "partial",
-        "reason": "The screen has some UI elements like text, icons, and a button, but it lacks a cohesive layout and structure, appearing more like a collection of disjointed components."
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The screen displays a coherent UI structure with recognizable elements like text fields, dropdowns, and a button, making it a plausible starting point for a booking interface."
       }
     },
     "07-search": {
       "rule": {
         "total_content_nodes": 18,
-        "total_text_nodes": 8,
+        "total_text_nodes": 7,
         "default_sized_frame_nodes": 4,
-        "visible_text_nodes": 8,
-        "frames_with_visible_content": 4,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 10,
         "default_frame_ratio": 0.2222,
-        "visible_ratio": 0.4615,
+        "visible_ratio": 0.68,
         "verdict": "partial",
         "had_render_errors": false,
-        "total_node_count": 26,
+        "total_node_count": 25,
         "container_coverage": 3
       },
       "verdict": "partial",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with a back arrow, a close icon, a list of categories, and a vertical list of items featuring circular placeholders, text labels, and dropdown arrows."
+        "reason": "The screen displays a clear and coherent list of items with avatars, names, and expand icons, along with a top navigation and filter section, making it a plausible UI structure."
       }
     },
     "08-explicit-structure": {
@@ -158,19 +158,19 @@
         "total_text_nodes": 7,
         "default_sized_frame_nodes": 0,
         "visible_text_nodes": 7,
-        "frames_with_visible_content": 2,
+        "frames_with_visible_content": 3,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.6923,
-        "verdict": "partial",
+        "visible_ratio": 0.7692,
+        "verdict": "ok",
         "had_render_errors": false,
         "total_node_count": 13,
         "container_coverage": 1
       },
-      "verdict": "partial",
+      "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen contains a clear and coherent UI structure with a back button, title, share icon, heading, body text, and primary/secondary action buttons."
+        "reason": "The screen displays a clear and coherent UI structure with a header, body text, and distinct primary and secondary action buttons."
       }
     },
     "09-drawer-nav": {
@@ -179,19 +179,19 @@
         "total_text_nodes": 6,
         "default_sized_frame_nodes": 0,
         "visible_text_nodes": 6,
-        "frames_with_visible_content": 0,
+        "frames_with_visible_content": 7,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.2727,
-        "verdict": "broken",
+        "visible_ratio": 0.5909,
+        "verdict": "partial",
         "had_render_errors": false,
         "total_node_count": 22,
         "container_coverage": 2
       },
-      "verdict": "broken",
+      "verdict": "partial",
       "vlm": {
-        "score": 4,
-        "verdict": "partial",
-        "reason": "The screen contains a vertical navigation menu with icons and labels, but the rest of the screen is completely empty, missing major content elements."
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The screen displays a clear, structured list of menu items with icons and labels, representing a plausible navigation drawer or menu."
       }
     },
     "10-onboarding-carousel": {
@@ -200,9 +200,9 @@
         "total_text_nodes": 9,
         "default_sized_frame_nodes": 3,
         "visible_text_nodes": 8,
-        "frames_with_visible_content": 4,
+        "frames_with_visible_content": 7,
         "default_frame_ratio": 0.25,
-        "visible_ratio": 0.5714,
+        "visible_ratio": 0.7143,
         "verdict": "broken",
         "had_render_errors": true,
         "total_node_count": 21,
@@ -210,51 +210,51 @@
       },
       "verdict": "broken",
       "vlm": {
-        "score": 2,
-        "verdict": "broken",
-        "reason": "The screen consists mostly of empty space with a few scattered text labels and a single button, lacking any coherent UI structure or layout."
+        "score": 4,
+        "verdict": "partial",
+        "reason": "The screen contains some UI elements like text labels and a button, but the layout is malformed with overlapping text and empty frames, missing a cohesive structure."
       }
     },
     "11-vague": {
       "rule": {
-        "total_content_nodes": 17,
-        "total_text_nodes": 9,
-        "default_sized_frame_nodes": 1,
-        "visible_text_nodes": 9,
-        "frames_with_visible_content": 5,
-        "default_frame_ratio": 0.0588,
-        "visible_ratio": 0.5385,
-        "verdict": "partial",
-        "had_render_errors": false,
-        "total_node_count": 26,
-        "container_coverage": 3
-      },
-      "verdict": "partial",
-      "vlm": {
-        "score": 4,
-        "verdict": "partial",
-        "reason": "The screen contains some UI elements like a back arrow, text labels, and buttons, but it lacks a cohesive layout and appears mostly empty, missing major structural components."
-      }
-    },
-    "12-round-trip-test": {
-      "rule": {
-        "total_content_nodes": 12,
-        "total_text_nodes": 21,
-        "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 21,
-        "frames_with_visible_content": 5,
-        "default_frame_ratio": 0.0,
-        "visible_ratio": 0.7879,
+        "total_content_nodes": 20,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 4,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 14,
+        "default_frame_ratio": 0.2,
+        "visible_ratio": 0.7857,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 33,
-        "container_coverage": 1
+        "total_node_count": 28,
+        "container_coverage": 3
       },
       "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear, structured list of device specifications with a back arrow and a prominent button, making it a coherent and plausible UI."
+        "reason": "The screen displays a coherent UI structure with distinct sections like 'Featured', 'Trending Now', and 'Quick Actions', along with recognizable elements such as placeholders for images, labels, and buttons."
+      }
+    },
+    "12-round-trip-test": {
+      "rule": {
+        "total_content_nodes": 27,
+        "total_text_nodes": 18,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 18,
+        "frames_with_visible_content": 24,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.9333,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 45,
+        "container_coverage": 3
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The screen displays a clear, structured list of device specifications with distinct sections and readable text, making it a coherent and plausible UI."
       }
     }
   }

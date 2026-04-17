@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:34213",
+  "rendered_root": "5776:38507",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,14 +20,26 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 396,
-      "height": 585,
+      "height": 660,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "list_item-4": {
       "type": "FRAME",
       "name": "list_item-4",
-      "width": 100,
-      "height": 150,
+      "width": 396,
+      "height": 159,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "icon-4": {
@@ -37,12 +49,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-8": {
+    "text-7": {
       "type": "TEXT",
-      "name": "text-8",
-      "width": 100,
-      "height": 30,
-      "characters": "Team Meeting Notes",
+      "name": "text-7",
+      "width": 396,
+      "height": 15,
+      "characters": "Emma Davis",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -68,8 +80,14 @@
     "list_item-3": {
       "type": "FRAME",
       "name": "list_item-3",
-      "width": 100,
-      "height": 150,
+      "width": 396,
+      "height": 159,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "icon-3": {
@@ -79,12 +97,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-7": {
+    "text-6": {
       "type": "TEXT",
-      "name": "text-7",
-      "width": 100,
-      "height": 30,
-      "characters": "New Product Launch",
+      "name": "text-6",
+      "width": 396,
+      "height": 15,
+      "characters": "Mike Chen",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -110,8 +128,14 @@
     "list_item-2": {
       "type": "FRAME",
       "name": "list_item-2",
-      "width": 100,
-      "height": 150,
+      "width": 396,
+      "height": 159,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "icon-2": {
@@ -121,12 +145,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-6": {
+    "text-5": {
       "type": "TEXT",
-      "name": "text-6",
-      "width": 100,
-      "height": 30,
-      "characters": "Design Conference 2024",
+      "name": "text-5",
+      "width": 396,
+      "height": 15,
+      "characters": "Sarah Johnson",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -152,8 +176,14 @@
     "list_item-1": {
       "type": "FRAME",
       "name": "list_item-1",
-      "width": 100,
-      "height": 135,
+      "width": 396,
+      "height": 159,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
       "effectCount": 0
     },
     "icon-1": {
@@ -163,12 +193,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-5": {
+    "text-4": {
       "type": "TEXT",
-      "name": "text-5",
-      "width": 100,
+      "name": "text-4",
+      "width": 396,
       "height": 15,
-      "characters": "Sarah Johnson",
+      "characters": "John Smith",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -195,20 +225,11 @@
       "type": "FRAME",
       "name": "tabs-1",
       "width": 396,
-      "height": 60,
-      "effectCount": 0
-    },
-    "text-4": {
-      "type": "TEXT",
-      "name": "text-4",
-      "width": 396,
-      "height": 15,
-      "characters": "Posts",
-      "textAutoResize": "HEIGHT",
+      "height": 61,
       "fills": [
         {
           "type": "solid",
-          "color": "#000000"
+          "color": "#F8FAFC"
         }
       ],
       "effectCount": 0

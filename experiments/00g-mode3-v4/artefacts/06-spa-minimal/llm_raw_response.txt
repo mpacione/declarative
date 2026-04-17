@@ -20,31 +20,27 @@
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Select Time"}},
-      {"type": "date_picker", "props": {"label": "Date & Time"}}
+      {"type": "date_picker", "props": {"label": "Choose your appointment"}}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "heading", "props": {"text": "Therapist"}},
-      {"type": "list", "children": [
-        {"type": "list_item", "children": [
-          {"type": "avatar", "props": {"initials": "AM"}},
-          {"type": "text", "props": {"text": "Aria Mendez"}},
-          {"type": "icon", "component_key": "icon/check"}
-        ]},
-        {"type": "list_item", "children": [
-          {"type": "avatar", "props": {"initials": "JL"}},
-          {"type": "text", "props": {"text": "James Liu"}}
-        ]}
+      {"type": "navigation_row", "props": {"text": "Therapist Selection"}, "children": [
+        {"type": "text", "props": {"text": "Preferred therapist"}},
+        {"type": "icon", "component_key": "icon/chevron-down"}
+      ]},
+      {"type": "navigation_row", "props": {"text": "Add-ons"}, "children": [
+        {"type": "text", "props": {"text": "Aromatherapy, hot stones"}},
+        {"type": "icon", "component_key": "icon/chevron-down"}
       ]}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "heading", "props": {"text": "Price"}},
-      {"type": "text", "props": {"text": "$180"}}
+      {"type": "text", "props": {"text": "Total Price"}},
+      {"type": "heading", "props": {"text": "$280"}}
     ]
   },
   {

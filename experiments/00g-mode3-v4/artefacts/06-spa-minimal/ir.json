@@ -65,8 +65,19 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "image-1",
@@ -89,7 +100,7 @@
         "direction": "vertical"
       },
       "props": {
-        "label": "Date & Time"
+        "label": "Choose your appointment"
       }
     },
     "card-2": {
@@ -97,45 +108,24 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
         "heading-2",
         "date_picker-1"
       ]
-    },
-    "heading-3": {
-      "type": "heading",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Therapist"
-      }
-    },
-    "avatar-1": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "props": {
-        "initials": "AM"
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
     },
     "text-2": {
       "type": "text",
@@ -143,49 +133,28 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Aria Mendez"
+        "text": "Preferred therapist"
       }
     },
     "icon-1": {
       "type": "icon",
-      "component_key": "icon/check",
+      "component_key": "icon/chevron-down",
       "layout": {
         "direction": "vertical"
       }
     },
-    "list_item-1": {
-      "type": "list_item",
+    "navigation_row-1": {
+      "type": "navigation_row",
       "layout": {
         "direction": "vertical"
       },
+      "props": {
+        "text": "Therapist Selection"
+      },
       "children": [
-        "avatar-1",
         "text-2",
         "icon-1"
       ]
-    },
-    "avatar-2": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "props": {
-        "initials": "JL"
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
     },
     "text-3": {
       "type": "text",
@@ -193,27 +162,27 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "James Liu"
+        "text": "Aromatherapy, hot stones"
       }
     },
-    "list_item-2": {
-      "type": "list_item",
+    "icon-2": {
+      "type": "icon",
+      "component_key": "icon/chevron-down",
       "layout": {
         "direction": "vertical"
-      },
-      "children": [
-        "avatar-2",
-        "text-3"
-      ]
+      }
     },
-    "list-1": {
-      "type": "list",
+    "navigation_row-2": {
+      "type": "navigation_row",
       "layout": {
         "direction": "vertical"
       },
+      "props": {
+        "text": "Add-ons"
+      },
       "children": [
-        "list_item-1",
-        "list_item-2"
+        "text-3",
+        "icon-2"
       ]
     },
     "card-3": {
@@ -221,22 +190,24 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
-        "heading-3",
-        "list-1"
+        "navigation_row-1",
+        "navigation_row-2"
       ]
-    },
-    "heading-4": {
-      "type": "heading",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Price"
-      }
     },
     "text-4": {
       "type": "text",
@@ -244,7 +215,16 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$180"
+        "text": "Total Price"
+      }
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$280"
       }
     },
     "card-4": {
@@ -252,12 +232,23 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.card.padding_x}",
+          "y": "{space.card.padding_y}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}"
       },
       "children": [
-        "heading-4",
-        "text-4"
+        "text-4",
+        "heading-3"
       ]
     },
     "button-1": {
@@ -312,6 +303,9 @@
     "space.card.padding_x": 16,
     "space.card.padding_y": 16,
     "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
     "space.dialog.gap": 16,
@@ -320,8 +314,6 @@
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     "radius.button": 8,
     "radius.input": 8,
     "radius.card": 12,
@@ -439,20 +431,17 @@
     "heading-2": -8,
     "date_picker-1": -9,
     "card-2": -10,
-    "heading-3": -11,
-    "avatar-1": -12,
-    "text-2": -13,
-    "icon-1": -14,
-    "list_item-1": -15,
-    "avatar-2": -16,
-    "text-3": -17,
-    "list_item-2": -18,
-    "list-1": -19,
-    "card-3": -20,
-    "heading-4": -21,
-    "text-4": -22,
-    "card-4": -23,
-    "button-1": -24,
-    "screen-1": -25
+    "text-2": -11,
+    "icon-1": -12,
+    "navigation_row-1": -13,
+    "text-3": -14,
+    "icon-2": -15,
+    "navigation_row-2": -16,
+    "card-3": -17,
+    "text-4": -18,
+    "heading-3": -19,
+    "card-4": -20,
+    "button-1": -21,
+    "screen-1": -22
   }
 }

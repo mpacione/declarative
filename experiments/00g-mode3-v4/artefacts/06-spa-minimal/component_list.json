@@ -51,7 +51,7 @@
       {
         "type": "date_picker",
         "props": {
-          "label": "Date & Time"
+          "label": "Choose your appointment"
         }
       }
     ]
@@ -60,51 +60,38 @@
     "type": "card",
     "children": [
       {
-        "type": "heading",
+        "type": "navigation_row",
         "props": {
-          "text": "Therapist"
-        }
-      },
-      {
-        "type": "list",
+          "text": "Therapist Selection"
+        },
         "children": [
           {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "avatar",
-                "props": {
-                  "initials": "AM"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Aria Mendez"
-                }
-              },
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              }
-            ]
+            "type": "text",
+            "props": {
+              "text": "Preferred therapist"
+            }
           },
           {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "avatar",
-                "props": {
-                  "initials": "JL"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "James Liu"
-                }
-              }
-            ]
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Add-ons"
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "text": "Aromatherapy, hot stones"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
           }
         ]
       }
@@ -114,15 +101,15 @@
     "type": "card",
     "children": [
       {
-        "type": "heading",
+        "type": "text",
         "props": {
-          "text": "Price"
+          "text": "Total Price"
         }
       },
       {
-        "type": "text",
+        "type": "heading",
         "props": {
-          "text": "$180"
+          "text": "$280"
         }
       }
     ]

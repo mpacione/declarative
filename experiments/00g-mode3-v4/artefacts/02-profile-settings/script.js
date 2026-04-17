@@ -103,14 +103,20 @@ M["header-1"] = n1.id;
 const n2 = figma.createFrame();
 n2.name = "card-1";
 n2.layoutMode = "VERTICAL";
-n2.fills = [];
+n2.itemSpacing = 12;
+n2.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n2.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n2.cornerRadius = 12;
 n2.clipsContent = false;
 M["card-1"] = n2.id;
 
 const n3 = figma.createFrame();
 n3.name = "card-2";
 n3.layoutMode = "VERTICAL";
-n3.fills = [];
+n3.itemSpacing = 12;
+n3.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n3.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n3.cornerRadius = 12;
 n3.clipsContent = false;
 M["card-2"] = n3.id;
 
@@ -280,8 +286,10 @@ n0.appendChild(n1);
 n1.layoutSizingHorizontal = "FILL";
 n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
+n2.layoutSizingVertical = "HUG";
 n0.appendChild(n3);
 n3.layoutSizingHorizontal = "FILL";
+n3.layoutSizingVertical = "HUG";
 n0.appendChild(n4);
 n4.layoutSizingHorizontal = "HUG";
 n4.layoutSizingVertical = "FIXED";
@@ -335,13 +343,13 @@ n12.appendChild(n21);
 try { n21.characters = "Push notifications"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n13.appendChild(n22);
-try { n22.characters = "Email digest"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n22.characters = "Email alerts"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n22.layoutSizingHorizontal = "FILL";
 n14.appendChild(n23);
 try { n23.characters = "Marketing emails"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n23.layoutSizingHorizontal = "FILL";
 n15.appendChild(n24);
-try { n24.characters = "SMS alerts"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n24.characters = "Weekly digest"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n24.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

@@ -10,7 +10,7 @@
       },
       {
         "type": "icon_button",
-        "component_key": "icon/wallet"
+        "component_key": "icon/close"
       }
     ]
   },
@@ -73,7 +73,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Jan 15, 2024"
+                  "text": "2024-01-15"
                 }
               },
               {
@@ -102,13 +102,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Jan 14, 2024"
+                  "text": "2024-01-14"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Invoice #1024"
+                  "text": "Invoice issued"
                 }
               },
               {
@@ -120,7 +120,7 @@
               {
                 "type": "badge",
                 "props": {
-                  "text": "Completed"
+                  "text": "Pending"
                 }
               }
             ]
@@ -131,48 +131,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Jan 13, 2024"
+                  "text": "2024-01-13"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Refund issued"
+                  "text": "Refund processed"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "-$450.00"
-                }
-              },
-              {
-                "type": "badge",
-                "props": {
-                  "text": "Processed"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "Jan 12, 2024"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Subscription renewal"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "$99.00"
+                  "text": "-$500.00"
                 }
               },
               {
@@ -189,7 +160,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Jan 11, 2024"
+                  "text": "2024-01-12"
                 }
               },
               {
@@ -211,17 +182,38 @@
                 }
               }
             ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "2024-01-11"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Invoice issued"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "$1,200.00"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Pending"
+                }
+              }
+            ]
           }
         ]
       }
     ]
-  },
-  {
-    "type": "button",
-    "variant": "primary",
-    "component_key": "button/large/translucent",
-    "props": {
-      "text": "View All Transactions"
-    }
   }
 ]

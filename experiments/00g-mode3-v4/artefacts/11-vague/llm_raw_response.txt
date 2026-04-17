@@ -11,7 +11,7 @@
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Featured"}},
-      {"type": "image", "props": {"src": "https://via.placeholder.com/400x200", "alt": "Featured content"}}
+      {"type": "image", "props": {"src": "featured-hero.jpg", "alt": "Featured content"}}
     ]
   },
   {
@@ -20,16 +20,19 @@
       {"type": "heading", "props": {"text": "Trending Now"}},
       {"type": "list", "children": [
         {"type": "list_item", "children": [
-          {"type": "text", "props": {"text": "Neural Networks"}},
+          {"type": "avatar", "props": {"initials": "AI"}},
+          {"type": "text", "props": {"text": "AI Design Tools"}},
           {"type": "badge", "props": {"text": "Hot"}}
         ]},
         {"type": "list_item", "children": [
-          {"type": "text", "props": {"text": "Web3 Design Patterns"}},
+          {"type": "avatar", "props": {"initials": "3D"}},
+          {"type": "text", "props": {"text": "3D Web Experiences"}},
           {"type": "badge", "props": {"text": "New"}}
         ]},
         {"type": "list_item", "children": [
-          {"type": "text", "props": {"text": "Motion Design Tips"}},
-          {"type": "badge", "props": {"text": "Popular"}}
+          {"type": "avatar", "props": {"initials": "AR"}},
+          {"type": "text", "props": {"text": "AR Prototyping"}},
+          {"type": "icon", "component_key": "icon/chevron-down"}
         ]}
       ]}
     ]
@@ -39,15 +42,13 @@
     "children": [
       {"type": "heading", "props": {"text": "Quick Actions"}},
       {"type": "button_group", "children": [
-        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Explore"}},
-        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Save"}}
+        {"type": "button", "variant": "primary", "props": {"text": "Explore"}, "component_key": "button/large/translucent"},
+        {"type": "button", "variant": "secondary", "props": {"text": "Save"}, "component_key": "button/large/translucent"}
       ]}
     ]
   },
   {
-    "type": "fab",
-    "props": {"text": "Create"},
-    "component_key": "icon/new"
+    "type": "button", "variant": "primary", "props": {"text": "Get Started"}, "component_key": "button/large/solid"
   }
 ]
 ```

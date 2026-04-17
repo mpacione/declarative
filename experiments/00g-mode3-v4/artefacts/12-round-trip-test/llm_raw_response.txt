@@ -11,53 +11,114 @@
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Device Information"}},
-      {"type": "text", "props": {"text": "Model: iPhone 13 Pro Max"}},
-      {"type": "text", "props": {"text": "Storage: 256GB"}},
-      {"type": "text", "props": {"text": "Color: Sierra Blue"}}
+      {"type": "list", "children": [
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Model: iPhone 13 Pro Max"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Storage: 256GB"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Color: Sierra Blue"}}
+          ]
+        }
+      ]}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Battery & Power"}},
+      {"type": "list", "children": [
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Battery Health: 98%"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Charging: Fast Charge Enabled"}}
+          ]
+        }
+      ]}
     ]
   },
   {
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Display"}},
-      {"type": "text", "props": {"text": "6.7-inch Super Retina XDR"}},
-      {"type": "text", "props": {"text": "Resolution: 2796 x 1290 pixels"}},
-      {"type": "text", "props": {"text": "120Hz ProMotion"}}
+      {"type": "list", "children": [
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Screen Size: 6.7 inches"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Resolution: 2778 x 1284"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "ProMotion: 120Hz"}}
+          ]
+        }
+      ]}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "heading", "props": {"text": "Camera System"}},
-      {"type": "text", "props": {"text": "Rear: 12MP Wide, Ultra Wide, Telephoto"}},
-      {"type": "text", "props": {"text": "Front: 12MP TrueDepth"}},
-      {"type": "text", "props": {"text": "Night Mode, ProRAW, ProRes Video"}}
+      {"type": "heading", "props": {"text": "Camera"}},
+      {"type": "list", "children": [
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Rear: Triple 12MP Camera System"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Front: 12MP TrueDepth"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "text", "props": {"text": "Video: 4K ProRes Recording"}}
+          ]
+        }
+      ]}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "heading", "props": {"text": "Performance"}},
-      {"type": "text", "props": {"text": "Chip: A15 Bionic"}},
-      {"type": "text", "props": {"text": "RAM: 6GB"}},
-      {"type": "text", "props": {"text": "Battery: 4373 mAh"}}
-    ]
-  },
-  {
-    "type": "card",
-    "children": [
-      {"type": "heading", "props": {"text": "Features"}},
-      {"type": "toggle", "props": {"label": "5G Support", "checked": true}},
+      {"type": "heading", "props": {"text": "Security"}},
       {"type": "toggle", "props": {"label": "Face ID", "checked": true}},
-      {"type": "toggle", "props": {"label": "IP68 Water Resistance", "checked": true}},
-      {"type": "toggle", "props": {"label": "MagSafe", "checked": true}}
+      {"type": "toggle", "props": {"label": "Encrypted Backup", "checked": true}}
     ]
   },
   {
-    "type": "button",
-    "variant": "primary",
-    "component_key": "button/large/translucent",
-    "props": {"text": "View Full Specs"}
+    "type": "button_group",
+    "children": [
+      {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Settings"}},
+      {"type": "button", "component_key": "button/small/solid", "props": {"text": "About"}}
+    ]
   }
 ]
 ```

@@ -103,7 +103,9 @@ M["header-1"] = n1.id;
 const n2 = figma.createFrame();
 n2.name = "list-1";
 n2.layoutMode = "VERTICAL";
-n2.fills = [];
+n2.itemSpacing = 8;
+n2.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
+n2.cornerRadius = 8;
 n2.clipsContent = false;
 M["list-1"] = n2.id;
 
@@ -119,21 +121,30 @@ M["icon_button-1"] = n4.id;
 const n5 = figma.createFrame();
 n5.name = "card-1";
 n5.layoutMode = "VERTICAL";
-n5.fills = [];
+n5.itemSpacing = 12;
+n5.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n5.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n5.cornerRadius = 12;
 n5.clipsContent = false;
 M["card-1"] = n5.id;
 
 const n6 = figma.createFrame();
 n6.name = "card-2";
 n6.layoutMode = "VERTICAL";
-n6.fills = [];
+n6.itemSpacing = 12;
+n6.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n6.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n6.cornerRadius = 12;
 n6.clipsContent = false;
 M["card-2"] = n6.id;
 
 const n7 = figma.createFrame();
 n7.name = "card-3";
 n7.layoutMode = "VERTICAL";
-n7.fills = [];
+n7.itemSpacing = 12;
+n7.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n7.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n7.cornerRadius = 12;
 n7.clipsContent = false;
 M["card-3"] = n7.id;
 
@@ -274,21 +285,25 @@ n0.appendChild(n1);
 n1.layoutSizingHorizontal = "FILL";
 n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
+n2.layoutSizingVertical = "HUG";
 n1.appendChild(n3);
 try { n3.characters = "Memes"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n3.layoutSizingHorizontal = "FILL";
 n1.appendChild(n4);
 n2.appendChild(n5);
 n5.layoutSizingHorizontal = "FILL";
+n5.layoutSizingVertical = "HUG";
 n2.appendChild(n6);
 n6.layoutSizingHorizontal = "FILL";
+n6.layoutSizingVertical = "HUG";
 n2.appendChild(n7);
 n7.layoutSizingHorizontal = "FILL";
+n7.layoutSizingVertical = "HUG";
 n5.appendChild(n8);
 n8.layoutSizingHorizontal = "FIXED";
 n8.layoutSizingVertical = "FIXED";
 n5.appendChild(n9);
-try { n9.characters = "john_doe"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n9.characters = "John Doe"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "FILL";
 n5.appendChild(n10);
 n5.appendChild(n11);
@@ -299,22 +314,22 @@ n6.appendChild(n13);
 n13.layoutSizingHorizontal = "FIXED";
 n13.layoutSizingVertical = "FIXED";
 n6.appendChild(n14);
-try { n14.characters = "sarah_memes"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "Sarah Miller"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n6.appendChild(n15);
 n6.appendChild(n16);
-try { n16.characters = "POV: You're scrolling at 3 AM"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n16.characters = "POV: You're trying to be productive on Monday"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
 n6.appendChild(n17);
 n7.appendChild(n18);
 n18.layoutSizingHorizontal = "FIXED";
 n18.layoutSizingVertical = "FIXED";
 n7.appendChild(n19);
-try { n19.characters = "meme_creator"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n19.characters = "Tom Chen"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
 n7.appendChild(n20);
 n7.appendChild(n21);
-try { n21.characters = "Me pretending to understand what's happening"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "Me explaining why I need another coffee"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n7.appendChild(n22);
 n12.appendChild(n23);

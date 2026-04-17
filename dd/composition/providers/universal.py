@@ -632,21 +632,25 @@ def _generic_frame_template(
 ) -> PresentationTemplate:
     """Fallback for backbone types without a dedicated template yet.
 
-    v0.1 ships dedicated templates for the highest-value types (button,
-    text_input, card, dialog, toggle, checkbox, icon_button, list_item).
-    Other backbone types get a plausible default: a frame with a single
-    text slot. Shadcn backfill in v0.2 promotes them to real structure.
+    All of the currently fall-through types (``list``, ``tabs``,
+    ``slider``, ``select``, ``combobox``) are CONTAINER types that
+    hold other elements. They must be ``fill/hug`` sized, not
+    ``hug/hug`` — otherwise a container with FILL children
+    becomes a circular auto-layout constraint (parent hugs children
+    who fill the parent) that Figma's layout engine can spin on
+    for tens of seconds before giving up. Seen 2026-04-17 on the
+    H1 00g re-run: 03-meme-feed timed out at 55s with the old
+    ``hug/hug`` default.
     """
     return PresentationTemplate(
         catalog_type=catalog_type,
         variant=variant,
         provider="catalog:universal",
         layout={
-            "direction": "horizontal",
-            "sizing": {"width": "hug", "height": "hug"},
+            "direction": "vertical",
+            "sizing": {"width": "fill", "height": "hug"},
             "padding": {"x": "{space.generic.padding_x}", "y": "{space.generic.padding_y}"},
-            "align": "center",
-            "crossAxisAlignment": "CENTER",
+            "gap": "{space.generic.gap}",
         },
         slots={
             "label": SlotSpec(allowed=["text", "icon"], required=False, position="fill"),

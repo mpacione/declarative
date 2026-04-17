@@ -25,7 +25,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "john_doe"}
+            "props": {"text": "John Doe"}
           },
           {
             "type": "image",
@@ -61,7 +61,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "sarah_memes"}
+            "props": {"text": "Sarah Miller"}
           },
           {
             "type": "image",
@@ -69,7 +69,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "POV: You're scrolling at 3 AM"}
+            "props": {"text": "POV: You're trying to be productive on Monday"}
           },
           {
             "type": "button_group",
@@ -93,11 +93,11 @@
         "children": [
           {
             "type": "avatar",
-            "props": {"initials": "MC"}
+            "props": {"initials": "TC"}
           },
           {
             "type": "text",
-            "props": {"text": "meme_creator"}
+            "props": {"text": "Tom Chen"}
           },
           {
             "type": "image",
@@ -105,7 +105,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "Me pretending to understand what's happening"}
+            "props": {"text": "Me explaining why I need another coffee"}
           },
           {
             "type": "button_group",

@@ -38,18 +38,30 @@
         "props": {
           "text": "Places"
         }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Posts"
-        }
       }
     ]
   },
   {
     "type": "list",
     "children": [
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "John Smith"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
       {
         "type": "list_item",
         "children": [
@@ -77,7 +89,7 @@
           {
             "type": "text",
             "props": {
-              "text": "Design Conference 2024"
+              "text": "Mike Chen"
             }
           },
           {
@@ -95,25 +107,7 @@
           {
             "type": "text",
             "props": {
-              "text": "New Product Launch"
-            }
-          },
-          {
-            "type": "icon",
-            "component_key": "icon/chevron-down"
-          }
-        ]
-      },
-      {
-        "type": "list_item",
-        "children": [
-          {
-            "type": "avatar"
-          },
-          {
-            "type": "text",
-            "props": {
-              "text": "Team Meeting Notes"
+              "text": "Emma Davis"
             }
           },
           {

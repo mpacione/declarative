@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5772:33756",
+  "rendered_root": "5776:38066",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,14 +20,32 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 396,
-      "height": 930,
+      "height": 1090,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 310,
+      "height": 358,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "button_group-3": {
@@ -68,7 +86,7 @@
       "name": "text-7",
       "width": 396,
       "height": 15,
-      "characters": "Me pretending to understand what's happening",
+      "characters": "Me explaining why I need another coffee",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -90,7 +108,7 @@
       "name": "text-6",
       "width": 396,
       "height": 15,
-      "characters": "meme_creator",
+      "characters": "Tom Chen",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -117,7 +135,19 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 310,
+      "height": 358,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "button_group-2": {
@@ -158,7 +188,7 @@
       "name": "text-5",
       "width": 396,
       "height": 15,
-      "characters": "POV: You're scrolling at 3 AM",
+      "characters": "POV: You're trying to be productive on Monday",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -180,7 +210,7 @@
       "name": "text-4",
       "width": 396,
       "height": 15,
-      "characters": "sarah_memes",
+      "characters": "Sarah Miller",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -207,7 +237,19 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 310,
+      "height": 358,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "button_group-1": {
@@ -270,7 +312,7 @@
       "name": "text-2",
       "width": 396,
       "height": 15,
-      "characters": "john_doe",
+      "characters": "John Doe",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

@@ -62,6 +62,58 @@ class TestComposeScreen:
         card = next(el for el in spec["elements"].values() if el["type"] == "card")
         assert len(card["children"]) == 2
 
+    # -- ADR-008 v0.1.5 H1: template style must apply even when LLM
+    # supplied the children --
+
+    def test_card_with_llm_children_still_inherits_template_style(self):
+        """Forensic finding: before H1, a card with LLM-supplied
+        children never received the PresentationTemplate's fill /
+        stroke / radius because the merge only ran inside
+        _mode3_synthesise_children, which is gated on `no children`.
+
+        After H1: the card element's `style` dict is populated
+        regardless of whether children come from the LLM or from
+        synthesis.
+        """
+        spec = compose_screen([{
+            "type": "card",
+            "children": [
+                {"type": "heading", "props": {"text": "Title"}},
+                {"type": "text", "props": {"text": "Body"}},
+            ],
+        }])
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        assert "style" in card
+        # Universal provider defines fill/stroke/radius on card
+        assert "fill" in card["style"]
+        assert "radius" in card["style"]
+
+    def test_card_with_llm_children_still_inherits_template_padding(self):
+        """Layout.padding from the template is also preserved — not
+        just the style block."""
+        spec = compose_screen([{
+            "type": "card",
+            "children": [{"type": "text", "props": {"text": "x"}}],
+        }])
+        card = next(el for el in spec["elements"].values() if el["type"] == "card")
+        assert "layout" in card
+        assert "padding" in card["layout"]
+
+    def test_component_key_path_does_not_receive_mode3_style(self):
+        """A node with an explicit component_key is Mode-1 reuse; the
+        PresentationTemplate style must NOT overlay — the project
+        instance owns its visuals."""
+        spec = compose_screen([{
+            "type": "button",
+            "component_key": "button/primary",
+            "props": {"text": "Go"},
+        }])
+        btn = next(el for el in spec["elements"].values() if el["type"] == "button")
+        # Mode-1 path preserves component_key
+        assert btn.get("component_key") == "button/primary"
+        # Style must NOT have been applied from the template
+        assert "style" not in btn or not btn["style"].get("fill")
+
     def test_layout_from_templates(self):
         templates = {
             "header": [{"layout_mode": "HORIZONTAL", "width": 428.0, "height": 111.0,
