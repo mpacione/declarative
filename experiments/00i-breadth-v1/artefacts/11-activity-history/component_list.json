@@ -112,7 +112,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Item deleted"
+                  "text": "File deleted"
                 }
               },
               {
@@ -139,7 +139,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "3:00 PM"
+                  "text": "10:00 AM"
                 }
               }
             ]
@@ -170,13 +170,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Project milestone reached"
+                  "text": "Project approved"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Mar 15, 2:30 PM"
+                  "text": "Mar 15, 3:45 PM"
                 }
               }
             ]
@@ -191,13 +191,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Account updated"
+                  "text": "New member joined"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Mar 12, 10:45 AM"
+                  "text": "Mar 12, 9:30 AM"
                 }
               }
             ]

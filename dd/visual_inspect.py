@@ -256,7 +256,20 @@ def inspect_walk(walk: dict[str, Any]) -> RuleBasedScore:
     fill/size is always present — we only care about its descendants.
     """
     eid_map = walk.get("eid_map") or {}
-    had_errors = bool(walk.get("errors"))
+
+    # Hard render errors (abort the render) vs soft diagnostics (audited
+    # but don't affect visual correctness). ``leaf_type_append_skipped``
+    # is a renderer-side gate that prevents the "not a function" crash
+    # by skipping appendChild onto leaf parents (TEXT / LINE / etc.).
+    # It's informational — the render completed and the user-visible
+    # output is correct; only the subsumed child text was dropped.
+    _SOFT_ERROR_KINDS = frozenset({"leaf_type_append_skipped"})
+    raw_errors = walk.get("errors") or []
+    hard_errors = [
+        e for e in raw_errors
+        if not isinstance(e, dict) or e.get("kind") not in _SOFT_ERROR_KINDS
+    ]
+    had_errors = bool(hard_errors)
 
     total_content = 0
     total_text = 0

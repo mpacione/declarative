@@ -498,7 +498,7 @@ n5.appendChild(n18);
 try { n18.characters = "Description"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n18.layoutSizingHorizontal = "FILL";
 n5.appendChild(n19);
-try { n19.characters = "High-quality sound with active noise cancellation, 30-hour battery life, and premium comfort for all-day wear."; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n19.characters = "Experience premium sound quality with active noise cancellation, 30-hour battery life, and premium comfort design."; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
 n7.appendChild(n20);
 try { n20.characters = "Customer Reviews"; } catch (__e) { __errors.push({eid:"heading-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -516,7 +516,7 @@ n12.appendChild(n24);
 n24.layoutSizingHorizontal = "HUG";
 n24.layoutSizingVertical = "FIXED";
 n15.appendChild(n25);
-try { n25.characters = "4.8★ (324 reviews)"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n25.characters = "4.8 ★ (324 reviews)"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n25.layoutSizingHorizontal = "FILL";
 n17.appendChild(n26);
 try { n26.characters = "Small"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -549,22 +549,22 @@ n24.appendChild(n35);
 try { n35.characters = "3"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n35.layoutSizingHorizontal = "FILL";
 n30.appendChild(n36);
-try { n36.characters = "Excellent quality! ★★★★★"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n36.characters = "Amazing quality! ★★★★★"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n36.layoutSizingHorizontal = "FILL";
 n30.appendChild(n37);
-try { n37.characters = "Best headphones I've ever owned. Sound quality is amazing."; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n37.characters = "Great sound and very comfortable to wear."; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n37.layoutSizingHorizontal = "FILL";
 n31.appendChild(n38);
-try { n38.characters = "Great value ★★★★☆"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n38.characters = "Good value ★★★★"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n38.layoutSizingHorizontal = "FILL";
 n31.appendChild(n39);
-try { n39.characters = "Very comfortable and good battery life. Highly recommend."; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n39.characters = "Battery life is excellent as advertised."; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n39.layoutSizingHorizontal = "FILL";
 n32.appendChild(n40);
-try { n40.characters = "Perfect! ★★★★★"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n40.characters = "Solid purchase ★★★★★"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n40.layoutSizingHorizontal = "FILL";
 n32.appendChild(n41);
-try { n41.characters = "Noise cancellation works great. Worth every penny."; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n41.characters = "Noise cancellation works perfectly."; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n41.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

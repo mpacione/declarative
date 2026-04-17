@@ -31,12 +31,12 @@
             "children": [
               {
                 "type": "icon",
-                "component_key": "icon/wallet"
+                "component_key": "icon/check"
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Payment received"
+                  "text": "Payment successful"
                 }
               },
               {
@@ -52,12 +52,12 @@
             "children": [
               {
                 "type": "icon",
-                "component_key": "icon/check"
+                "component_key": "icon/wallet"
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Order confirmed"
+                  "text": "New transaction"
                 }
               },
               {
@@ -78,7 +78,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "New message from Sarah"
+                  "text": "New message from support"
                 }
               },
               {
@@ -115,7 +115,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Item removed from cart"
+                  "text": "Account update"
                 }
               },
               {
@@ -142,7 +142,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Yesterday at 9:30 AM"
+                  "text": "Yesterday at 10:20 AM"
                 }
               }
             ]

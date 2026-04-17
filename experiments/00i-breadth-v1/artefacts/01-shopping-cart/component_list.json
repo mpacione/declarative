@@ -24,7 +24,7 @@
                 "type": "image",
                 "props": {
                   "src": "product-1.jpg",
-                  "alt": "Wireless Headphones"
+                  "alt": "Product 1"
                 }
               },
               {
@@ -61,7 +61,7 @@
                 "type": "image",
                 "props": {
                   "src": "product-2.jpg",
-                  "alt": "USB-C Cable"
+                  "alt": "Product 2"
                 }
               },
               {
@@ -98,7 +98,7 @@
                 "type": "image",
                 "props": {
                   "src": "product-3.jpg",
-                  "alt": "Phone Case"
+                  "alt": "Product 3"
                 }
               },
               {

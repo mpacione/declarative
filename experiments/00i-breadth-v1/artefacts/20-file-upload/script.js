@@ -338,13 +338,13 @@ n17.layoutSizingHorizontal = "FILL";
 n17.layoutSizingVertical = "HUG";
 n11.appendChild(n18);
 n12.appendChild(n19);
-try { n19.characters = "presentation.pptx"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n19.characters = "video.mp4"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
 n12.appendChild(n20);
 n20.layoutSizingHorizontal = "FILL";
 n20.layoutSizingVertical = "HUG";
 n12.appendChild(n21);
-try { n21.characters = "Pending"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "72%"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

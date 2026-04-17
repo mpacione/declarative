@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:48166",
+  "rendered_root": "5789:50135",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,7 +20,7 @@
       "type": "FRAME",
       "name": "card-5",
       "width": 396,
-      "height": 319,
+      "height": 289,
       "fills": [
         {
           "type": "solid",
@@ -39,7 +39,7 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 364,
-      "height": 260,
+      "height": 230,
       "effectCount": 0
     },
     "list_item-3": {
@@ -60,7 +60,7 @@
       "name": "text-17",
       "width": 308,
       "height": 15,
-      "characters": "Noise cancellation works great. Worth every penny.",
+      "characters": "Noise cancellation works perfectly.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -75,7 +75,7 @@
       "name": "text-16",
       "width": 308,
       "height": 15,
-      "characters": "Perfect! ★★★★★",
+      "characters": "Solid purchase ★★★★★",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -89,7 +89,7 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 340,
-      "height": 81,
+      "height": 66,
       "fills": [
         {
           "type": "solid",
@@ -102,8 +102,8 @@
       "type": "TEXT",
       "name": "text-15",
       "width": 308,
-      "height": 30,
-      "characters": "Very comfortable and good battery life. Highly recommend.",
+      "height": 15,
+      "characters": "Battery life is excellent as advertised.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -118,7 +118,7 @@
       "name": "text-14",
       "width": 308,
       "height": 15,
-      "characters": "Great value ★★★★☆",
+      "characters": "Good value ★★★★",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -132,7 +132,7 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 340,
-      "height": 81,
+      "height": 66,
       "fills": [
         {
           "type": "solid",
@@ -145,8 +145,8 @@
       "type": "TEXT",
       "name": "text-13",
       "width": 308,
-      "height": 30,
-      "characters": "Best headphones I've ever owned. Sound quality is amazing.",
+      "height": 15,
+      "characters": "Great sound and very comfortable to wear.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -161,7 +161,7 @@
       "name": "text-12",
       "width": 308,
       "height": 15,
-      "characters": "Excellent quality! ★★★★★",
+      "characters": "Amazing quality! ★★★★★",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -217,7 +217,7 @@
       "name": "text-11",
       "width": 364,
       "height": 30,
-      "characters": "High-quality sound with active noise cancellation, 30-hour battery life, and premium comfort for all-day wear.",
+      "characters": "Experience premium sound quality with active noise cancellation, 30-hour battery life, and premium comfort design.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -365,7 +365,7 @@
     "badge-1": {
       "type": "FRAME",
       "name": "badge-1",
-      "width": 131,
+      "width": 134,
       "height": 23,
       "fills": [
         {
@@ -378,9 +378,9 @@
     "text-6": {
       "type": "TEXT",
       "name": "text-6",
-      "width": 115,
+      "width": 118,
       "height": 15,
-      "characters": "4.8★ (324 reviews)",
+      "characters": "4.8 ★ (324 reviews)",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

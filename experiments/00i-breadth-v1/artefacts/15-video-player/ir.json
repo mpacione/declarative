@@ -74,6 +74,24 @@
         "radius": "{radius.image}"
       }
     },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Video Title"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1.2M views \u2022 2 days ago"
+      }
+    },
     "card-1": {
       "type": "card",
       "layout": {
@@ -97,10 +115,12 @@
         "shadow": "{shadow.card}"
       },
       "children": [
-        "image-1"
+        "image-1",
+        "heading-1",
+        "text-2"
       ]
     },
-    "text-2": {
+    "text-3": {
       "type": "text",
       "props": {
         "text": "Progress"
@@ -138,18 +158,18 @@
       },
       "props": {
         "label": "Progress",
+        "value": 45,
         "min": 0,
-        "max": 100,
-        "value": 45
+        "max": 100
       },
       "style": {
         "radius": "{radius.default}"
       },
       "children": [
-        "text-2"
+        "text-3"
       ]
     },
-    "text-3": {
+    "text-4": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -182,7 +202,7 @@
       },
       "children": [
         "slider-1",
-        "text-3"
+        "text-4"
       ]
     },
     "icon_button-3": {
@@ -192,14 +212,59 @@
         "direction": "vertical"
       }
     },
-    "fab-1": {
-      "type": "fab",
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "Play"
+      },
       "layout": {
         "direction": "vertical"
       },
-      "props": {
-        "label": "Play"
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": "primary",
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.primary.fg}"
       }
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "top": "{space.button.padding_y}",
+          "bottom": "{space.button.padding_y}",
+          "left": "{space.button.padding_x}",
+          "right": "{space.button.padding_x}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Play"
+      },
+      "style": {
+        "fill": "{color.action.primary.bg}",
+        "fg": "{color.action.primary.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-5"
+      ]
     },
     "icon_button-4": {
       "type": "icon_button",
@@ -215,7 +280,7 @@
       },
       "children": [
         "icon_button-3",
-        "fab-1",
+        "button-1",
         "icon_button-4"
       ]
     },
@@ -243,61 +308,6 @@
       },
       "children": [
         "button_group-1"
-      ]
-    },
-    "heading-1": {
-      "type": "heading",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Video Title"
-      }
-    },
-    "text-4": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Channel Name"
-      }
-    },
-    "text-5": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "1.2M views \u2022 2 days ago"
-      }
-    },
-    "card-4": {
-      "type": "card",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.card.padding_y}",
-          "bottom": "{space.card.padding_y}",
-          "left": "{space.card.padding_x}",
-          "right": "{space.card.padding_x}"
-        },
-        "gap": "{space.card.gap}"
-      },
-      "style": {
-        "fill": "{color.surface.card}",
-        "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}",
-        "shadow": "{shadow.card}"
-      },
-      "children": [
-        "heading-1",
-        "text-4",
-        "text-5"
       ]
     },
     "heading-2": {
@@ -336,6 +346,15 @@
         "text": "Related Video Title 1"
       }
     },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "450K views"
+      }
+    },
     "list_item-1": {
       "type": "list_item",
       "layout": {
@@ -359,7 +378,8 @@
       },
       "children": [
         "image-2",
-        "text-6"
+        "text-6",
+        "text-7"
       ]
     },
     "image-3": {
@@ -380,13 +400,22 @@
         "radius": "{radius.image}"
       }
     },
-    "text-7": {
+    "text-8": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
         "text": "Related Video Title 2"
+      }
+    },
+    "text-9": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "320K views"
       }
     },
     "list_item-2": {
@@ -412,7 +441,8 @@
       },
       "children": [
         "image-3",
-        "text-7"
+        "text-8",
+        "text-9"
       ]
     },
     "image-4": {
@@ -433,13 +463,22 @@
         "radius": "{radius.image}"
       }
     },
-    "text-8": {
+    "text-10": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
         "text": "Related Video Title 3"
+      }
+    },
+    "text-11": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "890K views"
       }
     },
     "list_item-3": {
@@ -465,60 +504,8 @@
       },
       "children": [
         "image-4",
-        "text-8"
-      ]
-    },
-    "image-5": {
-      "type": "image",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "fixed"
-        },
-        "height_pixels": 160
-      },
-      "props": {
-        "alt": "Related video 4"
-      },
-      "style": {
-        "fill": "{color.surface.image_placeholder}",
-        "radius": "{radius.image}"
-      }
-    },
-    "text-9": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Related Video Title 4"
-      }
-    },
-    "list_item-4": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.list_item.padding_y}",
-          "bottom": "{space.list_item.padding_y}",
-          "left": "{space.list_item.padding_x}",
-          "right": "{space.list_item.padding_x}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "image-5",
-        "text-9"
+        "text-10",
+        "text-11"
       ]
     },
     "list-1": {
@@ -543,11 +530,10 @@
       "children": [
         "list_item-1",
         "list_item-2",
-        "list_item-3",
-        "list_item-4"
+        "list_item-3"
       ]
     },
-    "card-5": {
+    "card-4": {
       "type": "card",
       "layout": {
         "direction": "vertical",
@@ -598,8 +584,7 @@
         "card-1",
         "card-2",
         "card-3",
-        "card-4",
-        "card-5"
+        "card-4"
       ]
     }
   },
@@ -735,35 +720,34 @@
     "icon_button-2": -3,
     "header-1": -4,
     "image-1": -5,
-    "card-1": -6,
+    "heading-1": -6,
     "text-2": -7,
-    "slider-1": -8,
+    "card-1": -8,
     "text-3": -9,
-    "card-2": -10,
-    "icon_button-3": -11,
-    "fab-1": -12,
-    "icon_button-4": -13,
-    "button_group-1": -14,
-    "card-3": -15,
-    "heading-1": -16,
-    "text-4": -17,
-    "text-5": -18,
-    "card-4": -19,
-    "heading-2": -20,
-    "image-2": -21,
-    "text-6": -22,
+    "slider-1": -10,
+    "text-4": -11,
+    "card-2": -12,
+    "icon_button-3": -13,
+    "text-5": -14,
+    "button-1": -15,
+    "icon_button-4": -16,
+    "button_group-1": -17,
+    "card-3": -18,
+    "heading-2": -19,
+    "image-2": -20,
+    "text-6": -21,
+    "text-7": -22,
     "list_item-1": -23,
     "image-3": -24,
-    "text-7": -25,
-    "list_item-2": -26,
-    "image-4": -27,
-    "text-8": -28,
-    "list_item-3": -29,
-    "image-5": -30,
-    "text-9": -31,
-    "list_item-4": -32,
-    "list-1": -33,
-    "card-5": -34,
-    "screen-1": -35
+    "text-8": -25,
+    "text-9": -26,
+    "list_item-2": -27,
+    "image-4": -28,
+    "text-10": -29,
+    "text-11": -30,
+    "list_item-3": -31,
+    "list-1": -32,
+    "card-4": -33,
+    "screen-1": -34
   }
 }

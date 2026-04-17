@@ -23,7 +23,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail1.jpg",
+                  "src": "thumbnail-1.jpg",
                   "alt": "Photo 1"
                 }
               }
@@ -35,7 +35,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail2.jpg",
+                  "src": "thumbnail-2.jpg",
                   "alt": "Photo 2"
                 }
               }
@@ -47,7 +47,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail3.jpg",
+                  "src": "thumbnail-3.jpg",
                   "alt": "Photo 3"
                 }
               }
@@ -59,7 +59,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail4.jpg",
+                  "src": "thumbnail-4.jpg",
                   "alt": "Photo 4"
                 }
               }
@@ -71,7 +71,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail5.jpg",
+                  "src": "thumbnail-5.jpg",
                   "alt": "Photo 5"
                 }
               }
@@ -83,7 +83,7 @@
               {
                 "type": "image",
                 "props": {
-                  "src": "thumbnail6.jpg",
+                  "src": "thumbnail-6.jpg",
                   "alt": "Photo 6"
                 }
               }
@@ -95,14 +95,9 @@
   },
   {
     "type": "fab",
+    "component_key": "icon/new",
     "props": {
       "label": "Add photo"
-    },
-    "children": [
-      {
-        "type": "icon",
-        "component_key": "icon/new"
-      }
-    ]
+    }
   }
 ]

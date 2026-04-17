@@ -298,7 +298,7 @@ n18.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n18.clipsContent = false;
 M["list_item-6"] = n18.id;
 
-const n19 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon-1", kind:"missing_component_node", id:"5749:82234"}); return _missingComponentPlaceholder("icon-1", 24, 24, "icon-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon-1", kind:"create_instance_failed", id:"5749:82234", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon-1", 24, 24, "icon-1"); } })();
+const n19 = await (async () => { const __src = _p1; if (!__src) { __errors.push({eid:"icon-1", kind:"missing_component_node", id:"5749:82251"}); return _missingComponentPlaceholder("icon-1", 24, 24, "icon-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon-1", kind:"create_instance_failed", id:"5749:82251", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon-1", 24, 24, "icon-1"); } })();
 n19.name = "icon-1";
 M["icon-1"] = n19.id;
 
@@ -312,7 +312,7 @@ n21.name = "text-3";
 try { n21.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 M["text-3"] = n21.id;
 
-const n22 = await (async () => { const __src = _p1; if (!__src) { __errors.push({eid:"icon-2", kind:"missing_component_node", id:"5749:82251"}); return _missingComponentPlaceholder("icon-2", 24, 24, "icon-2"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon-2", kind:"create_instance_failed", id:"5749:82251", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon-2", 24, 24, "icon-2"); } })();
+const n22 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon-2", kind:"missing_component_node", id:"5749:82234"}); return _missingComponentPlaceholder("icon-2", 24, 24, "icon-2"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon-2", kind:"create_instance_failed", id:"5749:82234", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon-2", 24, 24, "icon-2"); } })();
 n22.name = "icon-2";
 M["icon-2"] = n22.id;
 
@@ -440,28 +440,28 @@ n18.layoutSizingHorizontal = "FILL";
 n18.layoutSizingVertical = "HUG";
 n13.appendChild(n19);
 n13.appendChild(n20);
-try { n20.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n20.characters = "Payment successful"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.layoutSizingHorizontal = "FILL";
 n13.appendChild(n21);
 try { n21.characters = "2 minutes ago"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n14.appendChild(n22);
 n14.appendChild(n23);
-try { n23.characters = "Order confirmed"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n23.characters = "New transaction"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n23.layoutSizingHorizontal = "FILL";
 n14.appendChild(n24);
 try { n24.characters = "15 minutes ago"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n24.layoutSizingHorizontal = "FILL";
 n15.appendChild(n25);
 n15.appendChild(n26);
-try { n26.characters = "New message from Sarah"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n26.characters = "New message from support"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n26.layoutSizingHorizontal = "FILL";
 n15.appendChild(n27);
 try { n27.characters = "1 hour ago"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n27.layoutSizingHorizontal = "FILL";
 n16.appendChild(n28);
 n16.appendChild(n29);
-try { n29.characters = "Item removed from cart"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n29.characters = "Account update"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n29.layoutSizingHorizontal = "FILL";
 n16.appendChild(n30);
 try { n30.characters = "Yesterday at 3:45 PM"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -471,7 +471,7 @@ n17.appendChild(n32);
 try { n32.characters = "Subscription renewed"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n32.layoutSizingHorizontal = "FILL";
 n17.appendChild(n33);
-try { n33.characters = "Yesterday at 9:30 AM"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n33.characters = "Yesterday at 10:20 AM"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n33.layoutSizingHorizontal = "FILL";
 n18.appendChild(n34);
 n18.appendChild(n35);

@@ -108,7 +108,7 @@
     "button-1": {
       "type": "button",
       "variant": "primary",
-      "component_key": "button/large/translucent",
+      "component_key": "button/large/solid",
       "layout": {
         "direction": "vertical",
         "sizing": {

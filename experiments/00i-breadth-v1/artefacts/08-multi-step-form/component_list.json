@@ -20,20 +20,43 @@
       {
         "type": "heading",
         "props": {
-          "text": "Step 1 of 3: Personal Information"
+          "text": "Progress"
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "Tell us about yourself"
-        }
+        "type": "pagination",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "1"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "2"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "3"
+            }
+          }
+        ]
       }
     ]
   },
   {
     "type": "card",
     "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Personal Information"
+        }
+      },
       {
         "type": "text_input",
         "props": {
@@ -57,36 +80,18 @@
     ]
   },
   {
-    "type": "card",
-    "children": [
-      {
-        "type": "text",
-        "props": {
-          "text": "Progress"
-        }
-      },
-      {
-        "type": "slider",
-        "props": {
-          "value": 33,
-          "disabled": true
-        }
-      }
-    ]
-  },
-  {
     "type": "button_group",
     "children": [
       {
         "type": "button",
-        "component_key": "button/large/translucent",
+        "component_key": "button/small/translucent",
         "props": {
           "text": "Back"
         }
       },
       {
         "type": "button",
-        "component_key": "button/large/translucent",
+        "component_key": "button/small/solid",
         "props": {
           "text": "Next"
         }

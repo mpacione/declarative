@@ -293,7 +293,7 @@
     "text-6": {
       "type": "text",
       "props": {
-        "text": "4.8\u2605 (324 reviews)"
+        "text": "4.8 \u2605 (324 reviews)"
       },
       "layout": {
         "direction": "vertical"
@@ -330,7 +330,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "4.8\u2605 (324 reviews)"
+        "text": "4.8 \u2605 (324 reviews)"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -468,7 +468,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "High-quality sound with active noise cancellation, 30-hour battery life, and premium comfort for all-day wear."
+        "text": "Experience premium sound quality with active noise cancellation, 30-hour battery life, and premium comfort design."
       }
     },
     "card-4": {
@@ -527,7 +527,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Excellent quality! \u2605\u2605\u2605\u2605\u2605"
+        "text": "Amazing quality! \u2605\u2605\u2605\u2605\u2605"
       }
     },
     "text-13": {
@@ -536,7 +536,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Best headphones I've ever owned. Sound quality is amazing."
+        "text": "Great sound and very comfortable to wear."
       }
     },
     "list_item-1": {
@@ -571,7 +571,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Great value \u2605\u2605\u2605\u2605\u2606"
+        "text": "Good value \u2605\u2605\u2605\u2605"
       }
     },
     "text-15": {
@@ -580,7 +580,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Very comfortable and good battery life. Highly recommend."
+        "text": "Battery life is excellent as advertised."
       }
     },
     "list_item-2": {
@@ -615,7 +615,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Perfect! \u2605\u2605\u2605\u2605\u2605"
+        "text": "Solid purchase \u2605\u2605\u2605\u2605\u2605"
       }
     },
     "text-17": {
@@ -624,7 +624,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Noise cancellation works great. Worth every penny."
+        "text": "Noise cancellation works perfectly."
       }
     },
     "list_item-3": {

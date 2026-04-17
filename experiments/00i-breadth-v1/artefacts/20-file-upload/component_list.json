@@ -93,20 +93,20 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "presentation.pptx"
+                  "text": "video.mp4"
                 }
               },
               {
                 "type": "slider",
                 "props": {
-                  "value": 0,
+                  "value": 72,
                   "disabled": true
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Pending"
+                  "text": "72%"
                 }
               }
             ]

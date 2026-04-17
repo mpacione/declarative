@@ -1413,6 +1413,32 @@ def generate_figma_script(
         if resolved_parent_eid is None or resolved_parent_eid not in var_map or resolved_parent_eid in mode1_eids:
             continue
 
+        # Guard against LEAF_TYPE_APPEND: Mode 3 composition can produce
+        # parent-child pairs where the parent is a Figma leaf (TEXT, LINE,
+        # RECTANGLE, etc.) that has no `.appendChild` method. Emitting
+        # `parent.appendChild(child)` then throws "not a function" which
+        # aborts the whole Phase 2 before `_rootPage.appendChild(n0)` lands,
+        # ORPHANING the entire tree and making walk_ref see only the root.
+        # Observed on 00i breadth test: 12-signup-form + 13-password-reset +
+        # 14-2fa-verify all flip to rule-gate broken via this path, and the
+        # empty-text_input visual defect is downstream (orphaned tree).
+        # Fix: skip the append silently and record a diagnostic so the
+        # caller can audit. The round-trip path never hits this because its
+        # IR is DB-extracted where leaf types don't have children.
+        parent_etype = spec.get("elements", {}).get(resolved_parent_eid, {}).get("type", "")
+        if parent_etype in _LEAF_TYPES:
+            phase2_lines.append(
+                f'// leaf_type_append skipped: parent={resolved_parent_eid!r} '
+                f'({parent_etype!r}) cannot accept child {eid!r} ({etype!r})'
+            )
+            phase2_lines.append(
+                f'__errors.push({{kind:"leaf_type_append_skipped", '
+                f'parent_eid:"{_escape_js(resolved_parent_eid)}", '
+                f'parent_type:"{parent_etype}", child_eid:"{_escape_js(eid)}", '
+                f'child_type:"{etype}"}});'
+            )
+            continue
+
         parent_var = var_map[resolved_parent_eid]
         phase2_lines.append(f"{parent_var}.appendChild({var});")
 

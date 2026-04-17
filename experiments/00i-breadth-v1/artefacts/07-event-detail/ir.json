@@ -215,7 +215,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Join us for an unforgettable evening of live music featuring local and international artists. Enjoy food trucks, craft beverages, and a vibrant community atmosphere under the stars."
+        "text": "Join us for an unforgettable evening of live music featuring local and international artists. Bring your friends and family for a night of great entertainment, food, and fun under the stars."
       }
     },
     "card-2": {
@@ -260,7 +260,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "245 people attending"
+        "text": "42 people attending"
       }
     },
     "avatar-1": {
@@ -292,7 +292,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Jane Doe"
+        "text": "John Doe"
       }
     },
     "list_item-3": {
@@ -336,7 +336,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "MS"
+        "initials": "SM"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -350,7 +350,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Mike Smith"
+        "text": "Sarah Miller"
       }
     },
     "list_item-4": {
@@ -394,7 +394,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "AR"
+        "initials": "MC"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -408,7 +408,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Alex Rodriguez"
+        "text": "Michael Chen"
       }
     },
     "list_item-5": {
@@ -498,7 +498,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "RSVP Going"
+        "text": "Going"
       }
     },
     "button-2": {

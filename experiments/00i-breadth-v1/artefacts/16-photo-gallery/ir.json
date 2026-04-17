@@ -52,7 +52,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail1.jpg",
+        "src": "thumbnail-1.jpg",
         "alt": "Photo 1"
       },
       "style": {
@@ -96,7 +96,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail2.jpg",
+        "src": "thumbnail-2.jpg",
         "alt": "Photo 2"
       },
       "style": {
@@ -140,7 +140,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail3.jpg",
+        "src": "thumbnail-3.jpg",
         "alt": "Photo 3"
       },
       "style": {
@@ -184,7 +184,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail4.jpg",
+        "src": "thumbnail-4.jpg",
         "alt": "Photo 4"
       },
       "style": {
@@ -228,7 +228,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail5.jpg",
+        "src": "thumbnail-5.jpg",
         "alt": "Photo 5"
       },
       "style": {
@@ -272,7 +272,7 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "thumbnail6.jpg",
+        "src": "thumbnail-6.jpg",
         "alt": "Photo 6"
       },
       "style": {
@@ -359,15 +359,9 @@
         "list-1"
       ]
     },
-    "icon-1": {
-      "type": "icon",
-      "component_key": "icon/new",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
     "fab-1": {
       "type": "fab",
+      "component_key": "icon/new",
       "layout": {
         "direction": "vertical",
         "sizing": {
@@ -376,10 +370,7 @@
       },
       "props": {
         "label": "Add photo"
-      },
-      "children": [
-        "icon-1"
-      ]
+      }
     },
     "screen-1": {
       "type": "screen",
@@ -550,8 +541,7 @@
     "list_item-6": -14,
     "list-1": -15,
     "card-1": -16,
-    "icon-1": -17,
-    "fab-1": -18,
-    "screen-1": -19
+    "fab-1": -17,
+    "screen-1": -18
   }
 }

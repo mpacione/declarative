@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:48539",
+  "rendered_root": "5789:50535",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,7 +20,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 720,
+      "height": 755,
       "fills": [
         {
           "type": "solid",
@@ -39,7 +39,7 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 364,
-      "height": 688,
+      "height": 723,
       "effectCount": 0
     },
     "list_item-10": {
@@ -55,9 +55,9 @@
       ],
       "effectCount": 0
     },
-    "text-16": {
+    "text-17": {
       "type": "TEXT",
-      "name": "text-16",
+      "name": "text-17",
       "width": 308,
       "height": 15,
       "characters": "5:00 PM",
@@ -74,11 +74,39 @@
       "type": "FRAME",
       "name": "list_item-9",
       "width": 340,
-      "height": 39,
+      "height": 74,
       "fills": [
         {
           "type": "solid",
           "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-7": {
+      "type": "FRAME",
+      "name": "badge-7",
+      "width": 76,
+      "height": 23,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-16": {
+      "type": "TEXT",
+      "name": "text-16",
+      "width": 60,
+      "height": 15,
+      "characters": "Client Call",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
         }
       ],
       "effectCount": 0

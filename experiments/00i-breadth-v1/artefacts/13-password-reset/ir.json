@@ -219,48 +219,18 @@
         "text-5"
       ]
     },
-    "text-6": {
-      "type": "text",
-      "props": {
-        "text": "Back to login"
-      },
-      "layout": {
-        "direction": "vertical"
-      },
-      "_synthesised_from": {
-        "parent_type": "link",
-        "parent_variant": null,
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.body.fontFamily}",
-        "fontSize": "{typography.body.fontSize}",
-        "fontWeight": "{typography.body.fontWeight}",
-        "fill": "{color.text.link}"
-      }
-    },
-    "link-1": {
-      "type": "link",
+    "button-2": {
+      "type": "button",
+      "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "hug",
-          "height": "hug"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
+          "width": "fill"
+        }
       },
       "props": {
-        "text": "Back to login"
-      },
-      "style": {
-        "fill": null,
-        "fg": "{color.text.link}"
-      },
-      "children": [
-        "text-6"
-      ]
+        "text": "Back to Login"
+      }
     },
     "screen-1": {
       "type": "screen",
@@ -285,7 +255,7 @@
         "header-1",
         "card-1",
         "button-1",
-        "link-1"
+        "button-2"
       ]
     }
   },
@@ -427,8 +397,7 @@
     "card-1": -9,
     "text-5": -10,
     "button-1": -11,
-    "text-6": -12,
-    "link-1": -13,
-    "screen-1": -14
+    "button-2": -12,
+    "screen-1": -13
   }
 }

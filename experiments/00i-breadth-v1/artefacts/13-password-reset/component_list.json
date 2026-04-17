@@ -46,9 +46,10 @@
     }
   },
   {
-    "type": "link",
+    "type": "button",
+    "component_key": "button/large/translucent",
     "props": {
-      "text": "Back to login"
+      "text": "Back to Login"
     }
   }
 ]

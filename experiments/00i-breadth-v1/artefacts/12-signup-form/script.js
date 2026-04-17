@@ -263,9 +263,8 @@ n11.layoutSizingVertical = "HUG";
 n3.appendChild(n12);
 try { n12.characters = "Sign Up"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n12.layoutSizingHorizontal = "FILL";
-n5.appendChild(n13);
-try { n13.characters = "Log in"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n13.layoutSizingHorizontal = "FILL";
+// leaf_type_append skipped: parent='link-1' ('link') cannot accept child 'text-13' ('text')
+__errors.push({kind:"leaf_type_append_skipped", parent_eid:"link-1", parent_type:"link", child_eid:"text-13", child_type:"text"});
 n7.appendChild(n14);
 try { n14.characters = "Full Name"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";

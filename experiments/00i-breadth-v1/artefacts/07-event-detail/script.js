@@ -410,13 +410,13 @@ n3.appendChild(n11);
 try { n11.characters = "About"; } catch (__e) { __errors.push({eid:"heading-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.layoutSizingHorizontal = "FILL";
 n3.appendChild(n12);
-try { n12.characters = "Join us for an unforgettable evening of live music featuring local and international artists. Enjoy food trucks, craft beverages, and a vibrant community atmosphere under the stars."; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n12.characters = "Join us for an unforgettable evening of live music featuring local and international artists. Bring your friends and family for a night of great entertainment, food, and fun under the stars."; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n12.layoutSizingHorizontal = "FILL";
 n4.appendChild(n13);
 try { n13.characters = "Attendees"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.layoutSizingHorizontal = "FILL";
 n4.appendChild(n14);
-try { n14.characters = "245 people attending"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "42 people attending"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n4.appendChild(n15);
 n15.layoutSizingHorizontal = "FILL";
@@ -451,19 +451,19 @@ n21.appendChild(n28);
 n28.layoutSizingHorizontal = "FIXED";
 n28.layoutSizingVertical = "FIXED";
 n21.appendChild(n29);
-try { n29.characters = "Jane Doe"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n29.characters = "John Doe"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n29.layoutSizingHorizontal = "FILL";
 n22.appendChild(n30);
 n30.layoutSizingHorizontal = "FIXED";
 n30.layoutSizingVertical = "FIXED";
 n22.appendChild(n31);
-try { n31.characters = "Mike Smith"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n31.characters = "Sarah Miller"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n31.layoutSizingHorizontal = "FILL";
 n23.appendChild(n32);
 n32.layoutSizingHorizontal = "FIXED";
 n32.layoutSizingVertical = "FIXED";
 n23.appendChild(n33);
-try { n33.characters = "Alex Rodriguez"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n33.characters = "Michael Chen"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n33.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:49189",
+  "rendered_root": "5789:51203",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -17,16 +17,9 @@
       "effectCount": 0
     },
     "fab-1": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "fab-1",
       "width": 396,
-      "height": 20,
-      "effectCount": 0
-    },
-    "icon-1": {
-      "type": "INSTANCE",
-      "name": "icon-1",
-      "width": 20,
       "height": 20,
       "effectCount": 0
     },

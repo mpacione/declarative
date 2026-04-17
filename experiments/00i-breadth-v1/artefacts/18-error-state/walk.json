@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:49275",
+  "rendered_root": "5789:51282",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -17,16 +17,10 @@
       "effectCount": 0
     },
     "button-1": {
-      "type": "INSTANCE",
+      "type": "FRAME",
       "name": "button-1",
       "width": 396,
-      "height": 52,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
+      "height": 100,
       "effectCount": 0
     },
     "card-1": {

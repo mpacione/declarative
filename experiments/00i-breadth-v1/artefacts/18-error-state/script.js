@@ -75,7 +75,6 @@ function _missingComponentPlaceholder(name, w, h, eid) {
 function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }
 // Pre-fetch component nodes (deduplicated, null-safe)
 const _p0 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82260"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82260", error: String(__e && __e.message || __e)}); return null; } })();
-const _p1 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82457"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82457", error: String(__e && __e.message || __e)}); return null; } })();
 
 
 try {
@@ -124,9 +123,11 @@ n2.cornerRadius = 12;
 n2.clipsContent = false;
 M["card-1"] = n2.id;
 
-const n3 = await (async () => { const __src = _p1; if (!__src) { __errors.push({eid:"button-1", kind:"missing_component_node", id:"5749:82457"}); return _missingComponentPlaceholder("button-1", 24, 24, "button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"button-1", kind:"create_instance_failed", id:"5749:82457", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("button-1", 24, 24, "button-1"); } })();
+const n3 = figma.createFrame();
 n3.name = "button-1";
-{ const _t = n3.findOne(n => n.type === "TEXT" && /^(title|label|heading)$/i.test(n.name)) || n3.findOne(n => n.type === "TEXT"); if (_t) { await figma.loadFontAsync(_t.fontName); _t.characters = "Retry"; } }
+n3.layoutMode = "VERTICAL";
+n3.fills = [];
+n3.clipsContent = false;
 M["button-1"] = n3.id;
 
 const n4 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon_button-1", kind:"missing_component_node", id:"5749:82260"}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon_button-1", kind:"create_instance_failed", id:"5749:82260", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } })();

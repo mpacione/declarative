@@ -640,6 +640,58 @@
         "text": "4:00 PM"
       }
     },
+    "text-16": {
+      "type": "text",
+      "props": {
+        "text": "Client Call"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-7": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Client Call",
+        "variant": "tertiary"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-16"
+      ]
+    },
     "list_item-9": {
       "type": "list_item",
       "layout": {
@@ -662,10 +714,11 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-15"
+        "text-15",
+        "badge-7"
       ]
     },
-    "text-16": {
+    "text-17": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -696,7 +749,7 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-16"
+        "text-17"
       ]
     },
     "list-1": {
@@ -940,11 +993,13 @@
     "badge-6": -29,
     "list_item-8": -30,
     "text-15": -31,
-    "list_item-9": -32,
-    "text-16": -33,
-    "list_item-10": -34,
-    "list-1": -35,
-    "card-1": -36,
-    "screen-1": -37
+    "text-16": -32,
+    "badge-7": -33,
+    "list_item-9": -34,
+    "text-17": -35,
+    "list_item-10": -36,
+    "list-1": -37,
+    "card-1": -38,
+    "screen-1": -39
   }
 }

@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:48842",
+  "rendered_root": "5789:50848",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -151,7 +151,7 @@
       "name": "text-11",
       "width": 308,
       "height": 15,
-      "characters": "Yesterday at 9:30 AM",
+      "characters": "Yesterday at 10:20 AM",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -216,7 +216,7 @@
       "name": "text-8",
       "width": 308,
       "height": 15,
-      "characters": "Item removed from cart",
+      "characters": "Account update",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -307,7 +307,7 @@
       "name": "text-6",
       "width": 308,
       "height": 15,
-      "characters": "New message from Sarah",
+      "characters": "New message from support",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -357,7 +357,7 @@
       "name": "text-4",
       "width": 308,
       "height": 15,
-      "characters": "Order confirmed",
+      "characters": "New transaction",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -407,7 +407,7 @@
       "name": "text-2",
       "width": 308,
       "height": 15,
-      "characters": "Payment received",
+      "characters": "Payment successful",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

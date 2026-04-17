@@ -2,12 +2,14 @@
   "__ok": true,
   "errors": [
     {
-      "kind": "render_thrown",
-      "error": "not a function",
-      "stack": "    at <anonymous> (<input>:282:15) | "
+      "kind": "leaf_type_append_skipped",
+      "parent_eid": "link-1",
+      "parent_type": "link",
+      "child_eid": "text-13",
+      "child_type": "text"
     }
   ],
-  "rendered_root": "5786:49005",
+  "rendered_root": "5789:51011",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -84,7 +86,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 372,
+      "height": 337,
       "fills": [
         {
           "type": "solid",
@@ -102,8 +104,8 @@
     "checkbox-1": {
       "type": "FRAME",
       "name": "checkbox-1",
-      "width": 100,
-      "height": 100,
+      "width": 237,
+      "height": 17,
       "fills": [
         {
           "type": "solid",
@@ -118,11 +120,26 @@
       ],
       "effectCount": 0
     },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 237,
+      "height": 17,
+      "characters": "I agree to the Terms and Conditions",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
     "text_input-4": {
       "type": "FRAME",
       "name": "text_input-4",
       "width": 364,
-      "height": 48,
+      "height": 60,
       "fills": [
         {
           "type": "solid",
@@ -133,6 +150,36 @@
         {
           "type": "solid",
           "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 340,
+      "height": 17,
+      "characters": "Confirm your password",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 340,
+      "height": 17,
+      "characters": "Confirm Password",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -141,7 +188,7 @@
       "type": "FRAME",
       "name": "text_input-3",
       "width": 364,
-      "height": 48,
+      "height": 60,
       "fills": [
         {
           "type": "solid",
@@ -152,6 +199,36 @@
         {
           "type": "solid",
           "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 340,
+      "height": 17,
+      "characters": "Enter a password",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 340,
+      "height": 17,
+      "characters": "Password",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -160,7 +237,7 @@
       "type": "FRAME",
       "name": "text_input-2",
       "width": 364,
-      "height": 48,
+      "height": 60,
       "fills": [
         {
           "type": "solid",
@@ -175,11 +252,41 @@
       ],
       "effectCount": 0
     },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 340,
+      "height": 17,
+      "characters": "Enter your email address",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 340,
+      "height": 17,
+      "characters": "Email",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
     "text_input-1": {
       "type": "FRAME",
       "name": "text_input-1",
       "width": 364,
-      "height": 48,
+      "height": 60,
       "fills": [
         {
           "type": "solid",
@@ -190,6 +297,36 @@
         {
           "type": "solid",
           "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 340,
+      "height": 17,
+      "characters": "Enter your full name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 340,
+      "height": 17,
+      "characters": "Full Name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
         }
       ],
       "effectCount": 0

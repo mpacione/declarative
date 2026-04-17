@@ -141,7 +141,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Unlimited"
+        "text": "5"
       }
     },
     "text-11": {
@@ -439,7 +439,16 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Free \u2014 $0/month"
+        "text": "Free"
+      }
+    },
+    "text-23": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$0/month"
       }
     },
     "list_item-1": {
@@ -464,16 +473,26 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-22"
+        "text-22",
+        "text-23"
       ]
     },
-    "text-23": {
+    "text-24": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Pro \u2014 $29/month"
+        "text": "Pro"
+      }
+    },
+    "text-25": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$29/month"
       }
     },
     "list_item-2": {
@@ -498,16 +517,26 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-23"
+        "text-24",
+        "text-25"
       ]
     },
-    "text-24": {
+    "text-26": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Team \u2014 $99/month"
+        "text": "Team"
+      }
+    },
+    "text-27": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$99/month"
       }
     },
     "list_item-3": {
@@ -532,16 +561,26 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-24"
+        "text-26",
+        "text-27"
       ]
     },
-    "text-25": {
+    "text-28": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Enterprise \u2014 Custom pricing"
+        "text": "Enterprise"
+      }
+    },
+    "text-29": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Custom"
       }
     },
     "list_item-4": {
@@ -566,7 +605,8 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-25"
+        "text-28",
+        "text-29"
       ]
     },
     "list-1": {
@@ -624,17 +664,36 @@
     },
     "button-1": {
       "type": "button",
-      "variant": "primary",
       "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Get Started"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Contact Sales"
+      }
+    },
+    "button_group-1": {
+      "type": "button_group",
       "layout": {
         "direction": "vertical",
         "sizing": {
           "width": "fill"
         }
       },
-      "props": {
-        "text": "Get Started"
-      }
+      "children": [
+        "button-1",
+        "button-2"
+      ]
     },
     "screen-1": {
       "type": "screen",
@@ -661,7 +720,7 @@
         "text-2",
         "card-1",
         "card-2",
-        "button-1"
+        "button_group-1"
       ]
     }
   },
@@ -836,16 +895,22 @@
     "card-1": -42,
     "heading-2": -43,
     "text-22": -44,
-    "list_item-1": -45,
-    "text-23": -46,
-    "list_item-2": -47,
-    "text-24": -48,
-    "list_item-3": -49,
-    "text-25": -50,
-    "list_item-4": -51,
-    "list-1": -52,
-    "card-2": -53,
-    "button-1": -54,
-    "screen-1": -55
+    "text-23": -45,
+    "list_item-1": -46,
+    "text-24": -47,
+    "text-25": -48,
+    "list_item-2": -49,
+    "text-26": -50,
+    "text-27": -51,
+    "list_item-3": -52,
+    "text-28": -53,
+    "text-29": -54,
+    "list_item-4": -55,
+    "list-1": -56,
+    "card-2": -57,
+    "button-1": -58,
+    "button-2": -59,
+    "button_group-1": -60,
+    "screen-1": -61
   }
 }

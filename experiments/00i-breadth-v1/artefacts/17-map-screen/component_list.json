@@ -36,12 +36,15 @@
             "type": "list_item",
             "children": [
               {
-                "type": "avatar"
+                "type": "text",
+                "props": {
+                  "text": "Downtown Coffee Shop"
+                }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Downtown Coffee Shop"
+                  "text": "0.5 km away"
                 }
               },
               {
@@ -53,9 +56,6 @@
           {
             "type": "list_item",
             "children": [
-              {
-                "type": "avatar"
-              },
               {
                 "type": "text",
                 "props": {
@@ -63,6 +63,12 @@
                 }
               },
               {
+                "type": "text",
+                "props": {
+                  "text": "1.2 km away"
+                }
+              },
+              {
                 "type": "icon",
                 "component_key": "icon/chevron-down"
               }
@@ -72,12 +78,15 @@
             "type": "list_item",
             "children": [
               {
-                "type": "avatar"
+                "type": "text",
+                "props": {
+                  "text": "Main Street Market"
+                }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "City Library"
+                  "text": "1.8 km away"
                 }
               },
               {

@@ -77,7 +77,7 @@
           {
             "type": "text",
             "props": {
-              "text": "Unlimited"
+              "text": "5"
             }
           },
           {
@@ -232,7 +232,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Free \u2014 $0/month"
+                  "text": "Free"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "$0/month"
                 }
               }
             ]
@@ -243,7 +249,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Pro \u2014 $29/month"
+                  "text": "Pro"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "$29/month"
                 }
               }
             ]
@@ -254,7 +266,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Team \u2014 $99/month"
+                  "text": "Team"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "$99/month"
                 }
               }
             ]
@@ -265,7 +283,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Enterprise \u2014 Custom pricing"
+                  "text": "Enterprise"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Custom"
                 }
               }
             ]
@@ -275,11 +299,22 @@
     ]
   },
   {
-    "type": "button",
-    "variant": "primary",
-    "component_key": "button/large/translucent",
-    "props": {
-      "text": "Get Started"
-    }
+    "type": "button_group",
+    "children": [
+      {
+        "type": "button",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Get Started"
+        }
+      },
+      {
+        "type": "button",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Contact Sales"
+        }
+      }
+    ]
   }
 ]

@@ -1,19 +1,21 @@
 {
   "returncode": 0,
-  "latency_ms": 157,
+  "latency_ms": 139,
   "timeout": false,
-  "stdout": "[script.js] OK in 103ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776451409667\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":4,\"after\":6,\"moved\":0,\"errors\":[{\"kind\":\"render_thrown\",\"error\":\"not a function\",\"stack\":\"    at <anonymous> (<input>:280:16) | \"}]}}}\n",
+  "stdout": "[script.js] OK in 93ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776452913890\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":1,\"after\":3,\"moved\":0,\"errors\":[{\"kind\":\"leaf_type_append_skipped\",\"parent_eid\":\"link-1\",\"parent_type\":\"link\",\"child_eid\":\"text-6\",\"child_type\":\"text\"}]}}}\n",
   "stderr": "",
   "parsed": {
     "__ok": true,
-    "before": 4,
-    "after": 6,
+    "before": 1,
+    "after": 3,
     "moved": 0,
     "errors": [
       {
-        "kind": "render_thrown",
-        "error": "not a function",
-        "stack": "    at <anonymous> (<input>:280:16) | "
+        "kind": "leaf_type_append_skipped",
+        "parent_eid": "link-1",
+        "parent_type": "link",
+        "child_eid": "text-6",
+        "child_type": "text"
       }
     ]
   }

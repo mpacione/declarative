@@ -20,7 +20,7 @@
       {
         "type": "heading",
         "props": {
-          "text": "Enter Verification Code"
+          "text": "Enter verification code"
         }
       },
       {
@@ -39,7 +39,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Didn't receive the code? "
+          "text": "Didn't receive a code? "
         }
       },
       {

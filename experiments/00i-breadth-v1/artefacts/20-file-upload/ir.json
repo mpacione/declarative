@@ -238,7 +238,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "presentation.pptx"
+        "text": "video.mp4"
       }
     },
     "slider-3": {
@@ -258,7 +258,7 @@
         "gap": "{space.generic.gap}"
       },
       "props": {
-        "value": 0,
+        "value": 72,
         "disabled": true
       },
       "style": {
@@ -271,7 +271,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Pending"
+        "text": "72%"
       }
     },
     "list_item-3": {

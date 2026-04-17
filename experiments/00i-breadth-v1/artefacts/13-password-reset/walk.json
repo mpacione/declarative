@@ -1,13 +1,7 @@
 {
   "__ok": true,
-  "errors": [
-    {
-      "kind": "render_thrown",
-      "error": "not a function",
-      "stack": "    at <anonymous> (<input>:257:15) | "
-    }
-  ],
-  "rendered_root": "5786:49043",
+  "errors": [],
+  "rendered_root": "5789:51054",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -22,13 +16,11 @@
       ],
       "effectCount": 0
     },
-    "link-1": {
-      "type": "TEXT",
-      "name": "link-1",
-      "width": 74,
-      "height": 15,
-      "characters": "Back to login",
-      "textAutoResize": "WIDTH_AND_HEIGHT",
+    "button-2": {
+      "type": "INSTANCE",
+      "name": "button-2",
+      "width": 396,
+      "height": 52,
       "fills": [
         {
           "type": "solid",
@@ -69,7 +61,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 149,
+      "height": 161,
       "fills": [
         {
           "type": "solid",
@@ -88,7 +80,7 @@
       "type": "FRAME",
       "name": "text_input-1",
       "width": 364,
-      "height": 48,
+      "height": 60,
       "fills": [
         {
           "type": "solid",
@@ -99,6 +91,36 @@
         {
           "type": "solid",
           "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 340,
+      "height": 17,
+      "characters": "you@example.com",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 340,
+      "height": 17,
+      "characters": "Email address",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
         }
       ],
       "effectCount": 0

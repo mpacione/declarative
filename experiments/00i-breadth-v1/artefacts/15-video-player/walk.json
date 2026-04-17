@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:49129",
+  "rendered_root": "5789:51145",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,11 +16,11 @@
       ],
       "effectCount": 0
     },
-    "card-5": {
+    "card-4": {
       "type": "FRAME",
-      "name": "card-5",
+      "name": "card-4",
       "width": 396,
-      "height": 703,
+      "height": 625,
       "fills": [
         {
           "type": "solid",
@@ -39,14 +39,14 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 364,
-      "height": 644,
+      "height": 566,
       "effectCount": 0
     },
-    "list_item-4": {
+    "list_item-3": {
       "type": "FRAME",
-      "name": "list_item-4",
+      "name": "list_item-3",
       "width": 340,
-      "height": 151,
+      "height": 178,
       "fills": [
         {
           "type": "solid",
@@ -55,12 +55,12 @@
       ],
       "effectCount": 0
     },
-    "text-9": {
+    "text-11": {
       "type": "TEXT",
-      "name": "text-9",
+      "name": "text-11",
       "width": 308,
       "height": 15,
-      "characters": "Related Video Title 4",
+      "characters": "890K views",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -70,35 +70,9 @@
       ],
       "effectCount": 0
     },
-    "image-5": {
-      "type": "FRAME",
-      "name": "image-5",
-      "width": 308,
-      "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-3": {
-      "type": "FRAME",
-      "name": "list_item-3",
-      "width": 340,
-      "height": 151,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-8": {
+    "text-10": {
       "type": "TEXT",
-      "name": "text-8",
+      "name": "text-10",
       "width": 308,
       "height": 15,
       "characters": "Related Video Title 3",
@@ -128,7 +102,7 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 340,
-      "height": 151,
+      "height": 178,
       "fills": [
         {
           "type": "solid",
@@ -137,9 +111,24 @@
       ],
       "effectCount": 0
     },
-    "text-7": {
+    "text-9": {
       "type": "TEXT",
-      "name": "text-7",
+      "name": "text-9",
+      "width": 308,
+      "height": 15,
+      "characters": "320K views",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
       "width": 308,
       "height": 15,
       "characters": "Related Video Title 2",
@@ -169,11 +158,26 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 340,
-      "height": 151,
+      "height": 178,
       "fills": [
         {
           "type": "solid",
           "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 308,
+      "height": 15,
+      "characters": "450K views",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -221,75 +225,11 @@
       ],
       "effectCount": 0
     },
-    "card-4": {
-      "type": "FRAME",
-      "name": "card-4",
-      "width": 396,
-      "height": 101,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
-    },
-    "text-5": {
-      "type": "TEXT",
-      "name": "text-5",
-      "width": 364,
-      "height": 15,
-      "characters": "1.2M views • 2 days ago",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-4": {
-      "type": "TEXT",
-      "name": "text-4",
-      "width": 364,
-      "height": 15,
-      "characters": "Channel Name",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-1": {
-      "type": "TEXT",
-      "name": "heading-1",
-      "width": 364,
-      "height": 15,
-      "characters": "Video Title",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 172,
+      "height": 116,
       "fills": [
         {
           "type": "solid",
@@ -308,7 +248,7 @@
       "type": "FRAME",
       "name": "button_group-1",
       "width": 100,
-      "height": 140,
+      "height": 84,
       "effectCount": 0
     },
     "icon_button-4": {
@@ -318,11 +258,32 @@
       "height": 20,
       "effectCount": 0
     },
-    "fab-1": {
+    "button-1": {
       "type": "FRAME",
-      "name": "fab-1",
-      "width": 100,
-      "height": 100,
+      "name": "button-1",
+      "width": 61,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 29,
+      "height": 17,
+      "characters": "Play",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-3": {
@@ -351,9 +312,9 @@
       ],
       "effectCount": 1
     },
-    "text-3": {
+    "text-4": {
       "type": "TEXT",
-      "name": "text-3",
+      "name": "text-4",
       "width": 364,
       "height": 15,
       "characters": "2:15 / 5:00",
@@ -373,9 +334,9 @@
       "height": 33,
       "effectCount": 0
     },
-    "text-2": {
+    "text-3": {
       "type": "TEXT",
-      "name": "text-2",
+      "name": "text-3",
       "width": 340,
       "height": 17,
       "characters": "Progress",
@@ -392,7 +353,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 132,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -406,6 +367,36 @@
         }
       ],
       "effectCount": 1
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 364,
+      "height": 15,
+      "characters": "1.2M views • 2 days ago",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Video Title",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
     },
     "image-1": {
       "type": "FRAME",

@@ -483,7 +483,7 @@ try { n27.characters = "11:15 AM"; } catch (__e) { __errors.push({eid:"text-6", 
 n27.layoutSizingHorizontal = "FILL";
 n15.appendChild(n28);
 n15.appendChild(n29);
-try { n29.characters = "Item deleted"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n29.characters = "File deleted"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n29.layoutSizingHorizontal = "FILL";
 n15.appendChild(n30);
 try { n30.characters = "4:20 PM"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -493,21 +493,21 @@ n16.appendChild(n32);
 try { n32.characters = "Payment sent"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n32.layoutSizingHorizontal = "FILL";
 n16.appendChild(n33);
-try { n33.characters = "3:00 PM"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n33.characters = "10:00 AM"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n33.layoutSizingHorizontal = "FILL";
 n17.appendChild(n34);
 n17.appendChild(n35);
-try { n35.characters = "Project milestone reached"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n35.characters = "Project approved"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n35.layoutSizingHorizontal = "FILL";
 n17.appendChild(n36);
-try { n36.characters = "Mar 15, 2:30 PM"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n36.characters = "Mar 15, 3:45 PM"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n36.layoutSizingHorizontal = "FILL";
 n18.appendChild(n37);
 n18.appendChild(n38);
-try { n38.characters = "Account updated"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n38.characters = "New member joined"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n38.layoutSizingHorizontal = "FILL";
 n18.appendChild(n39);
-try { n39.characters = "Mar 12, 10:45 AM"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n39.characters = "Mar 12, 9:30 AM"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n39.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {

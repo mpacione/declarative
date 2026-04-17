@@ -26,6 +26,18 @@
         "props": {
           "alt": "Video thumbnail"
         }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Video Title"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "1.2M views \u2022 2 days ago"
+        }
       }
     ]
   },
@@ -36,9 +48,9 @@
         "type": "slider",
         "props": {
           "label": "Progress",
+          "value": 45,
           "min": 0,
-          "max": 100,
-          "value": 45
+          "max": 100
         }
       },
       {
@@ -60,9 +72,10 @@
             "component_key": "icon/back"
           },
           {
-            "type": "fab",
+            "type": "button",
+            "variant": "primary",
             "props": {
-              "label": "Play"
+              "text": "Play"
             }
           },
           {
@@ -70,29 +83,6 @@
             "component_key": "icon/chevron-down"
           }
         ]
-      }
-    ]
-  },
-  {
-    "type": "card",
-    "children": [
-      {
-        "type": "heading",
-        "props": {
-          "text": "Video Title"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "Channel Name"
-        }
-      },
-      {
-        "type": "text",
-        "props": {
-          "text": "1.2M views \u2022 2 days ago"
-        }
       }
     ]
   },
@@ -122,6 +112,12 @@
                 "props": {
                   "text": "Related Video Title 1"
                 }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "450K views"
+                }
               }
             ]
           },
@@ -138,6 +134,12 @@
                 "type": "text",
                 "props": {
                   "text": "Related Video Title 2"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "320K views"
                 }
               }
             ]
@@ -156,22 +158,11 @@
                 "props": {
                   "text": "Related Video Title 3"
                 }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "image",
-                "props": {
-                  "alt": "Related video 4"
-                }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Related Video Title 4"
+                  "text": "890K views"
                 }
               }
             ]

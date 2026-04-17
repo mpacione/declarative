@@ -228,7 +228,7 @@ n1.appendChild(n5);
 try { n5.characters = "Verify Your Identity"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n5.layoutSizingHorizontal = "FILL";
 n2.appendChild(n6);
-try { n6.characters = "Enter Verification Code"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n6.characters = "Enter verification code"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n6.layoutSizingHorizontal = "FILL";
 n2.appendChild(n7);
 try { n7.characters = "We've sent a 6-digit code to your registered email or phone number."; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -237,7 +237,7 @@ n2.appendChild(n8);
 n8.layoutSizingHorizontal = "FILL";
 n8.layoutSizingVertical = "HUG";
 n2.appendChild(n9);
-try { n9.characters = "Didn't receive the code? "; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n9.characters = "Didn't receive a code? "; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "FILL";
 n2.appendChild(n10);
 try { n10.characters = "Resend"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
@@ -252,9 +252,8 @@ n12.layoutSizingHorizontal = "FILL";
 n8.appendChild(n13);
 try { n13.characters = "000000"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.layoutSizingHorizontal = "FILL";
-n10.appendChild(n14);
-try { n14.characters = "Resend"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n14.layoutSizingHorizontal = "FILL";
+// leaf_type_append skipped: parent='link-1' ('link') cannot accept child 'text-6' ('text')
+__errors.push({kind:"leaf_type_append_skipped", parent_eid:"link-1", parent_type:"link", child_eid:"text-6", child_type:"text"});
 _rootPage.appendChild(n0);
 } catch (__thrown) {
   __errors.push({kind: "render_thrown", error: String(__thrown && __thrown.message || __thrown), stack: (__thrown && __thrown.stack) ? String(__thrown.stack).split("\n").slice(0, 6).join(" | ") : null});

@@ -115,26 +115,6 @@
         "text": "Nearby Locations"
       }
     },
-    "avatar-1": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
-    },
     "text-2": {
       "type": "text",
       "layout": {
@@ -142,6 +122,15 @@
       },
       "props": {
         "text": "Downtown Coffee Shop"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "0.5 km away"
       }
     },
     "icon-1": {
@@ -173,38 +162,27 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-1",
         "text-2",
+        "text-3",
         "icon-1"
       ]
     },
-    "avatar-2": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
-    },
-    "text-3": {
+    "text-4": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
         "text": "Central Park"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1.2 km away"
       }
     },
     "icon-2": {
@@ -236,38 +214,27 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-2",
-        "text-3",
+        "text-4",
+        "text-5",
         "icon-2"
       ]
     },
-    "avatar-3": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
-    },
-    "text-4": {
+    "text-6": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "City Library"
+        "text": "Main Street Market"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1.8 km away"
       }
     },
     "icon-3": {
@@ -299,8 +266,8 @@
         "fill": "{color.surface.list_item}"
       },
       "children": [
-        "avatar-3",
-        "text-4",
+        "text-6",
+        "text-7",
         "icon-3"
       ]
     },
@@ -515,16 +482,16 @@
     "header-1": -4,
     "image-1": -5,
     "heading-1": -6,
-    "avatar-1": -7,
-    "text-2": -8,
+    "text-2": -7,
+    "text-3": -8,
     "icon-1": -9,
     "list_item-1": -10,
-    "avatar-2": -11,
-    "text-3": -12,
+    "text-4": -11,
+    "text-5": -12,
     "icon-2": -13,
     "list_item-2": -14,
-    "avatar-3": -15,
-    "text-4": -16,
+    "text-6": -15,
+    "text-7": -16,
     "icon-3": -17,
     "list_item-3": -18,
     "list-1": -19,

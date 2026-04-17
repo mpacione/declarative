@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:48625",
+  "rendered_root": "5789:50623",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -100,7 +100,7 @@
       "name": "text-8",
       "width": 308,
       "height": 15,
-      "characters": "Alex Rodriguez",
+      "characters": "Michael Chen",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -141,7 +141,7 @@
       "name": "text-7",
       "width": 308,
       "height": 15,
-      "characters": "Mike Smith",
+      "characters": "Sarah Miller",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -182,7 +182,7 @@
       "name": "text-6",
       "width": 308,
       "height": 15,
-      "characters": "Jane Doe",
+      "characters": "John Doe",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -210,7 +210,7 @@
       "name": "text-5",
       "width": 364,
       "height": 15,
-      "characters": "245 people attending",
+      "characters": "42 people attending",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -259,7 +259,7 @@
       "name": "text-4",
       "width": 364,
       "height": 45,
-      "characters": "Join us for an unforgettable evening of live music featuring local and international artists. Enjoy food trucks, craft beverages, and a vibrant community atmosphere under the stars.",
+      "characters": "Join us for an unforgettable evening of live music featuring local and international artists. Bring your friends and family for a night of great entertainment, food, and fun under the stars.",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5786:48934",
+  "rendered_root": "5789:50940",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -60,7 +60,7 @@
       "name": "text-14",
       "width": 308,
       "height": 15,
-      "characters": "Mar 12, 10:45 AM",
+      "characters": "Mar 12, 9:30 AM",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -75,7 +75,7 @@
       "name": "text-13",
       "width": 308,
       "height": 15,
-      "characters": "Account updated",
+      "characters": "New member joined",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -110,7 +110,7 @@
       "name": "text-12",
       "width": 308,
       "height": 15,
-      "characters": "Mar 15, 2:30 PM",
+      "characters": "Mar 15, 3:45 PM",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -125,7 +125,7 @@
       "name": "text-11",
       "width": 308,
       "height": 15,
-      "characters": "Project milestone reached",
+      "characters": "Project approved",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -201,7 +201,7 @@
       "name": "text-10",
       "width": 308,
       "height": 15,
-      "characters": "3:00 PM",
+      "characters": "10:00 AM",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -266,7 +266,7 @@
       "name": "text-7",
       "width": 308,
       "height": 15,
-      "characters": "Item deleted",
+      "characters": "File deleted",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
