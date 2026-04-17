@@ -29,7 +29,13 @@ from dd.diagnostics.fidelity import render_fidelity_from_script
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = REPO_ROOT / "Dank-EXP-02.declarative.db"
-SOURCE_EXP = REPO_ROOT / "experiments" / "00g-mode3-v4"
+# Allow override: `python3 ab_score.py <experiment_dir>`
+# Defaults to 00g (canonical 12). 00i is the 20-prompt breadth test.
+import sys as _sys
+if len(_sys.argv) > 1:
+    SOURCE_EXP = Path(_sys.argv[1]).resolve()
+else:
+    SOURCE_EXP = REPO_ROOT / "experiments" / "00g-mode3-v4"
 
 
 def load_components(slug_dir: Path) -> list[dict] | None:

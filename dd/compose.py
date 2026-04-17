@@ -346,8 +346,11 @@ def _splice_subtree(
     for old_eid, elem in subtree_elements.items():
         id_remap[old_eid] = allocate_id(elem["type"])
 
-    # Gather LLM text values (in stable order) to distribute into slots.
-    llm_texts = _extract_llm_text_values(llm_props)
+    # Gather LLM text values (in stable order). Empty strings are kept
+    # — if the LLM said ``text=""`` they intended blank, and we must
+    # NOT fall back to the DB's original text (which leaks source-
+    # screen content like "Do the thing" or "Buy Trophy").
+    llm_texts = _extract_llm_text_values(llm_props, include_empty=True)
     text_slot_idx = 0
 
     # BFS the subtree in the stored order; copy into ``elements`` with
@@ -356,17 +359,15 @@ def _splice_subtree(
         new_eid = id_remap[old_eid]
         new_elem = {k: v for k, v in elem.items() if k != "children"}
 
-        # Substitute text content for any element that carries
-        # text in props (heading, text, link, badge, etc. — any
-        # text-bearing leaf). Without this, retrieved elements keep
-        # their DB original text (e.g. heading "Filename" instead of
-        # the LLM's "Welcome Back").
-        if (
-            text_slot_idx < len(llm_texts)
-            and isinstance(new_elem.get("props"), dict)
-            and "text" in new_elem["props"]
-        ):
-            new_elem["props"]["text"] = llm_texts[text_slot_idx]
+        # Overwrite every text slot in the retrieved subtree. Use the
+        # LLM's text in order when available, else empty string. Never
+        # let a DB original text stand — that's a leak of the source
+        # screen's content into a Mode-3 output.
+        if isinstance(new_elem.get("props"), dict) and "text" in new_elem["props"]:
+            if text_slot_idx < len(llm_texts):
+                new_elem["props"]["text"] = llm_texts[text_slot_idx]
+            else:
+                new_elem["props"]["text"] = ""
             text_slot_idx += 1
 
         old_children = elem.get("children", [])
@@ -378,15 +379,24 @@ def _splice_subtree(
     return id_remap[subtree_root]
 
 
-def _extract_llm_text_values(props: dict[str, Any]) -> list[str]:
+def _extract_llm_text_values(
+    props: dict[str, Any],
+    *,
+    include_empty: bool = False,
+) -> list[str]:
     """Pull text-like string values from an LLM props dict, in a stable
     order. Keys like 'text', 'title', 'subtitle', 'label', 'caption',
-    'body' are treated as text slots."""
+    'body' are treated as text slots.
+
+    When ``include_empty`` is True, empty strings are kept — caller
+    intent is "blank text," not "I didn't supply one." The splice path
+    uses this so LLM-intended-blank never falls back to DB originals.
+    """
     text_keys = ("text", "title", "heading", "subtitle", "label", "caption", "body")
     out: list[str] = []
     for k in text_keys:
         v = props.get(k)
-        if isinstance(v, str) and v:
+        if isinstance(v, str) and (v or include_empty):
             out.append(v)
     return out
 

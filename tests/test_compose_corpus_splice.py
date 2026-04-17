@@ -156,7 +156,11 @@ class TestComposeSplicesCorpusSubtree:
             [{"type": "card"}], registry=registry,
         )
 
-        # The card's children include a text child from the corpus
+        # The card's children include a text child from the corpus.
+        # Splice preserves the structural subtree but STRIPS the DB's
+        # original text content — no leak of source-screen text into
+        # Mode-3 output. When the LLM didn't supply text, the slot
+        # ends up empty (caller is expected to fill it downstream).
         elements = spec["elements"]
         card_eid = next(
             eid for eid, e in elements.items() if e.get("type") == "card"
@@ -166,8 +170,7 @@ class TestComposeSplicesCorpusSubtree:
         child_eid = card["children"][0]
         child = elements[child_eid]
         assert child["type"] == "text"
-        # The original text comes through when LLM didn't override
-        assert child.get("props", {}).get("text") == "Original Title"
+        assert child.get("props", {}).get("text") == ""  # DB "Original Title" stripped
 
     def test_flag_off_falls_back_to_synthesis(
         self, corpus_conn, monkeypatch,

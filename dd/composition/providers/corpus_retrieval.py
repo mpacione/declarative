@@ -185,6 +185,25 @@ class CorpusRetrievalProvider:
         if subtree is None:
             return None
 
+        # Image-specific safeguard: reject candidates whose root has
+        # no visible paint. A real Dank image node with empty fills
+        # renders blank where the universal catalog's
+        # `_image_template` would show a blue placeholder — strictly
+        # worse than the baseline. Return None so the registry
+        # cascade falls through to UniversalCatalogProvider. Other
+        # types can be structurally useful even without paint
+        # (containers, layout-only frames), so this check is scoped
+        # to ``image``.
+        if catalog_type == "image":
+            root_elem = subtree["elements"][subtree["root"]]
+            visual = root_elem.get("visual") or {}
+            if not (
+                _nonempty(visual.get("fills"))
+                or _nonempty(visual.get("strokes"))
+                or _nonempty(visual.get("effects"))
+            ):
+                return None
+
         return PresentationTemplate(
             catalog_type=catalog_type,
             variant=variant,
@@ -268,6 +287,23 @@ def _candidate_child_types(
         (node_id, screen_id),
     )
     return [row[0] for row in cur.fetchall() if row[0]]
+
+
+def _nonempty(value: Any) -> bool:
+    """True when a DB visual list carries at least one visible paint.
+
+    Treats ``None``, ``[]``, and lists of only invisible items as
+    empty. Invisible = paint with ``visible=False`` flag.
+    """
+    if not value:
+        return False
+    if not isinstance(value, list):
+        return True
+    for item in value:
+        if isinstance(item, dict) and item.get("visible") is False:
+            continue
+        return True
+    return False
 
 
 def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
