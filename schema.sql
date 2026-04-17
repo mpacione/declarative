@@ -158,6 +158,28 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
 CREATE INDEX IF NOT EXISTS idx_ctc_category ON component_type_catalog(category);
 CREATE INDEX IF NOT EXISTS idx_ctc_semantic_role ON component_type_catalog(semantic_role);
 
+-- ADR-008 Mode 3 composition: per-(catalog_type, variant, slot) token binding
+-- induced from the corpus by dd.cluster_variants. Consumed at Mode-3
+-- resolution time by ProjectCKRProvider to attach project-native
+-- presentation values to synthesised subtrees.
+CREATE TABLE IF NOT EXISTS variant_token_binding (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalog_type    TEXT NOT NULL,
+    variant         TEXT NOT NULL,
+    slot            TEXT NOT NULL,
+    token_id        INTEGER REFERENCES tokens(id),
+    literal_value   TEXT,
+    confidence      REAL NOT NULL DEFAULT 0.0,
+    source          TEXT NOT NULL CHECK(source IN (
+        'cluster','vlm','screen_context','user'
+    )),
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(catalog_type, variant, slot)
+);
+
+CREATE INDEX IF NOT EXISTS idx_vtb_catalog_type ON variant_token_binding(catalog_type);
+CREATE INDEX IF NOT EXISTS idx_vtb_catalog_variant ON variant_token_binding(catalog_type, variant);
+
 -- Component definitions (not instances — those live in nodes table).
 -- Maps to Figma component sets or standalone components.
 CREATE TABLE components (

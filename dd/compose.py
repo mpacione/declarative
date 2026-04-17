@@ -2,11 +2,18 @@
 
 Composes a CompositionSpec from a list of component descriptions,
 populates visual data from extracted templates, and generates Figma JS.
+
+ADR-008 Mode-3 integration: when an LLM component has no ``children``
+and no ``component_key`` (i.e. neither Mode-1 instance nor extracted
+DB subtree applies), :func:`_build_element` consults the composition
+``ProviderRegistry`` and synthesises structural child IR nodes from
+the resolved template's slot grammar.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from typing import Any
 
@@ -58,6 +65,12 @@ def compose_screen(
     Each component is a dict with 'type' (required), 'props' (optional),
     and 'children' (optional, recursive). Templates provide layout
     defaults (dimensions, padding, direction) when available.
+
+    ADR-008 Mode-3: leaves with no ``children`` and no ``component_key``
+    go through :func:`_mode3_synthesise` which consults a default
+    provider registry and produces synthetic child IR elements (e.g. a
+    ``button`` with ``props.text="Sign In"`` gets a text child carrying
+    the label).
     """
     type_counters: dict[str, int] = {}
     elements: dict[str, dict[str, Any]] = {}
@@ -75,6 +88,10 @@ def compose_screen(
         variant = comp.get("variant")
         if variant:
             element["variant"] = variant
+
+        component_key = comp.get("component_key")
+        if component_key:
+            element["component_key"] = component_key
 
         layout = _build_layout_from_template(comp_type, templates, variant=variant)
         layout_direction_override = comp.get("layout_direction")
@@ -96,6 +113,15 @@ def compose_screen(
         if children:
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
+        elif not component_key and not _mode3_disabled():
+            # Mode-3 fall-through: synthesise children from the catalog
+            # slot grammar + the LLM's props. Mode-1 (component_key) and
+            # LLM-provided children always win over Mode-3.
+            synthetic_ids = _mode3_synthesise_children(
+                comp_type, variant, props or {}, elements, _allocate_id,
+            )
+            if synthetic_ids:
+                element["children"] = synthetic_ids
 
         elements[eid] = element
         return eid
@@ -145,6 +171,104 @@ def compose_screen(
         "tokens": {},
         "_node_id_map": {},
     }
+
+
+def _mode3_disabled() -> bool:
+    """True when ``DD_DISABLE_MODE_3`` env var is set to a non-empty value."""
+    return bool(os.environ.get("DD_DISABLE_MODE_3", "").strip())
+
+
+# Prop-name aliases we try when filling a text-typed slot. The LLM
+# emits 'text' on most leaves regardless of the catalog's nominal slot
+# name; headers use 'title'; text_input uses 'placeholder'/'label'.
+# This list is intentionally short — slot semantics stay in catalog
+# slot_definitions; the aliases only cover LLM idiom drift.
+_TEXT_SLOT_PROP_ALIASES: tuple[str, ...] = (
+    "text", "label", "title", "headline", "placeholder", "message", "description",
+)
+
+
+def _default_provider_registry():
+    """Lazy-built default registry for Mode-3 synthesis.
+
+    Only the universal provider is wired in v0.1. Project CKR and
+    ingested providers join the registry once their DB wiring is in
+    place in the generate-prompt code path (which has a DB connection).
+    """
+    from dd.composition.providers.universal import UniversalCatalogProvider
+    from dd.composition.registry import build_registry_from_env
+
+    return build_registry_from_env([UniversalCatalogProvider()])
+
+
+def _mode3_synthesise_children(
+    comp_type: str,
+    variant: str | None,
+    props: dict[str, Any],
+    elements: dict[str, dict[str, Any]],
+    allocate_id,
+) -> list[str]:
+    """Produce synthetic child IR eids for a (type, variant, props) triple.
+
+    Walks the resolved ``PresentationTemplate``'s slot grammar; for
+    each text-typed slot with a matching prop in ``props`` (directly by
+    slot name or via the ``_TEXT_SLOT_PROP_ALIASES`` fallbacks), allocates
+    a text-child IR element and returns its eid. Non-text slots are
+    deferred (they need backend-specific concrete defaults; v0.1 focus
+    is getting visible text labels onto the screen).
+
+    Returns a list of child eids that the caller should attach to the
+    parent element under ``children``.
+    """
+    registry = _default_provider_registry()
+    template, _errors = registry.resolve(comp_type, variant, {})
+    if template is None or not template.slots:
+        return []
+
+    child_ids: list[str] = []
+    consumed_props: set[str] = set()
+
+    for slot_name, slot_spec in template.slots.items():
+        if not _slot_accepts_text(slot_spec):
+            continue
+
+        value: str | None = None
+        if slot_name in props and slot_name not in consumed_props and props[slot_name]:
+            value = str(props[slot_name])
+            consumed_props.add(slot_name)
+        else:
+            for alias in _TEXT_SLOT_PROP_ALIASES:
+                if alias in consumed_props:
+                    continue
+                if alias in props and props[alias]:
+                    value = str(props[alias])
+                    consumed_props.add(alias)
+                    break
+
+        if not value:
+            continue
+
+        child_eid = allocate_id("text")
+        elements[child_eid] = {
+            "type": "text",
+            "props": {"text": str(value)},
+            "layout": {"direction": "vertical"},
+            "_synthesised_from": {
+                "parent_type": comp_type,
+                "parent_variant": variant,
+                "slot": slot_name,
+                "provider": template.provider,
+            },
+        }
+        child_ids.append(child_eid)
+
+    return child_ids
+
+
+def _slot_accepts_text(slot_spec) -> bool:
+    """Return True if a :class:`SlotSpec` accepts text-typed children."""
+    allowed = getattr(slot_spec, "allowed", None) or []
+    return any(a in allowed for a in ("text", "heading", "any"))
 
 
 def _build_layout_from_template(

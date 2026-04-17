@@ -576,23 +576,15 @@ class TestVariantInducer:
         """When ProjectCKRProvider queries for a binding that doesn't exist."""
         from dd.composition.providers.project_ckr import ProjectCKRProvider
         from dd.boundary import KIND_VARIANT_BINDING_MISSING
-        # Construct a provider with an in-memory empty binding table
-        conn = sqlite3.connect(":memory:")
-        conn.execute(
-            "CREATE TABLE variant_token_binding ("
-            " id INTEGER PRIMARY KEY, catalog_type TEXT, variant TEXT,"
-            " slot TEXT, token_id INTEGER, confidence REAL, source TEXT,"
-            " created_at TEXT)"
-        )
-        conn.execute(
-            "CREATE TABLE component_key_registry ("
-            " component_key TEXT PRIMARY KEY, figma_node_id TEXT,"
-            " name TEXT, instance_count INTEGER)"
-        )
+        # Use the real schema so provider and DB stay in sync.
+        from dd.db import init_db
+        conn = init_db(":memory:")
         provider = ProjectCKRProvider(conn)
-        template, errors = provider.resolve("button", "primary", {})
-        # Template may still be returned with universal fallback values,
-        # but at least one error must flag the missing binding.
+        context: dict[str, object] = {}
+        template = provider.resolve("button", "primary", context)
+        # Template still returned with a fallback shape so render
+        # proceeds; but at least one error must flag the missing binding.
+        errors = context.get("__errors__", [])
         kinds = {e.kind for e in errors}
         assert KIND_VARIANT_BINDING_MISSING in kinds
 
