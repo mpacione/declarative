@@ -1,0 +1,21 @@
+2026-04-17T06:23:13+00:00 | start db=/Users/mattpacione/declarative-build/Dank-EXP-02.declarative.db workers=10
+2026-04-17T06:23:13+00:00 | project_context archetype_chars=0 vocab_chars=1636
+2026-04-17T06:23:13+00:00 | contract=S0 system_prompt_chars=4781
+2026-04-17T06:23:13+00:00 | contract=S1 system_prompt_chars=4904
+2026-04-17T06:23:13+00:00 | contract=S2 system_prompt_chars=5079
+2026-04-17T06:23:13+00:00 | contract=S3 system_prompt_chars=7028
+2026-04-17T06:23:13+00:00 | contract=S4 system_prompt_chars=755
+2026-04-17T06:23:13+00:00 | plan_size total=240 matrix=180 variance=60
+2026-04-17T06:23:23+00:00 | progress 20/240 ok=20 elapsed=9.4s
+2026-04-17T06:23:28+00:00 | progress 40/240 ok=40 elapsed=15.3s
+2026-04-17T06:23:34+00:00 | progress 60/240 ok=60 elapsed=21.1s
+2026-04-17T06:23:41+00:00 | progress 80/240 ok=80 elapsed=28.2s
+2026-04-17T06:23:48+00:00 | progress 100/240 ok=100 elapsed=35.3s
+2026-04-17T06:23:55+00:00 | progress 120/240 ok=120 elapsed=41.8s
+2026-04-17T06:24:03+00:00 | progress 140/240 ok=140 elapsed=49.8s
+2026-04-17T06:24:10+00:00 | progress 160/240 ok=160 elapsed=56.5s
+2026-04-17T06:24:16+00:00 | progress 180/240 ok=180 elapsed=62.4s
+2026-04-17T06:24:22+00:00 | progress 200/240 ok=200 elapsed=69.3s
+2026-04-17T06:24:29+00:00 | progress 220/240 ok=220 elapsed=75.9s
+2026-04-17T06:24:36+00:00 | progress 240/240 ok=240 elapsed=83.0s
+2026-04-17T06:24:36+00:00 | done n_ok=240 n_fail=0 cost=$0.976 elapsed=83.0s out=/Users/mattpacione/declarative-build/experiments/00g-matrix/matrix_results.json

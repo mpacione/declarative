@@ -1,0 +1,2939 @@
+{
+  "meta": {
+    "timestamp": "2026-04-17T06:24:36+00:00",
+    "model": "claude-haiku-4-5-20251001",
+    "max_tokens": 2048,
+    "temperatures": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "contract_ids": [
+      "S0",
+      "S1",
+      "S2",
+      "S3",
+      "S4"
+    ],
+    "prompts": [
+      {
+        "slug": "01-login",
+        "prompt": "a login screen with email, password, and a sign-in button"
+      },
+      {
+        "slug": "02-profile-settings",
+        "prompt": "a profile settings page with avatar, name, email, notification toggles, and a save button"
+      },
+      {
+        "slug": "03-meme-feed",
+        "prompt": "a feed of memes with upvote and share buttons under each"
+      },
+      {
+        "slug": "04-dashboard",
+        "prompt": "a data dashboard with a line chart and a table of recent transactions"
+      },
+      {
+        "slug": "05-paywall",
+        "prompt": "a paywall screen with three pricing tiers and a testimonial"
+      },
+      {
+        "slug": "06-spa-minimal",
+        "prompt": "make something minimal and luxurious for a spa app"
+      },
+      {
+        "slug": "07-search",
+        "prompt": "a search screen"
+      },
+      {
+        "slug": "08-explicit-structure",
+        "prompt": "header with back button, title, share button. Then a card with a heading, 3 lines of body text, and a primary button. Then a secondary button below."
+      },
+      {
+        "slug": "09-drawer-nav",
+        "prompt": "a drawer menu with 6 nav items"
+      },
+      {
+        "slug": "10-onboarding-carousel",
+        "prompt": "an onboarding carousel with 3 slides, each with an illustration, headline, and subtext"
+      },
+      {
+        "slug": "11-vague",
+        "prompt": "something cool"
+      },
+      {
+        "slug": "12-round-trip-test",
+        "prompt": "rebuild iPhone 13 Pro Max - 109 from scratch"
+      }
+    ],
+    "variance_slice": {
+      "contract": "S0",
+      "temperature": 1.0,
+      "samples_per_prompt": 5
+    },
+    "n_calls_ok": 240,
+    "n_calls_fail": 0,
+    "total_input_tokens": 340488,
+    "total_output_tokens": 127170,
+    "cost_usd_uncached_worst_case": 0.9763,
+    "elapsed_s": 83.0,
+    "project_context_chars": {
+      "archetype": 0,
+      "vocab": 1636
+    }
+  },
+  "variance_floor": {
+    "total_node_count": 3.434653484224401,
+    "top_level_count": 0.5723328881345734,
+    "max_depth": 0.3689131839600378,
+    "container_coverage": 0.248734038251281,
+    "component_key_rate": 0.04499061999473232,
+    "variant_rate": 0.032777587852738495,
+    "json_valid": 0.04564354645876384,
+    "empty_output": 0.0,
+    "clarification_refusal": 0.04564354645876384
+  },
+  "cells": {
+    "T=0.0__S0": {
+      "total_node_count": {
+        "mean": 23.5,
+        "stdev": 10.715324624955691,
+        "values_by_slug": {
+          "01-login": 12.0,
+          "02-profile-settings": 15.0,
+          "03-meme-feed": 18.0,
+          "04-dashboard": 38.0,
+          "05-paywall": 48.0,
+          "06-spa-minimal": 19.0,
+          "07-search": 24.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 21.0,
+          "11-vague": 25.0,
+          "12-round-trip-test": 29.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.333333333333333,
+        "stdev": 1.8257418583505538,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 6.0,
+          "06-spa-minimal": 6.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 7.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.0833333333333335,
+        "stdev": 0.9962049198956219,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 3.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.75,
+        "stdev": 0.9653072991634228,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 3.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.1691528630004129,
+        "stdev": 0.10763280548940365,
+        "values_by_slug": {
+          "01-login": 0.08333333333333333,
+          "02-profile-settings": 0.2,
+          "03-meme-feed": 0.3888888888888889,
+          "04-dashboard": 0.05263157894736842,
+          "05-paywall": 0.08333333333333333,
+          "06-spa-minimal": 0.2631578947368421,
+          "07-search": 0.16666666666666666,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.14285714285714285,
+          "11-vague": 0.08,
+          "12-round-trip-test": 0.06896551724137931
+        }
+      },
+      "variant_rate": {
+        "mean": 0.048979025738327006,
+        "stdev": 0.05275786464548029,
+        "values_by_slug": {
+          "01-login": 0.08333333333333333,
+          "02-profile-settings": 0.06666666666666667,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.02631578947368421,
+          "05-paywall": 0.0625,
+          "06-spa-minimal": 0.05263157894736842,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.08,
+          "12-round-trip-test": 0.034482758620689655
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.0__S1": {
+      "total_node_count": {
+        "mean": 21.5,
+        "stdev": 9.931584145359874,
+        "values_by_slug": {
+          "01-login": 9.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 21.0,
+          "04-dashboard": 27.0,
+          "05-paywall": 46.0,
+          "06-spa-minimal": 23.0,
+          "07-search": 14.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 20.0,
+          "10-onboarding-carousel": 21.0,
+          "11-vague": 28.0,
+          "12-round-trip-test": 25.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.5,
+        "stdev": 2.0670576365276494,
+        "values_by_slug": {
+          "01-login": 4.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 7.0,
+          "06-spa-minimal": 6.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 7.0,
+          "12-round-trip-test": 7.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.4166666666666665,
+        "stdev": 1.0836246694508316,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 5.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 4.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.9166666666666667,
+        "stdev": 0.7929614610987591,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 3.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.18518083097793242,
+        "stdev": 0.10520737448857093,
+        "values_by_slug": {
+          "01-login": 0.2222222222222222,
+          "02-profile-settings": 0.15384615384615385,
+          "03-meme-feed": 0.3333333333333333,
+          "04-dashboard": 0.037037037037037035,
+          "05-paywall": 0.08695652173913043,
+          "06-spa-minimal": 0.08695652173913043,
+          "07-search": 0.07142857142857142,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3,
+          "10-onboarding-carousel": 0.14285714285714285,
+          "11-vague": 0.2857142857142857,
+          "12-round-trip-test": 0.32
+        }
+      },
+      "variant_rate": {
+        "mean": 0.03562450029841334,
+        "stdev": 0.03954752513572181,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.07692307692307693,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.021739130434782608,
+          "06-spa-minimal": 0.043478260869565216,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.09090909090909091,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.047619047619047616,
+          "11-vague": 0.03571428571428571,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.0__S2": {
+      "total_node_count": {
+        "mean": 19.083333333333332,
+        "stdev": 12.985714761952377,
+        "values_by_slug": {
+          "01-login": 10.0,
+          "02-profile-settings": 15.0,
+          "03-meme-feed": 26.0,
+          "04-dashboard": 32.0,
+          "05-paywall": 44.0,
+          "06-spa-minimal": 23.0,
+          "07-search": 29.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 17.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.1666666666666665,
+        "stdev": 2.124888588879783,
+        "values_by_slug": {
+          "01-login": 6.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 6.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 5.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.75,
+        "stdev": 1.6583123951777,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 5.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 4.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.25,
+        "stdev": 0.8660254037844386,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.12772499785946187,
+        "stdev": 0.11248787805892445,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.2,
+          "03-meme-feed": 0.3076923076923077,
+          "04-dashboard": 0.03125,
+          "05-paywall": 0.09090909090909091,
+          "06-spa-minimal": 0.13043478260869565,
+          "07-search": 0.1724137931034483,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04324737141233305,
+        "stdev": 0.0564540047588829,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.06666666666666667,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.06818181818181818,
+          "06-spa-minimal": 0.043478260869565216,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.058823529411764705,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 0.8333333333333334,
+        "stdev": 0.3892494720807615,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.16666666666666666,
+        "stdev": 0.3892494720807615,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      }
+    },
+    "T=0.0__S3": {
+      "total_node_count": {
+        "mean": 25.5,
+        "stdev": 15.234530156552552,
+        "values_by_slug": {
+          "01-login": 8.0,
+          "02-profile-settings": 14.0,
+          "03-meme-feed": 26.0,
+          "04-dashboard": 31.0,
+          "05-paywall": 63.0,
+          "06-spa-minimal": 18.0,
+          "07-search": 25.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 18.0,
+          "11-vague": 26.0,
+          "12-round-trip-test": 44.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.8333333333333335,
+        "stdev": 1.403458930534474,
+        "values_by_slug": {
+          "01-login": 3.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 5.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.25,
+        "stdev": 1.1381803659589922,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.4166666666666667,
+        "stdev": 0.7929614610987591,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.12959774395258267,
+        "stdev": 0.11183744724954231,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.07142857142857142,
+          "03-meme-feed": 0.3076923076923077,
+          "04-dashboard": 0.03225806451612903,
+          "05-paywall": 0.19047619047619047,
+          "06-spa-minimal": 0.05555555555555555,
+          "07-search": 0.16,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.19230769230769232,
+          "12-round-trip-test": 0.045454545454545456
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04852439227439227,
+        "stdev": 0.05617016452712554,
+        "values_by_slug": {
+          "01-login": 0.125,
+          "02-profile-settings": 0.07142857142857142,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.031746031746031744,
+          "06-spa-minimal": 0.05555555555555555,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.05555555555555555,
+          "11-vague": 0.038461538461538464,
+          "12-round-trip-test": 0.022727272727272728
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.0__S4": {
+      "total_node_count": {
+        "mean": 13.083333333333334,
+        "stdev": 8.532913105183134,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 16.0,
+          "04-dashboard": 5.0,
+          "05-paywall": 36.0,
+          "06-spa-minimal": 8.0,
+          "07-search": 7.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 13.0,
+          "10-onboarding-carousel": 16.0,
+          "11-vague": 8.0,
+          "12-round-trip-test": 19.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.666666666666667,
+        "stdev": 3.2844906435973886,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 8.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 5.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 6.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.25,
+        "stdev": 1.0552897060221726,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 3.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 2.0,
+          "12-round-trip-test": 3.0
+        }
+      },
+      "container_coverage": {
+        "mean": 0.75,
+        "stdev": 0.753778361444409,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.015151515151515152,
+        "stdev": 0.0524863881081478,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.5__S0": {
+      "total_node_count": {
+        "mean": 23.333333333333332,
+        "stdev": 11.703405357830556,
+        "values_by_slug": {
+          "01-login": 9.0,
+          "02-profile-settings": 14.0,
+          "03-meme-feed": 18.0,
+          "04-dashboard": 33.0,
+          "05-paywall": 50.0,
+          "06-spa-minimal": 16.0,
+          "07-search": 26.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 21.0,
+          "11-vague": 24.0,
+          "12-round-trip-test": 36.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.166666666666667,
+        "stdev": 1.6422453217986943,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 6.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 6.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.1666666666666665,
+        "stdev": 1.0298573010888745,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.8333333333333333,
+        "stdev": 0.937436866561092,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 3.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.1879200197950198,
+        "stdev": 0.11622268794929709,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.14285714285714285,
+          "03-meme-feed": 0.3888888888888889,
+          "04-dashboard": 0.06060606060606061,
+          "05-paywall": 0.08,
+          "06-spa-minimal": 0.1875,
+          "07-search": 0.15384615384615385,
+          "08-explicit-structure": 0.36363636363636365,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.14285714285714285,
+          "11-vague": 0.25,
+          "12-round-trip-test": 0.05555555555555555
+        }
+      },
+      "variant_rate": {
+        "mean": 0.06908579846079846,
+        "stdev": 0.09069497473150769,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.07142857142857142,
+          "03-meme-feed": 0.3333333333333333,
+          "04-dashboard": 0.030303030303030304,
+          "05-paywall": 0.06,
+          "06-spa-minimal": 0.0625,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.09090909090909091,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.041666666666666664,
+          "12-round-trip-test": 0.027777777777777776
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.5__S1": {
+      "total_node_count": {
+        "mean": 21.166666666666668,
+        "stdev": 9.934634854737727,
+        "values_by_slug": {
+          "01-login": 9.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 21.0,
+          "04-dashboard": 30.0,
+          "05-paywall": 45.0,
+          "06-spa-minimal": 19.0,
+          "07-search": 21.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 20.0,
+          "10-onboarding-carousel": 13.0,
+          "11-vague": 27.0,
+          "12-round-trip-test": 25.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.0,
+        "stdev": 1.8586407545691703,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 7.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 4.0,
+          "11-vague": 7.0,
+          "12-round-trip-test": 5.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.0833333333333335,
+        "stdev": 1.0836246694508316,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 5.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 3.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.9166666666666667,
+        "stdev": 0.90033663737852,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 3.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.18135948521913434,
+        "stdev": 0.09601706522301981,
+        "values_by_slug": {
+          "01-login": 0.2222222222222222,
+          "02-profile-settings": 0.15384615384615385,
+          "03-meme-feed": 0.3333333333333333,
+          "04-dashboard": 0.1,
+          "05-paywall": 0.08888888888888889,
+          "06-spa-minimal": 0.05263157894736842,
+          "07-search": 0.047619047619047616,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3,
+          "10-onboarding-carousel": 0.23076923076923078,
+          "11-vague": 0.18518518518518517,
+          "12-round-trip-test": 0.28
+        }
+      },
+      "variant_rate": {
+        "mean": 0.05175020560985473,
+        "stdev": 0.057061406191274346,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.07692307692307693,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.044444444444444446,
+          "06-spa-minimal": 0.05263157894736842,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.07407407407407407,
+          "12-round-trip-test": 0.08
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.5__S2": {
+      "total_node_count": {
+        "mean": 19.583333333333332,
+        "stdev": 15.871405582100003,
+        "values_by_slug": {
+          "01-login": 10.0,
+          "02-profile-settings": 15.0,
+          "03-meme-feed": 26.0,
+          "04-dashboard": 32.0,
+          "05-paywall": 59.0,
+          "06-spa-minimal": 15.0,
+          "07-search": 26.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 19.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.3333333333333335,
+        "stdev": 2.229281716090851,
+        "values_by_slug": {
+          "01-login": 6.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 6.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.5833333333333335,
+        "stdev": 1.6213537179739277,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 5.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.25,
+        "stdev": 0.8660254037844386,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.1375312006793385,
+        "stdev": 0.11511626768610632,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.2,
+          "03-meme-feed": 0.3076923076923077,
+          "04-dashboard": 0.03125,
+          "05-paywall": 0.22033898305084745,
+          "06-spa-minimal": 0.2,
+          "07-search": 0.038461538461538464,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.05263157894736842,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04180678326530245,
+        "stdev": 0.05632069924246826,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.06666666666666667,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.03389830508474576,
+          "06-spa-minimal": 0.06666666666666667,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.05263157894736842,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 0.8333333333333334,
+        "stdev": 0.3892494720807615,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.16666666666666666,
+        "stdev": 0.3892494720807615,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      }
+    },
+    "T=0.5__S3": {
+      "total_node_count": {
+        "mean": 27.583333333333332,
+        "stdev": 17.845082507429595,
+        "values_by_slug": {
+          "01-login": 8.0,
+          "02-profile-settings": 14.0,
+          "03-meme-feed": 26.0,
+          "04-dashboard": 36.0,
+          "05-paywall": 62.0,
+          "06-spa-minimal": 18.0,
+          "07-search": 28.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 18.0,
+          "11-vague": 26.0,
+          "12-round-trip-test": 62.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.9166666666666665,
+        "stdev": 1.6764862244009227,
+        "values_by_slug": {
+          "01-login": 3.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 7.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.25,
+        "stdev": 1.1381803659589922,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.4166666666666667,
+        "stdev": 0.7929614610987591,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.1367710097548807,
+        "stdev": 0.12319268974587722,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.07142857142857142,
+          "03-meme-feed": 0.3076923076923077,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.1935483870967742,
+          "06-spa-minimal": 0.05555555555555555,
+          "07-search": 0.25,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.23076923076923078,
+          "12-round-trip-test": 0.03225806451612903
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04801720829946636,
+        "stdev": 0.05646392444127773,
+        "values_by_slug": {
+          "01-login": 0.125,
+          "02-profile-settings": 0.07142857142857142,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.03225806451612903,
+          "06-spa-minimal": 0.05555555555555555,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.05555555555555555,
+          "11-vague": 0.038461538461538464,
+          "12-round-trip-test": 0.016129032258064516
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=0.5__S4": {
+      "total_node_count": {
+        "mean": 14.0,
+        "stdev": 11.29762646029526,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 16.0,
+          "04-dashboard": 5.0,
+          "05-paywall": 37.0,
+          "06-spa-minimal": 8.0,
+          "07-search": 7.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 7.0,
+          "10-onboarding-carousel": 14.0,
+          "11-vague": 8.0,
+          "12-round-trip-test": 37.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.333333333333333,
+        "stdev": 3.4200832880164915,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 8.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.25,
+        "stdev": 0.9653072991634228,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 2.0,
+          "12-round-trip-test": 3.0
+        }
+      },
+      "container_coverage": {
+        "mean": 0.6666666666666666,
+        "stdev": 0.6513389472789296,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.015151515151515152,
+        "stdev": 0.0524863881081478,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=1.0__S0": {
+      "total_node_count": {
+        "mean": 24.916666666666668,
+        "stdev": 12.66676634729518,
+        "values_by_slug": {
+          "01-login": 12.0,
+          "02-profile-settings": 17.0,
+          "03-meme-feed": 23.0,
+          "04-dashboard": 33.0,
+          "05-paywall": 59.0,
+          "06-spa-minimal": 20.0,
+          "07-search": 27.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 18.0,
+          "11-vague": 28.0,
+          "12-round-trip-test": 29.0
+        }
+      },
+      "top_level_count": {
+        "mean": 4.416666666666667,
+        "stdev": 1.7298624923456323,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 5.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 6.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 7.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.0833333333333335,
+        "stdev": 0.9962049198956219,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 3.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.6666666666666667,
+        "stdev": 0.8876253645985945,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.16967588706638176,
+        "stdev": 0.11147497416430618,
+        "values_by_slug": {
+          "01-login": 0.08333333333333333,
+          "02-profile-settings": 0.11764705882352941,
+          "03-meme-feed": 0.391304347826087,
+          "04-dashboard": 0.06060606060606061,
+          "05-paywall": 0.22033898305084745,
+          "06-spa-minimal": 0.25,
+          "07-search": 0.07407407407407407,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.05555555555555555,
+          "11-vague": 0.21428571428571427,
+          "12-round-trip-test": 0.06896551724137931
+        }
+      },
+      "variant_rate": {
+        "mean": 0.08226265768291116,
+        "stdev": 0.10303307457864813,
+        "values_by_slug": {
+          "01-login": 0.08333333333333333,
+          "02-profile-settings": 0.058823529411764705,
+          "03-meme-feed": 0.34782608695652173,
+          "04-dashboard": 0.030303030303030304,
+          "05-paywall": 0.03389830508474576,
+          "06-spa-minimal": 0.05,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.16666666666666666,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.034482758620689655
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=1.0__S1": {
+      "total_node_count": {
+        "mean": 21.0,
+        "stdev": 13.784048752090222,
+        "values_by_slug": {
+          "01-login": 9.0,
+          "02-profile-settings": 12.0,
+          "03-meme-feed": 21.0,
+          "04-dashboard": 31.0,
+          "05-paywall": 60.0,
+          "06-spa-minimal": 18.0,
+          "07-search": 10.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 21.0,
+          "11-vague": 19.0,
+          "12-round-trip-test": 18.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.8333333333333335,
+        "stdev": 1.7494587907710375,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 7.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 4.0,
+          "12-round-trip-test": 5.0
+        }
+      },
+      "max_depth": {
+        "mean": 3.1666666666666665,
+        "stdev": 0.937436866561092,
+        "values_by_slug": {
+          "01-login": 3.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 5.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 3.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.8333333333333333,
+        "stdev": 0.8348471099367218,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 3.0,
+          "11-vague": 2.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.20285615472372687,
+        "stdev": 0.09765757858227474,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.16666666666666666,
+          "03-meme-feed": 0.3333333333333333,
+          "04-dashboard": 0.06451612903225806,
+          "05-paywall": 0.2,
+          "06-spa-minimal": 0.16666666666666666,
+          "07-search": 0.1,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.14285714285714285,
+          "11-vague": 0.3157894736842105,
+          "12-round-trip-test": 0.3333333333333333
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04592636895268474,
+        "stdev": 0.05826128108814166,
+        "values_by_slug": {
+          "01-login": 0.1111111111111111,
+          "02-profile-settings": 0.08333333333333333,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.06666666666666667,
+          "06-spa-minimal": 0.05555555555555555,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.05263157894736842,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=1.0__S2": {
+      "total_node_count": {
+        "mean": 18.333333333333332,
+        "stdev": 16.875659358611113,
+        "values_by_slug": {
+          "01-login": 10.0,
+          "02-profile-settings": 15.0,
+          "03-meme-feed": 23.0,
+          "04-dashboard": 32.0,
+          "05-paywall": 59.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 29.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 19.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "top_level_count": {
+        "mean": 2.75,
+        "stdev": 2.220769727328383,
+        "values_by_slug": {
+          "01-login": 6.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 5.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 3.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.3333333333333335,
+        "stdev": 1.6696942198734437,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 4.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.25,
+        "stdev": 1.0552897060221726,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 3.0,
+          "04-dashboard": 2.0,
+          "05-paywall": 2.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.14620571557998877,
+        "stdev": 0.13049670414176925,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.2,
+          "03-meme-feed": 0.391304347826087,
+          "04-dashboard": 0.03125,
+          "05-paywall": 0.2542372881355932,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.1724137931034483,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.10526315789473684,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.06664916433465477,
+        "stdev": 0.10467937898135368,
+        "values_by_slug": {
+          "01-login": 0.1,
+          "02-profile-settings": 0.06666666666666667,
+          "03-meme-feed": 0.34782608695652173,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.05084745762711865,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.05263157894736842,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 0.75,
+        "stdev": 0.45226701686664544,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.25,
+        "stdev": 0.45226701686664544,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      }
+    },
+    "T=1.0__S3": {
+      "total_node_count": {
+        "mean": 19.083333333333332,
+        "stdev": 10.500721475934476,
+        "values_by_slug": {
+          "01-login": 8.0,
+          "02-profile-settings": 13.0,
+          "03-meme-feed": 26.0,
+          "04-dashboard": 26.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 14.0,
+          "07-search": 26.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 22.0,
+          "10-onboarding-carousel": 18.0,
+          "11-vague": 26.0,
+          "12-round-trip-test": 39.0
+        }
+      },
+      "top_level_count": {
+        "mean": 3.6666666666666665,
+        "stdev": 2.188122205883115,
+        "values_by_slug": {
+          "01-login": 3.0,
+          "02-profile-settings": 4.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 5.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 6.0,
+          "11-vague": 5.0,
+          "12-round-trip-test": 8.0
+        }
+      },
+      "max_depth": {
+        "mean": 2.75,
+        "stdev": 1.2880570286640685,
+        "values_by_slug": {
+          "01-login": 2.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 4.0,
+          "04-dashboard": 4.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 2.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 4.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 4.0
+        }
+      },
+      "container_coverage": {
+        "mean": 1.3333333333333333,
+        "stdev": 0.8876253645985945,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 2.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 2.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.1343101343101343,
+        "stdev": 0.1297935780360907,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.07692307692307693,
+          "03-meme-feed": 0.3076923076923077,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.21428571428571427,
+          "07-search": 0.15384615384615385,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.3181818181818182,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.3076923076923077,
+          "12-round-trip-test": 0.05128205128205128
+        }
+      },
+      "variant_rate": {
+        "mean": 0.04256044881044881,
+        "stdev": 0.06108992621688872,
+        "values_by_slug": {
+          "01-login": 0.125,
+          "02-profile-settings": 0.07692307692307693,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.07142857142857142,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.05555555555555555,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "json_valid": {
+        "mean": 0.9166666666666666,
+        "stdev": 0.28867513459481287,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.08333333333333333,
+        "stdev": 0.28867513459481287,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    },
+    "T=1.0__S4": {
+      "total_node_count": {
+        "mean": 11.166666666666666,
+        "stdev": 8.840334561062447,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 14.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 11.0,
+          "05-paywall": 36.0,
+          "06-spa-minimal": 10.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 11.0,
+          "09-drawer-nav": 7.0,
+          "10-onboarding-carousel": 14.0,
+          "11-vague": 6.0,
+          "12-round-trip-test": 14.0
+        }
+      },
+      "top_level_count": {
+        "mean": 5.166666666666667,
+        "stdev": 3.6639108100829123,
+        "values_by_slug": {
+          "01-login": 5.0,
+          "02-profile-settings": 5.0,
+          "03-meme-feed": 2.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 7.0,
+          "06-spa-minimal": 10.0,
+          "07-search": 4.0,
+          "08-explicit-structure": 3.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 5.0,
+          "11-vague": 3.0,
+          "12-round-trip-test": 14.0
+        }
+      },
+      "max_depth": {
+        "mean": 1.75,
+        "stdev": 0.753778361444409,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 2.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 3.0,
+          "05-paywall": 3.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 2.0,
+          "09-drawer-nav": 2.0,
+          "10-onboarding-carousel": 2.0,
+          "11-vague": 2.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "container_coverage": {
+        "mean": 0.25,
+        "stdev": 0.45226701686664544,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "component_key_rate": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "variant_rate": {
+        "mean": 0.040945165945165944,
+        "stdev": 0.07454450343216411,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.18181818181818182,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.16666666666666666,
+          "12-round-trip-test": 0.14285714285714285
+        }
+      },
+      "json_valid": {
+        "mean": 1.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 1.0,
+          "02-profile-settings": 1.0,
+          "03-meme-feed": 1.0,
+          "04-dashboard": 1.0,
+          "05-paywall": 1.0,
+          "06-spa-minimal": 1.0,
+          "07-search": 1.0,
+          "08-explicit-structure": 1.0,
+          "09-drawer-nav": 1.0,
+          "10-onboarding-carousel": 1.0,
+          "11-vague": 1.0,
+          "12-round-trip-test": 1.0
+        }
+      },
+      "empty_output": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      },
+      "clarification_refusal": {
+        "mean": 0.0,
+        "stdev": 0.0,
+        "values_by_slug": {
+          "01-login": 0.0,
+          "02-profile-settings": 0.0,
+          "03-meme-feed": 0.0,
+          "04-dashboard": 0.0,
+          "05-paywall": 0.0,
+          "06-spa-minimal": 0.0,
+          "07-search": 0.0,
+          "08-explicit-structure": 0.0,
+          "09-drawer-nav": 0.0,
+          "10-onboarding-carousel": 0.0,
+          "11-vague": 0.0,
+          "12-round-trip-test": 0.0
+        }
+      }
+    }
+  },
+  "verdicts": [
+    {
+      "temperature": 0.0,
+      "contract": "S1",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 1,
+        "max_depth": 3,
+        "container_coverage": 3,
+        "component_key_rate": 3,
+        "variant_rate": 1
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "06-spa-minimal"
+        ],
+        "max_depth": [
+          "03-meme-feed",
+          "06-spa-minimal",
+          "12-round-trip-test"
+        ],
+        "container_coverage": [
+          "01-login",
+          "06-spa-minimal",
+          "12-round-trip-test"
+        ],
+        "component_key_rate": [
+          "01-login",
+          "11-vague",
+          "12-round-trip-test"
+        ],
+        "variant_rate": [
+          "10-onboarding-carousel"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.0,
+      "contract": "S2",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 3,
+        "max_depth": 2,
+        "container_coverage": 1,
+        "component_key_rate": 0,
+        "variant_rate": 1
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "03-meme-feed",
+          "06-spa-minimal",
+          "07-search"
+        ],
+        "max_depth": [
+          "03-meme-feed",
+          "06-spa-minimal"
+        ],
+        "container_coverage": [
+          "06-spa-minimal"
+        ],
+        "component_key_rate": [],
+        "variant_rate": [
+          "10-onboarding-carousel"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.0,
+      "contract": "S3",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 3,
+        "max_depth": 2,
+        "container_coverage": 1,
+        "component_key_rate": 2,
+        "variant_rate": 2
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "03-meme-feed",
+          "05-paywall",
+          "12-round-trip-test"
+        ],
+        "max_depth": [
+          "05-paywall",
+          "12-round-trip-test"
+        ],
+        "container_coverage": [
+          "12-round-trip-test"
+        ],
+        "component_key_rate": [
+          "05-paywall",
+          "11-vague"
+        ],
+        "variant_rate": [
+          "01-login",
+          "10-onboarding-carousel"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.0,
+      "contract": "S4",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 1,
+        "container_coverage": 1,
+        "component_key_rate": 0,
+        "variant_rate": 0
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [
+          "12-round-trip-test"
+        ],
+        "container_coverage": [
+          "12-round-trip-test"
+        ],
+        "component_key_rate": [],
+        "variant_rate": []
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.5,
+      "contract": "S1",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 1,
+        "container_coverage": 2,
+        "component_key_rate": 3,
+        "variant_rate": 2
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [
+          "03-meme-feed"
+        ],
+        "container_coverage": [
+          "01-login",
+          "04-dashboard"
+        ],
+        "component_key_rate": [
+          "01-login",
+          "10-onboarding-carousel",
+          "12-round-trip-test"
+        ],
+        "variant_rate": [
+          "08-explicit-structure",
+          "12-round-trip-test"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.5,
+      "contract": "S2",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 2,
+        "max_depth": 1,
+        "container_coverage": 0,
+        "component_key_rate": 2,
+        "variant_rate": 2
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "03-meme-feed",
+          "05-paywall"
+        ],
+        "max_depth": [
+          "03-meme-feed"
+        ],
+        "container_coverage": [],
+        "component_key_rate": [
+          "02-profile-settings",
+          "05-paywall"
+        ],
+        "variant_rate": [
+          "08-explicit-structure",
+          "10-onboarding-carousel"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.5,
+      "contract": "S3",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 3,
+        "max_depth": 1,
+        "container_coverage": 0,
+        "component_key_rate": 2,
+        "variant_rate": 2
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "03-meme-feed",
+          "05-paywall",
+          "12-round-trip-test"
+        ],
+        "max_depth": [
+          "05-paywall"
+        ],
+        "container_coverage": [],
+        "component_key_rate": [
+          "05-paywall",
+          "07-search"
+        ],
+        "variant_rate": [
+          "08-explicit-structure",
+          "10-onboarding-carousel"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 0.5,
+      "contract": "S4",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 0,
+        "container_coverage": 0,
+        "component_key_rate": 0,
+        "variant_rate": 1
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [],
+        "container_coverage": [],
+        "component_key_rate": [],
+        "variant_rate": [
+          "08-explicit-structure"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 1.0,
+      "contract": "S1",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 3,
+        "container_coverage": 3,
+        "component_key_rate": 4,
+        "variant_rate": 1
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [
+          "01-login",
+          "03-meme-feed",
+          "12-round-trip-test"
+        ],
+        "container_coverage": [
+          "06-spa-minimal",
+          "10-onboarding-carousel",
+          "12-round-trip-test"
+        ],
+        "component_key_rate": [
+          "02-profile-settings",
+          "10-onboarding-carousel",
+          "11-vague",
+          "12-round-trip-test"
+        ],
+        "variant_rate": [
+          "11-vague"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 1.0,
+      "contract": "S2",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 0,
+        "container_coverage": 0,
+        "component_key_rate": 3,
+        "variant_rate": 0
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [],
+        "container_coverage": [],
+        "component_key_rate": [
+          "02-profile-settings",
+          "07-search",
+          "10-onboarding-carousel"
+        ],
+        "variant_rate": []
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 1.0,
+      "contract": "S3",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 1,
+        "max_depth": 1,
+        "container_coverage": 1,
+        "component_key_rate": 2,
+        "variant_rate": 1
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [
+          "12-round-trip-test"
+        ],
+        "max_depth": [
+          "12-round-trip-test"
+        ],
+        "container_coverage": [
+          "12-round-trip-test"
+        ],
+        "component_key_rate": [
+          "07-search",
+          "11-vague"
+        ],
+        "variant_rate": [
+          "01-login"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    },
+    {
+      "temperature": 1.0,
+      "contract": "S4",
+      "measures_won_count": 0,
+      "measure_wins": {
+        "total_node_count": 0,
+        "max_depth": 0,
+        "container_coverage": 0,
+        "component_key_rate": 0,
+        "variant_rate": 2
+      },
+      "winning_prompts_by_measure": {
+        "total_node_count": [],
+        "max_depth": [],
+        "container_coverage": [],
+        "component_key_rate": [],
+        "variant_rate": [
+          "11-vague",
+          "12-round-trip-test"
+        ]
+      },
+      "empty_output_rate": 0.0,
+      "s0_empty_output_rate": 0.0,
+      "gate_passes": false
+    }
+  ]
+}
