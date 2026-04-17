@@ -8,12 +8,14 @@ fast, cheap parsing.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from typing import Any
 
 from dd.composition.archetype_classifier import classify_archetype
 from dd.composition.archetype_injection import inject_archetype
+from dd.composition.plan import plan_then_fill
 from dd.compose import generate_from_prompt as _generate_from_prompt
 from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
 
@@ -349,7 +351,42 @@ def prompt_to_figma(
     matched_archetype = classify_archetype(prompt, client=client)
     system = inject_archetype(system, archetype=matched_archetype)
 
-    components = parse_prompt(prompt, client, system_prompt=system, temperature=_COMPOSE_TEMPERATURE)
+    # ADR-008 v0.1.5 A2: plan-then-fill behind a feature flag. When set
+    # the single parse_prompt call is replaced by plan → validate →
+    # fill (+ one retry on drift). Surfaces KIND_PLAN_INVALID through
+    # the same pipeline-result shape as the A1 clarification-refusal
+    # case, so downstream consumers route both to notes.md / skip render.
+    if os.environ.get("DD_ENABLE_PLAN_THEN_FILL") == "1":
+        plan_result = plan_then_fill(prompt, client)
+        if "_clarification_refusal" in plan_result:
+            return {
+                "components": [],
+                "clarification_refusal": plan_result["_clarification_refusal"],
+                "structure_script": None,
+                "element_count": 0,
+                "warnings": ["Plan LLM returned clarification request; no render emitted."],
+                "token_refs": [],
+                "template_rebind_entries": [],
+                "spec": None,
+            }
+        if plan_result.get("kind") == "KIND_PLAN_INVALID":
+            return {
+                "components": [],
+                "kind": "KIND_PLAN_INVALID",
+                "detail": plan_result.get("detail"),
+                "plan": plan_result.get("plan"),
+                "structure_script": None,
+                "element_count": 0,
+                "warnings": [f"plan-then-fill invalid: {plan_result.get('detail')}"],
+                "token_refs": [],
+                "template_rebind_entries": [],
+                "spec": None,
+            }
+        components = plan_result["components"]
+        plan_meta = {"plan": plan_result.get("plan"), "retried": plan_result.get("retried", False)}
+    else:
+        components = parse_prompt(prompt, client, system_prompt=system, temperature=_COMPOSE_TEMPERATURE)
+        plan_meta = None
 
     # ADR-008 v0.1.5 side-fix: when the LLM returned a clarification
     # refusal (e.g. "I don't have a reference image for X"),
@@ -371,4 +408,7 @@ def prompt_to_figma(
 
     result = _generate_from_prompt(conn, components, page_name=page_name)
     result["components"] = components
+    if plan_meta is not None:
+        result["plan"] = plan_meta["plan"]
+        result["plan_retried"] = plan_meta["retried"]
     return result

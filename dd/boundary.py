@@ -43,6 +43,12 @@ KIND_TOKEN_UNRESOLVED = "token_unresolved"
 KIND_SLOT_TYPE_MISMATCH = "slot_type_mismatch"
 KIND_VARIANT_BINDING_MISSING = "variant_binding_missing"
 
+# Prompt layer (ADR-008 v0.1.5) — upstream planner returned an invalid
+# skeleton or the fill call couldn't realize it after one retry.
+# ``dd.composition.plan.plan_then_fill`` emits this in the same
+# structured-error shape the ADR-006 boundary promises.
+KIND_PLAN_INVALID = "plan_invalid"
+
 # Codegen-time degradation (ADR-007 Position 1)
 KIND_DEGRADED_TO_MODE2 = "degraded_to_mode2"
 KIND_DEGRADED_TO_LITERAL = "degraded_to_literal"

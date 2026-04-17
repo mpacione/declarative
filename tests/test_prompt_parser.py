@@ -254,6 +254,68 @@ class TestPromptToFigma:
         # Only one Haiku call — no classifier call when flag is set.
         assert client.messages.create.call_count == 1
 
+    # ---- ADR-008 v0.1.5 A2 plan-then-fill wiring ----
+
+    def test_a2_flag_off_uses_single_call_path(self, db):
+        """With DD_ENABLE_PLAN_THEN_FILL unset, behaviour is unchanged
+        from A1 (single parse call after the optional archetype
+        classifier)."""
+        client = _mock_client(VALID_RESPONSE)
+        prompt_to_figma("settings page", db, client)
+        # Single Haiku call (just the parse) — classifier short-circuited
+        # on the 'settings' keyword.
+        assert client.messages.create.call_count == 1
+
+    def test_a2_flag_on_fires_plan_then_fill(self, db, monkeypatch):
+        """With DD_ENABLE_PLAN_THEN_FILL=1, prompt_to_figma routes to
+        the plan + fill two-call path."""
+        monkeypatch.setenv("DD_ENABLE_PLAN_THEN_FILL", "1")
+        monkeypatch.setenv("DD_DISABLE_ARCHETYPE_LIBRARY", "1")
+
+        plan = json.dumps([
+            {"type": "header", "id": "hdr", "children": [
+                {"type": "text", "id": "title"},
+            ]},
+            {"type": "card", "id": "c", "children": [
+                {"type": "heading", "id": "h"},
+                {"type": "toggle", "id": "t", "count_hint": 1},
+            ]},
+            {"type": "button", "id": "b"},
+        ])
+        fill = json.dumps([
+            {"type": "header", "children": [{"type": "text", "props": {"text": "Settings"}}]},
+            {"type": "card", "children": [
+                {"type": "heading", "props": {"text": "Prefs"}},
+                {"type": "toggle", "props": {"label": "Dark mode"}},
+            ]},
+            {"type": "button", "props": {"text": "Save"}},
+        ])
+        client = MagicMock()
+        client.messages.create.side_effect = [
+            MagicMock(content=[MagicMock(text=plan)]),
+            MagicMock(content=[MagicMock(text=fill)]),
+        ]
+        result = prompt_to_figma("a settings page", db, client)
+        # Plan + fill = 2 calls.
+        assert client.messages.create.call_count == 2
+        # Result should still carry components per the existing contract.
+        assert "components" in result
+        assert len(result["components"]) == 3
+
+    def test_a2_plan_invalid_surfaces_structured_error(self, db, monkeypatch):
+        monkeypatch.setenv("DD_ENABLE_PLAN_THEN_FILL", "1")
+        monkeypatch.setenv("DD_DISABLE_ARCHETYPE_LIBRARY", "1")
+        bad_plan = json.dumps([{"type": "holographic_widget", "id": "h"}])
+        client = MagicMock()
+        client.messages.create.side_effect = [
+            MagicMock(content=[MagicMock(text=bad_plan)]),
+        ]
+        result = prompt_to_figma("a settings page", db, client)
+        assert result.get("kind") == "KIND_PLAN_INVALID"
+        assert result["components"] == []
+        # Fill must NOT have fired.
+        assert client.messages.create.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # System prompt tests
