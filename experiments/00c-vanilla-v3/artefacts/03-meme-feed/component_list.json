@@ -1,0 +1,150 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Meme Feed"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Meme 1"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Posted by u/user1"
+        }
+      },
+      {
+        "type": "button_group",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2b06 Upvote"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2197 Share"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Meme 2"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Posted by u/user2"
+        }
+      },
+      {
+        "type": "button_group",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2b06 Upvote"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2197 Share"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Meme 3"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Posted by u/user3"
+        }
+      },
+      {
+        "type": "button_group",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2b06 Upvote"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2197 Share"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Meme 4"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Posted by u/user4"
+        }
+      },
+      {
+        "type": "button_group",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2b06 Upvote"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "\u2197 Share"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "pagination",
+    "props": {
+      "text": "Load more"
+    }
+  }
+]

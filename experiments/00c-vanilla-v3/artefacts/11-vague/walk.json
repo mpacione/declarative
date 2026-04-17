@@ -1,0 +1,228 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5756:663056",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "fab-1": {
+      "type": "FRAME",
+      "name": "fab-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 100,
+      "height": 315,
+      "effectCount": 0
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 100,
+      "height": 300,
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "heading-4": {
+      "type": "TEXT",
+      "name": "heading-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Quick Actions",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 100,
+      "height": 315,
+      "effectCount": 0
+    },
+    "toggle_group-1": {
+      "type": "FRAME",
+      "name": "toggle_group-1",
+      "width": 100,
+      "height": 300,
+      "effectCount": 0
+    },
+    "toggle-3": {
+      "type": "FRAME",
+      "name": "toggle-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "toggle-2": {
+      "type": "FRAME",
+      "name": "toggle-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "toggle-1": {
+      "type": "FRAME",
+      "name": "toggle-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "heading-3": {
+      "type": "TEXT",
+      "name": "heading-3",
+      "width": 100,
+      "height": 15,
+      "characters": "Your Interests",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 100,
+      "height": 315,
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 100,
+      "height": 300,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 100,
+      "height": 15,
+      "characters": "Explore",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 100,
+      "height": 175,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 100,
+      "height": 60,
+      "characters": "Discover amazing things happening right now",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 100,
+      "height": 15,
+      "characters": "Featured",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    }
+  }
+}

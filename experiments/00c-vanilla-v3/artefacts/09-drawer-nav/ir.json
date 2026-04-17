@@ -1,0 +1,114 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Menu"
+      }
+    },
+    "navigation_row-1": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Home"
+      }
+    },
+    "navigation_row-2": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Profile"
+      }
+    },
+    "navigation_row-3": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Settings"
+      }
+    },
+    "navigation_row-4": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Messages"
+      }
+    },
+    "navigation_row-5": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Notifications"
+      }
+    },
+    "navigation_row-6": {
+      "type": "navigation_row",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Help"
+      }
+    },
+    "drawer-1": {
+      "type": "drawer",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "children": [
+        "heading-1",
+        "navigation_row-1",
+        "navigation_row-2",
+        "navigation_row-3",
+        "navigation_row-4",
+        "navigation_row-5",
+        "navigation_row-6"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "drawer-1"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "heading-1": -1,
+    "navigation_row-1": -2,
+    "navigation_row-2": -3,
+    "navigation_row-3": -4,
+    "navigation_row-4": -5,
+    "navigation_row-5": -6,
+    "navigation_row-6": -7,
+    "drawer-1": -8,
+    "screen-1": -9
+  }
+}

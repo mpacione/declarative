@@ -1,0 +1,223 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Choose Your Plan"
+    }
+  },
+  {
+    "type": "heading",
+    "props": {
+      "text": "Simple, Transparent Pricing"
+    }
+  },
+  {
+    "type": "text",
+    "props": {
+      "text": "Select the plan that works best for you"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Starter"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "$9/month"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Perfect for getting started"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Up to 10 projects"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Basic support"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "1GB storage"
+            }
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Get Started"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "badge",
+        "props": {
+          "text": "Most Popular"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Professional"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "$29/month"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "For growing teams"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Unlimited projects"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Priority support"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "100GB storage"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Team collaboration"
+            }
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Subscribe Now"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Enterprise"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Custom"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "For large organizations"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Everything in Professional"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Dedicated support"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Unlimited storage"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Custom integrations"
+            }
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Contact Sales"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "What Our Customers Say"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "\"This platform has completely transformed how we manage our projects. The Professional plan gives us everything we need at an excellent price.\""
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Sarah Chen, Product Manager at TechCorp"
+        }
+      },
+      {
+        "type": "avatar",
+        "props": {
+          "text": "SC"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,398 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5756:662942",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 100,
+      "height": 325,
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 100,
+      "height": 45,
+      "characters": "Sarah Chen, Product Manager at TechCorp",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 150,
+      "characters": "\"This platform has completely transformed how we manage our projects. The Professional plan gives us everything we need at an excellent price.\"",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-8": {
+      "type": "TEXT",
+      "name": "heading-8",
+      "width": 100,
+      "height": 30,
+      "characters": "What Our Customers Say",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 100,
+      "height": 560,
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-3": {
+      "type": "FRAME",
+      "name": "list-3",
+      "width": 100,
+      "height": 400,
+      "effectCount": 0
+    },
+    "list_item-11": {
+      "type": "FRAME",
+      "name": "list_item-11",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-10": {
+      "type": "FRAME",
+      "name": "list_item-10",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-9": {
+      "type": "FRAME",
+      "name": "list_item-9",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-8": {
+      "type": "FRAME",
+      "name": "list_item-8",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 30,
+      "characters": "For large organizations",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-7": {
+      "type": "TEXT",
+      "name": "heading-7",
+      "width": 100,
+      "height": 15,
+      "characters": "Custom",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-6": {
+      "type": "TEXT",
+      "name": "heading-6",
+      "width": 100,
+      "height": 15,
+      "characters": "Enterprise",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 100,
+      "height": 660,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-2": {
+      "type": "FRAME",
+      "name": "list-2",
+      "width": 100,
+      "height": 400,
+      "effectCount": 0
+    },
+    "list_item-7": {
+      "type": "FRAME",
+      "name": "list_item-7",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-6": {
+      "type": "FRAME",
+      "name": "list_item-6",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 30,
+      "characters": "For growing teams",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-5": {
+      "type": "TEXT",
+      "name": "heading-5",
+      "width": 100,
+      "height": 15,
+      "characters": "$29/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-4": {
+      "type": "TEXT",
+      "name": "heading-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Professional",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-1": {
+      "type": "FRAME",
+      "name": "badge-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 100,
+      "height": 460,
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 100,
+      "height": 300,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 100,
+      "height": 30,
+      "characters": "Perfect for getting started",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-3": {
+      "type": "TEXT",
+      "name": "heading-3",
+      "width": 100,
+      "height": 15,
+      "characters": "$9/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 100,
+      "height": 15,
+      "characters": "Starter",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 220,
+      "height": 15,
+      "characters": "Select the plan that works best for you",
+      "textAutoResize": "WIDTH_AND_HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 156,
+      "height": 15,
+      "characters": "Simple, Transparent Pricing",
+      "textAutoResize": "WIDTH_AND_HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    }
+  }
+}
