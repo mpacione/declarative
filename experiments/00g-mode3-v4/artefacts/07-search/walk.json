@@ -1,0 +1,290 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5772:34213",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 396,
+      "height": 585,
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 100,
+      "height": 150,
+      "effectCount": 0
+    },
+    "icon-4": {
+      "type": "INSTANCE",
+      "name": "icon-4",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 100,
+      "height": 30,
+      "characters": "Team Meeting Notes",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-4": {
+      "type": "FRAME",
+      "name": "avatar-4",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 150,
+      "effectCount": 0
+    },
+    "icon-3": {
+      "type": "INSTANCE",
+      "name": "icon-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 100,
+      "height": 30,
+      "characters": "New Product Launch",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-3": {
+      "type": "FRAME",
+      "name": "avatar-3",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 150,
+      "effectCount": 0
+    },
+    "icon-2": {
+      "type": "INSTANCE",
+      "name": "icon-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 100,
+      "height": 30,
+      "characters": "Design Conference 2024",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-2": {
+      "type": "FRAME",
+      "name": "avatar-2",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 135,
+      "effectCount": 0
+    },
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 15,
+      "characters": "Sarah Johnson",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "tabs-1": {
+      "type": "FRAME",
+      "name": "tabs-1",
+      "width": 396,
+      "height": 60,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 396,
+      "height": 15,
+      "characters": "Posts",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 396,
+      "height": 15,
+      "characters": "Places",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 396,
+      "height": 15,
+      "characters": "People",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 396,
+      "height": 15,
+      "characters": "All",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 140,
+      "effectCount": 0
+    },
+    "icon_button-2": {
+      "type": "INSTANCE",
+      "name": "icon_button-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "search_input-1": {
+      "type": "FRAME",
+      "name": "search_input-1",
+      "width": 396,
+      "height": 100,
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

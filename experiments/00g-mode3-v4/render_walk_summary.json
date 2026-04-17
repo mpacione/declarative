@@ -1,0 +1,246 @@
+[
+  {
+    "slug": "01-login",
+    "compose": {
+      "element_count": 16,
+      "warnings": 9,
+      "latency_ms": 17
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 150,
+      "errors_count": 1,
+      "error_kinds": [
+        "render_thrown"
+      ]
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 125,
+      "eid_count": 15,
+      "rendered_root": "5772:33621"
+    }
+  },
+  {
+    "slug": "02-profile-settings",
+    "compose": {
+      "element_count": 25,
+      "warnings": 15,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 189,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 140,
+      "eid_count": 25,
+      "rendered_root": "5772:33664"
+    }
+  },
+  {
+    "slug": "03-meme-feed",
+    "compose": {
+      "element_count": 29,
+      "warnings": 28,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 1848,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 2031,
+      "eid_count": 29,
+      "rendered_root": "5772:33756"
+    }
+  },
+  {
+    "slug": "04-dashboard",
+    "compose": {
+      "element_count": 45,
+      "warnings": 39,
+      "latency_ms": 14
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 616,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 1050,
+      "eid_count": 45,
+      "rendered_root": "5772:33879"
+    }
+  },
+  {
+    "slug": "05-paywall",
+    "compose": {
+      "element_count": 58,
+      "warnings": 57,
+      "latency_ms": 2
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 407,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 252,
+      "eid_count": 58,
+      "rendered_root": "5772:34020"
+    }
+  },
+  {
+    "slug": "06-spa-minimal",
+    "compose": {
+      "element_count": 25,
+      "warnings": 24,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 329,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 137,
+      "eid_count": 25,
+      "rendered_root": "5772:34145"
+    }
+  },
+  {
+    "slug": "07-search",
+    "compose": {
+      "element_count": 27,
+      "warnings": 26,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 306,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 132,
+      "eid_count": 27,
+      "rendered_root": "5772:34213"
+    }
+  },
+  {
+    "slug": "08-explicit-structure",
+    "compose": {
+      "element_count": 14,
+      "warnings": 11,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 161,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 107,
+      "eid_count": 14,
+      "rendered_root": "5772:34264"
+    }
+  },
+  {
+    "slug": "09-drawer-nav",
+    "compose": {
+      "element_count": 23,
+      "warnings": 22,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 206,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 124,
+      "eid_count": 23,
+      "rendered_root": "5772:34312"
+    }
+  },
+  {
+    "slug": "10-onboarding-carousel",
+    "compose": {
+      "element_count": 26,
+      "warnings": 20,
+      "latency_ms": 2
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 162,
+      "errors_count": 1,
+      "error_kinds": [
+        "render_thrown"
+      ]
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 133,
+      "eid_count": 22,
+      "rendered_root": "5772:34368"
+    }
+  },
+  {
+    "slug": "11-vague",
+    "compose": {
+      "element_count": 27,
+      "warnings": 23,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 209,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 145,
+      "eid_count": 27,
+      "rendered_root": "5772:34435"
+    }
+  },
+  {
+    "slug": "12-round-trip-test",
+    "compose": {
+      "element_count": 34,
+      "warnings": 29,
+      "latency_ms": 1
+    },
+    "render": {
+      "status": "ok",
+      "latency_ms": 267,
+      "errors_count": 0,
+      "error_kinds": []
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 179,
+      "eid_count": 34,
+      "rendered_root": "5772:34519"
+    }
+  }
+]
