@@ -66,6 +66,28 @@ class TestExtractJson:
         result = extract_json('not json at all')
         assert result == []
 
+    def test_long_prose_returns_clarification_refusal(self):
+        """ADR-008 v0.1.5 side-fix: when the LLM returns ≥100 chars of
+        non-JSON prose (e.g. asking for clarification), extract_json
+        returns a dict with ``_clarification_refusal`` so the driver
+        surfaces it as KIND_PROMPT_UNDERSPECIFIED instead of silently
+        treating it as an empty component list."""
+        prose = (
+            "I don't have a reference image or description of "
+            "'iPhone 13 Pro Max - 109'. Could you share a screenshot "
+            "or describe the screen you'd like me to rebuild?"
+        )
+        result = extract_json(prose)
+        assert isinstance(result, dict)
+        assert "_clarification_refusal" in result
+        assert "iPhone 13 Pro Max - 109" in result["_clarification_refusal"]
+
+    def test_short_noise_still_returns_empty(self):
+        """Under the 100-char threshold, treat as noise — preserves
+        historical contract for tiny malformed outputs."""
+        result = extract_json('oops')
+        assert result == []
+
 
 # ---------------------------------------------------------------------------
 # parse_prompt tests

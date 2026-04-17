@@ -18,6 +18,15 @@ from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_c
 _MODEL = "claude-haiku-4-5-20251001"
 _DEFAULT_MIN_INSTANCES = 50
 
+# ADR-008 v0.1.5: lower the production composition temperature to 0.3.
+# The 00c-00f runs used the Haiku default (~1.0) and exhibited high
+# cross-run variance (12-round-trip-test emitted 0 / 6 / 6 / 0
+# components on identical prompts). Stream-β's matrix design predicts
+# S2 @ T=0.3 as the dominant cell; confirmation by the 240-call run
+# upstream of this default-flip. The old behaviour is available by
+# passing ``temperature=None`` explicitly to ``parse_prompt``.
+_COMPOSE_TEMPERATURE = 0.3
+
 
 _CKR_MIN_INSTANCES = 1
 _CKR_ENTRIES_PER_PREFIX = 8
@@ -211,12 +220,28 @@ NOT
   {"type": "list_item", "props": {"text": "Blocked users"}}"""
 
 
-def extract_json(text: str) -> list[dict[str, Any]]:
+# Responses shorter than this threshold that fail to parse are treated as
+# malformed output (not as clarification requests). Raised from the old
+# "always return []" contract — see v0.1.5 plan §Week 1 side-fix.
+_CLARIFICATION_PROSE_MIN_CHARS = 100
+
+
+def extract_json(text: str) -> list[dict[str, Any]] | dict[str, Any]:
     """Extract a JSON array from LLM response text.
 
     Handles plain JSON, markdown code blocks, and text before/after JSON.
-    Returns empty list if no valid JSON array found.
+
+    Returns:
+    - A ``list`` of component dicts on normal success.
+    - A ``{"_clarification_refusal": <prose>}`` dict when the LLM
+      returned prose explaining it can't comply (e.g. "I don't have a
+      reference image for 'iPhone 13 Pro Max - 109'…"). This restores
+      the ADR-008 ``KIND_PROMPT_UNDERSPECIFIED`` signal the pipeline
+      used to swallow as ``[]``; callers route it to notes.md and
+      skip rendering instead of emitting a blank frame.
+    - An empty list on pure malformed output (no prose, no JSON).
     """
+    raw_input = text
     code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
     if code_block:
         text = code_block.group(1)
@@ -232,6 +257,15 @@ def extract_json(text: str) -> list[dict[str, Any]]:
     except (json.JSONDecodeError, TypeError):
         pass
 
+    # No JSON array parseable. Distinguish "LLM asked for clarification
+    # or refused" from "LLM emitted noise" by prose length. Anything
+    # above the threshold is assumed to be a real refusal / clarification
+    # request that the caller must see; shorter noise degrades to the
+    # historical empty-list contract.
+    prose = raw_input.strip()
+    if len(prose) >= _CLARIFICATION_PROSE_MIN_CHARS:
+        return {"_clarification_refusal": prose}
+
     return []
 
 
@@ -240,21 +274,38 @@ def parse_prompt(
     client: Any,
     catalog_types: list[str] | None = None,
     system_prompt: str | None = None,
-) -> list[dict[str, Any]]:
+    temperature: float | None = None,
+) -> list[dict[str, Any]] | dict[str, Any]:
     """Parse a natural language prompt into a component list using Claude.
 
-    Returns a list of component dicts suitable for compose_screen().
-    Returns empty list for empty/whitespace-only prompts.
+    Returns:
+    - A list of component dicts suitable for ``compose_screen()`` on
+      normal success.
+    - A ``{"_clarification_refusal": <text>}`` dict when the LLM
+      refused / asked for clarification (e.g. prompt referenced an
+      image the model can't see). Callers surface this as
+      ``KIND_PROMPT_UNDERSPECIFIED`` and skip rendering.
+    - An empty list for empty/whitespace-only prompts or unparseable
+      non-refusal output.
+
+    ``temperature`` is forwarded to the Anthropic API when supplied.
+    ADR-008 v0.1.5 sets ``0.3`` as the production default for
+    composition; omitting the argument preserves backwards-compat
+    behaviour (provider default, typically 1.0).
     """
     if not prompt or not prompt.strip():
         return []
 
-    response = client.messages.create(
-        model=_MODEL,
-        max_tokens=2048,
-        system=system_prompt or SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    kwargs: dict[str, Any] = {
+        "model": _MODEL,
+        "max_tokens": 2048,
+        "system": system_prompt or SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+
+    response = client.messages.create(**kwargs)
     response_text = response.content[0].text
     return extract_json(response_text)
 
@@ -288,7 +339,26 @@ def prompt_to_figma(
     if vocabulary_context:
         system = system + "\n\n" + vocabulary_context
 
-    components = parse_prompt(prompt, client, system_prompt=system)
+    components = parse_prompt(prompt, client, system_prompt=system, temperature=_COMPOSE_TEMPERATURE)
+
+    # ADR-008 v0.1.5 side-fix: when the LLM returned a clarification
+    # refusal (e.g. "I don't have a reference image for X"),
+    # `parse_prompt` returns {"_clarification_refusal": <text>}
+    # instead of a component list. Surface as a structured-error
+    # payload the driver routes to notes.md; do NOT compose/render
+    # an empty screen in that case.
+    if isinstance(components, dict) and "_clarification_refusal" in components:
+        return {
+            "components": [],
+            "clarification_refusal": components["_clarification_refusal"],
+            "structure_script": None,
+            "element_count": 0,
+            "warnings": ["LLM returned clarification request; no render emitted."],
+            "token_refs": [],
+            "template_rebind_entries": [],
+            "spec": None,
+        }
+
     result = _generate_from_prompt(conn, components, page_name=page_name)
     result["components"] = components
     return result
