@@ -293,6 +293,334 @@ def _list_item_template(variant: str | None) -> PresentationTemplate:
     )
 
 
+def _header_template(variant: str | None) -> PresentationTemplate:
+    """iOS/Android-style top app bar: leading icon button + title + trailing actions."""
+    return PresentationTemplate(
+        catalog_type="header",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "fill", "height": "fixed"},
+            "padding": {"x": "{space.header.padding_x}", "y": "{space.header.padding_y}"},
+            "gap": "{space.header.gap}",
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+            "mainAxisAlignment": "SPACE_BETWEEN",
+        },
+        slots={
+            "leading": SlotSpec(allowed=["icon_button", "icon"], required=False, position="start"),
+            "title": SlotSpec(allowed=["text", "heading"], required=False, position="content"),
+            "trailing": SlotSpec(allowed=["icon_button", "avatar", "button", "icon"], required=False, position="end", quantity="multiple"),
+        },
+        style={
+            "fill": "{color.surface.header}",
+            "stroke": "{color.surface.header_border}",
+            "fg": "{color.text.heading}",
+            "typography": {
+                "fontFamily": "{typography.heading.fontFamily}",
+                "fontSize": "{typography.header.fontSize}",
+                "fontWeight": "{typography.header.fontWeight}",
+            },
+            "height_pixels": 56,
+        },
+    )
+
+
+def _drawer_template(variant: str | None) -> PresentationTemplate:
+    """Side drawer: header + vertical nav menu + footer."""
+    return PresentationTemplate(
+        catalog_type="drawer",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "vertical",
+            "sizing": {"width": "fixed", "height": "fill"},
+            "padding": {"x": "{space.drawer.padding_x}", "y": "{space.drawer.padding_y}"},
+            "gap": "{space.drawer.gap}",
+            "width_pixels": 280,
+        },
+        slots={
+            "header": SlotSpec(allowed=["heading", "avatar", "text"], required=False, position="top"),
+            "menu": SlotSpec(allowed=["navigation_row", "list_item"], required=True, position="fill", quantity="multiple"),
+            "footer": SlotSpec(allowed=["text", "button"], required=False, position="bottom"),
+        },
+        style={
+            "fill": "{color.surface.drawer}",
+            "stroke": "{color.surface.drawer_border}",
+            "fg": "{color.text.default}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
+        },
+    )
+
+
+def _navigation_row_template(variant: str | None) -> PresentationTemplate:
+    """Tappable row: leading icon + label + trailing chevron/badge/text."""
+    return PresentationTemplate(
+        catalog_type="navigation_row",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "fill", "height": "hug"},
+            "padding": {"x": "{space.list_item.padding_x}", "y": "{space.list_item.padding_y}"},
+            "gap": "{space.list_item.gap}",
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+            "mainAxisAlignment": "SPACE_BETWEEN",
+        },
+        slots={
+            "icon": SlotSpec(allowed=["icon"], required=False, position="start"),
+            "label": SlotSpec(allowed=["text"], required=True, position="content"),
+            "trailing": SlotSpec(allowed=["icon", "badge", "text"], required=False, position="end"),
+        },
+        style={
+            "fill": "{color.surface.list_item}",
+            "fg": "{color.text.default}",
+            "typography": {
+                "fontFamily": "{typography.list_item.fontFamily}",
+                "fontSize": "{typography.list_item.fontSize}",
+                "fontWeight": "{typography.list_item.fontWeight}",
+            },
+            "height_pixels": 48,
+        },
+    )
+
+
+def _avatar_template(variant: str | None) -> PresentationTemplate:
+    """Circular image container with fallback initials."""
+    return PresentationTemplate(
+        catalog_type="avatar",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "fixed", "height": "fixed"},
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+            "mainAxisAlignment": "CENTER",
+            "width_pixels": 40,
+            "height_pixels": 40,
+        },
+        slots={
+            "fallback": SlotSpec(allowed=["text", "icon"], required=False, position="fill"),
+        },
+        style={
+            "fill": "{color.avatar.fill}",
+            "fg": "{color.avatar.fg}",
+            "radius": 999,
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.avatar.fontSize}",
+                "fontWeight": "{typography.avatar.fontWeight}",
+            },
+        },
+    )
+
+
+def _badge_template(variant: str | None) -> PresentationTemplate:
+    """Small pill with icon + label."""
+    tone = (variant or "default").lower()
+    fill = {
+        "destructive": "{color.action.destructive.bg}",
+        "success": "{color.status.success.bg}",
+        "warning": "{color.status.warning.bg}",
+        "info": "{color.status.info.bg}",
+    }.get(tone, "{color.surface.badge}")
+    fg = {
+        "destructive": "{color.action.destructive.fg}",
+        "success": "{color.status.success.fg}",
+        "warning": "{color.status.warning.fg}",
+        "info": "{color.status.info.fg}",
+    }.get(tone, "{color.text.default}")
+    return PresentationTemplate(
+        catalog_type="badge",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "hug", "height": "hug"},
+            "padding": {"x": "{space.badge.padding_x}", "y": "{space.badge.padding_y}"},
+            "gap": "{space.badge.gap}",
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+        },
+        slots={
+            "icon": SlotSpec(allowed=["icon"], required=False, position="start"),
+            "label": SlotSpec(allowed=["text"], required=True, position="fill"),
+        },
+        style={
+            "fill": fill,
+            "fg": fg,
+            "radius": "{radius.badge}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.badge.fontSize}",
+                "fontWeight": "{typography.badge.fontWeight}",
+            },
+        },
+    )
+
+
+def _image_template(variant: str | None) -> PresentationTemplate:
+    """Placeholder frame with a neutral tint; real image content comes from props.src."""
+    return PresentationTemplate(
+        catalog_type="image",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "fill", "height": "fixed"},
+            "height_pixels": 160,
+        },
+        slots={},
+        style={
+            "fill": "{color.surface.image_placeholder}",
+            "radius": "{radius.image}",
+        },
+    )
+
+
+def _icon_template(variant: str | None) -> PresentationTemplate:
+    """Small square shape — the Mode-1 instance path populates real glyphs."""
+    return PresentationTemplate(
+        catalog_type="icon",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "fixed", "height": "fixed"},
+            "width_pixels": 20,
+            "height_pixels": 20,
+        },
+        slots={},
+        style={
+            "fill": "{color.text.default}",
+            "radius": 4,
+        },
+    )
+
+
+def _menu_template(variant: str | None) -> PresentationTemplate:
+    """Vertical list of items under a trigger — v0.1 ships only the panel shape."""
+    return PresentationTemplate(
+        catalog_type="menu",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "vertical",
+            "sizing": {"width": "fixed", "height": "hug"},
+            "padding": {"x": "{space.menu.padding_x}", "y": "{space.menu.padding_y}"},
+            "gap": "{space.menu.gap}",
+            "width_pixels": 220,
+        },
+        slots={
+            "items": SlotSpec(allowed=["text", "icon", "list_item"], required=True, position="fill", quantity="multiple"),
+        },
+        style={
+            "fill": "{color.surface.menu}",
+            "stroke": "{color.surface.menu_border}",
+            "radius": "{radius.menu}",
+            "shadow": "{shadow.menu}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
+        },
+    )
+
+
+def _tooltip_template(variant: str | None) -> PresentationTemplate:
+    """Small dark hint label."""
+    return PresentationTemplate(
+        catalog_type="tooltip",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "hug", "height": "hug"},
+            "padding": {"x": "{space.tooltip.padding_x}", "y": "{space.tooltip.padding_y}"},
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+        },
+        slots={
+            "content": SlotSpec(allowed=["text"], required=True, position="fill"),
+        },
+        style={
+            "fill": "{color.surface.tooltip}",
+            "fg": "{color.text.on_tooltip}",
+            "radius": "{radius.tooltip}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.caption.fontSize}",
+                "fontWeight": "{typography.caption.fontWeight}",
+            },
+        },
+    )
+
+
+def _popover_template(variant: str | None) -> PresentationTemplate:
+    """Floating panel anchored to a trigger."""
+    return PresentationTemplate(
+        catalog_type="popover",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "vertical",
+            "sizing": {"width": "fixed", "height": "hug"},
+            "padding": {"x": "{space.popover.padding_x}", "y": "{space.popover.padding_y}"},
+            "gap": "{space.popover.gap}",
+            "width_pixels": 280,
+        },
+        slots={
+            "content": SlotSpec(allowed=["any"], required=True, position="fill"),
+        },
+        style={
+            "fill": "{color.surface.popover}",
+            "stroke": "{color.surface.popover_border}",
+            "radius": "{radius.popover}",
+            "shadow": "{shadow.popover}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
+        },
+    )
+
+
+def _link_template(variant: str | None) -> PresentationTemplate:
+    """Inline text styled as a link (no frame; passes through as text node)."""
+    return PresentationTemplate(
+        catalog_type="link",
+        variant=variant,
+        provider="catalog:universal",
+        layout={
+            "direction": "horizontal",
+            "sizing": {"width": "hug", "height": "hug"},
+            "align": "center",
+            "crossAxisAlignment": "CENTER",
+        },
+        slots={
+            "label": SlotSpec(allowed=["text"], required=True, position="fill"),
+        },
+        style={
+            "fill": None,
+            "fg": "{color.text.link}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
+        },
+    )
+
+
 def _generic_frame_template(
     catalog_type: str, variant: str | None,
 ) -> PresentationTemplate:
@@ -341,6 +669,19 @@ _BUILDERS: dict[str, Any] = {
     "radio": _checkbox_template,
     "icon_button": _icon_button_template,
     "list_item": _list_item_template,
+    # ADR-008 Part D: 11 backbone types that previously fell through to
+    # the generic frame template, now dedicated.
+    "header": _header_template,
+    "drawer": _drawer_template,
+    "navigation_row": _navigation_row_template,
+    "avatar": _avatar_template,
+    "badge": _badge_template,
+    "image": _image_template,
+    "icon": _icon_template,
+    "menu": _menu_template,
+    "tooltip": _tooltip_template,
+    "popover": _popover_template,
+    "link": _link_template,
 }
 
 

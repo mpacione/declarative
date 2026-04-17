@@ -1,0 +1,77 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {"title": "Welcome"},
+    "children": [
+      {"type": "icon_button", "component_key": "icon/close"}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {"alt": "Onboarding illustration"}
+      },
+      {
+        "type": "heading",
+        "props": {"text": "Welcome to Our App"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Discover amazing features and get started in seconds"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {"alt": "Features illustration"}
+      },
+      {
+        "type": "heading",
+        "props": {"text": "Powerful Features"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Everything you need to succeed, all in one place"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {"alt": "Get started illustration"}
+      },
+      {
+        "type": "heading",
+        "props": {"text": "Ready to Begin?"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Create your account and unlock endless possibilities"}
+      }
+    ]
+  },
+  {
+    "type": "pagination",
+    "children": [
+      {"type": "button", "props": {"text": "1"}},
+      {"type": "button", "props": {"text": "2"}},
+      {"type": "button", "props": {"text": "3"}}
+    ]
+  },
+  {
+    "type": "button_group",
+    "children": [
+      {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Skip"}},
+      {"type": "button", "component_key": "button/small/solid", "variant": "primary", "props": {"text": "Next"}}
+    ]
+  }
+]
+```

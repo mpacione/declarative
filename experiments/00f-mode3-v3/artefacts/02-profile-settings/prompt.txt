@@ -1,0 +1,1 @@
+a profile settings page with avatar, name, email, notification toggles, and a save button

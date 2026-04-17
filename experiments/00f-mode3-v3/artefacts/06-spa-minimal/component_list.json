@@ -1,0 +1,138 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Serenity Spa"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "avatar",
+        "props": {
+          "initials": "SS"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Featured treatment",
+          "src": "spa-hero"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Signature Massage",
+          "level": 2
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "90 minutes of pure relaxation"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Services",
+          "level": 3
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Swedish Massage"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Facial Treatment"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Hot Stone Therapy"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Aromatherapy Ritual"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Next Appointment",
+          "level": 3
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Tomorrow, 2:00 PM"
+        }
+      },
+      {
+        "type": "badge",
+        "props": {
+          "text": "Confirmed"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Book Treatment"
+    }
+  }
+]

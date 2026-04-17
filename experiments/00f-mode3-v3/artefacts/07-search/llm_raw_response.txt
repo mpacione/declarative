@@ -1,0 +1,84 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {"title": "Search"},
+    "children": [
+      {"type": "icon_button", "component_key": "icon/back"}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "search_input",
+        "props": {"placeholder": "Search..."}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Recent Searches"}},
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Summer vacation"}},
+              {"type": "icon_button", "component_key": "icon/close"}
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Coffee shops"}},
+              {"type": "icon_button", "component_key": "icon/close"}
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Recipe ideas"}},
+              {"type": "icon_button", "component_key": "icon/close"}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Popular"}},
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Trending now"}},
+              {"type": "icon", "component_key": "icon/chevron-down"}
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Most viewed"}},
+              {"type": "icon", "component_key": "icon/chevron-down"}
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {"type": "text", "props": {"text": "Top rated"}},
+              {"type": "icon", "component_key": "icon/chevron-down"}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+```

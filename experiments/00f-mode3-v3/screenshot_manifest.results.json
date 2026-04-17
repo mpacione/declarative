@@ -1,0 +1,140 @@
+[
+  {
+    "ok": true,
+    "rootId": "5767:6703",
+    "width": 428,
+    "height": 926,
+    "size": 14136,
+    "errors": [
+      {
+        "kind": "render_thrown",
+        "error": "not a function",
+        "stack": "    at <anonymous> (<input>:245:16) | "
+      }
+    ],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/01-login/screenshot.png",
+    "ms": 87,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/01-login/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6724",
+    "width": 428,
+    "height": 926,
+    "size": 17452,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/02-profile-settings/screenshot.png",
+    "ms": 87,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/02-profile-settings/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6754",
+    "width": 428,
+    "height": 926,
+    "size": 6710,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/03-meme-feed/screenshot.png",
+    "ms": 105545,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/03-meme-feed/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6810",
+    "width": 428,
+    "height": 926,
+    "size": 23606,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/04-dashboard/screenshot.png",
+    "ms": 124,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/04-dashboard/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6855",
+    "width": 428,
+    "height": 926,
+    "size": 36579,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/05-paywall/screenshot.png",
+    "ms": 140,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/05-paywall/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6924",
+    "width": 428,
+    "height": 926,
+    "size": 18090,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/06-spa-minimal/screenshot.png",
+    "ms": 85,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/06-spa-minimal/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6956",
+    "width": 428,
+    "height": 926,
+    "size": 11124,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/07-search/screenshot.png",
+    "ms": 85,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/07-search/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:6992",
+    "width": 428,
+    "height": 926,
+    "size": 10161,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/08-explicit-structure/screenshot.png",
+    "ms": 115,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/08-explicit-structure/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:7010",
+    "width": 428,
+    "height": 926,
+    "size": 8514,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/09-drawer-nav/screenshot.png",
+    "ms": 65,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/09-drawer-nav/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:7040",
+    "width": 428,
+    "height": 926,
+    "size": 16037,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/10-onboarding-carousel/screenshot.png",
+    "ms": 80,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/10-onboarding-carousel/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:7078",
+    "width": 428,
+    "height": 926,
+    "size": 22524,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/11-vague/screenshot.png",
+    "ms": 102,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/11-vague/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5767:7127",
+    "width": 428,
+    "height": 926,
+    "size": 3520,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/12-round-trip-test/screenshot.png",
+    "ms": 35,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00f-mode3-v3/artefacts/12-round-trip-test/script.js"
+  }
+]
