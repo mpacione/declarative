@@ -142,7 +142,15 @@ def compose_screen(
             return False
         comp_type = comp["type"]
         variant = comp.get("variant")
-        template, _errors = registry.resolve(comp_type, variant, {})
+        # Context hint for structural-match ranking in the provider:
+        # the canonical types of the LLM plan's direct children.
+        ctx = {
+            "expected_children": [
+                c.get("type") for c in (comp.get("children") or [])
+                if c.get("type")
+            ],
+        }
+        template, _errors = registry.resolve(comp_type, variant, ctx)
         if template is None or getattr(template, "corpus_subtree", None) is None:
             return False
         subtree = template.corpus_subtree

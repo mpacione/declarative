@@ -142,22 +142,44 @@ class CorpusRetrievalProvider:
         if not candidates:
             return None
 
-        best: tuple[int, int, int] | None = None  # (desc_count, screen_id, node_id)
+        # Context-driven structural ranking: caller passes
+        # ``expected_children`` (canonical types of the LLM plan's
+        # direct children under this component). Candidates whose DB
+        # children-type bag has the highest Jaccard similarity to the
+        # expected set win. When expected_children is empty, the rank
+        # collapses to the existing size-first ordering.
+        expected = context.get("expected_children") if isinstance(context, dict) else None
+        expected_set: frozenset[str] = frozenset(expected or [])
+
+        # Rank tuple: (-structural_score, desc_count, node_id)
+        # Lower tuple = better pick. Descending score via negation so
+        # ties fall through to size and id.
+        best: tuple[float, int, int, int] | None = None
         for cand in candidates:
             sid = cand[0] if not isinstance(cand, sqlite3.Row) else cand["screen_id"]
             nid = cand[1] if not isinstance(cand, sqlite3.Row) else cand["node_id"]
             desc = _count_descendants(self.conn, screen_id=sid, root_node_id=nid)
             if desc > max_descendants:
                 continue
-            key = (desc, nid)
-            if best is None or key < (best[0], best[2]):
-                best = (desc, sid, nid)
-                # Smallest possible match (0 descendants) short-circuits
-                if desc == 0:
+            if expected_set:
+                cand_children = _candidate_child_types(
+                    self.conn, screen_id=sid, node_id=nid,
+                )
+                score = _jaccard(expected_set, frozenset(cand_children))
+            else:
+                score = 0.0
+            key = (-score, desc, nid)
+            if best is None or key < (best[0], best[1], best[3]):
+                best = (key[0], desc, sid, nid)
+                # Early exit only when there's no expected set AND we
+                # found the minimum possible descendant count. With an
+                # expected set, keep searching — a later candidate
+                # might match perfectly.
+                if not expected_set and desc == 0:
                     break
         if best is None:
             return None
-        _, screen_id, node_id = best
+        _, _, screen_id, node_id = best
 
         subtree = _extract_subtree(self.conn, screen_id=screen_id, root_node_id=node_id)
         if subtree is None:
@@ -220,6 +242,42 @@ def _extract_subtree(
         "root": root_eid,
         "elements": elements,
     }
+
+
+def _candidate_child_types(
+    conn: sqlite3.Connection,
+    *,
+    screen_id: int,
+    node_id: int,
+) -> list[str]:
+    """Return the canonical_types (or node_types as fallback) of the
+    direct children of ``node_id``.
+
+    Used for structural ranking: compared against the LLM plan's
+    expected child types via Jaccard similarity. Direct-children only
+    (not recursive) — the LLM's plan is usually flat at each level.
+    """
+    cur = conn.execute(
+        """
+        SELECT COALESCE(sci.canonical_type, LOWER(n.node_type)) AS t
+        FROM nodes n
+        LEFT JOIN screen_component_instances sci
+               ON sci.node_id = n.id AND sci.screen_id = n.screen_id
+        WHERE n.parent_id = ? AND n.screen_id = ?
+        """,
+        (node_id, screen_id),
+    )
+    return [row[0] for row in cur.fetchall() if row[0]]
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    """Jaccard similarity on two sets of strings. Empty ∩ empty = 0.0."""
+    if not a and not b:
+        return 0.0
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
 
 
 def _count_descendants(

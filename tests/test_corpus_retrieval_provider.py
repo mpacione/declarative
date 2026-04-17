@@ -324,6 +324,162 @@ class TestDeterminism:
 # ---------------------------------------------------------------------------
 
 
+class TestStructuralMatching:
+    """v0.3 ranking: when context supplies ``expected_children`` (the
+    LLM plan's direct child types under this component), the provider
+    prefers candidates whose DB children's types match best. Tie-break
+    remains descendant count then node_id."""
+
+    @pytest.fixture
+    def two_card_conn(self, tmp_path) -> sqlite3.Connection:
+        """Fixture with two card candidates:
+          - card A (node 100): children = [image, heading] — 2 descendants
+          - card B (node 200): children = [image, heading, text] — 3 descendants
+
+        For expected_children=[image, heading, text], card B should win
+        (better Jaccard). For empty expected_children, card A should win
+        (smaller descendant count)."""
+        db_path = tmp_path / "two_cards.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE files (id INTEGER PRIMARY KEY, file_key TEXT, name TEXT);
+            CREATE TABLE screens (
+                id INTEGER PRIMARY KEY, file_id INTEGER, name TEXT,
+                width REAL, height REAL, screen_type TEXT
+            );
+            CREATE TABLE nodes (
+                id INTEGER PRIMARY KEY, screen_id INTEGER, figma_node_id TEXT,
+                parent_id INTEGER, name TEXT, node_type TEXT,
+                depth INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
+                is_semantic INTEGER DEFAULT 1,
+                component_id INTEGER, component_key TEXT,
+                x REAL, y REAL, width REAL, height REAL,
+                layout_mode TEXT,
+                padding_top REAL, padding_right REAL,
+                padding_bottom REAL, padding_left REAL,
+                item_spacing REAL, counter_axis_spacing REAL,
+                primary_align TEXT, counter_align TEXT,
+                layout_sizing_h TEXT, layout_sizing_v TEXT,
+                fills TEXT, strokes TEXT, effects TEXT, corner_radius TEXT,
+                opacity REAL DEFAULT 1.0, blend_mode TEXT,
+                visible INTEGER DEFAULT 1, stroke_weight REAL,
+                text_content TEXT, font_family TEXT, font_weight INTEGER,
+                font_size REAL, line_height TEXT, text_align TEXT,
+                extracted_at TEXT
+            );
+            CREATE TABLE component_type_catalog (
+                id INTEGER PRIMARY KEY, canonical_name TEXT UNIQUE, category TEXT
+            );
+            CREATE TABLE screen_component_instances (
+                id INTEGER PRIMARY KEY, screen_id INTEGER, node_id INTEGER,
+                catalog_type_id INTEGER, canonical_type TEXT, confidence REAL,
+                classification_source TEXT, parent_instance_id INTEGER,
+                UNIQUE(screen_id, node_id)
+            );
+        """)
+        conn.execute(
+            "INSERT INTO component_type_catalog (canonical_name, category) "
+            "VALUES ('card','content_and_display'),('image','content_and_display'),"
+            "('heading','content_and_display'),('text','content_and_display')"
+        )
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'k', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, name, width, height, screen_type) "
+            "VALUES (1, 1, 'S1', 390, 844, 'app_screen')"
+        )
+
+        # Card A: node 100, children 101 (image) + 102 (heading)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, "
+            "node_type, width, height, corner_radius) VALUES "
+            "(100, 1, '1:100', NULL, 'Card A', 'FRAME', 300, 100, '8')"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, "
+            "node_type, width, height) VALUES "
+            "(101, 1, '1:101', 100, 'img', 'FRAME', 100, 60), "
+            "(102, 1, '1:102', 100, 'hd',  'TEXT',  100, 20)"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances (screen_id, node_id, "
+            "canonical_type, confidence, classification_source) VALUES "
+            "(1, 100, 'card', 0.9, 'heuristic'), "
+            "(1, 101, 'image', 0.9, 'heuristic'), "
+            "(1, 102, 'heading', 0.9, 'heuristic')"
+        )
+
+        # Card B: node 200, children 201/202/203 (image/heading/text)
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, "
+            "node_type, width, height, corner_radius) VALUES "
+            "(200, 1, '1:200', NULL, 'Card B', 'FRAME', 300, 150, '16')"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, parent_id, name, "
+            "node_type, width, height) VALUES "
+            "(201, 1, '1:201', 200, 'img', 'FRAME', 100, 60), "
+            "(202, 1, '1:202', 200, 'hd',  'TEXT',  100, 20), "
+            "(203, 1, '1:203', 200, 'txt', 'TEXT',  100, 40)"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances (screen_id, node_id, "
+            "canonical_type, confidence, classification_source) VALUES "
+            "(1, 200, 'card', 0.9, 'heuristic'), "
+            "(1, 201, 'image', 0.9, 'heuristic'), "
+            "(1, 202, 'heading', 0.9, 'heuristic'), "
+            "(1, 203, 'text', 0.9, 'heuristic')"
+        )
+        conn.commit()
+        return conn
+
+    def test_expected_children_prefers_structural_match(
+        self, two_card_conn, monkeypatch,
+    ):
+        """When context supplies expected_children=[image, heading, text],
+        prefer card B (exact match) even though card A is smaller."""
+        monkeypatch.setenv("DD_ENABLE_CORPUS_RETRIEVAL", "1")
+        from dd.composition.providers.corpus_retrieval import (
+            CorpusRetrievalProvider,
+        )
+        p = CorpusRetrievalProvider(conn=two_card_conn)
+        ctx = {"expected_children": ["image", "heading", "text"]}
+        t = p.resolve("card", None, ctx)
+        assert t is not None
+        assert t.corpus_subtree["source_node_id"] == 200
+
+    def test_no_expected_children_falls_back_to_size_ranking(
+        self, two_card_conn, monkeypatch,
+    ):
+        """With no expected_children, smaller subtree wins — card A."""
+        monkeypatch.setenv("DD_ENABLE_CORPUS_RETRIEVAL", "1")
+        from dd.composition.providers.corpus_retrieval import (
+            CorpusRetrievalProvider,
+        )
+        p = CorpusRetrievalProvider(conn=two_card_conn)
+        t = p.resolve("card", None, {})
+        assert t is not None
+        assert t.corpus_subtree["source_node_id"] == 100
+
+    def test_partial_match_outranks_mismatch(
+        self, two_card_conn, monkeypatch,
+    ):
+        """When expected=[image, heading, button], card B (2/3 match) beats
+        card A (2/3 match by Jaccard is tied, so smaller wins). But when
+        expected=[image, heading] exactly, card A wins (exact match)."""
+        monkeypatch.setenv("DD_ENABLE_CORPUS_RETRIEVAL", "1")
+        from dd.composition.providers.corpus_retrieval import (
+            CorpusRetrievalProvider,
+        )
+        p = CorpusRetrievalProvider(conn=two_card_conn)
+        ctx = {"expected_children": ["image", "heading"]}
+        t = p.resolve("card", None, ctx)
+        assert t is not None
+        # Card A has exactly [image, heading]; Jaccard = 1.0
+        # Card B has [image, heading, text]; Jaccard = 2/3
+        assert t.corpus_subtree["source_node_id"] == 100
+
+
 class TestFeatureFlag:
     def test_disabled_flag_makes_supports_return_false(
         self, corpus_conn, monkeypatch,
