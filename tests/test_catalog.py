@@ -36,6 +36,7 @@ class TestCatalogSchema:
             "id", "canonical_name", "aliases", "category",
             "behavioral_description", "prop_definitions", "slot_definitions",
             "semantic_role", "recognition_heuristics", "related_types",
+            "variant_axes",  # ADR-008 PR #0
             "created_at",
         }
         assert columns == expected
@@ -140,7 +141,10 @@ class TestCatalogData:
         assert isinstance(CATALOG_ENTRIES, tuple)
 
     def test_count_in_range(self):
-        assert 45 <= len(CATALOG_ENTRIES) <= 50
+        # ADR-008 PR #0: 48 base - 2 demoted (toggle_group, context_menu)
+        # + 7 new (divider, progress, spinner, kbd, number_input, otp_input,
+        # command) = 53; tolerance band 50-60 for optional extended types.
+        assert 50 <= len(CATALOG_ENTRIES) <= 60
 
     def test_all_have_required_fields(self):
         for entry in CATALOG_ENTRIES:
@@ -393,9 +397,11 @@ class TestCatalogEnrichment:
         assert slots["trailing"]["position"] == "end"
 
     def test_card_slots_have_position(self):
+        # ADR-008 PR #0: card's `image` slot renamed to `media` to accept
+        # {image, video, vector} per Stream A's ontology survey.
         card = next(e for e in CATALOG_ENTRIES if e["canonical_name"] == "card")
         slots = card["slot_definitions"]
-        assert slots["image"]["position"] == "start"
+        assert slots["media"]["position"] == "start"
         assert slots["actions"]["position"] == "end"
 
     def test_button_slots_have_position(self):

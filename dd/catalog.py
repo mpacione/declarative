@@ -19,9 +19,19 @@ class CatalogEntry(TypedDict, total=False):
     behavioral_description: str
     prop_definitions: dict[str, Any] | None
     slot_definitions: dict[str, Any] | None
+    # DEPRECATED: vestigial ARIA-flavoured field from T5 Phase 0. Written
+    # at seed time but read nowhere in compose/render/classify/verify.
+    # Kept for schema stability until a dedicated cleanup PR; do not
+    # rely on for new work. Mode-3 composition uses `canonical_name`
+    # for semantic category. See ADR-008.
     semantic_role: str
     recognition_heuristics: dict[str, Any] | None
     related_types: list[str] | None
+    # ADR-008 PR #0: standardised variant-axis declarations. Per-axis
+    # shape: {axis_name: {"values": [...], "default": str | None}}.
+    # Consumed by the Mode-3 composition providers + LLM vocabulary
+    # builder. Optional — types without enum-able variants omit it.
+    variant_axes: dict[str, Any] | None
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +50,12 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         "semantic_role": "button",
         "recognition_heuristics": {"patterns": ["frame_with_text_label", "rounded_rect_with_center_text"], "min_children": 1, "typical_height_range": [32, 56]},
         "related_types": ["icon_button", "button_group"],
+        "variant_axes": {
+            "variant": {"values": ["default", "primary", "secondary", "ghost", "destructive"], "default": "default"},
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "state": {"values": ["default", "hover", "focus", "pressed", "disabled", "loading"], "default": "default"},
+            "tone": {"values": ["default", "primary", "destructive", "success", "warning", "info"], "default": "default"},
+        },
     },
     {
         "canonical_name": "icon_button",
@@ -76,25 +92,17 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     },
     {
         "canonical_name": "menu",
-        "aliases": ["dropdown_menu", "action_menu"],
+        "aliases": ["dropdown_menu", "action_menu", "context_menu", "right_click_menu"],
         "category": "actions",
         "behavioral_description": "A list of actions revealed by a trigger element.",
-        "prop_definitions": {"items": "array", "trigger": "slot"},
+        "prop_definitions": {"items": "array", "trigger": "slot", "trigger_mode": "enum:click|context"},
         "slot_definitions": {"trigger": {"allowed": ["button", "icon_button"], "required": True}, "items": {"allowed": ["text", "icon"], "required": True, "multiple": True}},
         "semantic_role": "menu",
         "recognition_heuristics": {"patterns": ["trigger_plus_dropdown_list"], "has_overlay": True},
-        "related_types": ["context_menu", "select"],
-    },
-    {
-        "canonical_name": "context_menu",
-        "aliases": ["right_click_menu"],
-        "category": "actions",
-        "behavioral_description": "A menu triggered by secondary interaction on an element.",
-        "prop_definitions": {"items": "array"},
-        "slot_definitions": {"items": {"allowed": ["text", "icon"], "required": True, "multiple": True}},
-        "semantic_role": "menu",
-        "recognition_heuristics": {"patterns": ["floating_list_overlay"], "has_overlay": True, "position": "absolute"},
-        "related_types": ["menu"],
+        "related_types": ["select"],
+        "variant_axes": {
+            "trigger_mode": {"values": ["click", "context"], "default": "click"},
+        },
     },
     # ── Selection & Input (14) ───────────────────────────────────────────
     {
@@ -132,25 +140,18 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     },
     {
         "canonical_name": "toggle",
-        "aliases": ["switch", "lightswitch"],
+        "aliases": ["switch", "lightswitch", "toggle_group", "switch_group"],
         "category": "selection_and_input",
         "behavioral_description": "A binary choice control that takes effect immediately.",
-        "prop_definitions": {"label": "text", "value": "boolean", "disabled": "boolean"},
+        "prop_definitions": {"label": "text", "value": "boolean", "disabled": "boolean", "grouped": "boolean"},
         "slot_definitions": {"label": {"allowed": ["text"], "required": False}},
         "semantic_role": "switch",
         "recognition_heuristics": {"patterns": ["pill_track_with_thumb"], "aspect_ratio": "~2:1", "has_circular_thumb": True},
-        "related_types": ["checkbox", "toggle_group"],
-    },
-    {
-        "canonical_name": "toggle_group",
-        "aliases": ["switch_group"],
-        "category": "selection_and_input",
-        "behavioral_description": "Multiple toggles where one or more can be selected.",
-        "prop_definitions": {"type": "enum:exclusive|multiple"},
-        "slot_definitions": {"items": {"allowed": ["toggle"], "required": True, "multiple": True}},
-        "semantic_role": "group",
-        "recognition_heuristics": {"patterns": ["row_or_column_of_toggles"], "min_children": 2, "children_type": "toggle"},
-        "related_types": ["toggle", "segmented_control"],
+        "related_types": ["checkbox"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "state": {"values": ["default", "focus", "disabled"], "default": "default"},
+        },
     },
     {
         "canonical_name": "select",
@@ -212,11 +213,21 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         "aliases": ["input", "text_field"],
         "category": "selection_and_input",
         "behavioral_description": "A single-line text entry field.",
-        "prop_definitions": {"placeholder": "text", "value": "text", "type": "enum:text|email|password|number", "disabled": "boolean", "label": "text"},
-        "slot_definitions": {"label": {"allowed": ["text"], "required": False}, "leading": {"allowed": ["icon"], "required": False}, "trailing": {"allowed": ["icon", "button"], "required": False}},
+        "prop_definitions": {"placeholder": "text", "value": "text", "type": "enum:text|email|password|number", "disabled": "boolean", "label": "text", "helper": "text"},
+        "slot_definitions": {
+            "label": {"allowed": ["text"], "required": False, "position": "top", "quantity": "single"},
+            "leading": {"allowed": ["icon"], "required": False, "position": "start", "quantity": "single"},
+            "input": {"allowed": ["text"], "required": True, "position": "fill", "quantity": "single"},
+            "trailing": {"allowed": ["icon", "button", "icon_button"], "required": False, "position": "end", "quantity": "single"},
+            "helper": {"allowed": ["text"], "required": False, "position": "bottom", "quantity": "single"},
+        },
         "semantic_role": "textbox",
         "recognition_heuristics": {"patterns": ["bordered_rectangle_with_padding"], "has_border": True, "single_line": True, "typical_height_range": [36, 52]},
         "related_types": ["textarea", "search_input"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "state": {"values": ["default", "focus", "disabled", "invalid"], "default": "default"},
+        },
     },
     {
         "canonical_name": "textarea",
@@ -258,10 +269,23 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         "category": "content_and_display",
         "behavioral_description": "A bounded container grouping related content and actions.",
         "prop_definitions": {"variant": "enum:elevated|outlined|filled"},
-        "slot_definitions": {"image": {"allowed": ["image"], "required": False, "position": "start", "quantity": "single"}, "title": {"allowed": ["heading", "text"], "required": False, "position": "start", "quantity": "single"}, "subtitle": {"allowed": ["text"], "required": False, "position": "start", "quantity": "single"}, "body": {"allowed": ["text"], "required": False, "position": "fill", "quantity": "single"}, "actions": {"allowed": ["button", "icon_button", "link"], "required": False, "position": "end", "quantity": "multiple"}, "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"}},
+        "slot_definitions": {
+            "media": {"allowed": ["image", "video", "vector"], "required": False, "position": "start", "quantity": "single"},
+            "header": {"allowed": ["heading", "text"], "required": False, "position": "start", "quantity": "single"},
+            "title": {"allowed": ["heading", "text"], "required": False, "position": "start", "quantity": "single"},
+            "subtitle": {"allowed": ["text"], "required": False, "position": "start", "quantity": "single"},
+            "body": {"allowed": ["text", "any"], "required": False, "position": "fill", "quantity": "single"},
+            "supporting": {"allowed": ["text"], "required": False, "position": "fill", "quantity": "single"},
+            "actions": {"allowed": ["button", "icon_button", "link", "button_group"], "required": False, "position": "end", "quantity": "multiple"},
+            "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"},
+        },
         "semantic_role": "article",
         "recognition_heuristics": {"patterns": ["bordered_or_shadowed_container"], "has_border_or_shadow": True, "has_padding": True, "typical_children": ["image", "text", "button"]},
         "related_types": ["list_item"],
+        "variant_axes": {
+            "variant": {"values": ["elevated", "outlined", "filled"], "default": "outlined"},
+            "state": {"values": ["default", "hover", "pressed", "disabled"], "default": "default"},
+        },
     },
     {
         "canonical_name": "avatar",
@@ -333,12 +357,23 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         "canonical_name": "list_item",
         "aliases": ["row", "cell"],
         "category": "content_and_display",
-        "behavioral_description": "A single entry within a list, typically with leading, content, and trailing zones.",
-        "prop_definitions": {"label": "text", "description": "text"},
-        "slot_definitions": {"leading": {"allowed": ["icon", "avatar", "image"], "required": False}, "content": {"allowed": ["text", "heading"], "required": True}, "trailing": {"allowed": ["icon", "badge", "text"], "required": False}},
+        "behavioral_description": "A single entry within a list with leading media, overline / headline / supporting content, and trailing zones (Material three-line shape).",
+        "prop_definitions": {"headline": "text", "overline": "text", "supporting": "text"},
+        "slot_definitions": {
+            "leading": {"allowed": ["icon", "avatar", "image"], "required": False, "position": "start", "quantity": "single"},
+            "overline": {"allowed": ["text"], "required": False, "position": "content", "quantity": "single"},
+            "headline": {"allowed": ["text", "heading"], "required": True, "position": "content", "quantity": "single"},
+            "supporting": {"allowed": ["text"], "required": False, "position": "content", "quantity": "single"},
+            "trailing_supporting": {"allowed": ["text"], "required": False, "position": "end", "quantity": "single"},
+            "trailing": {"allowed": ["icon", "badge", "text", "icon_button"], "required": False, "position": "end", "quantity": "single"},
+        },
         "semantic_role": "listitem",
         "recognition_heuristics": {"patterns": ["horizontal_leading_content_trailing"], "layout": "horizontal", "has_three_zones": True},
         "related_types": ["list", "card", "navigation_row"],
+        "variant_axes": {
+            "density": {"values": ["compact", "default", "comfortable"], "default": "default"},
+            "state": {"values": ["default", "hover", "pressed", "selected", "disabled"], "default": "default"},
+        },
     },
     {
         "canonical_name": "heading",
@@ -498,14 +533,24 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     # ── Feedback & Status (3) ────────────────────────────────────────────
     {
         "canonical_name": "alert",
-        "aliases": ["banner", "notification_bar", "inline_message"],
+        "aliases": ["banner", "notification_bar", "inline_message", "section_message"],
         "category": "feedback_and_status",
         "behavioral_description": "A persistent message communicating status, warning, or error.",
         "prop_definitions": {"severity": "enum:info|warning|error|success", "title": "text", "message": "text", "dismissible": "boolean"},
-        "slot_definitions": {"icon": {"allowed": ["icon"], "required": False}, "title": {"allowed": ["text"], "required": False}, "message": {"allowed": ["text"], "required": True}, "action": {"allowed": ["button", "link"], "required": False}},
+        "slot_definitions": {
+            "icon": {"allowed": ["icon"], "required": False, "position": "start", "quantity": "single"},
+            "title": {"allowed": ["text", "heading"], "required": False, "position": "content", "quantity": "single"},
+            "message": {"allowed": ["text"], "required": True, "position": "content", "quantity": "single"},
+            "action": {"allowed": ["button", "link"], "required": False, "position": "end", "quantity": "multiple"},
+            "close": {"allowed": ["icon_button"], "required": False, "position": "end", "quantity": "single"},
+        },
         "semantic_role": "alert",
         "recognition_heuristics": {"patterns": ["colored_frame_with_icon_and_text"], "has_status_color": True, "has_icon": True, "position": "inline_or_top"},
         "related_types": ["toast", "badge"],
+        "variant_axes": {
+            "tone": {"values": ["info", "warning", "error", "success"], "default": "info"},
+            "variant": {"values": ["inline", "banner"], "default": "inline"},
+        },
     },
     {
         "canonical_name": "toast",
@@ -563,6 +608,127 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         "recognition_heuristics": {"patterns": ["edge_anchored_panel_with_backdrop"], "position": "bottom_or_side_edge", "has_backdrop": True, "has_drag_handle": True},
         "related_types": ["dialog", "drawer"],
     },
+    # ── ADR-008 PR #0 additions (7 new types) ────────────────────────────
+    {
+        "canonical_name": "divider",
+        "aliases": ["separator", "hr", "rule"],
+        "category": "content_and_display",
+        "behavioral_description": "A thin line that groups or separates content.",
+        "prop_definitions": {"orientation": "enum:horizontal|vertical", "variant": "enum:solid|dashed|dotted"},
+        "slot_definitions": {"label": {"allowed": ["text"], "required": False, "position": "center", "quantity": "single"}},
+        "semantic_role": "separator",
+        "recognition_heuristics": {"patterns": ["thin_line_1_or_2_px"], "typical_stroke_weight": [1, 2]},
+        "related_types": ["list_item"],
+        "variant_axes": {
+            "orientation": {"values": ["horizontal", "vertical"], "default": "horizontal"},
+            "variant": {"values": ["solid", "dashed", "dotted"], "default": "solid"},
+        },
+    },
+    {
+        "canonical_name": "progress",
+        "aliases": ["progress_bar", "progress_indicator"],
+        "category": "feedback_and_status",
+        "behavioral_description": "A bar or ring indicating the completion state of a task.",
+        "prop_definitions": {"value": "number", "max": "number", "indeterminate": "boolean"},
+        "slot_definitions": {
+            "track": {"allowed": [], "required": True},
+            "indicator": {"allowed": [], "required": True},
+            "label": {"allowed": ["text"], "required": False},
+        },
+        "semantic_role": "progressbar",
+        "recognition_heuristics": {"patterns": ["filled_portion_of_track"], "has_track": True, "has_fill": True},
+        "related_types": ["spinner", "stepper"],
+        "variant_axes": {
+            "variant": {"values": ["linear", "circular", "ring"], "default": "linear"},
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+        },
+    },
+    {
+        "canonical_name": "spinner",
+        "aliases": ["loader", "loading_indicator", "loading_dots"],
+        "category": "feedback_and_status",
+        "behavioral_description": "An animated indicator that a process is working without known duration.",
+        "prop_definitions": {"size": "enum:sm|md|lg"},
+        "slot_definitions": {},
+        "semantic_role": "progressbar",
+        "recognition_heuristics": {"patterns": ["small_circular_animated_glyph"], "typical_size_range": [12, 48], "aspect_ratio": "~1:1"},
+        "related_types": ["progress", "skeleton"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "tone": {"values": ["default", "primary", "inverse"], "default": "default"},
+        },
+    },
+    {
+        "canonical_name": "kbd",
+        "aliases": ["keyboard_key", "key_cap"],
+        "category": "content_and_display",
+        "behavioral_description": "Inline marker representing a keyboard key or shortcut.",
+        "prop_definitions": {"keys": "array"},
+        "slot_definitions": {"key": {"allowed": ["text", "icon"], "required": True, "quantity": "multiple"}},
+        "semantic_role": "text",
+        "recognition_heuristics": {"patterns": ["small_bordered_monospace_text"], "has_monospace": True, "has_rounded_corners": True},
+        "related_types": ["text", "badge"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "sm"},
+        },
+    },
+    {
+        "canonical_name": "number_input",
+        "aliases": ["numeric_input", "spinbutton"],
+        "category": "selection_and_input",
+        "behavioral_description": "A numeric-only input with optional increment/decrement steppers.",
+        "prop_definitions": {"value": "number", "min": "number", "max": "number", "step": "number", "precision": "number", "disabled": "boolean", "label": "text"},
+        "slot_definitions": {
+            "label": {"allowed": ["text"], "required": False, "position": "top"},
+            "input": {"allowed": ["text"], "required": True, "position": "fill"},
+            "stepper": {"allowed": ["icon_button", "button"], "required": False, "position": "end", "quantity": "multiple"},
+            "helper": {"allowed": ["text"], "required": False, "position": "bottom"},
+        },
+        "semantic_role": "spinbutton",
+        "recognition_heuristics": {"patterns": ["bordered_input_with_up_down_arrows"], "has_stepper_affordance": True},
+        "related_types": ["text_input", "slider"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "state": {"values": ["default", "focus", "disabled", "invalid"], "default": "default"},
+        },
+    },
+    {
+        "canonical_name": "otp_input",
+        "aliases": ["pin_input", "code_input", "input_otp"],
+        "category": "selection_and_input",
+        "behavioral_description": "A multi-cell input for one-time passwords, pins, or verification codes.",
+        "prop_definitions": {"length": "number", "value": "text", "mask": "boolean", "disabled": "boolean"},
+        "slot_definitions": {
+            "cells": {"allowed": ["text_input"], "required": True, "quantity": "multiple"},
+            "separator": {"allowed": ["text", "icon"], "required": False, "quantity": "multiple"},
+        },
+        "semantic_role": "textbox",
+        "recognition_heuristics": {"patterns": ["row_of_equal_width_single_char_inputs"], "min_children": 4, "max_children": 8, "children_similar": True},
+        "related_types": ["text_input"],
+        "variant_axes": {
+            "size": {"values": ["sm", "md", "lg"], "default": "md"},
+            "state": {"values": ["default", "focus", "filled", "disabled", "invalid"], "default": "default"},
+        },
+    },
+    {
+        "canonical_name": "command",
+        "aliases": ["command_menu", "command_palette", "spotlight", "cmdk"],
+        "category": "actions",
+        "behavioral_description": "A keyboard-first, filterable palette of actions and navigational items.",
+        "prop_definitions": {"placeholder": "text", "groups": "array"},
+        "slot_definitions": {
+            "input": {"allowed": ["search_input", "text_input"], "required": True, "position": "top"},
+            "groups": {"allowed": ["list"], "required": True, "position": "fill", "quantity": "multiple"},
+            "items": {"allowed": ["list_item", "text"], "required": True, "position": "fill", "quantity": "multiple"},
+            "shortcut": {"allowed": ["kbd"], "required": False, "position": "end", "quantity": "single"},
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {"patterns": ["overlay_with_search_and_grouped_items"], "has_backdrop": True, "has_search_input": True},
+        "related_types": ["menu", "search_input"],
+        "variant_axes": {
+            "size": {"values": ["md", "lg"], "default": "md"},
+        },
+    },
 )
 
 
@@ -571,34 +737,49 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
 # ---------------------------------------------------------------------------
 
 def seed_catalog(conn: sqlite3.Connection) -> int:
-    """Populate component_type_catalog from CATALOG_ENTRIES.
+    """Populate / reconcile ``component_type_catalog`` from CATALOG_ENTRIES.
 
-    Uses INSERT OR IGNORE for idempotency. Returns count of rows inserted.
+    For each entry: INSERT OR IGNORE on `(canonical_name, category)` to
+    preserve existing `id`s (keeping `screen_component_instances.catalog_type_id`
+    foreign keys intact), then UPDATE the mutable metadata columns so
+    re-seeding reconciles to the current CATALOG_ENTRIES state.
+
+    Idempotent and id-stable. Returns the count of rows inserted (not
+    updated) for compatibility with callers that tracked the install
+    count.
     """
     cursor = conn.cursor()
     inserted = 0
 
     for entry in CATALOG_ENTRIES:
-        result = cursor.execute(
+        insert_result = cursor.execute(
             "INSERT OR IGNORE INTO component_type_catalog "
-            "(canonical_name, aliases, category, behavioral_description, "
-            "prop_definitions, slot_definitions, semantic_role, "
-            "recognition_heuristics, related_types) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(canonical_name, category) VALUES (?, ?)",
+            (entry["canonical_name"], entry["category"]),
+        )
+        if insert_result.rowcount > 0:
+            inserted += 1
+
+        cursor.execute(
+            "UPDATE component_type_catalog SET "
+            "category = ?, aliases = ?, behavioral_description = ?, "
+            "prop_definitions = ?, slot_definitions = ?, "
+            "semantic_role = ?, recognition_heuristics = ?, "
+            "related_types = ?, variant_axes = ? "
+            "WHERE canonical_name = ?",
             (
-                entry["canonical_name"],
-                json.dumps(entry.get("aliases")) if entry.get("aliases") else None,
                 entry["category"],
+                json.dumps(entry.get("aliases")) if entry.get("aliases") else None,
                 entry.get("behavioral_description"),
                 json.dumps(entry.get("prop_definitions")) if entry.get("prop_definitions") else None,
                 json.dumps(entry.get("slot_definitions")) if entry.get("slot_definitions") else None,
                 entry.get("semantic_role"),
                 json.dumps(entry.get("recognition_heuristics")) if entry.get("recognition_heuristics") else None,
                 json.dumps(entry.get("related_types")) if entry.get("related_types") else None,
+                json.dumps(entry.get("variant_axes")) if entry.get("variant_axes") else None,
+                entry["canonical_name"],
             ),
         )
-        if result.rowcount > 0:
-            inserted += 1
 
     conn.commit()
     return inserted
@@ -617,7 +798,7 @@ def _parse_json_field(value: str | None) -> list | dict | None:
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     for field in ("aliases", "prop_definitions", "slot_definitions",
-                  "recognition_heuristics", "related_types"):
+                  "recognition_heuristics", "related_types", "variant_axes"):
         d[field] = _parse_json_field(d.get(field))
     return d
 

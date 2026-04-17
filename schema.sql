@@ -148,9 +148,10 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
     behavioral_description  TEXT,                        -- One-sentence description
     prop_definitions        TEXT,                        -- JSON: typed property specs
     slot_definitions        TEXT,                        -- JSON: named insertion points
-    semantic_role           TEXT,                        -- WCAG/accessibility role
+    semantic_role           TEXT,                        -- DEPRECATED (ADR-008): vestigial ARIA field, no runtime consumer
     recognition_heuristics  TEXT,                        -- JSON: structural patterns for classification
     related_types           TEXT,                        -- JSON array of related canonical names
+    variant_axes            TEXT,                        -- JSON: {axis_name: {values: [...]}} — state/tone/density/variant etc.
     created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 

@@ -1,0 +1,21 @@
+-- Migration 011: Catalog ontology v2 (ADR-008 PR #0)
+--
+-- Adds the `variant_axes` column to `component_type_catalog`. Re-seed of
+-- the CATALOG_ENTRIES (new types, thicker slot grammar, added aliases,
+-- new variant axes) happens via `seed_catalog` which now reconciles
+-- existing rows by UPDATE rather than INSERT OR IGNORE alone.
+--
+-- Non-destructive: existing rows keep their `id`s (preserving the
+-- `screen_component_instances.catalog_type_id` foreign key). Only the
+-- JSON metadata columns change.
+--
+-- `semantic_role` is intentionally NOT dropped here — it is flagged as
+-- vestigial/deprecated via an inline comment in dd/catalog.py and tracked
+-- as cleanup debt in ADR-008. Schema-stable for now.
+--
+-- Run: sqlite3 your.declarative.db < migrations/011_catalog_ontology_v2.sql
+--
+-- Idempotent via `dd.db.run_migration` which silently skips
+-- "duplicate column name" errors on re-application.
+
+ALTER TABLE component_type_catalog ADD COLUMN variant_axes TEXT;
