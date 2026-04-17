@@ -76,7 +76,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Trash"}
+                "props": {"text": "Archive"}
               }
             ]
           },

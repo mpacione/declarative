@@ -76,7 +76,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "3D Web Experiences"
+                  "text": "3D Visualization"
                 }
               },
               {
@@ -99,7 +99,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "AR Prototyping"
+                  "text": "Augmented Reality"
                 }
               }
             ]
@@ -123,15 +123,13 @@
           {
             "type": "button",
             "variant": "primary",
-            "component_key": "button/large/translucent",
             "props": {
               "text": "Explore"
             }
           },
           {
             "type": "button",
-            "variant": "primary",
-            "component_key": "button/large/translucent",
+            "component_key": "button/small/translucent",
             "props": {
               "text": "Save"
             }
@@ -141,10 +139,10 @@
     ]
   },
   {
-    "type": "fab",
+    "type": "button",
+    "variant": "primary",
     "props": {
-      "text": "Create"
-    },
-    "component_key": "icon/new"
+      "text": "Get Started"
+    }
   }
 ]

@@ -5,7 +5,7 @@
     "children": [
       {
         "type": "text",
-        "props": {"text": "Memes"}
+        "props": {"text": "Meme Feed"}
       },
       {
         "type": "icon_button",
@@ -25,11 +25,11 @@
           },
           {
             "type": "text",
-            "props": {"text": "johndoe"}
+            "props": {"text": "meme_lord_42"}
           },
           {
             "type": "image",
-            "props": {"src": "meme1.jpg"}
+            "props": {"src": "meme1.jpg", "alt": "Funny meme"}
           },
           {
             "type": "text",
@@ -57,19 +57,19 @@
         "children": [
           {
             "type": "avatar",
-            "props": {"initials": "SM"}
+            "props": {"initials": "SK"}
           },
           {
             "type": "text",
-            "props": {"text": "sarahmeme"}
+            "props": {"text": "silly_kitten"}
           },
           {
             "type": "image",
-            "props": {"src": "meme2.jpg"}
+            "props": {"src": "meme2.jpg", "alt": "Funny meme"}
           },
           {
             "type": "text",
-            "props": {"text": "POV: You're trying to be productive on Monday"}
+            "props": {"text": "POV: You're the last slice of pizza"}
           },
           {
             "type": "button_group",
@@ -93,19 +93,19 @@
         "children": [
           {
             "type": "avatar",
-            "props": {"initials": "TK"}
+            "props": {"initials": "CM"}
           },
           {
             "type": "text",
-            "props": {"text": "thememeking"}
+            "props": {"text": "cosmic_memes"}
           },
           {
             "type": "image",
-            "props": {"src": "meme3.jpg"}
+            "props": {"src": "meme3.jpg", "alt": "Funny meme"}
           },
           {
             "type": "text",
-            "props": {"text": "Me explaining why I need another coffee"}
+            "props": {"text": "Me pretending to understand what's happening"}
           },
           {
             "type": "button_group",

@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5779:41386",
+  "rendered_root": "5782:43379",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -40,12 +40,6 @@
       "name": "list-1",
       "width": 364,
       "height": 482,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
       "effectCount": 0
     },
     "list_item-6": {
@@ -101,7 +95,7 @@
       "name": "text-5",
       "width": 308,
       "height": 15,
-      "characters": "Trash",
+      "characters": "Archive",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

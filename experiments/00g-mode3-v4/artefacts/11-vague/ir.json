@@ -244,7 +244,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "3D Web Experiences"
+        "text": "3D Visualization"
       }
     },
     "text-4": {
@@ -354,7 +354,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "AR Prototyping"
+        "text": "Augmented Reality"
       }
     },
     "list_item-3": {
@@ -400,7 +400,6 @@
         "gap": "{space.generic.gap}"
       },
       "style": {
-        "fill": "{color.surface.default}",
         "radius": "{radius.default}"
       },
       "children": [
@@ -445,21 +444,63 @@
         "text": "Quick Actions"
       }
     },
-    "button-1": {
-      "type": "button",
-      "variant": "primary",
-      "component_key": "button/large/translucent",
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "Explore"
+      },
       "layout": {
         "direction": "vertical"
       },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": "primary",
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.primary.fg}"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "top": "{space.button.padding_y}",
+          "bottom": "{space.button.padding_y}",
+          "left": "{space.button.padding_x}",
+          "right": "{space.button.padding_x}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
       "props": {
         "text": "Explore"
-      }
+      },
+      "style": {
+        "fill": "{color.action.primary.bg}",
+        "fg": "{color.action.primary.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-6"
+      ]
     },
     "button-2": {
       "type": "button",
-      "variant": "primary",
-      "component_key": "button/large/translucent",
+      "component_key": "button/small/translucent",
       "layout": {
         "direction": "vertical"
       },
@@ -504,18 +545,59 @@
         "button_group-1"
       ]
     },
-    "fab-1": {
-      "type": "fab",
-      "component_key": "icon/new",
+    "text-7": {
+      "type": "text",
+      "props": {
+        "text": "Get Started"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": "primary",
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.primary.fg}"
+      }
+    },
+    "button-3": {
+      "type": "button",
+      "variant": "primary",
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "top": "{space.button.padding_y}",
+          "bottom": "{space.button.padding_y}",
+          "left": "{space.button.padding_x}",
+          "right": "{space.button.padding_x}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Create"
-      }
+        "text": "Get Started"
+      },
+      "style": {
+        "fill": "{color.action.primary.bg}",
+        "fg": "{color.action.primary.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-7"
+      ]
     },
     "screen-1": {
       "type": "screen",
@@ -541,7 +623,7 @@
         "card-1",
         "card-2",
         "card-3",
-        "fab-1"
+        "button-3"
       ]
     }
   },
@@ -694,11 +776,13 @@
     "list-1": -20,
     "card-2": -21,
     "heading-3": -22,
-    "button-1": -23,
-    "button-2": -24,
-    "button_group-1": -25,
-    "card-3": -26,
-    "fab-1": -27,
-    "screen-1": -28
+    "text-6": -23,
+    "button-1": -24,
+    "button-2": -25,
+    "button_group-1": -26,
+    "card-3": -27,
+    "text-7": -28,
+    "button-3": -29,
+    "screen-1": -30
   }
 }

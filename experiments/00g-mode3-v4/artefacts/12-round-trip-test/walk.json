@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5779:41593",
+  "rendered_root": "5782:43574",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -29,11 +29,11 @@
       ],
       "effectCount": 0
     },
-    "card-5": {
+    "card-3": {
       "type": "FRAME",
-      "name": "card-5",
+      "name": "card-3",
       "width": 396,
-      "height": 134,
+      "height": 163,
       "fills": [
         {
           "type": "solid",
@@ -48,10 +48,10 @@
       ],
       "effectCount": 1
     },
-    "toggle-3": {
+    "toggle-4": {
       "type": "FRAME",
-      "name": "toggle-3",
-      "width": 89,
+      "name": "toggle-4",
+      "width": 98,
       "height": 17,
       "fills": [
         {
@@ -61,12 +61,40 @@
       ],
       "effectCount": 0
     },
-    "text-15": {
+    "text-12": {
       "type": "TEXT",
-      "name": "text-15",
-      "width": 89,
+      "name": "text-12",
+      "width": 98,
       "height": 17,
-      "characters": "Bluetooth 5.3",
+      "characters": "LiDAR Scanner",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "toggle-3": {
+      "type": "FRAME",
+      "name": "toggle-3",
+      "width": 111,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
+      "width": 111,
+      "height": 17,
+      "characters": "ProRAW Support",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -79,7 +107,7 @@
     "toggle-2": {
       "type": "FRAME",
       "name": "toggle-2",
-      "width": 50,
+      "width": 125,
       "height": 17,
       "fills": [
         {
@@ -89,12 +117,12 @@
       ],
       "effectCount": 0
     },
-    "text-14": {
+    "text-10": {
       "type": "TEXT",
-      "name": "text-14",
-      "width": 50,
+      "name": "text-10",
+      "width": 125,
       "height": 17,
-      "characters": "WiFi 6E",
+      "characters": "Always-On Display",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -107,7 +135,7 @@
     "toggle-1": {
       "type": "FRAME",
       "name": "toggle-1",
-      "width": 19,
+      "width": 114,
       "height": 17,
       "fills": [
         {
@@ -116,171 +144,13 @@
         }
       ],
       "effectCount": 0
-    },
-    "text-13": {
-      "type": "TEXT",
-      "name": "text-13",
-      "width": 19,
-      "height": 17,
-      "characters": "5G",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-5": {
-      "type": "TEXT",
-      "name": "heading-5",
-      "width": 364,
-      "height": 15,
-      "characters": "Connectivity",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-4": {
-      "type": "FRAME",
-      "name": "card-4",
-      "width": 396,
-      "height": 128,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
-    },
-    "text-12": {
-      "type": "TEXT",
-      "name": "text-12",
-      "width": 364,
-      "height": 15,
-      "characters": "Battery: 4373 mAh",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-11": {
-      "type": "TEXT",
-      "name": "text-11",
-      "width": 364,
-      "height": 15,
-      "characters": "RAM: 6GB",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-10": {
-      "type": "TEXT",
-      "name": "text-10",
-      "width": 364,
-      "height": 15,
-      "characters": "Chip: A15 Bionic",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-4": {
-      "type": "TEXT",
-      "name": "heading-4",
-      "width": 364,
-      "height": 15,
-      "characters": "Performance",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-3": {
-      "type": "FRAME",
-      "name": "card-3",
-      "width": 396,
-      "height": 128,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
     },
     "text-9": {
       "type": "TEXT",
       "name": "text-9",
-      "width": 364,
-      "height": 15,
-      "characters": "ProRAW & ProRes Video",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-8": {
-      "type": "TEXT",
-      "name": "text-8",
-      "width": 364,
-      "height": 15,
-      "characters": "Front: 12MP TrueDepth",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-7": {
-      "type": "TEXT",
-      "name": "text-7",
-      "width": 364,
-      "height": 15,
-      "characters": "Rear: 12MP Wide + Ultra Wide + Telephoto",
+      "width": 114,
+      "height": 17,
+      "characters": "ProMotion 120Hz",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -295,7 +165,7 @@
       "name": "heading-3",
       "width": 364,
       "height": 15,
-      "characters": "Camera",
+      "characters": "Features",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -309,7 +179,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 128,
+      "height": 302,
       "fills": [
         {
           "type": "solid",
@@ -324,17 +194,106 @@
       ],
       "effectCount": 1
     },
-    "text-6": {
-      "type": "TEXT",
-      "name": "text-6",
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
       "width": 364,
+      "height": 243,
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 308,
       "height": 15,
-      "characters": "120Hz ProMotion",
+      "characters": "Battery: 4373 mAh",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 308,
+      "height": 15,
+      "characters": "Camera: Dual 12MP Pro",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 308,
+      "height": 15,
+      "characters": "RAM: 6GB",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
         }
       ],
       "effectCount": 0
@@ -342,9 +301,9 @@
     "text-5": {
       "type": "TEXT",
       "name": "text-5",
-      "width": 364,
+      "width": 308,
       "height": 15,
-      "characters": "2796 x 1290 resolution",
+      "characters": "Processor: A15 Bionic",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -354,12 +313,25 @@
       ],
       "effectCount": 0
     },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
     "text-4": {
       "type": "TEXT",
       "name": "text-4",
-      "width": 364,
+      "width": 308,
       "height": 15,
-      "characters": "6.7-inch Super Retina XDR",
+      "characters": "Display: 6.7-inch Super Retina XDR",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -374,7 +346,7 @@
       "name": "heading-2",
       "width": 364,
       "height": 15,
-      "characters": "Display",
+      "characters": "Specifications",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -438,7 +410,7 @@
       "name": "text-1",
       "width": 364,
       "height": 15,
-      "characters": "Model: iPhone 13 Pro Max",
+      "characters": "Model: A2644",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -453,7 +425,7 @@
       "name": "heading-1",
       "width": 364,
       "height": 15,
-      "characters": "Device Information",
+      "characters": "iPhone 13 Pro Max",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

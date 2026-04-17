@@ -149,7 +149,6 @@
         "gap": "{space.generic.gap}"
       },
       "style": {
-        "fill": "{color.surface.default}",
         "radius": "{radius.default}"
       },
       "children": [
@@ -311,7 +310,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "New Product Launch"
+        "text": "New project kickoff"
       }
     },
     "icon-3": {
@@ -437,7 +436,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Q4 Strategy Meeting"
+        "text": "Q4 Planning Session"
       }
     },
     "icon-5": {
@@ -491,7 +490,6 @@
         "gap": "{space.generic.gap}"
       },
       "style": {
-        "fill": "{color.surface.default}",
         "radius": "{radius.default}"
       },
       "children": [

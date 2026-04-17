@@ -1,99 +1,101 @@
-2026-04-17T17:34:50+00:00 | _ | setup | ok | base_system_chars=4781
-2026-04-17T17:34:50+00:00 | 01-login | parse | start | archetype=login
-2026-04-17T17:34:52+00:00 | 01-login | parse | ok | components=3 total_nodes=9 container_cov=1
-2026-04-17T17:34:52+00:00 | 01-login | compose | ok | elements=16
-2026-04-17T17:34:52+00:00 | 02-profile-settings | parse | start | archetype=settings
-2026-04-17T17:34:55+00:00 | 02-profile-settings | parse | ok | components=4 total_nodes=15 container_cov=1
-2026-04-17T17:34:55+00:00 | 02-profile-settings | compose | ok | elements=25
-2026-04-17T17:34:55+00:00 | 03-meme-feed | parse | start | archetype=feed
-2026-04-17T17:34:59+00:00 | 03-meme-feed | parse | ok | components=2 total_nodes=28 container_cov=3
-2026-04-17T17:34:59+00:00 | 03-meme-feed | compose | ok | elements=29
-2026-04-17T17:34:59+00:00 | 04-dashboard | parse | start | archetype=dashboard
-2026-04-17T17:35:05+00:00 | 04-dashboard | parse | ok | components=4 total_nodes=39 container_cov=2
-2026-04-17T17:35:05+00:00 | 04-dashboard | compose | ok | elements=45
-2026-04-17T17:35:05+00:00 | 05-paywall | parse | start | archetype=paywall
-2026-04-17T17:35:12+00:00 | 05-paywall | parse | ok | components=7 total_nodes=60 container_cov=2
-2026-04-17T17:35:12+00:00 | 05-paywall | compose | ok | elements=61
-2026-04-17T17:35:14+00:00 | 06-spa-minimal | parse | start | archetype=None
-2026-04-17T17:35:18+00:00 | 06-spa-minimal | parse | ok | components=6 total_nodes=21 container_cov=1
-2026-04-17T17:35:18+00:00 | 06-spa-minimal | compose | ok | elements=22
-2026-04-17T17:35:18+00:00 | 07-search | parse | start | archetype=search
-2026-04-17T17:35:21+00:00 | 07-search | parse | ok | components=3 total_nodes=30 container_cov=2
-2026-04-17T17:35:21+00:00 | 07-search | compose | ok | elements=32
-2026-04-17T17:35:22+00:00 | 08-explicit-structure | parse | start | archetype=detail
-2026-04-17T17:35:24+00:00 | 08-explicit-structure | parse | ok | components=3 total_nodes=11 container_cov=1
-2026-04-17T17:35:24+00:00 | 08-explicit-structure | compose | ok | elements=14
-2026-04-17T17:35:24+00:00 | 09-drawer-nav | parse | start | archetype=drawer-nav
-2026-04-17T17:35:27+00:00 | 09-drawer-nav | parse | ok | components=1 total_nodes=22 container_cov=2
-2026-04-17T17:35:27+00:00 | 09-drawer-nav | compose | ok | elements=23
-2026-04-17T17:35:27+00:00 | 10-onboarding-carousel | parse | start | archetype=onboarding-carousel
-2026-04-17T17:35:30+00:00 | 10-onboarding-carousel | parse | ok | components=7 total_nodes=20 container_cov=2
-2026-04-17T17:35:30+00:00 | 10-onboarding-carousel | compose | ok | elements=26
-2026-04-17T17:35:31+00:00 | 11-vague | parse | start | archetype=None
-2026-04-17T17:35:34+00:00 | 11-vague | parse | ok | components=5 total_nodes=25 container_cov=3
-2026-04-17T17:35:34+00:00 | 11-vague | compose | ok | elements=28
-2026-04-17T17:35:35+00:00 | 12-round-trip-test | parse | start | archetype=None
-2026-04-17T17:35:40+00:00 | 12-round-trip-test | parse | ok | components=7 total_nodes=28 container_cov=1
-2026-04-17T17:35:40+00:00 | 12-round-trip-test | compose | ok | elements=32
-2026-04-17T17:35:40+00:00 | _ | done | ok | matched=9 unmatched=3 refused=0 elapsed=49.6s
+2026-04-17T18:07:15+00:00 | _ | setup | ok | base_system_chars=4781
+2026-04-17T18:07:15+00:00 | 01-login | parse | start | archetype=login
+2026-04-17T18:07:17+00:00 | 01-login | parse | ok | components=3 total_nodes=9 container_cov=1
+2026-04-17T18:07:17+00:00 | 01-login | compose | ok | elements=15
+2026-04-17T18:07:17+00:00 | 02-profile-settings | parse | start | archetype=settings
+2026-04-17T18:07:20+00:00 | 02-profile-settings | parse | ok | components=4 total_nodes=15 container_cov=1
+2026-04-17T18:07:20+00:00 | 02-profile-settings | compose | ok | elements=25
+2026-04-17T18:07:20+00:00 | 03-meme-feed | parse | start | archetype=feed
+2026-04-17T18:07:24+00:00 | 03-meme-feed | parse | ok | components=2 total_nodes=28 container_cov=3
+2026-04-17T18:07:24+00:00 | 03-meme-feed | compose | ok | elements=29
+2026-04-17T18:07:24+00:00 | 04-dashboard | parse | start | archetype=dashboard
+2026-04-17T18:07:30+00:00 | 04-dashboard | parse | ok | components=4 total_nodes=34 container_cov=2
+2026-04-17T18:07:30+00:00 | 04-dashboard | compose | ok | elements=39
+2026-04-17T18:07:30+00:00 | 05-paywall | parse | start | archetype=paywall
+2026-04-17T18:07:36+00:00 | 05-paywall | parse | ok | components=7 total_nodes=51 container_cov=2
+2026-04-17T18:07:36+00:00 | 05-paywall | compose | ok | elements=55
+2026-04-17T18:07:38+00:00 | 06-spa-minimal | parse | start | archetype=None
+2026-04-17T18:07:42+00:00 | 06-spa-minimal | parse | ok | components=7 total_nodes=25 container_cov=2
+2026-04-17T18:07:42+00:00 | 06-spa-minimal | compose | ok | elements=28
+2026-04-17T18:07:42+00:00 | 07-search | parse | start | archetype=search
+2026-04-17T18:07:45+00:00 | 07-search | parse | ok | components=3 total_nodes=30 container_cov=2
+2026-04-17T18:07:45+00:00 | 07-search | compose | ok | elements=32
+2026-04-17T18:07:46+00:00 | 08-explicit-structure | parse | start | archetype=detail
+2026-04-17T18:07:48+00:00 | 08-explicit-structure | parse | ok | components=3 total_nodes=11 container_cov=1
+2026-04-17T18:07:48+00:00 | 08-explicit-structure | compose | ok | elements=14
+2026-04-17T18:07:48+00:00 | 09-drawer-nav | parse | start | archetype=drawer-nav
+2026-04-17T18:07:51+00:00 | 09-drawer-nav | parse | ok | components=1 total_nodes=22 container_cov=2
+2026-04-17T18:07:51+00:00 | 09-drawer-nav | compose | ok | elements=23
+2026-04-17T18:07:51+00:00 | 10-onboarding-carousel | parse | start | archetype=onboarding-carousel
+2026-04-17T18:07:54+00:00 | 10-onboarding-carousel | parse | ok | components=7 total_nodes=20 container_cov=2
+2026-04-17T18:07:54+00:00 | 10-onboarding-carousel | compose | ok | elements=26
+2026-04-17T18:07:55+00:00 | 11-vague | parse | start | archetype=None
+2026-04-17T18:08:01+00:00 | 11-vague | parse | ok | components=5 total_nodes=25 container_cov=3
+2026-04-17T18:08:01+00:00 | 11-vague | compose | ok | elements=30
+2026-04-17T18:08:02+00:00 | 12-round-trip-test | parse | start | archetype=None
+2026-04-17T18:08:06+00:00 | 12-round-trip-test | parse | ok | components=5 total_nodes=27 container_cov=2
+2026-04-17T18:08:06+00:00 | 12-round-trip-test | compose | ok | elements=32
+2026-04-17T18:08:06+00:00 | _ | done | ok | matched=9 unmatched=3 refused=0 elapsed=50.5s
 
-2026-04-17T17:35:40+00:00 | _ | render_walk | start | 
-2026-04-17T17:35:40+00:00 | 01-login | compose | ok | elements=16
-2026-04-17T17:35:40+00:00 | 01-login | render | start | 
-2026-04-17T17:35:40+00:00 | 01-login | render | ok | errors=1 kinds=['render_thrown']
-2026-04-17T17:35:40+00:00 | 01-login | walk | start | 
-2026-04-17T17:35:40+00:00 | 01-login | walk | ok | eids=15 root=5779:40746
-2026-04-17T17:35:40+00:00 | 02-profile-settings | compose | ok | elements=25
-2026-04-17T17:35:40+00:00 | 02-profile-settings | render | start | 
-2026-04-17T17:35:40+00:00 | 02-profile-settings | render | ok | errors=0 kinds=[]
-2026-04-17T17:35:40+00:00 | 02-profile-settings | walk | start | 
-2026-04-17T17:35:40+00:00 | 02-profile-settings | walk | ok | eids=25 root=5779:40789
-2026-04-17T17:35:40+00:00 | 03-meme-feed | compose | ok | elements=29
-2026-04-17T17:35:40+00:00 | 03-meme-feed | render | start | 
-2026-04-17T17:36:36+00:00 | 03-meme-feed | render | fail | errors=0 kinds=[]
-2026-04-17T17:36:36+00:00 | 04-dashboard | compose | ok | elements=45
-2026-04-17T17:36:36+00:00 | 04-dashboard | render | start | 
-2026-04-17T17:36:36+00:00 | 04-dashboard | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:36+00:00 | 04-dashboard | walk | start | 
-2026-04-17T17:36:36+00:00 | 04-dashboard | walk | ok | eids=45 root=5779:40939
-2026-04-17T17:36:36+00:00 | 05-paywall | compose | ok | elements=61
-2026-04-17T17:36:36+00:00 | 05-paywall | render | start | 
-2026-04-17T17:36:37+00:00 | 05-paywall | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:37+00:00 | 05-paywall | walk | start | 
-2026-04-17T17:36:37+00:00 | 05-paywall | walk | ok | eids=61 root=5779:41083
-2026-04-17T17:36:37+00:00 | 06-spa-minimal | compose | ok | elements=22
-2026-04-17T17:36:37+00:00 | 06-spa-minimal | render | start | 
-2026-04-17T17:36:37+00:00 | 06-spa-minimal | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:37+00:00 | 06-spa-minimal | walk | start | 
-2026-04-17T17:36:37+00:00 | 06-spa-minimal | walk | ok | eids=22 root=5779:41209
-2026-04-17T17:36:37+00:00 | 07-search | compose | ok | elements=32
-2026-04-17T17:36:37+00:00 | 07-search | render | start | 
-2026-04-17T17:36:38+00:00 | 07-search | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:38+00:00 | 07-search | walk | start | 
-2026-04-17T17:36:38+00:00 | 07-search | walk | ok | eids=32 root=5779:41281
-2026-04-17T17:36:38+00:00 | 08-explicit-structure | compose | ok | elements=14
-2026-04-17T17:36:38+00:00 | 08-explicit-structure | render | start | 
-2026-04-17T17:36:38+00:00 | 08-explicit-structure | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:38+00:00 | 08-explicit-structure | walk | start | 
-2026-04-17T17:36:38+00:00 | 08-explicit-structure | walk | ok | eids=14 root=5779:41338
-2026-04-17T17:36:38+00:00 | 09-drawer-nav | compose | ok | elements=23
-2026-04-17T17:36:38+00:00 | 09-drawer-nav | render | start | 
-2026-04-17T17:36:38+00:00 | 09-drawer-nav | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:38+00:00 | 09-drawer-nav | walk | start | 
-2026-04-17T17:36:38+00:00 | 09-drawer-nav | walk | ok | eids=23 root=5779:41386
-2026-04-17T17:36:38+00:00 | 10-onboarding-carousel | compose | ok | elements=26
-2026-04-17T17:36:38+00:00 | 10-onboarding-carousel | render | start | 
-2026-04-17T17:36:38+00:00 | 10-onboarding-carousel | render | ok | errors=1 kinds=['render_thrown']
-2026-04-17T17:36:38+00:00 | 10-onboarding-carousel | walk | start | 
-2026-04-17T17:36:39+00:00 | 10-onboarding-carousel | walk | ok | eids=22 root=5779:41442
-2026-04-17T17:36:39+00:00 | 11-vague | compose | ok | elements=28
-2026-04-17T17:36:39+00:00 | 11-vague | render | start | 
-2026-04-17T17:36:39+00:00 | 11-vague | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:39+00:00 | 11-vague | walk | start | 
-2026-04-17T17:36:39+00:00 | 11-vague | walk | ok | eids=28 root=5779:41510
-2026-04-17T17:36:39+00:00 | 12-round-trip-test | compose | ok | elements=32
-2026-04-17T17:36:39+00:00 | 12-round-trip-test | render | start | 
-2026-04-17T17:36:39+00:00 | 12-round-trip-test | render | ok | errors=0 kinds=[]
-2026-04-17T17:36:39+00:00 | 12-round-trip-test | walk | start | 
-2026-04-17T17:36:39+00:00 | 12-round-trip-test | walk | ok | eids=32 root=5779:41593
-2026-04-17T17:36:39+00:00 | _ | done | ok | render_ok=11/12 elapsed=59.7s
+2026-04-17T18:08:06+00:00 | _ | render_walk | start | 
+2026-04-17T18:08:06+00:00 | 01-login | compose | ok | elements=15
+2026-04-17T18:08:06+00:00 | 01-login | render | start | 
+2026-04-17T18:08:06+00:00 | 01-login | render | ok | errors=1 kinds=['render_thrown']
+2026-04-17T18:08:06+00:00 | 01-login | walk | start | 
+2026-04-17T18:08:06+00:00 | 01-login | walk | ok | eids=14 root=5782:42727
+2026-04-17T18:08:06+00:00 | 02-profile-settings | compose | ok | elements=25
+2026-04-17T18:08:06+00:00 | 02-profile-settings | render | start | 
+2026-04-17T18:08:06+00:00 | 02-profile-settings | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:06+00:00 | 02-profile-settings | walk | start | 
+2026-04-17T18:08:06+00:00 | 02-profile-settings | walk | ok | eids=25 root=5782:42776
+2026-04-17T18:08:06+00:00 | 03-meme-feed | compose | ok | elements=29
+2026-04-17T18:08:06+00:00 | 03-meme-feed | render | start | 
+2026-04-17T18:08:09+00:00 | 03-meme-feed | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:09+00:00 | 03-meme-feed | walk | start | 
+2026-04-17T18:08:11+00:00 | 03-meme-feed | walk | ok | eids=29 root=5782:42868
+2026-04-17T18:08:11+00:00 | 04-dashboard | compose | ok | elements=39
+2026-04-17T18:08:11+00:00 | 04-dashboard | render | start | 
+2026-04-17T18:08:11+00:00 | 04-dashboard | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:11+00:00 | 04-dashboard | walk | start | 
+2026-04-17T18:08:11+00:00 | 04-dashboard | walk | ok | eids=39 root=5782:42985
+2026-04-17T18:08:11+00:00 | 05-paywall | compose | ok | elements=55
+2026-04-17T18:08:11+00:00 | 05-paywall | render | start | 
+2026-04-17T18:08:11+00:00 | 05-paywall | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:11+00:00 | 05-paywall | walk | start | 
+2026-04-17T18:08:12+00:00 | 05-paywall | walk | ok | eids=55 root=5782:43097
+2026-04-17T18:08:12+00:00 | 06-spa-minimal | compose | ok | elements=28
+2026-04-17T18:08:12+00:00 | 06-spa-minimal | render | start | 
+2026-04-17T18:08:12+00:00 | 06-spa-minimal | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:12+00:00 | 06-spa-minimal | walk | start | 
+2026-04-17T18:08:12+00:00 | 06-spa-minimal | walk | ok | eids=28 root=5782:43198
+2026-04-17T18:08:12+00:00 | 07-search | compose | ok | elements=32
+2026-04-17T18:08:12+00:00 | 07-search | render | start | 
+2026-04-17T18:08:12+00:00 | 07-search | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:12+00:00 | 07-search | walk | start | 
+2026-04-17T18:08:12+00:00 | 07-search | walk | ok | eids=32 root=5782:43274
+2026-04-17T18:08:12+00:00 | 08-explicit-structure | compose | ok | elements=14
+2026-04-17T18:08:12+00:00 | 08-explicit-structure | render | start | 
+2026-04-17T18:08:13+00:00 | 08-explicit-structure | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:13+00:00 | 08-explicit-structure | walk | start | 
+2026-04-17T18:08:13+00:00 | 08-explicit-structure | walk | ok | eids=14 root=5782:43331
+2026-04-17T18:08:13+00:00 | 09-drawer-nav | compose | ok | elements=23
+2026-04-17T18:08:13+00:00 | 09-drawer-nav | render | start | 
+2026-04-17T18:08:13+00:00 | 09-drawer-nav | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:13+00:00 | 09-drawer-nav | walk | start | 
+2026-04-17T18:08:13+00:00 | 09-drawer-nav | walk | ok | eids=23 root=5782:43379
+2026-04-17T18:08:13+00:00 | 10-onboarding-carousel | compose | ok | elements=26
+2026-04-17T18:08:13+00:00 | 10-onboarding-carousel | render | start | 
+2026-04-17T18:08:13+00:00 | 10-onboarding-carousel | render | ok | errors=1 kinds=['render_thrown']
+2026-04-17T18:08:13+00:00 | 10-onboarding-carousel | walk | start | 
+2026-04-17T18:08:13+00:00 | 10-onboarding-carousel | walk | ok | eids=22 root=5782:43435
+2026-04-17T18:08:13+00:00 | 11-vague | compose | ok | elements=30
+2026-04-17T18:08:13+00:00 | 11-vague | render | start | 
+2026-04-17T18:08:14+00:00 | 11-vague | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:14+00:00 | 11-vague | walk | start | 
+2026-04-17T18:08:14+00:00 | 11-vague | walk | ok | eids=30 root=5782:43498
+2026-04-17T18:08:14+00:00 | 12-round-trip-test | compose | ok | elements=32
+2026-04-17T18:08:14+00:00 | 12-round-trip-test | render | start | 
+2026-04-17T18:08:14+00:00 | 12-round-trip-test | render | ok | errors=0 kinds=[]
+2026-04-17T18:08:14+00:00 | 12-round-trip-test | walk | start | 
+2026-04-17T18:08:14+00:00 | 12-round-trip-test | walk | ok | eids=32 root=5782:43574
+2026-04-17T18:08:14+00:00 | _ | done | ok | render_ok=12/12 elapsed=8.3s

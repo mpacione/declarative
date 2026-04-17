@@ -152,6 +152,13 @@ during the append walk is the hypothesised cost.
 - (c) auto-detect heavy prompts during compose and split into
   smaller sub-screens (exotic; last resort).
 
+**UPDATE (Round 3, same session):** after fresh forensic re-run on
+post-H2 screenshots, the real root cause of the 03-meme-feed
+timeout turned out to be a COMPOSE-level bug, not a renderer
+phase-order bug. Diagnosed and fixed in 5 script-level diagnostic
+variants (T1..T8) that isolated the slow property. See Round 3
+below.
+
 ## Final v0.1.5 ship state
 
 **11 / 12 VLM-ok** on 00g canonical prompts (vs 4/12 00f baseline,
@@ -185,3 +192,64 @@ still matters — it's what feeds the LLM's structural output at
 0.83 — but the bottleneck was always the renderer dropping the
 template's visual properties on any node with LLM-supplied
 children.
+
+## Round 3 — container fill removal (meme-feed timeout)
+
+**Forensic v2 (fresh after H2 + ship state):** inspected the 11
+rendered screenshots visually + diagnosed the 1 holdout. Prompt-
+layer defect classes from the original forensic memo
+(KIND_FLAT_CARD, KIND_NO_SHADOW, etc.) are all resolved. What
+remained was:
+
+1. 03-meme-feed render timeout (55 s)
+2. Minor combined-verdict flags (01-login + 10-onboarding-carousel
+   combined=broken because rule gate fires on `had_render_errors`)
+3. Per-prompt render-fid spread: 0.56–0.92, mean 0.73
+
+**Deep diagnostic on 03-meme-feed** — 8 script-level variants T1..T8
+strip one property class at a time to isolate the slow thing:
+
+| variant | change | render time |
+|---|---|---:|
+| original | as emitted | 55 s (timeout) |
+| T1 no resize() | strip resize() | 55 s (timeout) |
+| T2 no layoutMode | strip layoutMode | 33 s (succeeded) |
+| T3 no fills | strip all fills | **0.57 s** |
+| T4 no image fills | strip only image fills | 2.1 s |
+| T5 different image color | change paint color | 55 s |
+| T6 no image cornerRadius | strip image radius | 55 s |
+| T7 image clipsContent=true | flip clips | 55 s |
+| **T8 no list fill** | strip just the list container fill | **0.65 s** |
+
+Root cause: **`_generic_frame_template` assigned a SOLID fill
+(`color.surface.default`) to container types.** For `list` in
+particular, the fill on a container with deep nested auto-layout
+children (4 cards × 5 kids each) triggered a cascading paint
+recalc on every appendChild. T8 (strip just the list fill) dropped
+render from 55 s → 650 ms.
+
+**Fix:** removed `fill` from `_generic_frame_template.style`.
+Containers without dedicated templates (`list`, `tabs`, `slider`,
+`select`, `combobox`) now default to transparent. Dedicated
+templates (`card`, `dialog`, `drawer`) that opt into a fill are
+unaffected.
+
+**Results:**
+
+| metric | R0 baseline | R1 H1 | R2 H2 | R3 |
+|---|---:|---:|---:|---:|
+| mean render-fidelity | 0.251 | 0.453 | 0.730 | **0.752** |
+| mean prompt-fidelity | 0.834 | 0.834 | 0.834 | 0.834 |
+| VLM ok | 6 | 9 | 11 | **12** |
+| VLM partial | 4 | 3 | 0 | 0 |
+| VLM broken | 2 | 0 | 0 | 0 |
+| render timeouts | 0 | 0 | 1 | **0** |
+| total render time | — | 9 s | 9 s | 8 s |
+
+**12 / 12 VLM-ok on canonical 00g.** 00f-baseline 4/12 → post-H1
+9/12 → post-H2 11/12 → post-R3 **12/12**.
+
+**Methodology win:** the fresh forensic pass was the right move.
+The diagnostic path that led to the fix (T1..T8 property-strip
+ablation) is repeatable and cheap (~30 s per variant). It should
+be a standard tool when render perf regresses.

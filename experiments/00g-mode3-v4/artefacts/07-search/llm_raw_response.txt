@@ -81,7 +81,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "New Product Launch"}
+            "props": {"text": "New project kickoff"}
           },
           {
             "type": "icon",
@@ -113,7 +113,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "Q4 Strategy Meeting"}
+            "props": {"text": "Q4 Planning Session"}
           },
           {
             "type": "icon",

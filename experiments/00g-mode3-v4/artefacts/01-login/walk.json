@@ -4,10 +4,10 @@
     {
       "kind": "render_thrown",
       "error": "not a function",
-      "stack": "    at <anonymous> (<input>:291:15) | "
+      "stack": "    at <anonymous> (<input>:269:15) | "
     }
   ],
-  "rendered_root": "5779:40746",
+  "rendered_root": "5782:42727",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -23,29 +23,14 @@
       "effectCount": 0
     },
     "button-1": {
-      "type": "FRAME",
+      "type": "INSTANCE",
       "name": "button-1",
-      "width": 78,
-      "height": 44,
+      "width": 396,
+      "height": 52,
       "fills": [
         {
           "type": "solid",
-          "color": "#0F172A"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-7": {
-      "type": "TEXT",
-      "name": "text-7",
-      "width": 46,
-      "height": 17,
-      "characters": "Sign In",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -187,7 +172,7 @@
       "name": "text-1",
       "width": 364,
       "height": 15,
-      "characters": "Enter your credentials to continue",
+      "characters": "Enter your credentials to sign in",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

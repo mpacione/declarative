@@ -56,7 +56,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Enter your credentials to continue"
+        "text": "Enter your credentials to sign in"
       }
     },
     "text-2": {
@@ -275,59 +275,19 @@
         "link-1"
       ]
     },
-    "text-7": {
-      "type": "text",
-      "props": {
-        "text": "Sign In"
-      },
-      "layout": {
-        "direction": "vertical"
-      },
-      "_synthesised_from": {
-        "parent_type": "button",
-        "parent_variant": "primary",
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.button.fontFamily}",
-        "fontSize": "{typography.button.fontSize}",
-        "fontWeight": "{typography.button.fontWeight}",
-        "fill": "{color.action.primary.fg}"
-      }
-    },
     "button-1": {
       "type": "button",
       "variant": "primary",
+      "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "hug",
-          "height": "fixed",
-          "heightPixels": 44
-        },
-        "padding": {
-          "top": "{space.button.padding_y}",
-          "bottom": "{space.button.padding_y}",
-          "left": "{space.button.padding_x}",
-          "right": "{space.button.padding_x}"
-        },
-        "gap": "{space.button.gap}",
-        "align": "center",
-        "mainAxisAlignment": "CENTER",
-        "crossAxisAlignment": "CENTER"
+          "width": "fill"
+        }
       },
       "props": {
         "text": "Sign In"
-      },
-      "style": {
-        "fill": "{color.action.primary.bg}",
-        "fg": "{color.action.primary.fg}",
-        "radius": "{radius.button}"
-      },
-      "children": [
-        "text-7"
-      ]
+      }
     },
     "screen-1": {
       "type": "screen",
@@ -495,8 +455,7 @@
     "text-6": -11,
     "link-1": -12,
     "card-1": -13,
-    "text-7": -14,
-    "button-1": -15,
-    "screen-1": -16
+    "button-1": -14,
+    "screen-1": -15
   }
 }

@@ -129,7 +129,7 @@
         "direction": "vertical"
       },
       "props": {
-        "label": "Choose your appointment"
+        "label": "Date & Time"
       }
     },
     "card-2": {
@@ -159,30 +159,54 @@
         "date_picker-1"
       ]
     },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Therapist"
+      }
+    },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "AM"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
+    },
     "text-2": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Therapist Selection"
+        "text": "Amara"
       }
     },
-    "icon-1": {
-      "type": "icon",
-      "component_key": "icon/chevron-down",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "navigation_row-1": {
-      "type": "navigation_row",
+    "list_item-1": {
+      "type": "list_item",
       "layout": {
         "direction": "vertical",
         "sizing": {
           "width": "fill",
-          "height": "hug",
-          "heightPixels": 48
+          "height": "hug"
         },
         "padding": {
           "top": "{space.list_item.padding_y}",
@@ -192,20 +216,38 @@
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "SPACE_BETWEEN"
-      },
-      "props": {
-        "text": "Therapist Selection"
+        "crossAxisAlignment": "CENTER"
       },
       "style": {
-        "fill": "{color.surface.list_item}",
-        "fg": "{color.text.default}"
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-2",
-        "icon-1"
+        "avatar-1",
+        "text-2"
       ]
+    },
+    "avatar-2": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "JL"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
     },
     "text-3": {
       "type": "text",
@@ -213,24 +255,16 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Add-ons"
+        "text": "Jade"
       }
     },
-    "icon-2": {
-      "type": "icon",
-      "component_key": "icon/chevron-down",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "navigation_row-2": {
-      "type": "navigation_row",
+    "list_item-2": {
+      "type": "list_item",
       "layout": {
         "direction": "vertical",
         "sizing": {
           "width": "fill",
-          "height": "hug",
-          "heightPixels": 48
+          "height": "hug"
         },
         "padding": {
           "top": "{space.list_item.padding_y}",
@@ -240,19 +274,38 @@
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "SPACE_BETWEEN"
-      },
-      "props": {
-        "text": "Add-ons"
+        "crossAxisAlignment": "CENTER"
       },
       "style": {
-        "fill": "{color.surface.list_item}",
-        "fg": "{color.text.default}"
+        "fill": "{color.surface.list_item}"
       },
       "children": [
-        "text-3",
-        "icon-2"
+        "avatar-2",
+        "text-3"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.generic.padding_y}",
+          "bottom": "{space.generic.padding_y}",
+          "left": "{space.generic.padding_x}",
+          "right": "{space.generic.padding_x}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2"
       ]
     },
     "card-3": {
@@ -278,27 +331,106 @@
         "shadow": "{shadow.card}"
       },
       "children": [
-        "navigation_row-1",
-        "navigation_row-2"
+        "heading-3",
+        "list-1"
       ]
     },
-    "text-4": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Total"
-      }
-    },
-    "heading-3": {
+    "heading-4": {
       "type": "heading",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "$280"
+        "text": "Preferences"
       }
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "Aromatherapy"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "toggle",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "toggle-1": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "gap": "{space.toggle.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Aromatherapy",
+        "checked": true
+      },
+      "style": {
+        "fill": "{color.toggle.track.off}",
+        "radius": "{radius.toggle}"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "Hot stone therapy"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "toggle",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "toggle-2": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "gap": "{space.toggle.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Hot stone therapy",
+        "checked": false
+      },
+      "style": {
+        "fill": "{color.toggle.track.off}",
+        "radius": "{radius.toggle}"
+      },
+      "children": [
+        "text-5"
+      ]
     },
     "card-4": {
       "type": "card",
@@ -323,9 +455,22 @@
         "shadow": "{shadow.card}"
       },
       "children": [
-        "text-4",
-        "heading-3"
+        "heading-4",
+        "toggle-1",
+        "toggle-2"
       ]
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "$180"
+      }
     },
     "button-1": {
       "type": "button",
@@ -338,7 +483,7 @@
         }
       },
       "props": {
-        "text": "Book Appointment"
+        "text": "Book Now"
       }
     },
     "screen-1": {
@@ -366,6 +511,7 @@
         "card-2",
         "card-3",
         "card-4",
+        "text-6",
         "button-1"
       ]
     }
@@ -507,17 +653,23 @@
     "heading-2": -8,
     "date_picker-1": -9,
     "card-2": -10,
-    "text-2": -11,
-    "icon-1": -12,
-    "navigation_row-1": -13,
-    "text-3": -14,
-    "icon-2": -15,
-    "navigation_row-2": -16,
-    "card-3": -17,
-    "text-4": -18,
-    "heading-3": -19,
-    "card-4": -20,
-    "button-1": -21,
-    "screen-1": -22
+    "heading-3": -11,
+    "avatar-1": -12,
+    "text-2": -13,
+    "list_item-1": -14,
+    "avatar-2": -15,
+    "text-3": -16,
+    "list_item-2": -17,
+    "list-1": -18,
+    "card-3": -19,
+    "heading-4": -20,
+    "text-4": -21,
+    "toggle-1": -22,
+    "text-5": -23,
+    "toggle-2": -24,
+    "card-4": -25,
+    "text-6": -26,
+    "button-1": -27,
+    "screen-1": -28
   }
 }

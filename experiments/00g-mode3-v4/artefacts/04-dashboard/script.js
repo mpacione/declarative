@@ -250,198 +250,149 @@ n18.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n18.clipsContent = false;
 M["list_item-4"] = n18.id;
 
-const n19 = figma.createFrame();
-n19.name = "list_item-5";
-n19.layoutMode = "VERTICAL";
-n19.itemSpacing = 12;
-n19.paddingTop = 12;
-n19.paddingRight = 16;
-n19.paddingBottom = 12;
-n19.paddingLeft = 16;
-n19.counterAxisAlignItems = "CENTER";
-n19.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
-n19.clipsContent = false;
-M["list_item-5"] = n19.id;
+const n19 = figma.createText();
+n19.name = "text-6";
+try { n19.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-6"] = n19.id;
 
 const n20 = figma.createText();
-n20.name = "text-6";
-try { n20.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-6"] = n20.id;
+n20.name = "text-7";
+try { n20.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-7"] = n20.id;
 
 const n21 = figma.createText();
-n21.name = "text-7";
-try { n21.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-7"] = n21.id;
+n21.name = "text-8";
+try { n21.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-8"] = n21.id;
 
-const n22 = figma.createText();
-n22.name = "text-8";
-try { n22.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-8"] = n22.id;
+const n22 = figma.createFrame();
+n22.name = "badge-1";
+n22.layoutMode = "VERTICAL";
+n22.itemSpacing = 4;
+n22.paddingTop = 4;
+n22.paddingRight = 8;
+n22.paddingBottom = 4;
+n22.paddingLeft = 8;
+n22.counterAxisAlignItems = "CENTER";
+n22.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
+n22.cornerRadius = 999;
+n22.clipsContent = false;
+M["badge-1"] = n22.id;
 
-const n23 = figma.createFrame();
-n23.name = "badge-1";
-n23.layoutMode = "VERTICAL";
-n23.itemSpacing = 4;
-n23.paddingTop = 4;
-n23.paddingRight = 8;
-n23.paddingBottom = 4;
-n23.paddingLeft = 8;
-n23.counterAxisAlignItems = "CENTER";
-n23.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
-n23.cornerRadius = 999;
-n23.clipsContent = false;
-M["badge-1"] = n23.id;
+const n23 = figma.createText();
+n23.name = "text-10";
+try { n23.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-10"] = n23.id;
 
 const n24 = figma.createText();
-n24.name = "text-10";
-try { n24.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-10"] = n24.id;
+n24.name = "text-11";
+try { n24.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-11"] = n24.id;
 
 const n25 = figma.createText();
-n25.name = "text-11";
-try { n25.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-11"] = n25.id;
+n25.name = "text-12";
+try { n25.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-12"] = n25.id;
 
-const n26 = figma.createText();
-n26.name = "text-12";
-try { n26.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-12"] = n26.id;
+const n26 = figma.createFrame();
+n26.name = "badge-2";
+n26.layoutMode = "VERTICAL";
+n26.itemSpacing = 4;
+n26.paddingTop = 4;
+n26.paddingRight = 8;
+n26.paddingBottom = 4;
+n26.paddingLeft = 8;
+n26.counterAxisAlignItems = "CENTER";
+n26.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
+n26.cornerRadius = 999;
+n26.clipsContent = false;
+M["badge-2"] = n26.id;
 
-const n27 = figma.createFrame();
-n27.name = "badge-2";
-n27.layoutMode = "VERTICAL";
-n27.itemSpacing = 4;
-n27.paddingTop = 4;
-n27.paddingRight = 8;
-n27.paddingBottom = 4;
-n27.paddingLeft = 8;
-n27.counterAxisAlignItems = "CENTER";
-n27.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
-n27.cornerRadius = 999;
-n27.clipsContent = false;
-M["badge-2"] = n27.id;
+const n27 = figma.createText();
+n27.name = "text-14";
+try { n27.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-14"] = n27.id;
 
 const n28 = figma.createText();
-n28.name = "text-14";
-try { n28.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-14"] = n28.id;
+n28.name = "text-15";
+try { n28.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-15"] = n28.id;
 
 const n29 = figma.createText();
-n29.name = "text-15";
-try { n29.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-15"] = n29.id;
+n29.name = "text-16";
+try { n29.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-16"] = n29.id;
 
-const n30 = figma.createText();
-n30.name = "text-16";
-try { n30.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-16"] = n30.id;
+const n30 = figma.createFrame();
+n30.name = "badge-3";
+n30.layoutMode = "VERTICAL";
+n30.itemSpacing = 4;
+n30.paddingTop = 4;
+n30.paddingRight = 8;
+n30.paddingBottom = 4;
+n30.paddingLeft = 8;
+n30.counterAxisAlignItems = "CENTER";
+n30.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
+n30.cornerRadius = 999;
+n30.clipsContent = false;
+M["badge-3"] = n30.id;
 
-const n31 = figma.createFrame();
-n31.name = "badge-3";
-n31.layoutMode = "VERTICAL";
-n31.itemSpacing = 4;
-n31.paddingTop = 4;
-n31.paddingRight = 8;
-n31.paddingBottom = 4;
-n31.paddingLeft = 8;
-n31.counterAxisAlignItems = "CENTER";
-n31.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
-n31.cornerRadius = 999;
-n31.clipsContent = false;
-M["badge-3"] = n31.id;
+const n31 = figma.createText();
+n31.name = "text-18";
+try { n31.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-18"] = n31.id;
 
 const n32 = figma.createText();
-n32.name = "text-18";
-try { n32.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-18"] = n32.id;
+n32.name = "text-19";
+try { n32.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-19"] = n32.id;
 
 const n33 = figma.createText();
-n33.name = "text-19";
-try { n33.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-19"] = n33.id;
+n33.name = "text-20";
+try { n33.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+M["text-20"] = n33.id;
 
-const n34 = figma.createText();
-n34.name = "text-20";
-try { n34.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-20"] = n34.id;
+const n34 = figma.createFrame();
+n34.name = "badge-4";
+n34.layoutMode = "VERTICAL";
+n34.itemSpacing = 4;
+n34.paddingTop = 4;
+n34.paddingRight = 8;
+n34.paddingBottom = 4;
+n34.paddingLeft = 8;
+n34.counterAxisAlignItems = "CENTER";
+n34.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
+n34.cornerRadius = 999;
+n34.clipsContent = false;
+M["badge-4"] = n34.id;
 
-const n35 = figma.createFrame();
-n35.name = "badge-4";
-n35.layoutMode = "VERTICAL";
-n35.itemSpacing = 4;
-n35.paddingTop = 4;
-n35.paddingRight = 8;
-n35.paddingBottom = 4;
-n35.paddingLeft = 8;
-n35.counterAxisAlignItems = "CENTER";
-n35.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
-n35.cornerRadius = 999;
-n35.clipsContent = false;
-M["badge-4"] = n35.id;
+const n35 = figma.createText();
+n35.name = "text-9";
+n35.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
+try { n35.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n35.fontSize = 12;
+M["text-9"] = n35.id;
 
 const n36 = figma.createText();
-n36.name = "text-22";
-try { n36.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-22", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-22"] = n36.id;
+n36.name = "text-13";
+n36.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
+try { n36.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n36.fontSize = 12;
+M["text-13"] = n36.id;
 
 const n37 = figma.createText();
-n37.name = "text-23";
-try { n37.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-23", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-23"] = n37.id;
+n37.name = "text-17";
+n37.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
+try { n37.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n37.fontSize = 12;
+M["text-17"] = n37.id;
 
 const n38 = figma.createText();
-n38.name = "text-24";
-try { n38.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-24", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-M["text-24"] = n38.id;
-
-const n39 = figma.createFrame();
-n39.name = "badge-5";
-n39.layoutMode = "VERTICAL";
-n39.itemSpacing = 4;
-n39.paddingTop = 4;
-n39.paddingRight = 8;
-n39.paddingBottom = 4;
-n39.paddingLeft = 8;
-n39.counterAxisAlignItems = "CENTER";
-n39.fills = [{type: "SOLID", color: {r:0.9451,g:0.9608,b:0.9765}}];
-n39.cornerRadius = 999;
-n39.clipsContent = false;
-M["badge-5"] = n39.id;
-
-const n40 = figma.createText();
-n40.name = "text-9";
-n40.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-try { n40.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n40.fontSize = 12;
-M["text-9"] = n40.id;
-
-const n41 = figma.createText();
-n41.name = "text-13";
-n41.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-try { n41.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n41.fontSize = 12;
-M["text-13"] = n41.id;
-
-const n42 = figma.createText();
-n42.name = "text-17";
-n42.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-try { n42.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n42.fontSize = 12;
-M["text-17"] = n42.id;
-
-const n43 = figma.createText();
-n43.name = "text-21";
-n43.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-try { n43.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n43.fontSize = 12;
-M["text-21"] = n43.id;
-
-const n44 = figma.createText();
-n44.name = "text-25";
-n44.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-try { n44.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-25", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n44.fontSize = 12;
-M["text-25"] = n44.id;
+n38.name = "text-21";
+n38.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
+try { n38.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n38.fontSize = 12;
+M["text-21"] = n38.id;
 
 
 // Phase 2: Compose — wire tree, set layoutSizing
@@ -496,84 +447,66 @@ n17.layoutSizingVertical = "HUG";
 n10.appendChild(n18);
 n18.layoutSizingHorizontal = "FILL";
 n18.layoutSizingVertical = "HUG";
-n10.appendChild(n19);
+n15.appendChild(n19);
+try { n19.characters = "Jan 15, 2024"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
-n19.layoutSizingVertical = "HUG";
 n15.appendChild(n20);
-try { n20.characters = "2024-01-15"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n20.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.layoutSizingHorizontal = "FILL";
 n15.appendChild(n21);
-try { n21.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "$2,500.00"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n15.appendChild(n22);
-try { n22.characters = "$2,450.00"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n22.layoutSizingHorizontal = "FILL";
-n15.appendChild(n23);
-n23.layoutSizingHorizontal = "HUG";
-n23.layoutSizingVertical = "HUG";
+n22.layoutSizingHorizontal = "HUG";
+n22.layoutSizingVertical = "HUG";
+n16.appendChild(n23);
+try { n23.characters = "Jan 14, 2024"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n23.layoutSizingHorizontal = "FILL";
 n16.appendChild(n24);
-try { n24.characters = "2024-01-14"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n24.characters = "Invoice #1024"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n24.layoutSizingHorizontal = "FILL";
 n16.appendChild(n25);
-try { n25.characters = "Subscription renewal"; } catch (__e) { __errors.push({eid:"text-11", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n25.characters = "$1,800.00"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n25.layoutSizingHorizontal = "FILL";
 n16.appendChild(n26);
-try { n26.characters = "$99.99"; } catch (__e) { __errors.push({eid:"text-12", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n26.layoutSizingHorizontal = "FILL";
-n16.appendChild(n27);
-n27.layoutSizingHorizontal = "HUG";
-n27.layoutSizingVertical = "HUG";
+n26.layoutSizingHorizontal = "HUG";
+n26.layoutSizingVertical = "HUG";
+n17.appendChild(n27);
+try { n27.characters = "Jan 13, 2024"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n27.layoutSizingHorizontal = "FILL";
 n17.appendChild(n28);
-try { n28.characters = "2024-01-13"; } catch (__e) { __errors.push({eid:"text-14", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n28.characters = "Refund issued"; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n28.layoutSizingHorizontal = "FILL";
 n17.appendChild(n29);
-try { n29.characters = "Refund issued"; } catch (__e) { __errors.push({eid:"text-15", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n29.characters = "-$450.00"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n29.layoutSizingHorizontal = "FILL";
 n17.appendChild(n30);
-try { n30.characters = "-$150.00"; } catch (__e) { __errors.push({eid:"text-16", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n30.layoutSizingHorizontal = "FILL";
-n17.appendChild(n31);
-n31.layoutSizingHorizontal = "HUG";
-n31.layoutSizingVertical = "HUG";
+n30.layoutSizingHorizontal = "HUG";
+n30.layoutSizingVertical = "HUG";
+n18.appendChild(n31);
+try { n31.characters = "Jan 12, 2024"; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n31.layoutSizingHorizontal = "FILL";
 n18.appendChild(n32);
-try { n32.characters = "2024-01-12"; } catch (__e) { __errors.push({eid:"text-18", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n32.characters = "Payment received"; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n32.layoutSizingHorizontal = "FILL";
 n18.appendChild(n33);
-try { n33.characters = "Invoice payment"; } catch (__e) { __errors.push({eid:"text-19", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n33.characters = "$3,200.00"; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n33.layoutSizingHorizontal = "FILL";
 n18.appendChild(n34);
-try { n34.characters = "$1,200.00"; } catch (__e) { __errors.push({eid:"text-20", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n34.layoutSizingHorizontal = "FILL";
-n18.appendChild(n35);
-n35.layoutSizingHorizontal = "HUG";
-n35.layoutSizingVertical = "HUG";
-n19.appendChild(n36);
-try { n36.characters = "2024-01-11"; } catch (__e) { __errors.push({eid:"text-22", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n34.layoutSizingHorizontal = "HUG";
+n34.layoutSizingVertical = "HUG";
+n22.appendChild(n35);
+try { n35.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n35.layoutSizingHorizontal = "FILL";
+n26.appendChild(n36);
+try { n36.characters = "Pending"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n36.layoutSizingHorizontal = "FILL";
-n19.appendChild(n37);
-try { n37.characters = "Wire transfer"; } catch (__e) { __errors.push({eid:"text-23", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n30.appendChild(n37);
+try { n37.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n37.layoutSizingHorizontal = "FILL";
-n19.appendChild(n38);
-try { n38.characters = "$5,000.00"; } catch (__e) { __errors.push({eid:"text-24", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n34.appendChild(n38);
+try { n38.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n38.layoutSizingHorizontal = "FILL";
-n19.appendChild(n39);
-n39.layoutSizingHorizontal = "HUG";
-n39.layoutSizingVertical = "HUG";
-n23.appendChild(n40);
-try { n40.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n40.layoutSizingHorizontal = "FILL";
-n27.appendChild(n41);
-try { n41.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-13", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n41.layoutSizingHorizontal = "FILL";
-n31.appendChild(n42);
-try { n42.characters = "Processed"; } catch (__e) { __errors.push({eid:"text-17", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n42.layoutSizingHorizontal = "FILL";
-n35.appendChild(n43);
-try { n43.characters = "Pending"; } catch (__e) { __errors.push({eid:"text-21", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n43.layoutSizingHorizontal = "FILL";
-n39.appendChild(n44);
-try { n44.characters = "Completed"; } catch (__e) { __errors.push({eid:"text-25", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n44.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {
   __errors.push({kind: "render_thrown", error: String(__thrown && __thrown.message || __thrown), stack: (__thrown && __thrown.stack) ? String(__thrown.stack).split("\n").slice(0, 6).join(" | ") : null});

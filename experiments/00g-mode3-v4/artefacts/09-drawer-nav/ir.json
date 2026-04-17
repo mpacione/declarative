@@ -219,7 +219,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Trash"
+        "text": "Archive"
       }
     },
     "list_item-5": {
@@ -307,7 +307,6 @@
         "gap": "{space.generic.gap}"
       },
       "style": {
-        "fill": "{color.surface.default}",
         "radius": "{radius.default}"
       },
       "children": [

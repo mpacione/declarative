@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5779:41281",
+  "rendered_root": "5782:43274",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -21,12 +21,6 @@
       "name": "list-1",
       "width": 396,
       "height": 963,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
       "effectCount": 0
     },
     "list_item-5": {
@@ -54,7 +48,7 @@
       "name": "text-10",
       "width": 340,
       "height": 15,
-      "characters": "Q4 Strategy Meeting",
+      "characters": "Q4 Planning Session",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -150,7 +144,7 @@
       "name": "text-8",
       "width": 340,
       "height": 15,
-      "characters": "New Product Launch",
+      "characters": "New project kickoff",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -274,12 +268,6 @@
       "name": "tabs-1",
       "width": 396,
       "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
       "effectCount": 0
     },
     "text-5": {

@@ -8,7 +8,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Memes"
+        "text": "Meme Feed"
       }
     },
     "icon_button-1": {
@@ -77,7 +77,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "johndoe"
+        "text": "meme_lord_42"
       }
     },
     "image-1": {
@@ -91,7 +91,8 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme1.jpg"
+        "src": "meme1.jpg",
+        "alt": "Funny meme"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
@@ -182,7 +183,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "SM"
+        "initials": "SK"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -196,7 +197,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "sarahmeme"
+        "text": "silly_kitten"
       }
     },
     "image-2": {
@@ -210,7 +211,8 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme2.jpg"
+        "src": "meme2.jpg",
+        "alt": "Funny meme"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
@@ -223,7 +225,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "POV: You're trying to be productive on Monday"
+        "text": "POV: You're the last slice of pizza"
       }
     },
     "button-3": {
@@ -301,7 +303,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "TK"
+        "initials": "CM"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -315,7 +317,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "thememeking"
+        "text": "cosmic_memes"
       }
     },
     "image-3": {
@@ -329,7 +331,8 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme3.jpg"
+        "src": "meme3.jpg",
+        "alt": "Funny meme"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
@@ -342,7 +345,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Me explaining why I need another coffee"
+        "text": "Me pretending to understand what's happening"
       }
     },
     "button-5": {
@@ -422,7 +425,6 @@
         "gap": "{space.generic.gap}"
       },
       "style": {
-        "fill": "{color.surface.default}",
         "radius": "{radius.default}"
       },
       "children": [

@@ -118,8 +118,8 @@ n2.paddingTop = 8;
 n2.paddingRight = 12;
 n2.paddingBottom = 8;
 n2.paddingLeft = 12;
-n2.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
 n2.cornerRadius = 8;
+n2.fills = [];
 n2.clipsContent = false;
 M["tabs-1"] = n2.id;
 
@@ -131,8 +131,8 @@ n3.paddingTop = 8;
 n3.paddingRight = 12;
 n3.paddingBottom = 8;
 n3.paddingLeft = 12;
-n3.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
 n3.cornerRadius = 8;
+n3.fills = [];
 n3.clipsContent = false;
 M["list-1"] = n3.id;
 
@@ -411,7 +411,7 @@ n13.appendChild(n23);
 n23.layoutSizingHorizontal = "FIXED";
 n23.layoutSizingVertical = "FIXED";
 n13.appendChild(n24);
-try { n24.characters = "New Product Launch"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n24.characters = "New project kickoff"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n24.layoutSizingHorizontal = "FILL";
 n13.appendChild(n25);
 n14.appendChild(n26);
@@ -425,7 +425,7 @@ n15.appendChild(n29);
 n29.layoutSizingHorizontal = "FIXED";
 n29.layoutSizingVertical = "FIXED";
 n15.appendChild(n30);
-try { n30.characters = "Q4 Strategy Meeting"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n30.characters = "Q4 Planning Session"; } catch (__e) { __errors.push({eid:"text-10", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n30.layoutSizingHorizontal = "FILL";
 n15.appendChild(n31);
 _rootPage.appendChild(n0);

@@ -6,15 +6,15 @@
     "system_prompt_chars": 5648,
     "usage": {
       "input_tokens": 1748,
-      "output_tokens": 293,
-      "latency_s": 2.17618727684021
+      "output_tokens": 266,
+      "latency_s": 1.9393360614776611
     },
     "measures": {
       "total_node_count": 9,
       "top_level_count": 3,
       "max_depth": 2,
       "container_coverage": 1,
-      "component_key_rate": 0.1111111111111111,
+      "component_key_rate": 0.2222222222222222,
       "variant_rate": 0.1111111111111111,
       "json_valid": 1,
       "empty_output": 0,
@@ -22,9 +22,9 @@
     },
     "component_count": 3,
     "compose": {
-      "element_count": 16,
+      "element_count": 15,
       "warnings": 9,
-      "latency_s": 0.003874063491821289
+      "latency_s": 0.005361795425415039
     }
   },
   {
@@ -35,7 +35,7 @@
     "usage": {
       "input_tokens": 2054,
       "output_tokens": 443,
-      "latency_s": 2.704468011856079
+      "latency_s": 2.4510908126831055
     },
     "measures": {
       "total_node_count": 15,
@@ -52,7 +52,7 @@
     "compose": {
       "element_count": 25,
       "warnings": 15,
-      "latency_s": 0.0019409656524658203
+      "latency_s": 0.002573728561401367
     }
   },
   {
@@ -62,8 +62,8 @@
     "system_prompt_chars": 6847,
     "usage": {
       "input_tokens": 2026,
-      "output_tokens": 865,
-      "latency_s": 4.571833848953247
+      "output_tokens": 896,
+      "latency_s": 4.435678005218506
     },
     "measures": {
       "total_node_count": 28,
@@ -80,7 +80,7 @@
     "compose": {
       "element_count": 29,
       "warnings": 28,
-      "latency_s": 0.023008108139038086
+      "latency_s": 0.0034220218658447266
     }
   },
   {
@@ -90,25 +90,25 @@
     "system_prompt_chars": 6553,
     "usage": {
       "input_tokens": 1983,
-      "output_tokens": 1072,
-      "latency_s": 5.497662782669067
+      "output_tokens": 943,
+      "latency_s": 6.141347169876099
     },
     "measures": {
-      "total_node_count": 39,
+      "total_node_count": 34,
       "top_level_count": 4,
       "max_depth": 4,
       "container_coverage": 2,
-      "component_key_rate": 0.05128205128205128,
-      "variant_rate": 0.02564102564102564,
+      "component_key_rate": 0.058823529411764705,
+      "variant_rate": 0.029411764705882353,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
     "component_count": 4,
     "compose": {
-      "element_count": 45,
-      "warnings": 39,
-      "latency_s": 0.0024728775024414062
+      "element_count": 39,
+      "warnings": 34,
+      "latency_s": 0.002371072769165039
     }
   },
   {
@@ -118,25 +118,25 @@
     "system_prompt_chars": 6906,
     "usage": {
       "input_tokens": 2090,
-      "output_tokens": 1274,
-      "latency_s": 6.885936975479126
+      "output_tokens": 1355,
+      "latency_s": 6.095608949661255
     },
     "measures": {
-      "total_node_count": 60,
+      "total_node_count": 51,
       "top_level_count": 7,
       "max_depth": 4,
       "container_coverage": 2,
-      "component_key_rate": 0.25,
-      "variant_rate": 0.05,
+      "component_key_rate": 0.19607843137254902,
+      "variant_rate": 0.058823529411764705,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
     "component_count": 7,
     "compose": {
-      "element_count": 61,
-      "warnings": 60,
-      "latency_s": 0.002602100372314453
+      "element_count": 55,
+      "warnings": 51,
+      "latency_s": 0.002553224563598633
     }
   },
   {
@@ -146,25 +146,25 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1470,
-      "output_tokens": 529,
-      "latency_s": 3.3291738033294678
+      "output_tokens": 591,
+      "latency_s": 3.833728790283203
     },
     "measures": {
-      "total_node_count": 21,
-      "top_level_count": 6,
-      "max_depth": 3,
-      "container_coverage": 1,
-      "component_key_rate": 0.23809523809523808,
-      "variant_rate": 0.047619047619047616,
+      "total_node_count": 25,
+      "top_level_count": 7,
+      "max_depth": 4,
+      "container_coverage": 2,
+      "component_key_rate": 0.12,
+      "variant_rate": 0.04,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
-    "component_count": 6,
+    "component_count": 7,
     "compose": {
-      "element_count": 22,
-      "warnings": 21,
-      "latency_s": 0.0030939579010009766
+      "element_count": 28,
+      "warnings": 25,
+      "latency_s": 0.0026290416717529297
     }
   },
   {
@@ -174,8 +174,8 @@
     "system_prompt_chars": 6422,
     "usage": {
       "input_tokens": 1970,
-      "output_tokens": 740,
-      "latency_s": 3.4702670574188232
+      "output_tokens": 741,
+      "latency_s": 3.7494277954101562
     },
     "measures": {
       "total_node_count": 30,
@@ -192,7 +192,7 @@
     "compose": {
       "element_count": 32,
       "warnings": 30,
-      "latency_s": 0.0017399787902832031
+      "latency_s": 0.0027828216552734375
     }
   },
   {
@@ -202,8 +202,8 @@
     "system_prompt_chars": 6563,
     "usage": {
       "input_tokens": 2012,
-      "output_tokens": 322,
-      "latency_s": 1.9781298637390137
+      "output_tokens": 319,
+      "latency_s": 2.082340955734253
     },
     "measures": {
       "total_node_count": 11,
@@ -220,7 +220,7 @@
     "compose": {
       "element_count": 14,
       "warnings": 11,
-      "latency_s": 0.0018150806427001953
+      "latency_s": 0.0013480186462402344
     }
   },
   {
@@ -230,8 +230,8 @@
     "system_prompt_chars": 6930,
     "usage": {
       "input_tokens": 2002,
-      "output_tokens": 568,
-      "latency_s": 3.005699872970581
+      "output_tokens": 567,
+      "latency_s": 2.8891122341156006
     },
     "measures": {
       "total_node_count": 22,
@@ -248,7 +248,7 @@
     "compose": {
       "element_count": 23,
       "warnings": 22,
-      "latency_s": 0.0015873908996582031
+      "latency_s": 0.0013370513916015625
     }
   },
   {
@@ -258,8 +258,8 @@
     "system_prompt_chars": 6015,
     "usage": {
       "input_tokens": 1901,
-      "output_tokens": 548,
-      "latency_s": 3.135732889175415
+      "output_tokens": 547,
+      "latency_s": 3.326314926147461
     },
     "measures": {
       "total_node_count": 20,
@@ -276,7 +276,7 @@
     "compose": {
       "element_count": 26,
       "warnings": 20,
-      "latency_s": 0.0023229122161865234
+      "latency_s": 0.0017580986022949219
     }
   },
   {
@@ -286,15 +286,15 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1461,
-      "output_tokens": 581,
-      "latency_s": 3.4975972175598145
+      "output_tokens": 552,
+      "latency_s": 5.772018909454346
     },
     "measures": {
       "total_node_count": 25,
       "top_level_count": 5,
       "max_depth": 4,
       "container_coverage": 3,
-      "component_key_rate": 0.16,
+      "component_key_rate": 0.08,
       "variant_rate": 0.08,
       "json_valid": 1,
       "empty_output": 0,
@@ -302,9 +302,9 @@
     },
     "component_count": 5,
     "compose": {
-      "element_count": 28,
+      "element_count": 30,
       "warnings": 25,
-      "latency_s": 0.002317667007446289
+      "latency_s": 0.004124879837036133
     }
   },
   {
@@ -314,25 +314,25 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1472,
-      "output_tokens": 708,
-      "latency_s": 4.311972141265869
+      "output_tokens": 630,
+      "latency_s": 3.8349380493164062
     },
     "measures": {
-      "total_node_count": 28,
-      "top_level_count": 7,
-      "max_depth": 2,
-      "container_coverage": 1,
-      "component_key_rate": 0.07142857142857142,
-      "variant_rate": 0.03571428571428571,
+      "total_node_count": 27,
+      "top_level_count": 5,
+      "max_depth": 4,
+      "container_coverage": 2,
+      "component_key_rate": 0.07407407407407407,
+      "variant_rate": 0.037037037037037035,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
-    "component_count": 7,
+    "component_count": 5,
     "compose": {
       "element_count": 32,
-      "warnings": 28,
-      "latency_s": 0.0017862319946289062
+      "warnings": 27,
+      "latency_s": 0.0017189979553222656
     }
   }
 ]

@@ -117,8 +117,8 @@ n2.paddingTop = 8;
 n2.paddingRight = 12;
 n2.paddingBottom = 8;
 n2.paddingLeft = 12;
-n2.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
 n2.cornerRadius = 8;
+n2.fills = [];
 n2.clipsContent = false;
 M["list-1"] = n2.id;
 
@@ -319,7 +319,7 @@ n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
 n2.layoutSizingVertical = "HUG";
 n1.appendChild(n3);
-try { n3.characters = "Memes"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n3.characters = "Meme Feed"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n3.layoutSizingHorizontal = "FILL";
 n1.appendChild(n4);
 n2.appendChild(n5);
@@ -335,7 +335,7 @@ n5.appendChild(n8);
 n8.layoutSizingHorizontal = "FIXED";
 n8.layoutSizingVertical = "FIXED";
 n5.appendChild(n9);
-try { n9.characters = "johndoe"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n9.characters = "meme_lord_42"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "FILL";
 n5.appendChild(n10);
 n10.layoutSizingHorizontal = "FILL";
@@ -348,26 +348,26 @@ n6.appendChild(n13);
 n13.layoutSizingHorizontal = "FIXED";
 n13.layoutSizingVertical = "FIXED";
 n6.appendChild(n14);
-try { n14.characters = "sarahmeme"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "silly_kitten"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n6.appendChild(n15);
 n15.layoutSizingHorizontal = "FILL";
 n15.layoutSizingVertical = "FIXED";
 n6.appendChild(n16);
-try { n16.characters = "POV: You're trying to be productive on Monday"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n16.characters = "POV: You're the last slice of pizza"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
 n6.appendChild(n17);
 n7.appendChild(n18);
 n18.layoutSizingHorizontal = "FIXED";
 n18.layoutSizingVertical = "FIXED";
 n7.appendChild(n19);
-try { n19.characters = "thememeking"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n19.characters = "cosmic_memes"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
 n7.appendChild(n20);
 n20.layoutSizingHorizontal = "FILL";
 n20.layoutSizingVertical = "FIXED";
 n7.appendChild(n21);
-try { n21.characters = "Me explaining why I need another coffee"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n21.characters = "Me pretending to understand what's happening"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n7.appendChild(n22);
 n12.appendChild(n23);

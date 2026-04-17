@@ -56,7 +56,7 @@
       },
       {
         "type": "text",
-        "props": {"text": "Join thousands of users enjoying a better experience"}
+        "props": {"text": "Join thousands of users enjoying a seamless experience"}
       }
     ]
   },
@@ -84,7 +84,7 @@
   },
   {
     "type": "link",
-    "props": {"text": "Skip for now"}
+    "props": {"text": "Skip"}
   }
 ]
 ```

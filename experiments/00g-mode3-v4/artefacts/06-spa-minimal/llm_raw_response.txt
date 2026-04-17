@@ -20,34 +20,42 @@
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Select Time"}},
-      {"type": "date_picker", "props": {"label": "Choose your appointment"}}
+      {"type": "date_picker", "props": {"label": "Date & Time"}}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "navigation_row", "props": {"text": "Therapist Selection"}, "children": [
-        {"type": "text", "props": {"text": "Therapist Selection"}},
-        {"type": "icon", "component_key": "icon/chevron-down"}
-      ]},
-      {"type": "navigation_row", "props": {"text": "Add-ons"}, "children": [
-        {"type": "text", "props": {"text": "Add-ons"}},
-        {"type": "icon", "component_key": "icon/chevron-down"}
+      {"type": "heading", "props": {"text": "Therapist"}},
+      {"type": "list", "children": [
+        {"type": "list_item", "children": [
+          {"type": "avatar", "props": {"initials": "AM"}},
+          {"type": "text", "props": {"text": "Amara"}}
+        ]},
+        {"type": "list_item", "children": [
+          {"type": "avatar", "props": {"initials": "JL"}},
+          {"type": "text", "props": {"text": "Jade"}}
+        ]}
       ]}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "text", "props": {"text": "Total"}},
-      {"type": "heading", "props": {"text": "$280"}}
+      {"type": "heading", "props": {"text": "Preferences"}},
+      {"type": "toggle", "props": {"label": "Aromatherapy", "checked": true}},
+      {"type": "toggle", "props": {"label": "Hot stone therapy", "checked": false}}
     ]
+  },
+  {
+    "type": "text",
+    "props": {"text": "$180"}
   },
   {
     "type": "button",
     "variant": "primary",
     "component_key": "button/large/translucent",
-    "props": {"text": "Book Appointment"}
+    "props": {"text": "Book Now"}
   }
 ]
 ```

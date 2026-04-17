@@ -1,22 +1,22 @@
 {
-  "total": 11,
+  "total": 12,
   "broken": 2,
   "partial": 2,
-  "ok": 7,
+  "ok": 8,
   "gate_passes": true,
   "per_prompt": {
     "01-login": {
       "rule": {
         "total_content_nodes": 6,
-        "total_text_nodes": 8,
+        "total_text_nodes": 7,
         "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 8,
+        "visible_text_nodes": 7,
         "frames_with_visible_content": 5,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.9286,
+        "visible_ratio": 0.9231,
         "verdict": "broken",
         "had_render_errors": true,
-        "total_node_count": 14,
+        "total_node_count": 13,
         "container_coverage": 1
       },
       "verdict": "broken",
@@ -44,70 +44,91 @@
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear and coherent profile settings interface with recognizable elements like a header, profile picture placeholder, input fields, notification toggles (though rendered as text with backgrounds), and a save button."
+        "reason": "The screen displays a clear and coherent profile settings interface with recognizable elements like a header, profile picture placeholder, input fields, notification toggles (though rendered as text with background), and a save button."
+      }
+    },
+    "03-meme-feed": {
+      "rule": {
+        "total_content_nodes": 21,
+        "total_text_nodes": 7,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 16,
+        "default_frame_ratio": 0.1429,
+        "visible_ratio": 0.8214,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 28,
+        "container_coverage": 3
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The UI presents a clear, repeating card structure typical of a feed, with recognizable placeholders for avatars, images, text, and action buttons, making it a coherent and plausible starting point."
       }
     },
     "04-dashboard": {
       "rule": {
-        "total_content_nodes": 17,
-        "total_text_nodes": 27,
+        "total_content_nodes": 15,
+        "total_text_nodes": 23,
         "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 27,
-        "frames_with_visible_content": 15,
+        "visible_text_nodes": 23,
+        "frames_with_visible_content": 13,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.9545,
+        "visible_ratio": 0.9474,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 44,
+        "total_node_count": 38,
         "container_coverage": 2
       },
       "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The UI has a clear structure with a header, a chart placeholder, a list of transactions, and a button, making it a plausible starting point for a dashboard design."
+        "reason": "The UI has a clear structure with a header, a chart placeholder, a list of transactions with distinct columns/rows, and a footer button, making it a plausible starting point."
       }
     },
     "05-paywall": {
       "rule": {
-        "total_content_nodes": 35,
-        "total_text_nodes": 25,
+        "total_content_nodes": 31,
+        "total_text_nodes": 23,
         "default_sized_frame_nodes": 1,
-        "visible_text_nodes": 25,
-        "frames_with_visible_content": 23,
-        "default_frame_ratio": 0.0286,
-        "visible_ratio": 0.8,
+        "visible_text_nodes": 23,
+        "frames_with_visible_content": 18,
+        "default_frame_ratio": 0.0323,
+        "visible_ratio": 0.7593,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 60,
+        "total_node_count": 54,
         "container_coverage": 2
-      },
-      "verdict": "ok",
-      "vlm": {
-        "score": 9,
-        "verdict": "ok",
-        "reason": "The screen displays a clear, well-structured pricing page with distinct plan cards, feature lists, and a testimonial section, making it highly interpretable."
-      }
-    },
-    "06-spa-minimal": {
-      "rule": {
-        "total_content_nodes": 14,
-        "total_text_nodes": 7,
-        "default_sized_frame_nodes": 1,
-        "visible_text_nodes": 7,
-        "frames_with_visible_content": 9,
-        "default_frame_ratio": 0.0714,
-        "visible_ratio": 0.7619,
-        "verdict": "ok",
-        "had_render_errors": false,
-        "total_node_count": 21,
-        "container_coverage": 1
       },
       "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a coherent and interpretable UI structure for booking an appointment, with clear sections for service details, time selection, therapist selection, add-ons, total cost, and a call-to-action button."
+        "reason": "The screen displays a clear and coherent pricing plan structure with distinct cards, features, and call-to-action buttons, making it a plausible UI starting point."
+      }
+    },
+    "06-spa-minimal": {
+      "rule": {
+        "total_content_nodes": 17,
+        "total_text_nodes": 10,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 10,
+        "frames_with_visible_content": 13,
+        "default_frame_ratio": 0.1765,
+        "visible_ratio": 0.8519,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 27,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The screen has a clear, interpretable UI structure with distinct sections for service details, time selection, therapist choice, preferences, and a booking button, making it a plausible starting point for a booking interface."
       }
     },
     "07-search": {
@@ -116,9 +137,9 @@
         "total_text_nodes": 10,
         "default_sized_frame_nodes": 5,
         "visible_text_nodes": 10,
-        "frames_with_visible_content": 14,
+        "frames_with_visible_content": 12,
         "default_frame_ratio": 0.2381,
-        "visible_ratio": 0.7742,
+        "visible_ratio": 0.7097,
         "verdict": "partial",
         "had_render_errors": false,
         "total_node_count": 31,
@@ -128,7 +149,7 @@
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with a search bar, filter options, and a list of items with avatars, titles, and expand icons, making it a plausible starting point for a design."
+        "reason": "The screen displays a clear and coherent UI structure with a search bar, filter options, and a list of items containing avatars, text, and expand icons, making it a plausible starting point for a design."
       }
     },
     "08-explicit-structure": {
@@ -147,7 +168,7 @@
       },
       "verdict": "ok",
       "vlm": {
-        "score": 9,
+        "score": 8,
         "verdict": "ok",
         "reason": "The screen displays a clear and coherent UI structure with a title bar, a card containing text and a primary action button, and a secondary action button below it."
       }
@@ -158,9 +179,9 @@
         "total_text_nodes": 6,
         "default_sized_frame_nodes": 0,
         "visible_text_nodes": 6,
-        "frames_with_visible_content": 9,
+        "frames_with_visible_content": 8,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.6818,
+        "visible_ratio": 0.6364,
         "verdict": "partial",
         "had_render_errors": false,
         "total_node_count": 22,
@@ -170,7 +191,7 @@
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear, coherent vertical menu structure with recognizable icons and labels, representing a plausible UI starting point."
+        "reason": "The screen displays a clear, coherent vertical navigation menu with icons and labels, representing a plausible UI structure."
       }
     },
     "10-onboarding-carousel": {
@@ -197,43 +218,43 @@
     "11-vague": {
       "rule": {
         "total_content_nodes": 19,
-        "total_text_nodes": 8,
+        "total_text_nodes": 10,
         "default_sized_frame_nodes": 3,
-        "visible_text_nodes": 8,
+        "visible_text_nodes": 10,
         "frames_with_visible_content": 16,
         "default_frame_ratio": 0.1579,
-        "visible_ratio": 0.8889,
+        "visible_ratio": 0.8966,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 27,
+        "total_node_count": 29,
         "container_coverage": 3
       },
       "verdict": "ok",
       "vlm": {
         "score": 8,
         "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with a top navigation bar, a featured section, a trending list with distinct items, and a quick actions area, making it a plausible starting point for a design."
+        "reason": "The screen displays a clear and coherent UI structure with distinct sections for 'Featured', 'Trending Now', and 'Quick Actions', including recognizable elements like a back button, image placeholders, text labels, tags, and action buttons."
       }
     },
     "12-round-trip-test": {
       "rule": {
-        "total_content_nodes": 11,
-        "total_text_nodes": 20,
+        "total_content_nodes": 16,
+        "total_text_nodes": 15,
         "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 20,
-        "frames_with_visible_content": 10,
+        "visible_text_nodes": 15,
+        "frames_with_visible_content": 14,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.9677,
+        "visible_ratio": 0.9355,
         "verdict": "ok",
         "had_render_errors": false,
         "total_node_count": 31,
-        "container_coverage": 1
+        "container_coverage": 2
       },
       "verdict": "ok",
       "vlm": {
         "score": 9,
         "verdict": "ok",
-        "reason": "The screen displays a clear, well-structured list of device specifications organized into distinct cards with a consistent layout, along with a top navigation bar and a bottom action button."
+        "reason": "The UI is well-structured with clear sections for device details, specifications, and features, along with functional navigation and action buttons."
       }
     }
   }

@@ -5,7 +5,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Memes"
+          "text": "Meme Feed"
         }
       },
       {
@@ -29,13 +29,14 @@
           {
             "type": "text",
             "props": {
-              "text": "johndoe"
+              "text": "meme_lord_42"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme1.jpg"
+              "src": "meme1.jpg",
+              "alt": "Funny meme"
             }
           },
           {
@@ -71,25 +72,26 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "SM"
+              "initials": "SK"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "sarahmeme"
+              "text": "silly_kitten"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme2.jpg"
+              "src": "meme2.jpg",
+              "alt": "Funny meme"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "POV: You're trying to be productive on Monday"
+              "text": "POV: You're the last slice of pizza"
             }
           },
           {
@@ -119,25 +121,26 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "TK"
+              "initials": "CM"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "thememeking"
+              "text": "cosmic_memes"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme3.jpg"
+              "src": "meme3.jpg",
+              "alt": "Funny meme"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "Me explaining why I need another coffee"
+              "text": "Me pretending to understand what's happening"
             }
           },
           {

@@ -73,7 +73,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "2024-01-15"
+                  "text": "Jan 15, 2024"
                 }
               },
               {
@@ -85,7 +85,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "$2,450.00"
+                  "text": "$2,500.00"
                 }
               },
               {
@@ -102,77 +102,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "2024-01-14"
+                  "text": "Jan 14, 2024"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Subscription renewal"
+                  "text": "Invoice #1024"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$99.99"
-                }
-              },
-              {
-                "type": "badge",
-                "props": {
-                  "text": "Completed"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "2024-01-13"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Refund issued"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "-$150.00"
-                }
-              },
-              {
-                "type": "badge",
-                "props": {
-                  "text": "Processed"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "2024-01-12"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Invoice payment"
-                }
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "$1,200.00"
+                  "text": "$1,800.00"
                 }
               },
               {
@@ -189,19 +131,48 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "2024-01-11"
+                  "text": "Jan 13, 2024"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Wire transfer"
+                  "text": "Refund issued"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$5,000.00"
+                  "text": "-$450.00"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Completed"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Jan 12, 2024"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Payment received"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "$3,200.00"
                 }
               },
               {

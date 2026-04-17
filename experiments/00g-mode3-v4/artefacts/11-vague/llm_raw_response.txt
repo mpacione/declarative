@@ -26,12 +26,12 @@
         ]},
         {"type": "list_item", "children": [
           {"type": "avatar", "props": {"initials": "3D"}},
-          {"type": "text", "props": {"text": "3D Web Experiences"}},
+          {"type": "text", "props": {"text": "3D Visualization"}},
           {"type": "badge", "props": {"text": "New"}}
         ]},
         {"type": "list_item", "children": [
           {"type": "avatar", "props": {"initials": "AR"}},
-          {"type": "text", "props": {"text": "AR Prototyping"}}
+          {"type": "text", "props": {"text": "Augmented Reality"}}
         ]}
       ]}
     ]
@@ -41,15 +41,13 @@
     "children": [
       {"type": "heading", "props": {"text": "Quick Actions"}},
       {"type": "button_group", "children": [
-        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Explore"}},
-        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Save"}}
+        {"type": "button", "variant": "primary", "props": {"text": "Explore"}},
+        {"type": "button", "component_key": "button/small/translucent", "props": {"text": "Save"}}
       ]}
     ]
   },
   {
-    "type": "fab",
-    "props": {"text": "Create"},
-    "component_key": "icon/new"
+    "type": "button", "variant": "primary", "props": {"text": "Get Started"}
   }
 ]
 ```

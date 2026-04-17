@@ -1,9 +1,9 @@
 {
   "experiment": "00g-mode3-v4",
   "aggregate": {
-    "mean_render_fidelity": 0.7298,
+    "mean_render_fidelity": 0.7519,
     "mean_prompt_fidelity": 0.8344,
-    "vlm_ok": 11,
+    "vlm_ok": 12,
     "vlm_partial": 0,
     "vlm_broken": 0,
     "n_prompts": 12
@@ -14,14 +14,14 @@
       "archetype": "login",
       "component_count": 3,
       "prompt_fidelity": 0.8182,
-      "render_fidelity": 0.7143,
+      "render_fidelity": 0.5714,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
         "text_input": 1.0,
         "link": 0.0,
         "card": 1.0,
-        "button": 1.0
+        "button": 0.0
       },
       "vlm_verdict": "ok",
       "vlm_score": 9,
@@ -61,16 +61,16 @@
         "card": 1.0,
         "list": 1.0
       },
-      "vlm_verdict": "\u2014",
-      "vlm_score": 0,
-      "combined_verdict": "\u2014"
+      "vlm_verdict": "ok",
+      "vlm_score": 8,
+      "combined_verdict": "ok"
     },
     "04-dashboard": {
       "slug": "04-dashboard",
       "archetype": "dashboard",
       "component_count": 4,
       "prompt_fidelity": 0.96,
-      "render_fidelity": 0.875,
+      "render_fidelity": 0.8571,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
@@ -89,34 +89,36 @@
       "archetype": "paywall",
       "component_count": 7,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.5714,
+      "render_fidelity": 0.6774,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
         "icon": 0.0,
         "list_item": 1.0,
         "list": 1.0,
-        "button": 0.0,
+        "button": 1.0,
         "card": 1.0,
         "avatar": 1.0
       },
       "vlm_verdict": "ok",
-      "vlm_score": 9,
+      "vlm_score": 8,
       "combined_verdict": "ok"
     },
     "06-spa-minimal": {
       "slug": "06-spa-minimal",
       "archetype": "none",
-      "component_count": 6,
+      "component_count": 7,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.6154,
+      "render_fidelity": 0.8125,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
         "image": 1.0,
         "card": 1.0,
-        "icon": 0.0,
-        "navigation_row": 1.0,
+        "avatar": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "toggle": 1.0,
         "button": 0.0
       },
       "vlm_verdict": "ok",
@@ -156,7 +158,7 @@
         "card": 1.0
       },
       "vlm_verdict": "ok",
-      "vlm_score": 9,
+      "vlm_score": 8,
       "combined_verdict": "ok"
     },
     "09-drawer-nav": {
@@ -199,7 +201,7 @@
       "archetype": "none",
       "component_count": 5,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.8235,
+      "render_fidelity": 0.8889,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
@@ -209,7 +211,7 @@
         "badge": 1.0,
         "list_item": 1.0,
         "list": 1.0,
-        "button": 0.0
+        "button": 0.6667
       },
       "vlm_verdict": "ok",
       "vlm_score": 8,
@@ -218,13 +220,15 @@
     "12-round-trip-test": {
       "slug": "12-round-trip-test",
       "archetype": "none",
-      "component_count": 7,
+      "component_count": 5,
       "prompt_fidelity": 1.0,
-      "render_fidelity": 0.8182,
+      "render_fidelity": 0.875,
       "render_by_type": {
         "icon_button": 0.0,
         "header": 1.0,
         "card": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
         "toggle": 1.0,
         "button": 0.0
       },

@@ -1,26 +1,29 @@
 [
   {
     "type": "header",
-    "props": {
-      "title": "Choose Your Plan"
-    },
     "children": [
       {
         "type": "icon_button",
-        "component_key": "icon/close"
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Choose Your Plan"
+        }
       }
     ]
   },
   {
     "type": "heading",
     "props": {
-      "text": "Simple, transparent pricing"
+      "text": "Unlock Premium Features"
     }
   },
   {
     "type": "text",
     "props": {
-      "text": "Pick the plan that works best for you"
+      "text": "Select the perfect plan for your needs"
     }
   },
   {
@@ -39,12 +42,6 @@
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "Perfect for getting started"
-        }
-      },
-      {
         "type": "list",
         "children": [
           {
@@ -57,7 +54,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "5 projects"
+                  "text": "Basic features"
                 }
               }
             ]
@@ -72,7 +69,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Basic analytics"
+                  "text": "Up to 5 projects"
                 }
               }
             ]
@@ -99,8 +96,7 @@
         "variant": "primary",
         "props": {
           "text": "Get Started"
-        },
-        "component_key": "button/large/translucent"
+        }
       }
     ]
   },
@@ -120,14 +116,23 @@
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "For growing teams"
-        }
-      },
-      {
         "type": "list",
         "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Advanced features"
+                }
+              }
+            ]
+          },
           {
             "type": "list_item",
             "children": [
@@ -153,37 +158,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Advanced analytics"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {
                   "text": "Priority support"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Team collaboration"
                 }
               }
             ]
@@ -195,8 +170,7 @@
         "variant": "primary",
         "props": {
           "text": "Subscribe Now"
-        },
-        "component_key": "button/large/translucent"
+        }
       }
     ]
   },
@@ -216,12 +190,6 @@
         }
       },
       {
-        "type": "text",
-        "props": {
-          "text": "For large organizations"
-        }
-      },
-      {
         "type": "list",
         "children": [
           {
@@ -234,22 +202,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Everything in Professional"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {
-                  "text": "Custom integrations"
+                  "text": "All features included"
                 }
               }
             ]
@@ -279,7 +232,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "SLA guarantee"
+                  "text": "24/7 phone support"
                 }
               }
             ]
@@ -291,8 +244,7 @@
         "variant": "primary",
         "props": {
           "text": "Contact Sales"
-        },
-        "component_key": "button/large/translucent"
+        }
       }
     ]
   },
@@ -300,24 +252,18 @@
     "type": "card",
     "children": [
       {
-        "type": "text",
-        "props": {
-          "text": "\"This service transformed how we manage our projects. Highly recommended!\""
-        }
-      },
-      {
         "type": "avatar"
       },
       {
         "type": "text",
         "props": {
-          "text": "Sarah Chen"
+          "text": "\"This service transformed how we manage our workflow. Highly recommended!\""
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "CEO at TechStart Inc."
+          "text": "\u2014 Sarah Johnson, Product Manager"
         }
       }
     ]

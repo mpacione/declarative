@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5782:43198",
+  "rendered_root": "5782:42868",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,39 +16,18 @@
       ],
       "effectCount": 0
     },
-    "button-1": {
-      "type": "INSTANCE",
-      "name": "button-1",
-      "width": 396,
-      "height": 52,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-6": {
-      "type": "TEXT",
-      "name": "text-6",
-      "width": 396,
-      "height": 15,
-      "characters": "$180",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-4": {
+    "list-1": {
       "type": "FRAME",
-      "name": "card-4",
+      "name": "list-1",
       "width": 396,
-      "height": 105,
+      "height": 1202,
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 372,
+      "height": 390,
       "fills": [
         {
           "type": "solid",
@@ -63,25 +42,45 @@
       ],
       "effectCount": 1
     },
-    "toggle-2": {
+    "button_group-3": {
       "type": "FRAME",
-      "name": "toggle-2",
-      "width": 120,
-      "height": 17,
+      "name": "button_group-3",
+      "width": 100,
+      "height": 80,
+      "effectCount": 0
+    },
+    "button-6": {
+      "type": "INSTANCE",
+      "name": "button-6",
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
-          "color": "#E2E8F0"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
     },
-    "text-5": {
+    "button-5": {
+      "type": "INSTANCE",
+      "name": "button-5",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
       "type": "TEXT",
-      "name": "text-5",
-      "width": 120,
-      "height": 17,
-      "characters": "Hot stone therapy",
+      "name": "text-7",
+      "width": 340,
+      "height": 15,
+      "characters": "Me pretending to understand what's happening",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -91,11 +90,119 @@
       ],
       "effectCount": 0
     },
-    "toggle-1": {
+    "image-3": {
       "type": "FRAME",
-      "name": "toggle-1",
-      "width": 94,
-      "height": 17,
+      "name": "image-3",
+      "width": 340,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 340,
+      "height": 15,
+      "characters": "cosmic_memes",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-3": {
+      "type": "FRAME",
+      "name": "avatar-3",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 372,
+      "height": 390,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "button_group-2": {
+      "type": "FRAME",
+      "name": "button_group-2",
+      "width": 100,
+      "height": 80,
+      "effectCount": 0
+    },
+    "button-4": {
+      "type": "INSTANCE",
+      "name": "button-4",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "INSTANCE",
+      "name": "button-3",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 340,
+      "height": 15,
+      "characters": "POV: You're the last slice of pizza",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-2": {
+      "type": "FRAME",
+      "name": "image-2",
+      "width": 340,
+      "height": 100,
       "fills": [
         {
           "type": "solid",
@@ -107,78 +214,9 @@
     "text-4": {
       "type": "TEXT",
       "name": "text-4",
-      "width": 94,
-      "height": 17,
-      "characters": "Aromatherapy",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-4": {
-      "type": "TEXT",
-      "name": "heading-4",
-      "width": 364,
-      "height": 15,
-      "characters": "Preferences",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-3": {
-      "type": "FRAME",
-      "name": "card-3",
-      "width": 396,
-      "height": 385,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
-    },
-    "list-1": {
-      "type": "FRAME",
-      "name": "list-1",
-      "width": 364,
-      "height": 326,
-      "effectCount": 0
-    },
-    "list_item-2": {
-      "type": "FRAME",
-      "name": "list_item-2",
       "width": 340,
-      "height": 151,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-3": {
-      "type": "TEXT",
-      "name": "text-3",
-      "width": 308,
       "height": 15,
-      "characters": "Jade",
+      "characters": "silly_kitten",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -201,15 +239,82 @@
       ],
       "effectCount": 0
     },
-    "list_item-1": {
+    "card-1": {
       "type": "FRAME",
-      "name": "list_item-1",
-      "width": 340,
-      "height": 151,
+      "name": "card-1",
+      "width": 372,
+      "height": 390,
       "fills": [
         {
           "type": "solid",
           "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 100,
+      "height": 80,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "INSTANCE",
+      "name": "button-2",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 340,
+      "height": 15,
+      "characters": "When you finally understand the assignment",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 340,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
         }
       ],
       "effectCount": 0
@@ -217,9 +322,9 @@
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 308,
+      "width": 340,
       "height": 15,
-      "characters": "Amara",
+      "characters": "meme_lord_42",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -233,124 +338,6 @@
       "type": "FRAME",
       "name": "avatar-1",
       "width": 100,
-      "height": 100,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-3": {
-      "type": "TEXT",
-      "name": "heading-3",
-      "width": 364,
-      "height": 15,
-      "characters": "Therapist",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-2": {
-      "type": "FRAME",
-      "name": "card-2",
-      "width": 396,
-      "height": 159,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
-    },
-    "date_picker-1": {
-      "type": "FRAME",
-      "name": "date_picker-1",
-      "width": 100,
-      "height": 100,
-      "effectCount": 0
-    },
-    "heading-2": {
-      "type": "TEXT",
-      "name": "heading-2",
-      "width": 364,
-      "height": 15,
-      "characters": "Select Time",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "card-1": {
-      "type": "FRAME",
-      "name": "card-1",
-      "width": 396,
-      "height": 186,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "strokes": [
-        {
-          "type": "solid",
-          "color": "#E2E8F0"
-        }
-      ],
-      "effectCount": 1
-    },
-    "text-1": {
-      "type": "TEXT",
-      "name": "text-1",
-      "width": 364,
-      "height": 15,
-      "characters": "90 minutes of pure relaxation",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "heading-1": {
-      "type": "TEXT",
-      "name": "heading-1",
-      "width": 364,
-      "height": 15,
-      "characters": "Signature Massage",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "image-1": {
-      "type": "FRAME",
-      "name": "image-1",
-      "width": 364,
       "height": 100,
       "fills": [
         {
@@ -379,18 +366,26 @@
       ],
       "effectCount": 0
     },
-    "icon_button-2": {
-      "type": "INSTANCE",
-      "name": "icon_button-2",
-      "width": 20,
-      "height": 20,
-      "effectCount": 0
-    },
     "icon_button-1": {
       "type": "INSTANCE",
       "name": "icon_button-1",
       "width": 20,
       "height": 20,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Meme Feed",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
       "effectCount": 0
     }
   }

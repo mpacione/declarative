@@ -7,7 +7,7 @@
       "stack": "    at <anonymous> (<input>:334:15) | "
     }
   ],
-  "rendered_root": "5779:41442",
+  "rendered_root": "5782:43435",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -25,9 +25,9 @@
     "link-1": {
       "type": "TEXT",
       "name": "link-1",
-      "width": 71,
+      "width": 25,
       "height": 15,
-      "characters": "Skip for now",
+      "characters": "Skip",
       "textAutoResize": "WIDTH_AND_HEIGHT",
       "fills": [
         {
@@ -135,7 +135,7 @@
       "name": "text-4",
       "width": 364,
       "height": 15,
-      "characters": "Join thousands of users enjoying a better experience",
+      "characters": "Join thousands of users enjoying a seamless experience",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

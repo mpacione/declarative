@@ -643,13 +643,23 @@ def _generic_frame_template(
 
     All of the currently fall-through types (``list``, ``tabs``,
     ``slider``, ``select``, ``combobox``) are CONTAINER types that
-    hold other elements. They must be ``fill/hug`` sized, not
-    ``hug/hug`` — otherwise a container with FILL children
-    becomes a circular auto-layout constraint (parent hugs children
-    who fill the parent) that Figma's layout engine can spin on
-    for tens of seconds before giving up. Seen 2026-04-17 on the
-    H1 00g re-run: 03-meme-feed timed out at 55s with the old
-    ``hug/hug`` default.
+    hold other elements. Two sizing+paint constraints apply:
+
+    1. **Sizing must be ``fill/hug``**, not ``hug/hug`` — otherwise
+       a container with FILL children becomes a circular auto-layout
+       constraint (parent hugs children who fill the parent) that
+       Figma's layout engine spins on for tens of seconds before
+       giving up. (First seen 2026-04-17 on H1 00g: 03-meme-feed
+       timed out at 55 s with ``hug/hug``.)
+
+    2. **No ``fill`` in style** — a SOLID fill on a container with
+       deep nested auto-layout children causes cascading paint
+       recalc on each child append. Same 03-meme-feed prompt,
+       post-fix to #1: ``list`` inherited ``color.surface.default``
+       SOLID fill, and the 4-card × 5-child cascade dragged render
+       to 55 s. Stripping the list fill alone dropped it to 650 ms.
+       Containers should be transparent by default; dedicated
+       templates (``card``, ``dialog``, ``drawer``) opt in to a fill.
     """
     return PresentationTemplate(
         catalog_type=catalog_type,
@@ -665,7 +675,6 @@ def _generic_frame_template(
             "label": SlotSpec(allowed=["text", "icon"], required=False, position="fill"),
         },
         style={
-            "fill": "{color.surface.default}",
             "radius": "{radius.default}",
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",

@@ -71,7 +71,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "First line of body text."
+        "text": "First line of body text"
       }
     },
     "text-3": {
@@ -80,7 +80,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Second line of body text."
+        "text": "Second line of body text"
       }
     },
     "text-4": {
@@ -89,7 +89,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Third line of body text."
+        "text": "Third line of body text"
       }
     },
     "text-5": {

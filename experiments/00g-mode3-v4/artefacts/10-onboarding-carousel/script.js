@@ -271,7 +271,7 @@ n0.appendChild(n6);
 n6.layoutSizingHorizontal = "HUG";
 n6.layoutSizingVertical = "FIXED";
 n0.appendChild(n7);
-try { n7.characters = "Skip for now"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n7.characters = "Skip"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n7.layoutSizingHorizontal = "HUG";
 n7.layoutSizingVertical = "HUG";
 n1.appendChild(n8);
@@ -301,7 +301,7 @@ n4.appendChild(n16);
 try { n16.characters = "Get Started Now"; } catch (__e) { __errors.push({eid:"heading-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
 n4.appendChild(n17);
-try { n17.characters = "Join thousands of users enjoying a better experience"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n17.characters = "Join thousands of users enjoying a seamless experience"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n17.layoutSizingHorizontal = "FILL";
 n5.appendChild(n18);
 n18.layoutSizingHorizontal = "HUG";
@@ -316,7 +316,7 @@ n6.appendChild(n21);
 try { n21.characters = "Next"; } catch (__e) { __errors.push({eid:"text-8", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";
 n7.appendChild(n22);
-try { n22.characters = "Skip for now"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n22.characters = "Skip"; } catch (__e) { __errors.push({eid:"text-9", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n22.layoutSizingHorizontal = "FILL";
 n18.appendChild(n23);
 try { n23.characters = "1"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }

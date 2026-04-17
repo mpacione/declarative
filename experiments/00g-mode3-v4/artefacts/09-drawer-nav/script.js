@@ -135,8 +135,8 @@ n3.paddingTop = 8;
 n3.paddingRight = 12;
 n3.paddingBottom = 8;
 n3.paddingLeft = 12;
-n3.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
 n3.cornerRadius = 8;
+n3.fills = [];
 n3.clipsContent = false;
 M["list-1"] = n3.id;
 
@@ -326,7 +326,7 @@ try { n18.characters = "Messages"; } catch (__e) { __errors.push({eid:"text-4", 
 n18.layoutSizingHorizontal = "FILL";
 n9.appendChild(n19);
 n9.appendChild(n20);
-try { n20.characters = "Trash"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n20.characters = "Archive"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n20.layoutSizingHorizontal = "FILL";
 n10.appendChild(n21);
 n10.appendChild(n22);

@@ -153,7 +153,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "2024-01-15"
+        "text": "Jan 15, 2024"
       }
     },
     "text-7": {
@@ -171,7 +171,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$2,450.00"
+        "text": "$2,500.00"
       }
     },
     "text-9": {
@@ -259,7 +259,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "2024-01-14"
+        "text": "Jan 14, 2024"
       }
     },
     "text-11": {
@@ -268,7 +268,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Subscription renewal"
+        "text": "Invoice #1024"
       }
     },
     "text-12": {
@@ -277,13 +277,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$99.99"
+        "text": "$1,800.00"
       }
     },
     "text-13": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "layout": {
         "direction": "vertical"
@@ -320,7 +320,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -365,7 +365,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "2024-01-13"
+        "text": "Jan 13, 2024"
       }
     },
     "text-15": {
@@ -383,13 +383,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$150.00"
+        "text": "-$450.00"
       }
     },
     "text-17": {
       "type": "text",
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -426,7 +426,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Processed"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -471,7 +471,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "2024-01-12"
+        "text": "Jan 12, 2024"
       }
     },
     "text-19": {
@@ -480,7 +480,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice payment"
+        "text": "Payment received"
       }
     },
     "text-20": {
@@ -489,13 +489,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$1,200.00"
+        "text": "$3,200.00"
       }
     },
     "text-21": {
       "type": "text",
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -532,7 +532,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -571,112 +571,6 @@
         "badge-4"
       ]
     },
-    "text-22": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "2024-01-11"
-      }
-    },
-    "text-23": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Wire transfer"
-      }
-    },
-    "text-24": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "$5,000.00"
-      }
-    },
-    "text-25": {
-      "type": "text",
-      "props": {
-        "text": "Completed"
-      },
-      "layout": {
-        "direction": "vertical"
-      },
-      "_synthesised_from": {
-        "parent_type": "badge",
-        "parent_variant": null,
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.body.fontFamily}",
-        "fontSize": "{typography.badge.fontSize}",
-        "fontWeight": "{typography.badge.fontWeight}",
-        "fill": "{color.text.default}"
-      }
-    },
-    "badge-5": {
-      "type": "badge",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "hug",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.badge.padding_y}",
-          "bottom": "{space.badge.padding_y}",
-          "left": "{space.badge.padding_x}",
-          "right": "{space.badge.padding_x}"
-        },
-        "gap": "{space.badge.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "props": {
-        "text": "Completed"
-      },
-      "style": {
-        "fill": "{color.surface.badge}",
-        "fg": "{color.text.default}",
-        "radius": "{radius.badge}"
-      },
-      "children": [
-        "text-25"
-      ]
-    },
-    "list_item-5": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.list_item.padding_y}",
-          "bottom": "{space.list_item.padding_y}",
-          "left": "{space.list_item.padding_x}",
-          "right": "{space.list_item.padding_x}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-22",
-        "text-23",
-        "text-24",
-        "badge-5"
-      ]
-    },
     "table-1": {
       "type": "table",
       "layout": {
@@ -690,8 +584,7 @@
         "list_item-1",
         "list_item-2",
         "list_item-3",
-        "list_item-4",
-        "list_item-5"
+        "list_item-4"
       ]
     },
     "card-2": {
@@ -924,15 +817,9 @@
     "text-21": -33,
     "badge-4": -34,
     "list_item-4": -35,
-    "text-22": -36,
-    "text-23": -37,
-    "text-24": -38,
-    "text-25": -39,
-    "badge-5": -40,
-    "list_item-5": -41,
-    "table-1": -42,
-    "card-2": -43,
-    "button-1": -44,
-    "screen-1": -45
+    "table-1": -36,
+    "card-2": -37,
+    "button-1": -38,
+    "screen-1": -39
   }
 }

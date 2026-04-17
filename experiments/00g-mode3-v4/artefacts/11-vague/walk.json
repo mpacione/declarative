@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5779:41510",
+  "rendered_root": "5782:43498",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,18 +16,39 @@
       ],
       "effectCount": 0
     },
-    "fab-1": {
-      "type": "INSTANCE",
-      "name": "fab-1",
-      "width": 396,
-      "height": 20,
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 111,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 79,
+      "height": 17,
+      "characters": "Get Started",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
       "effectCount": 0
     },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 163,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -46,14 +67,14 @@
       "type": "FRAME",
       "name": "button_group-1",
       "width": 100,
-      "height": 104,
+      "height": 84,
       "effectCount": 0
     },
     "button-2": {
       "type": "INSTANCE",
       "name": "button-2",
-      "width": 96,
-      "height": 52,
+      "width": 40,
+      "height": 40,
       "fills": [
         {
           "type": "solid",
@@ -63,14 +84,29 @@
       "effectCount": 0
     },
     "button-1": {
-      "type": "INSTANCE",
+      "type": "FRAME",
       "name": "button-1",
-      "width": 116,
-      "height": 52,
+      "width": 83,
+      "height": 44,
       "fills": [
         {
           "type": "solid",
-          "color": "#000000"
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 51,
+      "height": 17,
+      "characters": "Explore",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
         }
       ],
       "effectCount": 0
@@ -114,12 +150,6 @@
       "name": "list-1",
       "width": 364,
       "height": 555,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
       "effectCount": 0
     },
     "list_item-3": {
@@ -140,7 +170,7 @@
       "name": "text-5",
       "width": 308,
       "height": 15,
-      "characters": "AR Prototyping",
+      "characters": "Augmented Reality",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -209,7 +239,7 @@
       "name": "text-3",
       "width": 308,
       "height": 15,
-      "characters": "3D Web Experiences",
+      "characters": "3D Visualization",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

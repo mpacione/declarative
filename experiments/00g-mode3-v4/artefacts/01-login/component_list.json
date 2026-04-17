@@ -23,7 +23,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Enter your credentials to continue"
+          "text": "Enter your credentials to sign in"
         }
       },
       {
@@ -54,6 +54,7 @@
     "variant": "primary",
     "props": {
       "text": "Sign In"
-    }
+    },
+    "component_key": "button/large/translucent"
   }
 ]

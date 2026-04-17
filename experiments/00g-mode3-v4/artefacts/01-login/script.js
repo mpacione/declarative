@@ -1,6 +1,5 @@
 const __errors = [];
 await (async () => { try { await figma.loadFontAsync({family: "Inter", style: "Regular"}); } catch (__e) { __errors.push({kind:"font_load_failed", family:"Inter", style:"Regular", error: String(__e && __e.message || __e)}); } })();
-await (async () => { try { await figma.loadFontAsync({family: "Inter", style: "Semi Bold"}); } catch (__e) { __errors.push({kind:"font_load_failed", family:"Inter", style:"Semi Bold", error: String(__e && __e.message || __e)}); } })();
 const M = {};
 const _rootPage = figma.currentPage;
 // Missing-component wireframe placeholder: emitted when a Mode 1
@@ -76,6 +75,7 @@ function _missingComponentPlaceholder(name, w, h, eid) {
 function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }
 // Pre-fetch component nodes (deduplicated, null-safe)
 const _p0 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82260"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82260", error: String(__e && __e.message || __e)}); return null; } })();
+const _p1 = await (async () => { try { return await figma.getNodeByIdAsync("5749:82457"); } catch (__e) { __errors.push({kind:"prefetch_failed", id:"5749:82457", error: String(__e && __e.message || __e)}); return null; } })();
 
 
 try {
@@ -124,20 +124,9 @@ n2.cornerRadius = 12;
 n2.clipsContent = false;
 M["card-1"] = n2.id;
 
-const n3 = figma.createFrame();
+const n3 = await (async () => { const __src = _p1; if (!__src) { __errors.push({eid:"button-1", kind:"missing_component_node", id:"5749:82457"}); return _missingComponentPlaceholder("button-1", 24, 24, "button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"button-1", kind:"create_instance_failed", id:"5749:82457", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("button-1", 24, 24, "button-1"); } })();
 n3.name = "button-1";
-n3.layoutMode = "VERTICAL";
-n3.itemSpacing = 8;
-n3.paddingTop = 10;
-n3.paddingRight = 16;
-n3.paddingBottom = 10;
-n3.paddingLeft = 16;
-n3.resize(n3.width, 44);
-n3.primaryAxisAlignItems = "CENTER";
-n3.counterAxisAlignItems = "CENTER";
-n3.fills = [{type: "SOLID", color: {r:0.0588,g:0.0902,b:0.1647}}];
-n3.cornerRadius = 8;
-n3.clipsContent = false;
+{ const _t = n3.findOne(n => n.type === "TEXT" && /^(title|label|heading)$/i.test(n.name)) || n3.findOne(n => n.type === "TEXT"); if (_t) { await figma.loadFontAsync(_t.fontName); _t.characters = "Sign In"; } }
 M["button-1"] = n3.id;
 
 const n4 = await (async () => { const __src = _p0; if (!__src) { __errors.push({eid:"icon_button-1", kind:"missing_component_node", id:"5749:82260"}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } try { return __src.createInstance(); } catch (__e) { __errors.push({eid:"icon_button-1", kind:"create_instance_failed", id:"5749:82260", error: String(__e && __e.message || __e)}); return _missingComponentPlaceholder("icon_button-1", 24, 24, "icon_button-1"); } })();
@@ -190,42 +179,35 @@ try { n9.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __error
 M["link-1"] = n9.id;
 
 const n10 = figma.createText();
-n10.name = "text-7";
-n10.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
-try { n10.fontName = {family: "Inter", style: "Semi Bold"}; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n10.name = "text-2";
+try { n10.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.fontSize = 14;
-M["text-7"] = n10.id;
+M["text-2"] = n10.id;
 
 const n11 = figma.createText();
-n11.name = "text-2";
-try { n11.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n11.name = "text-3";
+try { n11.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.fontSize = 14;
-M["text-2"] = n11.id;
+M["text-3"] = n11.id;
 
 const n12 = figma.createText();
-n12.name = "text-3";
-try { n12.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n12.name = "text-4";
+try { n12.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n12.fontSize = 14;
-M["text-3"] = n12.id;
+M["text-4"] = n12.id;
 
 const n13 = figma.createText();
-n13.name = "text-4";
-try { n13.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n13.name = "text-5";
+try { n13.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.fontSize = 14;
-M["text-4"] = n13.id;
+M["text-5"] = n13.id;
 
 const n14 = figma.createText();
-n14.name = "text-5";
-try { n14.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n14.name = "text-6";
+n14.fills = [{type: "SOLID", color: {r:0.1451,g:0.3882,b:0.9216}}];
+try { n14.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.fontSize = 14;
-M["text-5"] = n14.id;
-
-const n15 = figma.createText();
-n15.name = "text-6";
-n15.fills = [{type: "SOLID", color: {r:0.1451,g:0.3882,b:0.9216}}];
-try { n15.fontName = {family: "Inter", style: "Regular"}; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n15.fontSize = 14;
-M["text-6"] = n15.id;
+M["text-6"] = n14.id;
 
 
 // Phase 2: Compose — wire tree, set layoutSizing
@@ -238,14 +220,13 @@ n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
 n2.layoutSizingVertical = "HUG";
 n0.appendChild(n3);
-n3.layoutSizingHorizontal = "HUG";
-n3.layoutSizingVertical = "FIXED";
+n3.layoutSizingHorizontal = "FILL";
 n1.appendChild(n4);
 n2.appendChild(n5);
 try { n5.characters = "Welcome Back"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n5.layoutSizingHorizontal = "FILL";
 n2.appendChild(n6);
-try { n6.characters = "Enter your credentials to continue"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n6.characters = "Enter your credentials to sign in"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n6.layoutSizingHorizontal = "FILL";
 n2.appendChild(n7);
 n7.layoutSizingHorizontal = "FILL";
@@ -257,24 +238,21 @@ n2.appendChild(n9);
 try { n9.characters = "Forgot password?"; } catch (__e) { __errors.push({eid:"link-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "HUG";
 n9.layoutSizingVertical = "HUG";
-n3.appendChild(n10);
-try { n10.characters = "Sign In"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n7.appendChild(n10);
+try { n10.characters = "Email"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n10.layoutSizingHorizontal = "FILL";
 n7.appendChild(n11);
-try { n11.characters = "Email"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n11.characters = "you@example.com"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.layoutSizingHorizontal = "FILL";
-n7.appendChild(n12);
-try { n12.characters = "you@example.com"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n8.appendChild(n12);
+try { n12.characters = "Password"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n12.layoutSizingHorizontal = "FILL";
 n8.appendChild(n13);
-try { n13.characters = "Password"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n13.characters = "••••••••"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n13.layoutSizingHorizontal = "FILL";
-n8.appendChild(n14);
-try { n14.characters = "••••••••"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+n9.appendChild(n14);
+try { n14.characters = "Forgot password?"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
-n9.appendChild(n15);
-try { n15.characters = "Forgot password?"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
-n15.layoutSizingHorizontal = "FILL";
 _rootPage.appendChild(n0);
 } catch (__thrown) {
   __errors.push({kind: "render_thrown", error: String(__thrown && __thrown.message || __thrown), stack: (__thrown && __thrown.stack) ? String(__thrown.stack).split("\n").slice(0, 6).join(" | ") : null});
