@@ -45,15 +45,20 @@ _NODE_CREATE_MAP = {
 _VECTOR_TYPES = frozenset({"vector", "boolean_operation"})
 
 # Element types whose underlying Figma node type does NOT support
-# auto-layout (TEXT, RECTANGLE, ELLIPSE, LINE, VECTOR, BOOLEAN_OPERATION,
-# GROUP, STAR, POLYGON). Setting `layoutMode`, `itemSpacing`, `padding*`,
-# `primaryAxisAlignItems`, or `counterAxisAlignItems` on these is rejected
-# by the Plugin API with "object is not extensible". Gate emission
-# accordingly — both when the extractor didn't populate those fields and
-# when synthetic generation does.
-_LEAF_TYPES = frozenset({
-    "text", "rectangle", "ellipse", "line", "vector",
-    "boolean_operation", "group", "star", "polygon",
+# auto-layout. Setting `layoutMode`, `itemSpacing`, `padding*`,
+# `primaryAxisAlignItems`, or `counterAxisAlignItems` on these is
+# rejected by the Plugin API with "object is not extensible".
+#
+# Composition: anything that maps to createText() (_TEXT_TYPES: text,
+# heading, link) plus the createRectangle / createEllipse / createLine /
+# createVector / createBooleanOperation / createGroup shape types
+# plus image / icon (which compose may not wrap in a frame — treated
+# leaf to be safe; a Mode-1 INSTANCE for `icon` has its own etype
+# path). Gate emission accordingly in _emit_layout, and via the
+# capability registry in emit_from_registry for other callers.
+_LEAF_TYPES = _TEXT_TYPES | frozenset({
+    "rectangle", "ellipse", "line", "vector", "boolean_operation",
+    "group", "star", "polygon", "image",
 })
 
 _WEIGHT_TO_STYLE = {

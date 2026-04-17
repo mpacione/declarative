@@ -351,6 +351,30 @@ class TestCapabilityGatedEmission:
         assert not any("primaryAxisAlignItems" in l for l in lines)
         assert not any("counterAxisAlignItems" in l for l in lines)
 
+    def test_emit_layout_gates_every_text_etype(self):
+        """The leaf gate must cover every type that compiles to
+        createText() — not just `text`. Wave 1.5 of the synthetic-gen
+        research sprint surfaced that `heading` and `link` (in _TEXT_TYPES)
+        were escaping the gate because the initial fix hardcoded only
+        `text`. Since Haiku's parse distribution produced `{type: "heading"}`
+        on the drawer-nav prompt, this single gap broke 11 of 12 prompts."""
+        from dd.renderers.figma import _emit_layout, _TEXT_TYPES
+        layout = {
+            "direction": "vertical",
+            "gap": 16,
+            "padding": {"top": 8},
+        }
+        for text_etype in _TEXT_TYPES:
+            lines, _ = _emit_layout(
+                "v", "eid", layout, {}, etype=text_etype,
+            )
+            assert not any("layoutMode" in l for l in lines), (
+                f"text etype {text_etype!r} should not get layoutMode — "
+                "all createText() targets must be gated"
+            )
+            assert not any("itemSpacing" in l for l in lines)
+            assert not any("padding" in l.lower() for l in lines)
+
     def test_emit_layout_emits_auto_layout_on_frame_etype(self):
         """Positive case: FRAME-typed elements still get auto-layout
         emission. Ensures the leaf-type gate didn't over-filter."""
