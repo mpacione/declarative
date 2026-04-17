@@ -356,9 +356,17 @@ def _splice_subtree(
         new_eid = id_remap[old_eid]
         new_elem = {k: v for k, v in elem.items() if k != "children"}
 
-        # Substitute text content for TEXT nodes in order.
-        if new_elem.get("type") == "text" and text_slot_idx < len(llm_texts):
-            new_elem.setdefault("props", {})["text"] = llm_texts[text_slot_idx]
+        # Substitute text content for any element that carries
+        # text in props (heading, text, link, badge, etc. — any
+        # text-bearing leaf). Without this, retrieved elements keep
+        # their DB original text (e.g. heading "Filename" instead of
+        # the LLM's "Welcome Back").
+        if (
+            text_slot_idx < len(llm_texts)
+            and isinstance(new_elem.get("props"), dict)
+            and "text" in new_elem["props"]
+        ):
+            new_elem["props"]["text"] = llm_texts[text_slot_idx]
             text_slot_idx += 1
 
         old_children = elem.get("children", [])
