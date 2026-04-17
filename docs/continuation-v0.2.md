@@ -135,10 +135,32 @@ unset DD_ENABLE_PLAN_THEN_FILL
 
 ## Pick a starting move
 
-Default recommendation: **Tier 1, 04-dashboard render-template work.**
-It's the biggest VLM-broken hold-out on 00g, and it's not a
-generation problem — both A1 AND A2 produced reasonable structure
-but both rendered as text stacks. Fix is in the render/template
-layer. Expected to lift dashboard from broken(3) to partial or ok
-and push the 12-prompt gate from 6 → 7 VLM-ok without touching the
-prompt pipeline.
+**Updated 2026-04-17 after forensic analysis** (see
+`docs/research/mode3-forensic-analysis.md`):
+
+Default recommendation: **H1 in the forensic memo — extract
+template-style-merge out of `_mode3_synthesise_children` so it ALWAYS
+runs on every element, not only on childless ones.** This is the
+root cause of the "cards render as invisible rectangles" defect
+across every prompt in 00f / 00g / 00h. 20-line fix in
+`dd/compose.py`. Expected +2-3 VLM-ok just by making the LLM's
+children-bearing containers actually inherit their PresentationTemplate's
+fill / stroke / radius / shadow.
+
+Tiered fallback if H1 alone doesn't close the gate:
+
+- **H2** (same commit) — expand the style-merge allowlist to include
+  `shadow`, `effects`, `padding`, `gap` (currently only
+  `fill, fg, stroke, radius`).
+- **H3** — image/vector placeholder visual (mirrors existing
+  `_missingComponentPlaceholder` for Mode-1 component misses).
+  Fixes 04-dashboard chart + 10-onboarding-carousel illustrations.
+- **H4** — table/list_item row-separation via stroke or divider.
+- **H5** — screen-root direction honours archetype's horizontal
+  sibling layout (carousel / pricing tiers).
+- **H6** — extend rule-gate to track strokes_rate / effects_rate
+  (round-trip baseline is 5-45% / 10-18%; Mode 3 sits at 0%).
+
+The matrix work + archetype library + A2 all stack on top of H1.
+H1 is renderer-adjacent, not prompt-adjacent. Run it and re-run 00g;
+if ≥ 7 VLM-ok, **ship v0.1.5 with H1 + A1**.
