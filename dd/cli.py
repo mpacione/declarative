@@ -1008,6 +1008,57 @@ def _parse_figma_input(raw: str) -> str:
     return raw
 
 
+def _run_inspect_experiment(args: argparse.Namespace) -> None:
+    """Auto-inspect an experiment's rendered output before escalating to rating.
+
+    Reads ``<path>/artefacts/<slug>/walk.json`` (+ optional ``screenshot.png``
+    when ``--vlm``), produces a ``SanityReport``, writes ``sanity_report.json``
+    and a Markdown memo fragment. Exits non-zero when the gate fails
+    (more than half the prompts categorically broken).
+    """
+    from dd.visual_inspect import (
+        compile_sanity_report,
+        render_memo_fragment,
+        write_report,
+    )
+
+    experiment_dir = Path(args.path).resolve()
+    if not experiment_dir.is_dir():
+        print(f"Error: experiment directory not found: {experiment_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    api_key: str | None = None
+    if args.vlm:
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            print(
+                "Warning: --vlm requested but GOOGLE_API_KEY is not set — "
+                "running rule-based gate only.",
+                file=sys.stderr,
+            )
+
+    report = compile_sanity_report(
+        experiment_dir,
+        use_vlm=args.vlm and bool(api_key),
+        api_key=api_key,
+    )
+
+    json_path = write_report(report, experiment_dir)
+    memo_path = experiment_dir / "sanity_report.md"
+    memo_path.write_text(render_memo_fragment(report, experiment_dir))
+
+    print(
+        f"Gate {'PASSES' if report.gate_passes else 'FAILS'}: "
+        f"{report.broken} broken / {report.partial} partial / {report.ok} ok "
+        f"(of {report.total})"
+    )
+    print(f"  {json_path}")
+    print(f"  {memo_path}")
+
+    if not report.gate_passes:
+        sys.exit(1)
+
+
 def main(argv: list | None = None) -> None:
     parser = argparse.ArgumentParser(prog="dd", description="Declarative Design CLI")
     subparsers = parser.add_subparsers(dest="command")
@@ -1100,6 +1151,20 @@ def main(argv: list | None = None) -> None:
     push_parser.add_argument("--writeback", action="store_true", help="Apply variable ID writeback from Figma response")
     push_parser.add_argument("--out", help="Write manifest to file instead of stdout")
 
+    inspect_parser = subparsers.add_parser(
+        "inspect-experiment",
+        help="Auto-inspect an experiment's rendered output (visual-sanity gate)",
+    )
+    inspect_parser.add_argument(
+        "path",
+        help="Path to the experiment directory (containing ./artefacts/<slug>/walk.json)",
+    )
+    inspect_parser.add_argument(
+        "--vlm",
+        action="store_true",
+        help="Run the Gemini 3.1 Pro VLM pass (requires GOOGLE_API_KEY)",
+    )
+
     verify_parser = subparsers.add_parser(
         "verify",
         help="Verify a rendered Figma subtree against its IR (ADR-007 Position 3)",
@@ -1179,6 +1244,8 @@ def main(argv: list | None = None) -> None:
     elif args.command == "verify":
         db_path = detect_db_path(args.db)
         _run_verify(db_path, args)
+    elif args.command == "inspect-experiment":
+        _run_inspect_experiment(args)
 
 
 if __name__ == "__main__":
