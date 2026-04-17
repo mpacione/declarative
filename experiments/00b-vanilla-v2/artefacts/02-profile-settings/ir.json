@@ -1,0 +1,187 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Profile Settings"
+      }
+    },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "https://via.placeholder.com/80",
+        "size": "large"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Profile Information"
+      }
+    },
+    "text_input-1": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Name",
+        "value": "John Doe"
+      }
+    },
+    "text_input-2": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Email",
+        "value": "john@example.com"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "avatar-1",
+        "heading-1",
+        "text_input-1",
+        "text_input-2"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Notifications"
+      }
+    },
+    "toggle-1": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Push notifications",
+        "checked": true
+      }
+    },
+    "toggle-2": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Email notifications",
+        "checked": true
+      }
+    },
+    "toggle-3": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "SMS alerts",
+        "checked": false
+      }
+    },
+    "toggle-4": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Marketing emails",
+        "checked": false
+      }
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 100
+        }
+      },
+      "children": [
+        "heading-2",
+        "toggle-1",
+        "toggle-2",
+        "toggle-3",
+        "toggle-4"
+      ]
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 150
+        }
+      },
+      "props": {
+        "text": "Save Changes"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2",
+        "button-1"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "header-1": -1,
+    "avatar-1": -2,
+    "heading-1": -3,
+    "text_input-1": -4,
+    "text_input-2": -5,
+    "card-1": -6,
+    "heading-2": -7,
+    "toggle-1": -8,
+    "toggle-2": -9,
+    "toggle-3": -10,
+    "toggle-4": -11,
+    "card-2": -12,
+    "button-1": -13,
+    "screen-1": -14
+  }
+}

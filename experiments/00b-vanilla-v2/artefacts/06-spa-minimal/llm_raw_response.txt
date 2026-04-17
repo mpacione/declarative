@@ -1,0 +1,86 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Serenity Spa"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "spa-hero.jpg",
+          "alt": "Relaxation sanctuary"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Welcome Back"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Indulge in our curated collection of wellness experiences"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Next Appointment"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Swedish Massage • Tomorrow at 2:00 PM"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Services"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Massages"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Facials"
+        }
+      },
+      {
+        "type": "navigation_row",
+        "props": {
+          "text": "Body Treatments"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Book an Experience"
+    }
+  }
+]
+```

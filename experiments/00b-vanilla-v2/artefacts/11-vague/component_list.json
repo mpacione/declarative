@@ -1,0 +1,88 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Discover Something Cool"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Featured Discovery"
+        }
+      },
+      {
+        "type": "image",
+        "props": {
+          "alt": "Cool feature showcase"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Explore amazing new features and innovations designed to enhance your experience."
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Trending Now"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Interactive UI Components"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Real-time Collaboration"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "AI-Powered Suggestions"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Get Started"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Explore Features"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Learn More"
+        }
+      }
+    ]
+  }
+]

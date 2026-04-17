@@ -1,0 +1,102 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Sign In"
+      }
+    },
+    "text_input-1": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Email",
+        "placeholder": "Enter your email"
+      }
+    },
+    "text_input-2": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "label": "Password",
+        "placeholder": "Enter your password"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Sign In"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "text_input-1",
+        "text_input-2",
+        "button-1"
+      ]
+    },
+    "link-1": {
+      "type": "link",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 100
+        }
+      },
+      "props": {
+        "text": "Forgot password?"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "heading-1",
+        "card-1",
+        "link-1"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "heading-1": -1,
+    "text_input-1": -2,
+    "text_input-2": -3,
+    "button-1": -4,
+    "card-1": -5,
+    "link-1": -6,
+    "screen-1": -7
+  }
+}

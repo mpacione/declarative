@@ -1,0 +1,55 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Title",
+      "showBackButton": true,
+      "showShareButton": true
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Card Heading"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "First line of body text."
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Second line of body text."
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Third line of body text."
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Primary Action",
+          "variant": "primary"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Secondary Action",
+      "variant": "secondary"
+    }
+  }
+]
+```

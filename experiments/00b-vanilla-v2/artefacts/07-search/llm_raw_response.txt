@@ -1,0 +1,26 @@
+```json
+[
+  {"type": "header", "props": {"text": "Search"}},
+  {"type": "search_input", "props": {"placeholder": "Search..."}},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Recent Searches"}},
+    {"type": "list", "children": [
+      {"type": "list_item", "props": {"text": "Machine learning"}},
+      {"type": "list_item", "props": {"text": "Web development"}},
+      {"type": "list_item", "props": {"text": "UI design"}},
+      {"type": "list_item", "props": {"text": "Mobile apps"}}
+    ]}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Suggested Topics"}},
+    {"type": "badge", "props": {"text": "Popular"}},
+    {"type": "list", "children": [
+      {"type": "list_item", "props": {"text": "Artificial Intelligence"}},
+      {"type": "list_item", "props": {"text": "Cloud Computing"}},
+      {"type": "list_item", "props": {"text": "Cybersecurity"}},
+      {"type": "list_item", "props": {"text": "Data Science"}}
+    ]}
+  ]},
+  {"type": "button", "props": {"text": "Advanced Search"}}
+]
+```

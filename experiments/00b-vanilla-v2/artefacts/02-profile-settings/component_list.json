@@ -1,0 +1,85 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Profile Settings"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "avatar",
+        "props": {
+          "src": "https://via.placeholder.com/80",
+          "size": "large"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Profile Information"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Name",
+          "value": "John Doe"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email",
+          "value": "john@example.com"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Notifications"
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Push notifications",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Email notifications",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "SMS alerts",
+          "checked": false
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Marketing emails",
+          "checked": false
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Save Changes"
+    }
+  }
+]

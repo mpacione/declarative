@@ -1,0 +1,93 @@
+[
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "illustration-1.png",
+          "alt": "Welcome illustration"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Welcome to Our App"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Get started with our powerful features designed for you"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "illustration-2.png",
+          "alt": "Features illustration"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Explore Amazing Features"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Discover everything you can do with our intuitive interface"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "illustration-3.png",
+          "alt": "Get started illustration"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Ready to Begin"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Let's create something amazing together"
+        }
+      }
+    ]
+  },
+  {
+    "type": "pagination",
+    "props": {
+      "current": 1,
+      "total": 3
+    }
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Next"
+    }
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Skip"
+    }
+  }
+]

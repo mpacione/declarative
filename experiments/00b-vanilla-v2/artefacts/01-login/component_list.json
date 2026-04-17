@@ -1,0 +1,39 @@
+[
+  {
+    "type": "heading",
+    "props": {
+      "text": "Sign In"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email",
+          "placeholder": "Enter your email"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Password",
+          "placeholder": "Enter your password"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Sign In"
+        }
+      }
+    ]
+  },
+  {
+    "type": "link",
+    "props": {
+      "text": "Forgot password?"
+    }
+  }
+]

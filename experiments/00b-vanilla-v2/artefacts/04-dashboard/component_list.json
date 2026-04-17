@@ -1,0 +1,89 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Data Dashboard"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Revenue Trend"
+        }
+      },
+      {
+        "type": "image",
+        "props": {
+          "alt": "Line chart showing revenue over time"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Recent Transactions"
+        }
+      },
+      {
+        "type": "table",
+        "children": [
+          {
+            "type": "list_item",
+            "props": {
+              "text": "Transaction ID",
+              "subtext": "Amount"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "TXN-2024-001",
+              "subtext": "$1,250.00"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "TXN-2024-002",
+              "subtext": "$875.50"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "TXN-2024-003",
+              "subtext": "$2,100.00"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "TXN-2024-004",
+              "subtext": "$645.25"
+            }
+          },
+          {
+            "type": "list_item",
+            "props": {
+              "text": "TXN-2024-005",
+              "subtext": "$3,400.75"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "View All Transactions"
+    }
+  }
+]

@@ -1,0 +1,31 @@
+You are a senior product designer reviewing a design system's visual artifacts to produce a style-profile document. You will see 25 screenshots from the same design system. Your job is to infer the system's aesthetic principles from the evidence alone — do not project external brand knowledge. Produce four short sections of draft content:
+
+1. Voice — the design's tonal feel in 2-4 sentences. Specific, not generic. Example of bad: "modern and clean." Example of good: "Playful and expressive; emoji treatments and saturated color suggest a younger audience; typography remains reserved to let imagery carry the energy."
+
+2. Intent conventions — 3-5 observable rules about when specific components or patterns are used. Example: "Primary actions use high-contrast pill-shaped buttons on light surfaces; secondary actions use underlined text links."
+
+3. Exclusions — 2-4 things the design deliberately does NOT do, as observable from the sample. Example: "No dark mode variants observed."
+
+4. Style lineage — 1-3 reference points you'd cite if asked to describe the visual ancestry. Example: "Reminiscent of Instagram's creator tools (rounded floating panels, soft shadows, punchy accent colours) crossed with Duolingo's playfulness."
+
+Your content must be evidence-based. Cite specific visual observations from the screenshots where you can.
+
+Return your response as strict JSON with this exact shape, and nothing else:
+
+{
+  "voice": "<2-4 sentences>",
+  "intent_conventions": [
+    "<rule 1>",
+    "<rule 2>",
+    "<rule 3>"
+  ],
+  "exclusions": [
+    "<exclusion 1>",
+    "<exclusion 2>"
+  ],
+  "style_lineage": [
+    "<reference point 1>"
+  ]
+}
+
+Do not wrap the JSON in markdown fences. Do not include commentary before or after.

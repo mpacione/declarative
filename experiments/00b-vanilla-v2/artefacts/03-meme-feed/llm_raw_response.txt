@@ -1,0 +1,62 @@
+```json
+[
+  {"type": "header", "props": {"text": "Meme Feed"}},
+  {
+    "type": "card",
+    "children": [
+      {"type": "image", "props": {"src": "meme-1.jpg", "alt": "Meme"}},
+      {"type": "text", "props": {"text": "Hilarious meme caption"}},
+      {
+        "type": "button_group",
+        "children": [
+          {"type": "icon_button", "props": {"icon": "thumbs-up", "label": "Upvote"}},
+          {"type": "icon_button", "props": {"icon": "share", "label": "Share"}}
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "image", "props": {"src": "meme-2.jpg", "alt": "Meme"}},
+      {"type": "text", "props": {"text": "Another funny meme"}},
+      {
+        "type": "button_group",
+        "children": [
+          {"type": "icon_button", "props": {"icon": "thumbs-up", "label": "Upvote"}},
+          {"type": "icon_button", "props": {"icon": "share", "label": "Share"}}
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "image", "props": {"src": "meme-3.jpg", "alt": "Meme"}},
+      {"type": "text", "props": {"text": "Comedy gold meme"}},
+      {
+        "type": "button_group",
+        "children": [
+          {"type": "icon_button", "props": {"icon": "thumbs-up", "label": "Upvote"}},
+          {"type": "icon_button", "props": {"icon": "share", "label": "Share"}}
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "image", "props": {"src": "meme-4.jpg", "alt": "Meme"}},
+      {"type": "text", "props": {"text": "Relatable meme content"}},
+      {
+        "type": "button_group",
+        "children": [
+          {"type": "icon_button", "props": {"icon": "thumbs-up", "label": "Upvote"}},
+          {"type": "icon_button", "props": {"icon": "share", "label": "Share"}}
+        ]
+      }
+    ]
+  },
+  {"type": "pagination", "props": {"currentPage": 1}}
+]
+```

@@ -1,0 +1,126 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "props": {
+        "text": "Title",
+        "showBackButton": true,
+        "showShareButton": true
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Card Heading"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "First line of body text."
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Second line of body text."
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Third line of body text."
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Primary Action",
+        "variant": "primary"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 50
+        }
+      },
+      "children": [
+        "heading-1",
+        "text-1",
+        "text-2",
+        "text-3",
+        "button-1"
+      ]
+    },
+    "button-2": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "position": {
+          "x": 0,
+          "y": 100
+        }
+      },
+      "props": {
+        "text": "Secondary Action",
+        "variant": "secondary"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "absolute",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        }
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "button-2"
+      ]
+    }
+  },
+  "tokens": {},
+  "_node_id_map": {
+    "header-1": -1,
+    "heading-1": -2,
+    "text-1": -3,
+    "text-2": -4,
+    "text-3": -5,
+    "button-1": -6,
+    "card-1": -7,
+    "button-2": -8,
+    "screen-1": -9
+  }
+}
