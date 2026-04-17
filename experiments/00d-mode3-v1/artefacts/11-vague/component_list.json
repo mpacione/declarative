@@ -1,0 +1,215 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "back"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Discover"
+        }
+      },
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "wallet"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "featured-hero"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Summer Collection 2024"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Explore limited edition items curated just for you"
+        }
+      }
+    ]
+  },
+  {
+    "type": "tabs",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Trending"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "New"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Saved"
+        }
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "item-1"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Wireless Headphones"
+            }
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Featured"
+            }
+          },
+          {
+            "type": "icon_button",
+            "props": {
+              "icon": "check"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "item-2"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Smart Watch Pro"
+            }
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Hot"
+            }
+          },
+          {
+            "type": "icon_button",
+            "props": {
+              "icon": "check"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "item-3"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Premium Backpack"
+            }
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "New"
+            }
+          },
+          {
+            "type": "icon_button",
+            "props": {
+              "icon": "check"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Special Offer"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Get 30% off on your next purchase"
+        }
+      },
+      {
+        "type": "button",
+        "props": {
+          "text": "Claim Now"
+        }
+      }
+    ]
+  },
+  {
+    "type": "bottom_nav",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Home"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Search"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Messages"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Profile"
+        }
+      }
+    ]
+  }
+]

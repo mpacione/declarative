@@ -114,11 +114,13 @@ def compose_screen(
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
         elif not component_key and not _mode3_disabled():
-            # Mode-3 fall-through: synthesise children from the catalog
-            # slot grammar + the LLM's props. Mode-1 (component_key) and
-            # LLM-provided children always win over Mode-3.
+            # Mode-3 fall-through: synthesise children + apply the
+            # PresentationTemplate's layout/style to the parent IR.
+            # Mode-1 (component_key) and LLM-provided children always
+            # win over Mode-3.
             synthetic_ids = _mode3_synthesise_children(
                 comp_type, variant, props or {}, elements, _allocate_id,
+                parent_element=element,
             )
             if synthetic_ids:
                 element["children"] = synthetic_ids
@@ -129,9 +131,17 @@ def compose_screen(
     root_child_ids = [_build_element(comp) for comp in components]
 
     root_id = "screen-1"
+    # v3-memo items 1+2: screen root defaults to vertical auto-layout
+    # with FILL-width children. Fixes the "children stack in top-left,
+    # overlapping at 50px y-increments" failure mode that survived the
+    # Mode-3 prop-expansion fix.
     screen_layout: dict[str, Any] = {
-        "direction": "absolute",
+        "direction": "vertical",
         "sizing": {"width": 428, "height": 926},
+        "padding": {"top": 16, "right": 16, "bottom": 16, "left": 16},
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED",
     }
 
     screen_tmpl = _pick_best_template(templates.get("screen")) if templates else None
@@ -140,22 +150,45 @@ def compose_screen(
         h = screen_tmpl.get("height")
         if w and h:
             screen_layout["sizing"] = {"width": w, "height": h}
+        # Honor an extracted screen template's auto-layout direction if present
+        direction = _DIRECTION_MAP.get(screen_tmpl.get("layout_mode") or "")
+        if direction:
+            screen_layout["direction"] = direction
 
-    _DEFAULT_ELEMENT_HEIGHT = 50
-
-    y_cursor: float = 0
-    for child_id in root_child_ids:
-        child = elements[child_id]
-        if "layout" not in child:
-            child["layout"] = {}
-        child["layout"]["position"] = {"x": 0, "y": y_cursor}
-
-        sizing = child["layout"].get("sizing", {})
-        child_height = sizing.get("heightPixels") or sizing.get("height")
-        if isinstance(child_height, (int, float)):
-            y_cursor += child_height
-        else:
-            y_cursor += _DEFAULT_ELEMENT_HEIGHT
+    # Vertical-auto-layout screens: children stack by tree order. Drop
+    # the old y_cursor positioning, and mark each non-screen root child
+    # as FILL-width so it spans the screen instead of the createFrame()
+    # default 100px. Opt-out: if a child has an explicit position
+    # (from a template), preserve it — the renderer gates on direction.
+    if screen_layout["direction"] in ("vertical", "horizontal"):
+        for child_id in root_child_ids:
+            child = elements[child_id]
+            if "layout" not in child:
+                child["layout"] = {}
+            layout = child["layout"]
+            sizing = layout.setdefault("sizing", {})
+            # Child spans screen width unless it already declared one.
+            if "width" not in sizing:
+                sizing["width"] = "fill"
+            # Clear any absolute-positioning inherited from an earlier
+            # compose path — meaningless inside auto-layout.
+            layout.pop("position", None)
+    else:
+        # Legacy absolute path (preserves old behavior when a screen
+        # template explicitly demands it).
+        _DEFAULT_ELEMENT_HEIGHT = 50
+        y_cursor: float = 0
+        for child_id in root_child_ids:
+            child = elements[child_id]
+            if "layout" not in child:
+                child["layout"] = {}
+            child["layout"]["position"] = {"x": 0, "y": y_cursor}
+            sizing = child["layout"].get("sizing", {})
+            child_height = sizing.get("heightPixels") or sizing.get("height")
+            if isinstance(child_height, (int, float)):
+                y_cursor += child_height
+            else:
+                y_cursor += _DEFAULT_ELEMENT_HEIGHT
 
     elements[root_id] = {
         "type": "screen",
@@ -164,11 +197,18 @@ def compose_screen(
         "children": root_child_ids,
     }
 
+    # ADR-008 Mode-3 v0.1: seed the spec tokens dict with shadcn-flavoured
+    # literal fallbacks so token refs in PresentationTemplates resolve
+    # at emit time. A real project token cascade replaces this in v0.2.
+    seeded_tokens: dict[str, Any] = {}
+    if not _mode3_disabled():
+        seeded_tokens.update(_UNIVERSAL_MODE3_TOKENS)
+
     return {
         "version": "1.0",
         "root": root_id,
         "elements": elements,
-        "tokens": {},
+        "tokens": seeded_tokens,
         "_node_id_map": {},
     }
 
@@ -186,6 +226,75 @@ def _mode3_disabled() -> bool:
 _TEXT_SLOT_PROP_ALIASES: tuple[str, ...] = (
     "text", "label", "title", "headline", "placeholder", "message", "description",
 )
+
+
+# ---------------------------------------------------------------------------
+# Mode-3 universal token seed (ADR-008 v0.1)
+#
+# Shadcn-derived literal fallback values for the DTCG refs the
+# UniversalCatalogProvider's PresentationTemplates emit. Without a real
+# token cascade wired (v0.2), these seed the spec's ``tokens`` dict so
+# the renderer's ``resolve_style_value`` finds concrete values at emit
+# time. Values approximate shadcn defaults: 16-pixel spacing grid, 8px
+# radius, sans text stack, neutral palette plus an accent blue.
+# ---------------------------------------------------------------------------
+_UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
+    # Spacing
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    # Radii
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    # Colors (shadcn neutral + primary blue)
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    # Typography (pass-through hints — Phase 1 of renderer consumes raw text layout defaults)
+    "typography.button.label": "Inter-Medium-14",
+    "typography.input.value": "Inter-Regular-14",
+    # Effects
+    "shadow.card": 0,
+    "shadow.dialog": 0,
+}
 
 
 def _default_provider_registry():
@@ -207,22 +316,60 @@ def _mode3_synthesise_children(
     props: dict[str, Any],
     elements: dict[str, dict[str, Any]],
     allocate_id,
+    parent_element: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Produce synthetic child IR eids for a (type, variant, props) triple.
+    """Produce synthetic child IR eids + apply the template to the parent.
 
     Walks the resolved ``PresentationTemplate``'s slot grammar; for
     each text-typed slot with a matching prop in ``props`` (directly by
     slot name or via the ``_TEXT_SLOT_PROP_ALIASES`` fallbacks), allocates
-    a text-child IR element and returns its eid. Non-text slots are
-    deferred (they need backend-specific concrete defaults; v0.1 focus
-    is getting visible text labels onto the screen).
+    a text-child IR element and returns its eid.
 
-    Returns a list of child eids that the caller should attach to the
-    parent element under ``children``.
+    When ``parent_element`` is supplied, merges the template's
+    ``layout``/``style`` onto the parent's existing fields so the
+    parent frame gets the template's sizing, padding, fills, and
+    radius. Tokens remain as ``{name}`` refs — the renderer's
+    ``resolve_style_value`` resolves them against the spec-level
+    ``tokens`` dict seeded with :data:`_UNIVERSAL_MODE3_TOKENS`.
+
+    Returns a list of child eids the caller should attach under
+    ``children``.
     """
     registry = _default_provider_registry()
     template, _errors = registry.resolve(comp_type, variant, {})
-    if template is None or not template.slots:
+    if template is None:
+        return []
+
+    # Apply template to parent element: merge layout + style.
+    if parent_element is not None:
+        parent_layout = parent_element.setdefault("layout", {})
+        for key, value in (template.layout or {}).items():
+            # Don't clobber caller-supplied overrides (direction from
+            # layout_direction, width/height explicitly set).
+            if key == "sizing":
+                sizing = parent_layout.setdefault("sizing", {})
+                for sk, sv in (value or {}).items():
+                    sizing.setdefault(sk, sv)
+            elif key not in parent_layout:
+                parent_layout[key] = value
+        # Seed pixel dims from the template's style.height_pixels /
+        # width_pixels — these are concrete numbers even before
+        # token resolution, and give the renderer a resize() seed
+        # that beats the 100×100 createFrame default.
+        style = template.style or {}
+        sizing = parent_layout.setdefault("sizing", {})
+        if "heightPixels" not in sizing and isinstance(style.get("height_pixels"), (int, float)):
+            sizing["heightPixels"] = style["height_pixels"]
+        if "widthPixels" not in sizing and isinstance(style.get("width_pixels"), (int, float)):
+            sizing["widthPixels"] = style["width_pixels"]
+        # Surface fills / radius / stroke refs as IR style so the
+        # renderer's _emit_visual path picks them up.
+        parent_style = parent_element.setdefault("style", {})
+        for key in ("fill", "fg", "stroke", "radius"):
+            if key in style and key not in parent_style:
+                parent_style[key] = style[key]
+
+    if not template.slots:
         return []
 
     child_ids: list[str] = []

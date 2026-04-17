@@ -1,0 +1,43 @@
+```json
+[
+  {"type": "header", "props": {"text": "Choose Your Plan"}},
+  {"type": "text", "props": {"text": "Select the perfect plan for your needs"}},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Starter"}},
+    {"type": "text", "props": {"text": "$9/month"}},
+    {"type": "list", "children": [
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "5 projects"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "Basic support"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "1 GB storage"}}]}
+    ]},
+    {"type": "button", "component_key": "Button 1", "props": {"text": "Choose Plan"}}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Professional"}},
+    {"type": "text", "props": {"text": "$29/month"}},
+    {"type": "badge", "props": {"text": "Most Popular"}},
+    {"type": "list", "children": [
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "Unlimited projects"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "Priority support"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "100 GB storage"}}]}
+    ]},
+    {"type": "button", "component_key": "Button 1", "props": {"text": "Choose Plan"}}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "Enterprise"}},
+    {"type": "text", "props": {"text": "Custom pricing"}},
+    {"type": "list", "children": [
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "Unlimited everything"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "24/7 dedicated support"}}]},
+      {"type": "list_item", "children": [{"type": "text", "props": {"text": "Unlimited storage"}}]}
+    ]},
+    {"type": "button", "component_key": "Button 1", "props": {"text": "Contact Sales"}}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading", "props": {"text": "What customers say"}},
+    {"type": "text", "props": {"text": "\"This service transformed how we work. Highly recommended!\""}},
+    {"type": "text", "props": {"text": "— Sarah Chen, Product Manager"}},
+    {"type": "avatar", "props": {"initials": "SC"}}
+  ]}
+]
+```

@@ -1,0 +1,50 @@
+[
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/01-login/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/01-login/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/02-profile-settings/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/02-profile-settings/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/03-meme-feed/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/03-meme-feed/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/04-dashboard/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/04-dashboard/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/05-paywall/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/05-paywall/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/06-spa-minimal/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/06-spa-minimal/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/07-search/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/07-search/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/08-explicit-structure/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/08-explicit-structure/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/09-drawer-nav/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/09-drawer-nav/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/10-onboarding-carousel/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/10-onboarding-carousel/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/11-vague/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/11-vague/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/12-round-trip-test/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00d-mode3-v1/artefacts/12-round-trip-test/screenshot.png"
+  }
+]

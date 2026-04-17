@@ -1,0 +1,379 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5764:3031",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 285,
+      "effectCount": 0
+    },
+    "table-1": {
+      "type": "FRAME",
+      "name": "table-1",
+      "width": 100,
+      "height": 270,
+      "effectCount": 0
+    },
+    "badge-3": {
+      "type": "FRAME",
+      "name": "badge-3",
+      "width": 63,
+      "height": 15,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-17": {
+      "type": "TEXT",
+      "name": "text-17",
+      "width": 63,
+      "height": 15,
+      "characters": "Completed",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-16": {
+      "type": "TEXT",
+      "name": "text-16",
+      "width": 100,
+      "height": 15,
+      "characters": "-$125.00",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-15": {
+      "type": "TEXT",
+      "name": "text-15",
+      "width": 100,
+      "height": 30,
+      "characters": "Refund processed",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-14": {
+      "type": "TEXT",
+      "name": "text-14",
+      "width": 100,
+      "height": 15,
+      "characters": "2024-01-13",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-2": {
+      "type": "FRAME",
+      "name": "badge-2",
+      "width": 47,
+      "height": 15,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-13": {
+      "type": "TEXT",
+      "name": "text-13",
+      "width": 47,
+      "height": 15,
+      "characters": "Pending",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-12": {
+      "type": "TEXT",
+      "name": "text-12",
+      "width": 100,
+      "height": 15,
+      "characters": "$890.50",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
+      "width": 100,
+      "height": 15,
+      "characters": "Invoice issued",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 100,
+      "height": 15,
+      "characters": "2024-01-14",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-1": {
+      "type": "FRAME",
+      "name": "badge-1",
+      "width": 63,
+      "height": 15,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 63,
+      "height": 15,
+      "characters": "Completed",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 100,
+      "height": 15,
+      "characters": "$1,250.00",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 100,
+      "height": 30,
+      "characters": "Payment received",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 100,
+      "height": 15,
+      "characters": "2024-01-15",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 15,
+      "characters": "Status",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Amount",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 15,
+      "characters": "Description",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 100,
+      "height": 15,
+      "characters": "Date",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 396,
+      "height": 15,
+      "characters": "Recent Transactions",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 115,
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Revenue Trend",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Dashboard",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    }
+  }
+}

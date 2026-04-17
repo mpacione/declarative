@@ -1,0 +1,21 @@
+{
+  "returncode": 0,
+  "latency_ms": 222,
+  "timeout": false,
+  "stdout": "[script.js] OK in 187ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776402178293\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":4,\"after\":5,\"moved\":0,\"errors\":[]}}}\n",
+  "stderr": "",
+  "parsed": {
+    "type": "PROXY_EXECUTE_RESULT",
+    "id": "run_1776402178293",
+    "result": {
+      "success": true,
+      "result": {
+        "__ok": true,
+        "before": 4,
+        "after": 5,
+        "moved": 0,
+        "errors": []
+      }
+    }
+  }
+}

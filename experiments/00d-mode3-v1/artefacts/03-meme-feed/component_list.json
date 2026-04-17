@@ -1,0 +1,97 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "text": "Meme Feed"
+    }
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "alt": "Meme 1"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "props": {
+                  "text": "Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "alt": "Meme 2"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "props": {
+                  "text": "Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "alt": "Meme 3"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "props": {
+                  "text": "Share"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

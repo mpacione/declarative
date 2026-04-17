@@ -1,0 +1,584 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Choose Your Plan"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Select the perfect plan for your needs"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Starter"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$9/month"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "5 projects"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-3"
+      ]
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Basic support"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1 GB storage"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-5"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3"
+      ]
+    },
+    "button-1": {
+      "type": "button",
+      "component_key": "Button 1",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Choose Plan"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "text-2",
+        "list-1",
+        "button-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Professional"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$29/month"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "props": {
+        "text": "Most Popular"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "badge-1": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "text": "Most Popular"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-7"
+      ]
+    },
+    "text-8": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited projects"
+      }
+    },
+    "list_item-4": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-8"
+      ]
+    },
+    "text-9": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Priority support"
+      }
+    },
+    "list_item-5": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-9"
+      ]
+    },
+    "text-10": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "100 GB storage"
+      }
+    },
+    "list_item-6": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-10"
+      ]
+    },
+    "list-2": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-4",
+        "list_item-5",
+        "list_item-6"
+      ]
+    },
+    "button-2": {
+      "type": "button",
+      "component_key": "Button 1",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Choose Plan"
+      }
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-2",
+        "text-6",
+        "badge-1",
+        "list-2",
+        "button-2"
+      ]
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Enterprise"
+      }
+    },
+    "text-11": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Custom pricing"
+      }
+    },
+    "text-12": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited everything"
+      }
+    },
+    "list_item-7": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-12"
+      ]
+    },
+    "text-13": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "24/7 dedicated support"
+      }
+    },
+    "list_item-8": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-13"
+      ]
+    },
+    "text-14": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited storage"
+      }
+    },
+    "list_item-9": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-14"
+      ]
+    },
+    "list-3": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-7",
+        "list_item-8",
+        "list_item-9"
+      ]
+    },
+    "button-3": {
+      "type": "button",
+      "component_key": "Button 1",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Contact Sales"
+      }
+    },
+    "card-3": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-3",
+        "text-11",
+        "list-3",
+        "button-3"
+      ]
+    },
+    "heading-4": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "What customers say"
+      }
+    },
+    "text-15": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "\"This service transformed how we work. Highly recommended!\""
+      }
+    },
+    "text-16": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "\u2014 Sarah Chen, Product Manager"
+      }
+    },
+    "avatar-1": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "initials": "SC"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "card-4": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-4",
+        "text-15",
+        "text-16",
+        "avatar-1"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "text-1",
+        "card-1",
+        "card-2",
+        "card-3",
+        "card-4"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.label": "Inter-Medium-14",
+    "typography.input.value": "Inter-Regular-14",
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "header-1": -1,
+    "text-1": -2,
+    "heading-1": -3,
+    "text-2": -4,
+    "text-3": -5,
+    "list_item-1": -6,
+    "text-4": -7,
+    "list_item-2": -8,
+    "text-5": -9,
+    "list_item-3": -10,
+    "list-1": -11,
+    "button-1": -12,
+    "card-1": -13,
+    "heading-2": -14,
+    "text-6": -15,
+    "text-7": -16,
+    "badge-1": -17,
+    "text-8": -18,
+    "list_item-4": -19,
+    "text-9": -20,
+    "list_item-5": -21,
+    "text-10": -22,
+    "list_item-6": -23,
+    "list-2": -24,
+    "button-2": -25,
+    "card-2": -26,
+    "heading-3": -27,
+    "text-11": -28,
+    "text-12": -29,
+    "list_item-7": -30,
+    "text-13": -31,
+    "list_item-8": -32,
+    "text-14": -33,
+    "list_item-9": -34,
+    "list-3": -35,
+    "button-3": -36,
+    "card-3": -37,
+    "heading-4": -38,
+    "text-15": -39,
+    "text-16": -40,
+    "avatar-1": -41,
+    "card-4": -42,
+    "screen-1": -43
+  }
+}

@@ -1,0 +1,237 @@
+{
+  "total": 12,
+  "broken": 11,
+  "partial": 1,
+  "ok": 0,
+  "gate_passes": false,
+  "per_prompt": {
+    "01-login": {
+      "rule": {
+        "total_content_nodes": 7,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 3,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.7778,
+        "verdict": "broken",
+        "had_render_errors": true
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 8,
+        "verdict": "ok",
+        "reason": "The screen displays a clear and coherent sign-in form with recognizable input fields, labels, and links, making it a plausible UI structure."
+      }
+    },
+    "02-profile-settings": {
+      "rule": {
+        "total_content_nodes": 11,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 7,
+        "default_frame_ratio": 0.0909,
+        "visible_ratio": 0.8182,
+        "verdict": "ok",
+        "had_render_errors": false
+      },
+      "verdict": "partial",
+      "vlm": {
+        "score": 5,
+        "verdict": "partial",
+        "reason": "The screen contains some recognizable UI elements like text fields and labels, but lacks proper styling, alignment, and interactive components like buttons or checkboxes for the notifications section."
+      }
+    },
+    "03-meme-feed": {
+      "rule": {
+        "total_content_nodes": 17,
+        "total_text_nodes": 6,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 6,
+        "frames_with_visible_content": 6,
+        "default_frame_ratio": 0.1765,
+        "visible_ratio": 0.5217,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The screen is mostly empty with only a few stray labels ('Upvote', 'Share') and lacks any coherent UI structure."
+      }
+    },
+    "04-dashboard": {
+      "rule": {
+        "total_content_nodes": 8,
+        "total_text_nodes": 19,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 19,
+        "frames_with_visible_content": 3,
+        "default_frame_ratio": 0.125,
+        "visible_ratio": 0.8148,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The image contains only unformatted text stacked vertically with no UI structure, containers, or layout elements."
+      }
+    },
+    "05-paywall": {
+      "rule": {
+        "total_content_nodes": 22,
+        "total_text_nodes": 20,
+        "default_sized_frame_nodes": 4,
+        "visible_text_nodes": 20,
+        "frames_with_visible_content": 2,
+        "default_frame_ratio": 0.1818,
+        "visible_ratio": 0.5238,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The image consists almost entirely of unformatted text stacked vertically on a plain background, lacking any discernible UI structure, containers, or interactive elements."
+      }
+    },
+    "06-spa-minimal": {
+      "rule": {
+        "total_content_nodes": 11,
+        "total_text_nodes": 9,
+        "default_sized_frame_nodes": 2,
+        "visible_text_nodes": 9,
+        "frames_with_visible_content": 3,
+        "default_frame_ratio": 0.1818,
+        "visible_ratio": 0.6,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 3,
+        "verdict": "broken",
+        "reason": "The screen consists mostly of empty space, a few blank white squares, and unformatted text labels, lacking any coherent UI structure or layout."
+      }
+    },
+    "07-search": {
+      "rule": {
+        "total_content_nodes": 20,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 8,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 8,
+        "default_frame_ratio": 0.4,
+        "visible_ratio": 0.5714,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The image consists almost entirely of empty white squares and a few text labels, lacking any coherent UI structure or layout."
+      }
+    },
+    "08-explicit-structure": {
+      "rule": {
+        "total_content_nodes": 6,
+        "total_text_nodes": 7,
+        "default_sized_frame_nodes": 2,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 4,
+        "default_frame_ratio": 0.3333,
+        "visible_ratio": 0.8462,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The image consists of a few empty white boxes and unstyled text labels stacked vertically, lacking any coherent UI structure or layout."
+      }
+    },
+    "09-drawer-nav": {
+      "rule": {
+        "total_content_nodes": 7,
+        "total_text_nodes": 0,
+        "default_sized_frame_nodes": 6,
+        "visible_text_nodes": 0,
+        "frames_with_visible_content": 0,
+        "default_frame_ratio": 0.8571,
+        "visible_ratio": 0.0,
+        "verdict": "broken",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 1,
+        "verdict": "broken",
+        "reason": "The image is completely blank and contains no UI elements whatsoever."
+      }
+    },
+    "10-onboarding-carousel": {
+      "rule": {
+        "total_content_nodes": 13,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 5,
+        "default_frame_ratio": 0.2308,
+        "visible_ratio": 0.6667,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The screen consists only of unstyled text floating on a blank background with no discernible UI structure, containers, or interactive elements."
+      }
+    },
+    "11-vague": {
+      "rule": {
+        "total_content_nodes": 22,
+        "total_text_nodes": 19,
+        "default_sized_frame_nodes": 9,
+        "visible_text_nodes": 19,
+        "frames_with_visible_content": 9,
+        "default_frame_ratio": 0.4091,
+        "visible_ratio": 0.6829,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The image consists mostly of empty white boxes and scattered text labels with no coherent UI structure or layout."
+      }
+    },
+    "12-round-trip-test": {
+      "rule": {
+        "total_content_nodes": 15,
+        "total_text_nodes": 9,
+        "default_sized_frame_nodes": 5,
+        "visible_text_nodes": 9,
+        "frames_with_visible_content": 3,
+        "default_frame_ratio": 0.3333,
+        "visible_ratio": 0.5,
+        "verdict": "partial",
+        "had_render_errors": false
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 2,
+        "verdict": "broken",
+        "reason": "The screen consists mostly of empty white boxes and unstyled text labels with no coherent UI structure or layout."
+      }
+    }
+  }
+}

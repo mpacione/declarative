@@ -213,7 +213,10 @@ class TestNonDankRendering:
         # ghost-btn has no component_key → Mode 2
         assert "figma.createFrame()" in script
 
-    def test_absolute_root_children_get_positioning(self, ecom_db):
+    def test_auto_layout_root_children_span_width(self, ecom_db):
+        """ADR-008 PR #1 Part C: screen root defaults to vertical
+        auto-layout; children get layoutSizingHorizontal=FILL and no
+        absolute x/y positioning."""
         templates = query_templates(ecom_db)
         spec = compose_screen(
             [{"type": "card"}, {"type": "search_input"}],
@@ -221,9 +224,9 @@ class TestNonDankRendering:
         )
         visuals = build_template_visuals(spec, templates)
         script, _ = generate_figma_script(spec, db_visuals=visuals)
-        # Root is absolute — children get x/y positioning, not FILL width
-        assert ".x = 0;" in script
-        assert ".y = " in script
+        # Screen root renders as a vertical auto-layout container
+        assert 'layoutMode = "VERTICAL"' in script
+        # resize still fires for the screen itself
         assert "resize(" in script
 
     def test_text_overrides_on_ecom_components(self, ecom_db):

@@ -1,0 +1,60 @@
+```json
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "text",
+        "props": {"text": "Sign In"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Welcome Back"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Enter your credentials to continue"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text_input",
+        "props": {"label": "Email", "placeholder": "Enter your email"}
+      },
+      {
+        "type": "text_input",
+        "props": {"label": "Password", "placeholder": "Enter your password", "type": "password"}
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {"text": "Sign In"}
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "link",
+        "props": {"text": "Forgot password?"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Don't have an account? "}
+      },
+      {
+        "type": "link",
+        "props": {"text": "Sign up"}
+      }
+    ]
+  }
+]
+```

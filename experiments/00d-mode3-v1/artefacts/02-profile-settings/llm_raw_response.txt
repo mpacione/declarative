@@ -1,0 +1,63 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {"text": "Profile Settings"}
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "avatar",
+        "props": {"initials": "US"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "User avatar"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Personal Information"}
+      },
+      {
+        "type": "text_input",
+        "props": {"label": "Name", "placeholder": "Enter your name"}
+      },
+      {
+        "type": "text_input",
+        "props": {"label": "Email", "placeholder": "Enter your email"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Notifications"}
+      },
+      {
+        "type": "toggle",
+        "props": {"label": "Push notifications", "checked": true}
+      },
+      {
+        "type": "toggle",
+        "props": {"label": "Email notifications", "checked": true}
+      },
+      {
+        "type": "toggle",
+        "props": {"label": "SMS notifications", "checked": false}
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {"text": "Save Changes", "variant": "default"}
+  }
+]
+```

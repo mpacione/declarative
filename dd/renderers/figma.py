@@ -1232,6 +1232,30 @@ def generate_figma_script(
                 raw_visual = {}
                 visual = {}
 
+            # ADR-008 Mode-3: overlay IR `element.style` fill / stroke /
+            # radius into `visual` when the DB path produced no visual
+            # for this eid. Synthetic IR elements never have a DB node
+            # id, so without this overlay their template-supplied fills
+            # are silently dropped and the frame renders with the
+            # default `fills = []` clearing below.
+            if not is_text:
+                ir_style = element.get("style", {}) or {}
+                fill_ref = ir_style.get("fill")
+                if fill_ref and not visual.get("fills"):
+                    resolved, _tok = resolve_style_value(fill_ref, tokens)
+                    if isinstance(resolved, str) and resolved.startswith("#"):
+                        visual["fills"] = [{"type": "solid", "color": resolved}]
+                stroke_ref = ir_style.get("stroke")
+                if stroke_ref and not visual.get("strokes"):
+                    resolved, _tok = resolve_style_value(stroke_ref, tokens)
+                    if isinstance(resolved, str) and resolved.startswith("#"):
+                        visual["strokes"] = [{"type": "solid", "color": resolved}]
+                radius_ref = ir_style.get("radius")
+                if radius_ref is not None and "cornerRadius" not in visual:
+                    resolved, _tok = resolve_style_value(radius_ref, tokens)
+                    if isinstance(resolved, (int, float)):
+                        visual["cornerRadius"] = resolved
+
             # Transform detection: when relative_transform is available
             # and its 2x2 submatrix is non-identity (any rotation OR
             # mirror), defer relativeTransform emission to Phase 3.

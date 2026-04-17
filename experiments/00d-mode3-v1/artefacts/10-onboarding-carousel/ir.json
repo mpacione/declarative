@@ -1,0 +1,480 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "onboarding-slide-1.png",
+        "alt": "Welcome illustration"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Welcome to Our App"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Discover amazing features designed to make your life easier"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "image-1",
+        "heading-1",
+        "text-1"
+      ]
+    },
+    "image-2": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "onboarding-slide-2.png",
+        "alt": "Features illustration"
+      }
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Powerful Features"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Access everything you need in one intuitive interface"
+      }
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "image-2",
+        "heading-2",
+        "text-2"
+      ]
+    },
+    "image-3": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "onboarding-slide-3.png",
+        "alt": "Get started illustration"
+      }
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Get Started Now"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Join thousands of users enjoying seamless productivity"
+      }
+    },
+    "card-3": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "image-3",
+        "heading-3",
+        "text-3"
+      ]
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "1"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "1"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "2"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "2"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-5"
+      ]
+    },
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "3"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-3": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "3"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-6"
+      ]
+    },
+    "pagination-1": {
+      "type": "pagination",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "button-1",
+        "button-2",
+        "button-3"
+      ]
+    },
+    "text-7": {
+      "type": "text",
+      "props": {
+        "text": "Back"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-4": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "Back"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-7"
+      ]
+    },
+    "text-8": {
+      "type": "text",
+      "props": {
+        "text": "Next"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-5": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "Next"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-8"
+      ]
+    },
+    "button_group-1": {
+      "type": "button_group",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "button-4",
+        "button-5"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "card-1",
+        "card-2",
+        "card-3",
+        "pagination-1",
+        "button_group-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.label": "Inter-Medium-14",
+    "typography.input.value": "Inter-Regular-14",
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "image-1": -1,
+    "heading-1": -2,
+    "text-1": -3,
+    "card-1": -4,
+    "image-2": -5,
+    "heading-2": -6,
+    "text-2": -7,
+    "card-2": -8,
+    "image-3": -9,
+    "heading-3": -10,
+    "text-3": -11,
+    "card-3": -12,
+    "text-4": -13,
+    "button-1": -14,
+    "text-5": -15,
+    "button-2": -16,
+    "text-6": -17,
+    "button-3": -18,
+    "pagination-1": -19,
+    "text-7": -20,
+    "button-4": -21,
+    "text-8": -22,
+    "button-5": -23,
+    "button_group-1": -24,
+    "screen-1": -25
+  }
+}

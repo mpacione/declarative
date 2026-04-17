@@ -1,0 +1,159 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "back"
+        }
+      },
+      {
+        "type": "search_input",
+        "props": {
+          "placeholder": "Search"
+        }
+      },
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "close"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Recent Searches"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "clock"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "iPhone 15 Pro"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "clock"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "MacBook Air M2"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "clock"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "AirPods Pro"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Popular Searches"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "trending"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Electronics"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "trending"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Fashion"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "name": "trending"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Home & Garden"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

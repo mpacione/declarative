@@ -1,0 +1,99 @@
+2026-04-17T05:02:53+00:00 | _ | setup | ok | system_prompt_chars=4135 db=/Users/mattpacione/declarative-build/Dank-EXP-02.declarative.db
+2026-04-17T05:02:53+00:00 | 01-login | parse | start | len=57
+2026-04-17T05:02:55+00:00 | 01-login | parse | ok | components=5 in_tokens=1293 out_tokens=371
+2026-04-17T05:02:55+00:00 | 01-login | compose | start | components=5
+2026-04-17T05:02:55+00:00 | 01-login | compose | ok | elements=21 script_chars=9176 warnings=13
+2026-04-17T05:02:55+00:00 | 01-login | render | start | 
+2026-04-17T05:02:55+00:00 | 01-login | render | fail | errors=0 kinds=[]
+2026-04-17T05:02:55+00:00 | 02-profile-settings | parse | start | len=89
+2026-04-17T05:02:58+00:00 | 02-profile-settings | parse | ok | components=5 in_tokens=1298 out_tokens=405
+2026-04-17T05:02:58+00:00 | 02-profile-settings | compose | start | components=5
+2026-04-17T05:02:58+00:00 | 02-profile-settings | compose | ok | elements=23 script_chars=9528 warnings=14
+2026-04-17T05:02:58+00:00 | 02-profile-settings | render | start | 
+2026-04-17T05:02:58+00:00 | 02-profile-settings | render | fail | errors=0 kinds=[]
+2026-04-17T05:02:58+00:00 | 03-meme-feed | parse | start | len=56
+2026-04-17T05:03:01+00:00 | 03-meme-feed | parse | ok | components=2 in_tokens=1293 out_tokens=461
+2026-04-17T05:03:01+00:00 | 03-meme-feed | compose | start | components=2
+2026-04-17T05:03:01+00:00 | 03-meme-feed | compose | ok | elements=24 script_chars=7983 warnings=17
+2026-04-17T05:03:01+00:00 | 03-meme-feed | render | start | 
+2026-04-17T05:03:01+00:00 | 03-meme-feed | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:01+00:00 | 04-dashboard | parse | start | len=69
+2026-04-17T05:03:05+00:00 | 04-dashboard | parse | ok | components=3 in_tokens=1292 out_tokens=644
+2026-04-17T05:03:05+00:00 | 04-dashboard | compose | start | components=3
+2026-04-17T05:03:05+00:00 | 04-dashboard | compose | ok | elements=28 script_chars=11689 warnings=24
+2026-04-17T05:03:05+00:00 | 04-dashboard | render | start | 
+2026-04-17T05:03:05+00:00 | 04-dashboard | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:05+00:00 | 05-paywall | parse | start | len=59
+2026-04-17T05:03:09+00:00 | 05-paywall | parse | ok | components=6 in_tokens=1292 out_tokens=785
+2026-04-17T05:03:09+00:00 | 05-paywall | compose | start | components=6
+2026-04-17T05:03:09+00:00 | 05-paywall | compose | ok | elements=43 script_chars=14758 warnings=41
+2026-04-17T05:03:09+00:00 | 05-paywall | render | start | 
+2026-04-17T05:03:10+00:00 | 05-paywall | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:10+00:00 | 06-spa-minimal | parse | start | len=50
+2026-04-17T05:03:13+00:00 | 06-spa-minimal | parse | ok | components=5 in_tokens=1290 out_tokens=516
+2026-04-17T05:03:13+00:00 | 06-spa-minimal | compose | start | components=5
+2026-04-17T05:03:13+00:00 | 06-spa-minimal | compose | ok | elements=21 script_chars=7755 warnings=19
+2026-04-17T05:03:13+00:00 | 06-spa-minimal | render | start | 
+2026-04-17T05:03:13+00:00 | 06-spa-minimal | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:13+00:00 | 07-search | parse | start | len=15
+2026-04-17T05:03:16+00:00 | 07-search | parse | ok | components=3 in_tokens=1282 out_tokens=606
+2026-04-17T05:03:16+00:00 | 07-search | compose | start | components=3
+2026-04-17T05:03:16+00:00 | 07-search | compose | ok | elements=29 script_chars=9527 warnings=28
+2026-04-17T05:03:16+00:00 | 07-search | render | start | 
+2026-04-17T05:03:16+00:00 | 07-search | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:16+00:00 | 08-explicit-structure | parse | start | len=148
+2026-04-17T05:03:18+00:00 | 08-explicit-structure | parse | ok | components=3 in_tokens=1315 out_tokens=298
+2026-04-17T05:03:18+00:00 | 08-explicit-structure | compose | start | components=3
+2026-04-17T05:03:18+00:00 | 08-explicit-structure | compose | ok | elements=14 script_chars=6057 warnings=11
+2026-04-17T05:03:18+00:00 | 08-explicit-structure | render | start | 
+2026-04-17T05:03:18+00:00 | 08-explicit-structure | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:18+00:00 | 09-drawer-nav | parse | start | len=30
+2026-04-17T05:03:20+00:00 | 09-drawer-nav | parse | ok | components=1 in_tokens=1288 out_tokens=197
+2026-04-17T05:03:20+00:00 | 09-drawer-nav | compose | start | components=1
+2026-04-17T05:03:20+00:00 | 09-drawer-nav | compose | ok | elements=8 script_chars=2385 warnings=7
+2026-04-17T05:03:20+00:00 | 09-drawer-nav | render | start | 
+2026-04-17T05:03:20+00:00 | 09-drawer-nav | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:20+00:00 | 10-onboarding-carousel | parse | start | len=86
+2026-04-17T05:03:23+00:00 | 10-onboarding-carousel | parse | ok | components=5 in_tokens=1300 out_tokens=520
+2026-04-17T05:03:23+00:00 | 10-onboarding-carousel | compose | start | components=5
+2026-04-17T05:03:23+00:00 | 10-onboarding-carousel | compose | ok | elements=25 script_chars=9551 warnings=19
+2026-04-17T05:03:23+00:00 | 10-onboarding-carousel | render | start | 
+2026-04-17T05:03:23+00:00 | 10-onboarding-carousel | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:23+00:00 | 11-vague | parse | start | len=14
+2026-04-17T05:03:27+00:00 | 11-vague | parse | ok | components=6 in_tokens=1281 out_tokens=722
+2026-04-17T05:03:27+00:00 | 11-vague | compose | start | components=6
+2026-04-17T05:03:27+00:00 | 11-vague | compose | ok | elements=42 script_chars=15146 warnings=37
+2026-04-17T05:03:27+00:00 | 11-vague | render | start | 
+2026-04-17T05:03:28+00:00 | 11-vague | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:28+00:00 | 12-round-trip-test | parse | start | len=44
+2026-04-17T05:03:31+00:00 | 12-round-trip-test | parse | ok | components=6 in_tokens=1292 out_tokens=605
+2026-04-17T05:03:31+00:00 | 12-round-trip-test | compose | start | components=6
+2026-04-17T05:03:31+00:00 | 12-round-trip-test | compose | ok | elements=25 script_chars=8397 warnings=24
+2026-04-17T05:03:31+00:00 | 12-round-trip-test | render | start | 
+2026-04-17T05:03:31+00:00 | 12-round-trip-test | render | fail | errors=0 kinds=[]
+2026-04-17T05:03:31+00:00 | _ | done | ok | count=12
+2026-04-17T05:03:37+00:00 | 01-login | walk | start | 
+2026-04-17T05:03:38+00:00 | 01-login | walk | ok | eids=19 root=5764:2963
+2026-04-17T05:03:38+00:00 | 02-profile-settings | walk | start | 
+2026-04-17T05:03:38+00:00 | 02-profile-settings | walk | ok | eids=23 root=5764:2984
+2026-04-17T05:03:38+00:00 | 03-meme-feed | walk | start | 
+2026-04-17T05:03:38+00:00 | 03-meme-feed | walk | ok | eids=24 root=5764:3007
+2026-04-17T05:03:38+00:00 | 04-dashboard | walk | start | 
+2026-04-17T05:03:38+00:00 | 04-dashboard | walk | ok | eids=28 root=5764:3031
+2026-04-17T05:03:38+00:00 | 05-paywall | walk | start | 
+2026-04-17T05:03:38+00:00 | 05-paywall | walk | ok | eids=43 root=5764:3059
+2026-04-17T05:03:38+00:00 | 06-spa-minimal | walk | start | 
+2026-04-17T05:03:38+00:00 | 06-spa-minimal | walk | ok | eids=21 root=5764:3102
+2026-04-17T05:03:38+00:00 | 07-search | walk | start | 
+2026-04-17T05:03:38+00:00 | 07-search | walk | ok | eids=29 root=5764:3123
+2026-04-17T05:03:38+00:00 | 08-explicit-structure | walk | start | 
+2026-04-17T05:03:38+00:00 | 08-explicit-structure | walk | ok | eids=14 root=5764:3152
+2026-04-17T05:03:38+00:00 | 09-drawer-nav | walk | start | 
+2026-04-17T05:03:38+00:00 | 09-drawer-nav | walk | ok | eids=8 root=5764:3166
+2026-04-17T05:03:38+00:00 | 10-onboarding-carousel | walk | start | 
+2026-04-17T05:03:39+00:00 | 10-onboarding-carousel | walk | ok | eids=25 root=5764:3174
+2026-04-17T05:03:39+00:00 | 11-vague | walk | start | 
+2026-04-17T05:03:39+00:00 | 11-vague | walk | ok | eids=42 root=5764:3199
+2026-04-17T05:03:39+00:00 | 12-round-trip-test | walk | start | 
+2026-04-17T05:03:39+00:00 | 12-round-trip-test | walk | ok | eids=25 root=5764:3241
+2026-04-17T05:03:39+00:00 | _ | finalize | ok | count=12

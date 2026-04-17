@@ -644,20 +644,35 @@ class TestFontDataInComposition:
         assert not visuals[screen_nid].get("font")
 
 
-class TestAbsoluteScreenRoot:
-    """Verify compose_screen uses absolute positioning for the screen root."""
+class TestAutoLayoutScreenRoot:
+    """Verify compose_screen uses vertical auto-layout for the screen root.
 
-    def test_root_direction_is_absolute(self):
+    ADR-008 PR #1 Part C: the screen root defaults to ``direction:
+    vertical`` with padding, gap, and FILL-width children. The pre-
+    ADR-008 ``absolute + y_cursor += 50`` path survives only when a
+    screen template explicitly emits an unknown direction.
+    """
+
+    def test_root_direction_is_vertical(self):
         spec = compose_screen([{"type": "header"}])
         root = spec["elements"][spec["root"]]
-        assert root["layout"]["direction"] == "absolute"
+        assert root["layout"]["direction"] == "vertical"
 
     def test_root_has_clips_content(self):
         spec = compose_screen([{"type": "header"}])
         root = spec["elements"][spec["root"]]
         assert root.get("clipsContent") is True
 
-    def test_children_have_computed_positions(self):
+    def test_root_has_padding_and_gap(self):
+        spec = compose_screen([{"type": "header"}])
+        root = spec["elements"][spec["root"]]
+        padding = root["layout"].get("padding") or {}
+        for side in ("top", "right", "bottom", "left"):
+            assert padding.get(side, 0) >= 0
+        assert root["layout"].get("gap") is not None
+
+    def test_children_have_no_absolute_positions(self):
+        """Auto-layout children stack by tree order; no x/y computed."""
         templates = {
             "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 111,
                         "instance_count": 10}],
@@ -670,46 +685,26 @@ class TestAbsoluteScreenRoot:
         )
         header = next(el for el in spec["elements"].values() if el["type"] == "header")
         card = next(el for el in spec["elements"].values() if el["type"] == "card")
-        # Header at top
-        assert header["layout"]["position"]["y"] == 0
-        # Card below header
-        assert card["layout"]["position"]["y"] == 111
+        assert "position" not in header["layout"]
+        assert "position" not in card["layout"]
 
-    def test_children_x_defaults_to_zero(self):
+    def test_children_span_screen_width_by_default(self):
+        """Children inherit FILL width unless they already declared one."""
         spec = compose_screen([{"type": "header"}])
         header = next(el for el in spec["elements"].values() if el["type"] == "header")
-        assert header["layout"]["position"]["x"] == 0
+        assert header["layout"]["sizing"]["width"] == "fill"
 
-    def test_children_position_accumulates_heights(self):
+    def test_child_width_preserved_when_explicitly_set(self):
+        """A child with its own width (from template or override) keeps it."""
         templates = {
-            "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 100,
-                        "instance_count": 10}],
-            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 150,
-                      "instance_count": 10}],
             "button": [{"layout_mode": "HORIZONTAL", "width": 200, "height": 48,
+                        "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
                         "instance_count": 10}],
         }
-        spec = compose_screen(
-            [{"type": "header"}, {"type": "card"}, {"type": "button"}],
-            templates=templates,
-        )
-        elements = spec["elements"]
-        header = next(el for el in elements.values() if el["type"] == "header")
-        card = next(el for el in elements.values() if el["type"] == "card")
-        button = next(el for el in elements.values() if el["type"] == "button")
-        assert header["layout"]["position"]["y"] == 0
-        assert card["layout"]["position"]["y"] == 100
-        assert button["layout"]["position"]["y"] == 250  # 100 + 150
-
-    def test_children_without_template_get_default_height(self):
-        """Types with no template use a default height for positioning."""
-        spec = compose_screen([{"type": "unknown_type"}, {"type": "header"}])
-        elements_list = [el for el in spec["elements"].values() if el["type"] != "screen"]
-        unknown = next(el for el in elements_list if el["type"] == "unknown_type")
-        header = next(el for el in elements_list if el["type"] == "header")
-        # unknown gets some default height, header is positioned below it
-        assert unknown["layout"]["position"]["y"] == 0
-        assert header["layout"]["position"]["y"] > 0
+        spec = compose_screen([{"type": "button", "props": {"text": "x"}}], templates=templates)
+        button = next(el for el in spec["elements"].values() if el["type"] == "button")
+        # HUG sizing wins over the FILL default
+        assert button["layout"]["sizing"]["width"] == "hug"
 
     def test_hug_card_uses_pixel_width_for_sizing(self):
         """Cards with HUG sizing should still get pixel width from template."""
@@ -724,24 +719,16 @@ class TestAbsoluteScreenRoot:
         # Should have pixel width available even with HUG mode
         assert sizing.get("widthPixels") == 428 or sizing.get("width") == 428
 
-    def test_hug_card_y_position_uses_pixel_height(self):
-        """Y-position accumulation should use pixel height, not 'hug' string."""
+    def test_children_positions_cleared_if_inherited(self):
+        """Absolute `position` dict inherited from an earlier compose path
+        must be cleared when the screen root is auto-layout."""
         templates = {
             "header": [{"layout_mode": "HORIZONTAL", "width": 428, "height": 111,
-                        "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
                         "instance_count": 10}],
-            "card": [{"layout_mode": "VERTICAL", "width": 428, "height": 194,
-                      "layout_sizing_h": "HUG", "layout_sizing_v": "HUG",
-                      "instance_count": 10}],
         }
-        spec = compose_screen(
-            [{"type": "header"}, {"type": "card"}],
-            templates=templates,
-        )
+        spec = compose_screen([{"type": "header"}], templates=templates)
         header = next(el for el in spec["elements"].values() if el["type"] == "header")
-        card = next(el for el in spec["elements"].values() if el["type"] == "card")
-        assert header["layout"]["position"]["y"] == 0
-        assert card["layout"]["position"]["y"] == 111  # Not 50 (default)
+        assert "position" not in header["layout"]
 
     def test_children_have_pixel_dimensions_under_absolute(self):
         """Absolute-positioned children should have pixel width/height for resize."""

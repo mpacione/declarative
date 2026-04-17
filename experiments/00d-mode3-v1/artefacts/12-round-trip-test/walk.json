@@ -1,0 +1,278 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5764:3241",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 396,
+      "height": 100,
+      "effectCount": 0
+    },
+    "bottom_nav-1": {
+      "type": "FRAME",
+      "name": "bottom_nav-1",
+      "width": 396,
+      "height": 60,
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 396,
+      "height": 15,
+      "characters": "Settings",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 396,
+      "height": 15,
+      "characters": "Contacts",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 396,
+      "height": 15,
+      "characters": "Calls",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 396,
+      "height": 15,
+      "characters": "Messages",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 396,
+      "height": 200,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "search_input-1": {
+      "type": "FRAME",
+      "name": "search_input-1",
+      "width": 396,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 360,
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 100,
+      "height": 345,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 115,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Casey",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-3": {
+      "type": "FRAME",
+      "name": "avatar-3",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 115,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 15,
+      "characters": "Blake",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-2": {
+      "type": "FRAME",
+      "name": "avatar-2",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 115,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 100,
+      "height": 15,
+      "characters": "Alex",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Messages",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 396,
+      "height": 15,
+      "characters": "9:41",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    }
+  }
+}

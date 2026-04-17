@@ -1,0 +1,110 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "icon/back"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Serenity"
+        }
+      },
+      {
+        "type": "icon_button",
+        "props": {
+          "icon": "icon/close"
+        }
+      }
+    ]
+  },
+  {
+    "type": "image",
+    "props": {
+      "src": "spa-hero.jpg",
+      "alt": "Spa treatment"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Swedish Massage"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "90 minutes \u00b7 $180"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Deep relaxation with premium oils"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Available Times"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Today, 2:00 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Tomorrow, 10:30 AM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Tomorrow, 4:15 PM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "props": {
+      "text": "Book Appointment"
+    }
+  }
+]

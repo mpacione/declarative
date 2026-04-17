@@ -1,0 +1,306 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5764:3174",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 396,
+      "height": 88,
+      "effectCount": 0
+    },
+    "button-5": {
+      "type": "FRAME",
+      "name": "button-5",
+      "width": 27,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 27,
+      "height": 15,
+      "characters": "Next",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-4": {
+      "type": "FRAME",
+      "name": "button-4",
+      "width": 28,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 28,
+      "height": 15,
+      "characters": "Back",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "pagination-1": {
+      "type": "FRAME",
+      "name": "pagination-1",
+      "width": 396,
+      "height": 132,
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 8,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 8,
+      "height": 15,
+      "characters": "3",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 8,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 8,
+      "height": 15,
+      "characters": "2",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 6,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 6,
+      "height": 15,
+      "characters": "1",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 396,
+      "height": 130,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 396,
+      "height": 15,
+      "characters": "Join thousands of users enjoying seamless productivity",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-3": {
+      "type": "TEXT",
+      "name": "heading-3",
+      "width": 396,
+      "height": 15,
+      "characters": "Get Started Now",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-3": {
+      "type": "FRAME",
+      "name": "image-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 130,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 396,
+      "height": 15,
+      "characters": "Access everything you need in one intuitive interface",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 396,
+      "height": 15,
+      "characters": "Powerful Features",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-2": {
+      "type": "FRAME",
+      "name": "image-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 130,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Discover amazing features designed to make your life easier",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Welcome to Our App",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    }
+  }
+}

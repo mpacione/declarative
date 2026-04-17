@@ -1,0 +1,486 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5764:3059",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 396,
+      "height": 145,
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-16": {
+      "type": "TEXT",
+      "name": "text-16",
+      "width": 396,
+      "height": 15,
+      "characters": "— Sarah Chen, Product Manager",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-15": {
+      "type": "TEXT",
+      "name": "text-15",
+      "width": 396,
+      "height": 15,
+      "characters": "\"This service transformed how we work. Highly recommended!\"",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-4": {
+      "type": "TEXT",
+      "name": "heading-4",
+      "width": 396,
+      "height": 15,
+      "characters": "What customers say",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 396,
+      "height": 220,
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-3": {
+      "type": "FRAME",
+      "name": "list-3",
+      "width": 100,
+      "height": 90,
+      "effectCount": 0
+    },
+    "list_item-9": {
+      "type": "FRAME",
+      "name": "list_item-9",
+      "width": 100,
+      "height": 30,
+      "effectCount": 0
+    },
+    "text-14": {
+      "type": "TEXT",
+      "name": "text-14",
+      "width": 100,
+      "height": 30,
+      "characters": "Unlimited storage",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-8": {
+      "type": "FRAME",
+      "name": "list_item-8",
+      "width": 100,
+      "height": 30,
+      "effectCount": 0
+    },
+    "text-13": {
+      "type": "TEXT",
+      "name": "text-13",
+      "width": 100,
+      "height": 30,
+      "characters": "24/7 dedicated support",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-7": {
+      "type": "FRAME",
+      "name": "list_item-7",
+      "width": 100,
+      "height": 30,
+      "effectCount": 0
+    },
+    "text-12": {
+      "type": "TEXT",
+      "name": "text-12",
+      "width": 100,
+      "height": 30,
+      "characters": "Unlimited everything",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
+      "width": 396,
+      "height": 15,
+      "characters": "Custom pricing",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-3": {
+      "type": "TEXT",
+      "name": "heading-3",
+      "width": 396,
+      "height": 15,
+      "characters": "Enterprise",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 205,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-2": {
+      "type": "FRAME",
+      "name": "list-2",
+      "width": 100,
+      "height": 60,
+      "effectCount": 0
+    },
+    "list_item-6": {
+      "type": "FRAME",
+      "name": "list_item-6",
+      "width": 100,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 100,
+      "height": 15,
+      "characters": "100 GB storage",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 100,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 100,
+      "height": 15,
+      "characters": "Priority support",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 100,
+      "height": 30,
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 100,
+      "height": 30,
+      "characters": "Unlimited projects",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-1": {
+      "type": "FRAME",
+      "name": "badge-1",
+      "width": 75,
+      "height": 15,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 75,
+      "height": 15,
+      "characters": "Most Popular",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 396,
+      "height": 15,
+      "characters": "$29/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 396,
+      "height": 15,
+      "characters": "Professional",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 175,
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 100,
+      "height": 45,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 15,
+      "characters": "1 GB storage",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Basic support",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 15,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 15,
+      "characters": "5 projects",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 396,
+      "height": 15,
+      "characters": "$9/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Starter",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Select the perfect plan for your needs",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 100,
+      "effectCount": 0
+    }
+  }
+}

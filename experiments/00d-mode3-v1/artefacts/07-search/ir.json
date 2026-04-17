@@ -1,0 +1,497 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "back"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "search_input-1": {
+      "type": "search_input",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "placeholder": "Search"
+      }
+    },
+    "icon_button-2": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "close"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "icon_button-1",
+        "search_input-1",
+        "icon_button-2"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Recent Searches"
+      }
+    },
+    "icon-1": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "clock"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "iPhone 15 Pro"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-1",
+        "text-1"
+      ]
+    },
+    "icon-2": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "clock"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "MacBook Air M2"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-2",
+        "text-2"
+      ]
+    },
+    "icon-3": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "clock"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "AirPods Pro"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-3",
+        "text-3"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3"
+      ]
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "list-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Popular Searches"
+      }
+    },
+    "icon-4": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "trending"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Electronics"
+      }
+    },
+    "list_item-4": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-4",
+        "text-4"
+      ]
+    },
+    "icon-5": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "trending"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Fashion"
+      }
+    },
+    "list_item-5": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-5",
+        "text-5"
+      ]
+    },
+    "icon-6": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "name": "trending"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Home & Garden"
+      }
+    },
+    "list_item-6": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-6",
+        "text-6"
+      ]
+    },
+    "list-2": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-4",
+        "list_item-5",
+        "list_item-6"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-2",
+        "list-2"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.label": "Inter-Medium-14",
+    "typography.input.value": "Inter-Regular-14",
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "search_input-1": -2,
+    "icon_button-2": -3,
+    "header-1": -4,
+    "heading-1": -5,
+    "icon-1": -6,
+    "text-1": -7,
+    "list_item-1": -8,
+    "icon-2": -9,
+    "text-2": -10,
+    "list_item-2": -11,
+    "icon-3": -12,
+    "text-3": -13,
+    "list_item-3": -14,
+    "list-1": -15,
+    "card-1": -16,
+    "heading-2": -17,
+    "icon-4": -18,
+    "text-4": -19,
+    "list_item-4": -20,
+    "icon-5": -21,
+    "text-5": -22,
+    "list_item-5": -23,
+    "icon-6": -24,
+    "text-6": -25,
+    "list_item-6": -26,
+    "list-2": -27,
+    "card-2": -28,
+    "screen-1": -29
+  }
+}

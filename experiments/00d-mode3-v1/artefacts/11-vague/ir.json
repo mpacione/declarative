@@ -1,0 +1,705 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "back"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Discover"
+      }
+    },
+    "icon_button-2": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "wallet"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "icon_button-1",
+        "heading-1",
+        "icon_button-2"
+      ]
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "featured-hero"
+      }
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Summer Collection 2024"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Explore limited edition items curated just for you"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "image-1",
+        "heading-2",
+        "text-1"
+      ]
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Trending"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "New"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Saved"
+      }
+    },
+    "tabs-1": {
+      "type": "tabs",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "text-2",
+        "text-3",
+        "text-4"
+      ]
+    },
+    "image-2": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "item-1"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Wireless Headphones"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "Featured"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "badge-1": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "text": "Featured"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-6"
+      ]
+    },
+    "icon_button-3": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "check"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "image-2",
+        "text-5",
+        "badge-1",
+        "icon_button-3"
+      ]
+    },
+    "image-3": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "item-2"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Smart Watch Pro"
+      }
+    },
+    "text-8": {
+      "type": "text",
+      "props": {
+        "text": "Hot"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "badge-2": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "text": "Hot"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-8"
+      ]
+    },
+    "icon_button-4": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "check"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "image-3",
+        "text-7",
+        "badge-2",
+        "icon_button-4"
+      ]
+    },
+    "image-4": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "item-3"
+      }
+    },
+    "text-9": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Premium Backpack"
+      }
+    },
+    "text-10": {
+      "type": "text",
+      "props": {
+        "text": "New"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "badge-3": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center"
+      },
+      "props": {
+        "text": "New"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-10"
+      ]
+    },
+    "icon_button-5": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "check"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "image-4",
+        "text-9",
+        "badge-3",
+        "icon_button-5"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3"
+      ]
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Special Offer"
+      }
+    },
+    "text-11": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Get 30% off on your next purchase"
+      }
+    },
+    "text-12": {
+      "type": "text",
+      "props": {
+        "text": "Claim Now"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center"
+      },
+      "props": {
+        "text": "Claim Now"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-12"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-3",
+        "text-11",
+        "button-1"
+      ]
+    },
+    "text-13": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Home"
+      }
+    },
+    "text-14": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Search"
+      }
+    },
+    "text-15": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Messages"
+      }
+    },
+    "text-16": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Profile"
+      }
+    },
+    "bottom_nav-1": {
+      "type": "bottom_nav",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "text-13",
+        "text-14",
+        "text-15",
+        "text-16"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "tabs-1",
+        "list-1",
+        "card-2",
+        "bottom_nav-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.label": "Inter-Medium-14",
+    "typography.input.value": "Inter-Regular-14",
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "heading-1": -2,
+    "icon_button-2": -3,
+    "header-1": -4,
+    "image-1": -5,
+    "heading-2": -6,
+    "text-1": -7,
+    "card-1": -8,
+    "text-2": -9,
+    "text-3": -10,
+    "text-4": -11,
+    "tabs-1": -12,
+    "image-2": -13,
+    "text-5": -14,
+    "text-6": -15,
+    "badge-1": -16,
+    "icon_button-3": -17,
+    "list_item-1": -18,
+    "image-3": -19,
+    "text-7": -20,
+    "text-8": -21,
+    "badge-2": -22,
+    "icon_button-4": -23,
+    "list_item-2": -24,
+    "image-4": -25,
+    "text-9": -26,
+    "text-10": -27,
+    "badge-3": -28,
+    "icon_button-5": -29,
+    "list_item-3": -30,
+    "list-1": -31,
+    "heading-3": -32,
+    "text-11": -33,
+    "text-12": -34,
+    "button-1": -35,
+    "card-2": -36,
+    "text-13": -37,
+    "text-14": -38,
+    "text-15": -39,
+    "text-16": -40,
+    "bottom_nav-1": -41,
+    "screen-1": -42
+  }
+}

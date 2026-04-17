@@ -1,0 +1,1 @@
+an onboarding carousel with 3 slides, each with an illustration, headline, and subtext
