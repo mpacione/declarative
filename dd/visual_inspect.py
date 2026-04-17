@@ -75,6 +75,11 @@ class RuleBasedScore:
     visible_ratio: float
     verdict: Verdict
     had_render_errors: bool
+    # ADR-008 v0.1.5 Step 4 — structural density. Cheap observability
+    # that's independent of the VLM judgement and mirrors the matrix
+    # measures so 00g results cross-reference cleanly.
+    total_node_count: int = 0
+    container_coverage: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,7 +92,46 @@ class RuleBasedScore:
             "visible_ratio": round(self.visible_ratio, 4),
             "verdict": self.verdict,
             "had_render_errors": self.had_render_errors,
+            "total_node_count": self.total_node_count,
+            "container_coverage": self.container_coverage,
         }
+
+
+# Container types whose presence in the walk counts toward the
+# density score. Verbatim the six from the matrix + ``tabs`` (not in
+# the matrix container set because the LLM rarely emits it flat, but
+# it IS in the catalog's "Container types" declaration).
+_WALK_CONTAINER_PREFIXES: frozenset[str] = frozenset({
+    "list",
+    "button_group",
+    "pagination",
+    "toggle_group",
+    "header",
+    "table",
+    "tabs",
+})
+
+
+def _eid_type_prefix(eid: str) -> str:
+    """Extract the catalog-type stem from an eid like ``list_item-4``."""
+    # eids are ``{type}-{index}`` where type may itself contain hyphens
+    # (e.g. "drawer-nav-1" — not emitted in current pipeline but guard
+    # for future-compat). Strip only the trailing -N run.
+    import re as _re
+    match = _re.match(r"^(.*?)-\d+$", eid)
+    return match.group(1) if match else eid
+
+
+def _container_coverage_from_walk(eid_map: dict[str, Any]) -> int:
+    """Distinct container types among the walk's non-screen eids."""
+    distinct: set[str] = set()
+    for eid in eid_map.keys():
+        if eid.startswith("screen-"):
+            continue
+        prefix = _eid_type_prefix(eid)
+        if prefix in _WALK_CONTAINER_PREFIXES:
+            distinct.add(prefix)
+    return len(distinct)
 
 
 @dataclass(frozen=True)
@@ -246,6 +290,8 @@ def inspect_walk(walk: dict[str, Any]) -> RuleBasedScore:
 
     verdict = _classify(default_frame_ratio, visible_ratio, total_nodes, had_errors)
 
+    container_coverage = _container_coverage_from_walk(eid_map)
+
     return RuleBasedScore(
         total_content_nodes=total_content,
         total_text_nodes=total_text,
@@ -256,6 +302,8 @@ def inspect_walk(walk: dict[str, Any]) -> RuleBasedScore:
         visible_ratio=visible_ratio,
         verdict=verdict,
         had_render_errors=had_errors,
+        total_node_count=total_nodes,
+        container_coverage=container_coverage,
     )
 
 
@@ -478,8 +526,11 @@ def render_memo_fragment(report: SanityReport, experiment_dir: Path) -> str:
             "regresses this rate below 50%."
         )
         lines.append("")
-    lines.append("| slug | verdict | default_frame_ratio | visible_ratio | vlm |")
-    lines.append("|---|---|---|---|---|")
+    lines.append(
+        "| slug | verdict | nodes | containers | default_frame_ratio | "
+        "visible_ratio | vlm |"
+    )
+    lines.append("|---|---|---|---|---|---|---|")
     for slug in sorted(report.per_prompt):
         e = report.per_prompt[slug]
         rule = e.get("rule") or {}
@@ -487,6 +538,8 @@ def render_memo_fragment(report: SanityReport, experiment_dir: Path) -> str:
         vlm_cell = f"{vlm['verdict']} ({vlm['score']})" if vlm else "—"
         lines.append(
             f"| {slug} | {e['verdict']} | "
+            f"{rule.get('total_node_count', 0)} | "
+            f"{rule.get('container_coverage', 0)} | "
             f"{rule.get('default_frame_ratio', 0):.2f} | "
             f"{rule.get('visible_ratio', 0):.2f} | {vlm_cell} |"
         )

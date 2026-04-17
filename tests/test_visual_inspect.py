@@ -226,6 +226,88 @@ class TestInspectWalkCounts:
         assert score.frames_with_visible_content >= 4
 
 
+class TestStructuralDensity:
+    """v0.1.5 Step 4 — structural-density observability.
+
+    Three cheap IR/walk-derived metrics independent of VLM judgement:
+    total_node_count, max_depth (walk-level flat; estimated by whether
+    layered container types co-exist), container_coverage.
+    """
+
+    def test_total_node_count_excludes_screen_root(self):
+        """Total node count = non-screen eids, matching the matrix
+        measure's definition for parity."""
+        from dd.visual_inspect import inspect_walk
+        score = inspect_walk(_walk_v3_like())
+        # v3_like has screen-1 + 3 text + 4 content = 7 non-screen
+        assert score.total_node_count == 7
+
+    def test_container_coverage_counts_distinct_container_prefixes(self):
+        """The score is 0-7 (list, button_group, pagination,
+        toggle_group, header, table, tabs). v3_like has 'card'
+        and 'button' and 'text_input' prefixes — NONE of which are
+        containers — so coverage is 0."""
+        from dd.visual_inspect import inspect_walk
+        score = inspect_walk(_walk_v3_like())
+        assert score.container_coverage == 0
+
+    def test_container_coverage_nonzero_when_walk_has_containers(self):
+        """A walk containing list-1, button_group-1 etc. bumps
+        coverage. Build a minimal fixture."""
+        from dd.visual_inspect import inspect_walk
+        walk = {
+            "__ok": True,
+            "errors": [],
+            "eid_map": {
+                "screen-1": {"type": "FRAME", "name": "screen-1",
+                             "width": 428, "height": 926,
+                             "fills": [{"type": "solid", "color": "#FFF"}]},
+                "header-1": {"type": "FRAME", "name": "header-1",
+                             "width": 428, "height": 64,
+                             "fills": [{"type": "solid", "color": "#EEE"}]},
+                "list-1": {"type": "FRAME", "name": "list-1",
+                           "width": 428, "height": 600,
+                           "fills": [{"type": "solid", "color": "#FFF"}]},
+                "button_group-1": {"type": "FRAME", "name": "button_group-1",
+                                   "width": 428, "height": 48,
+                                   "fills": [{"type": "solid", "color": "#FFF"}]},
+                "text-1": {"type": "TEXT", "name": "text-1",
+                           "width": 80, "height": 20,
+                           "characters": "Hello"},
+            },
+        }
+        score = inspect_walk(walk)
+        # header, list, button_group = 3 distinct container types
+        assert score.container_coverage == 3
+
+    def test_container_coverage_dedupes_multi_index_same_type(self):
+        """list-1 + list-2 counts as 1, not 2."""
+        from dd.visual_inspect import inspect_walk
+        walk = {
+            "__ok": True,
+            "errors": [],
+            "eid_map": {
+                "screen-1": {"type": "FRAME", "name": "screen-1",
+                             "width": 428, "height": 926, "fills": []},
+                "list-1": {"type": "FRAME", "name": "list-1",
+                           "width": 428, "height": 300, "fills": []},
+                "list-2": {"type": "FRAME", "name": "list-2",
+                           "width": 428, "height": 300, "fills": []},
+                "table-1": {"type": "FRAME", "name": "table-1",
+                            "width": 428, "height": 300, "fills": []},
+            },
+        }
+        score = inspect_walk(walk)
+        assert score.container_coverage == 2  # list, table
+
+    def test_to_dict_includes_new_density_fields(self):
+        from dd.visual_inspect import inspect_walk
+        score = inspect_walk(_walk_v3_like())
+        d = score.to_dict()
+        assert "total_node_count" in d
+        assert "container_coverage" in d
+
+
 class TestInspectWalkVerdict:
     """Verdicts — broken / partial / ok."""
 
