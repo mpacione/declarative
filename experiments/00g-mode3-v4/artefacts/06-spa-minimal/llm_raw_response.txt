@@ -1,0 +1,57 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {"title": "Serenity"},
+    "children": [
+      {"type": "icon_button", "component_key": "icon/back"},
+      {"type": "icon_button", "component_key": "icon/close"}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "image", "props": {"src": "spa-hero.jpg", "alt": "Spa treatment"}},
+      {"type": "heading", "props": {"text": "Signature Massage"}},
+      {"type": "text", "props": {"text": "90 minutes of pure relaxation"}}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Select Time"}},
+      {"type": "date_picker", "props": {"label": "Date & Time"}}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Therapist"}},
+      {"type": "list", "children": [
+        {"type": "list_item", "children": [
+          {"type": "avatar", "props": {"initials": "AM"}},
+          {"type": "text", "props": {"text": "Aria Mendez"}},
+          {"type": "icon", "component_key": "icon/check"}
+        ]},
+        {"type": "list_item", "children": [
+          {"type": "avatar", "props": {"initials": "JL"}},
+          {"type": "text", "props": {"text": "James Liu"}}
+        ]}
+      ]}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Price"}},
+      {"type": "text", "props": {"text": "$180"}}
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {"text": "Book Appointment"}
+  }
+]
+```

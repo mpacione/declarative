@@ -1,0 +1,64 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Title"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/share"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Heading"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "First line of body text."
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Second line of body text."
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Third line of body text."
+        }
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "props": {
+          "text": "Primary Action"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "secondary",
+    "props": {
+      "text": "Secondary Action"
+    }
+  }
+]

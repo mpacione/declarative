@@ -1,0 +1,256 @@
+```json
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {"text": "Choose Your Plan"}
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "props": {"text": "Unlock Premium Features"}
+  },
+  {
+    "type": "text",
+    "props": {"text": "Select the perfect plan for your needs"}
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Starter"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "$9/month"}
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Basic features"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Up to 10 projects"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Email support"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {"text": "Get Started"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Professional"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "$29/month"}
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Advanced features"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Unlimited projects"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Priority support"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Team collaboration"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {"text": "Subscribe Now"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {"text": "Enterprise"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Custom pricing"}
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "All features included"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Dedicated account manager"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Custom integrations"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "24/7 phone support"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {"text": "Contact Sales"}
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "avatar"
+      },
+      {
+        "type": "text",
+        "props": {"text": "\"This service transformed how we manage our projects. Highly recommended!\""}
+      },
+      {
+        "type": "text",
+        "props": {"text": "— Sarah Chen, Product Manager"}
+      }
+    ]
+  }
+]
+```

@@ -1,0 +1,59 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Sign In"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Welcome Back"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Enter your credentials to continue"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email",
+          "placeholder": "you@example.com"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Password",
+          "placeholder": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+          "type": "password"
+        }
+      },
+      {
+        "type": "link",
+        "props": {
+          "text": "Forgot password?"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "props": {
+      "text": "Sign In"
+    }
+  }
+]

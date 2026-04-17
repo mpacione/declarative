@@ -1,0 +1,94 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Profile Settings"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "avatar",
+        "props": {
+          "initials": "JD"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Profile Information"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Name",
+          "placeholder": "John Doe"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email",
+          "placeholder": "john@example.com"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Notifications"
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Push notifications",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Email digest",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Marketing emails",
+          "checked": false
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "SMS alerts",
+          "checked": false
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "props": {
+      "text": "Save Changes"
+    }
+  }
+]

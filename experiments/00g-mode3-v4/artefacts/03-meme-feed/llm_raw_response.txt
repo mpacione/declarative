@@ -1,0 +1,130 @@
+```json
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "text",
+        "props": {"text": "Memes"}
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/new"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {"initials": "JD"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "john_doe"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme1.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "When you finally understand the assignment"}
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {"initials": "SM"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "sarah_memes"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme2.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "POV: You're scrolling at 3 AM"}
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {"initials": "MC"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "meme_creator"}
+          },
+          {
+            "type": "image",
+            "props": {"src": "meme3.jpg", "alt": "Meme"}
+          },
+          {
+            "type": "text",
+            "props": {"text": "Me pretending to understand what's happening"}
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "👍 Upvote"}
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {"text": "Share"}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+```

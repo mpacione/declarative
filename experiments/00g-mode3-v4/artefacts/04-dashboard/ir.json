@@ -1,0 +1,793 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Dashboard"
+      }
+    },
+    "icon_button-1": {
+      "type": "icon_button",
+      "component_key": "icon/wallet",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "text-1",
+        "icon_button-1"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Revenue Trend"
+      }
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "alt": "Line chart showing revenue over time"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "image-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Recent Transactions"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Date"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Description"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Amount"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Status"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 15, 2024"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Payment received"
+      }
+    },
+    "text-8": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$2,500.00"
+      }
+    },
+    "text-9": {
+      "type": "text",
+      "props": {
+        "text": "Completed"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-1": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Completed"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-9"
+      ]
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-6",
+        "text-7",
+        "text-8",
+        "badge-1"
+      ]
+    },
+    "text-10": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 14, 2024"
+      }
+    },
+    "text-11": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Invoice #1024"
+      }
+    },
+    "text-12": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$1,800.00"
+      }
+    },
+    "text-13": {
+      "type": "text",
+      "props": {
+        "text": "Completed"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-2": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Completed"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-13"
+      ]
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-10",
+        "text-11",
+        "text-12",
+        "badge-2"
+      ]
+    },
+    "text-14": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 13, 2024"
+      }
+    },
+    "text-15": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Refund issued"
+      }
+    },
+    "text-16": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "-$450.00"
+      }
+    },
+    "text-17": {
+      "type": "text",
+      "props": {
+        "text": "Processed"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-3": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Processed"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-17"
+      ]
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-14",
+        "text-15",
+        "text-16",
+        "badge-3"
+      ]
+    },
+    "text-18": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 12, 2024"
+      }
+    },
+    "text-19": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Subscription renewal"
+      }
+    },
+    "text-20": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$99.00"
+      }
+    },
+    "text-21": {
+      "type": "text",
+      "props": {
+        "text": "Completed"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-4": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Completed"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-21"
+      ]
+    },
+    "list_item-4": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-18",
+        "text-19",
+        "text-20",
+        "badge-4"
+      ]
+    },
+    "text-22": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 11, 2024"
+      }
+    },
+    "text-23": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Payment received"
+      }
+    },
+    "text-24": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$3,200.00"
+      }
+    },
+    "text-25": {
+      "type": "text",
+      "props": {
+        "text": "Completed"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-5": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.badge.padding_x}",
+          "y": "{space.badge.padding_y}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Completed"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-25"
+      ]
+    },
+    "list_item-5": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-22",
+        "text-23",
+        "text-24",
+        "badge-5"
+      ]
+    },
+    "table-1": {
+      "type": "table",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-2",
+        "text-3",
+        "text-4",
+        "text-5",
+        "list_item-1",
+        "list_item-2",
+        "list_item-3",
+        "list_item-4",
+        "list_item-5"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-2",
+        "table-1"
+      ]
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "View All Transactions"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2",
+        "button-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "typography.header.fontSize": 17,
+    "typography.header.fontWeight": 600,
+    "typography.caption.fontSize": 12,
+    "typography.caption.fontWeight": 400,
+    "typography.badge.fontSize": 12,
+    "typography.badge.fontWeight": 600,
+    "typography.avatar.fontSize": 14,
+    "typography.avatar.fontWeight": 600,
+    "color.text.default": "#0F172A",
+    "color.text.heading": "#020617",
+    "color.text.caption": "#475569",
+    "color.text.link": "#2563EB",
+    "color.text.on_tooltip": "#FFFFFF",
+    "color.text.on_primary": "#F8FAFC",
+    "color.text.on_destructive": "#FFFFFF",
+    "color.surface.header": "#FFFFFF",
+    "color.surface.header_border": "#E2E8F0",
+    "color.surface.drawer": "#FFFFFF",
+    "color.surface.drawer_border": "#E2E8F0",
+    "color.surface.menu": "#FFFFFF",
+    "color.surface.menu_border": "#E2E8F0",
+    "color.surface.popover": "#FFFFFF",
+    "color.surface.popover_border": "#E2E8F0",
+    "color.surface.tooltip": "#0F172A",
+    "color.surface.badge": "#F1F5F9",
+    "color.surface.image_placeholder": "#E2E8F0",
+    "color.avatar.fill": "#E2E8F0",
+    "color.avatar.fg": "#334155",
+    "color.status.success.bg": "#22C55E",
+    "color.status.success.fg": "#FFFFFF",
+    "color.status.warning.bg": "#F59E0B",
+    "color.status.warning.fg": "#FFFFFF",
+    "color.status.info.bg": "#3B82F6",
+    "color.status.info.fg": "#FFFFFF",
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "space.header.padding_x": 16,
+    "space.header.padding_y": 12,
+    "space.header.gap": 8,
+    "space.drawer.padding_x": 16,
+    "space.drawer.padding_y": 24,
+    "space.drawer.gap": 4,
+    "space.menu.padding_x": 8,
+    "space.menu.padding_y": 8,
+    "space.menu.gap": 2,
+    "space.popover.padding_x": 16,
+    "space.popover.padding_y": 16,
+    "space.popover.gap": 8,
+    "space.tooltip.padding_x": 8,
+    "space.tooltip.padding_y": 4,
+    "space.badge.padding_x": 8,
+    "space.badge.padding_y": 4,
+    "space.badge.gap": 4,
+    "radius.badge": 999,
+    "radius.menu": 8,
+    "radius.popover": 8,
+    "radius.tooltip": 6,
+    "radius.image": 8,
+    "shadow.card": 0,
+    "shadow.dialog": 0,
+    "shadow.menu": 0,
+    "shadow.popover": 0
+  },
+  "_node_id_map": {
+    "text-1": -1,
+    "icon_button-1": -2,
+    "header-1": -3,
+    "heading-1": -4,
+    "image-1": -5,
+    "card-1": -6,
+    "heading-2": -7,
+    "text-2": -8,
+    "text-3": -9,
+    "text-4": -10,
+    "text-5": -11,
+    "text-6": -12,
+    "text-7": -13,
+    "text-8": -14,
+    "text-9": -15,
+    "badge-1": -16,
+    "list_item-1": -17,
+    "text-10": -18,
+    "text-11": -19,
+    "text-12": -20,
+    "text-13": -21,
+    "badge-2": -22,
+    "list_item-2": -23,
+    "text-14": -24,
+    "text-15": -25,
+    "text-16": -26,
+    "text-17": -27,
+    "badge-3": -28,
+    "list_item-3": -29,
+    "text-18": -30,
+    "text-19": -31,
+    "text-20": -32,
+    "text-21": -33,
+    "badge-4": -34,
+    "list_item-4": -35,
+    "text-22": -36,
+    "text-23": -37,
+    "text-24": -38,
+    "text-25": -39,
+    "badge-5": -40,
+    "list_item-5": -41,
+    "table-1": -42,
+    "card-2": -43,
+    "button-1": -44,
+    "screen-1": -45
+  }
+}

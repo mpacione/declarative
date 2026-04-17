@@ -1,0 +1,53 @@
+```json
+[
+  {
+    "type": "header",
+    "props": {"title": "Discover"},
+    "children": [
+      {"type": "icon_button", "component_key": "icon/back"}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Featured"}},
+      {"type": "image", "props": {"src": "https://via.placeholder.com/400x200", "alt": "Featured content"}}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Trending Now"}},
+      {"type": "list", "children": [
+        {"type": "list_item", "children": [
+          {"type": "text", "props": {"text": "Neural Networks"}},
+          {"type": "badge", "props": {"text": "Hot"}}
+        ]},
+        {"type": "list_item", "children": [
+          {"type": "text", "props": {"text": "Web3 Design Patterns"}},
+          {"type": "badge", "props": {"text": "New"}}
+        ]},
+        {"type": "list_item", "children": [
+          {"type": "text", "props": {"text": "Motion Design Tips"}},
+          {"type": "badge", "props": {"text": "Popular"}}
+        ]}
+      ]}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Quick Actions"}},
+      {"type": "button_group", "children": [
+        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Explore"}},
+        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Save"}}
+      ]}
+    ]
+  },
+  {
+    "type": "fab",
+    "props": {"text": "Create"},
+    "component_key": "icon/new"
+  }
+]
+```

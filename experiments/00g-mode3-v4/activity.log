@@ -1,0 +1,38 @@
+2026-04-17T06:43:59+00:00 | _ | setup | ok | base_system_chars=4781
+2026-04-17T06:43:59+00:00 | 01-login | parse | start | archetype=login
+2026-04-17T06:44:01+00:00 | 01-login | parse | ok | components=3 total_nodes=9 container_cov=1
+2026-04-17T06:44:01+00:00 | 01-login | compose | ok | elements=16
+2026-04-17T06:44:01+00:00 | 02-profile-settings | parse | start | archetype=settings
+2026-04-17T06:44:03+00:00 | 02-profile-settings | parse | ok | components=4 total_nodes=15 container_cov=1
+2026-04-17T06:44:03+00:00 | 02-profile-settings | compose | ok | elements=25
+2026-04-17T06:44:03+00:00 | 03-meme-feed | parse | start | archetype=feed
+2026-04-17T06:44:08+00:00 | 03-meme-feed | parse | ok | components=2 total_nodes=28 container_cov=3
+2026-04-17T06:44:08+00:00 | 03-meme-feed | compose | ok | elements=29
+2026-04-17T06:44:08+00:00 | 04-dashboard | parse | start | archetype=dashboard
+2026-04-17T06:44:13+00:00 | 04-dashboard | parse | ok | components=4 total_nodes=39 container_cov=2
+2026-04-17T06:44:13+00:00 | 04-dashboard | compose | ok | elements=45
+2026-04-17T06:44:13+00:00 | 05-paywall | parse | start | archetype=paywall
+2026-04-17T06:44:20+00:00 | 05-paywall | parse | ok | components=7 total_nodes=57 container_cov=2
+2026-04-17T06:44:20+00:00 | 05-paywall | compose | ok | elements=58
+2026-04-17T06:44:22+00:00 | 06-spa-minimal | parse | start | archetype=None
+2026-04-17T06:44:25+00:00 | 06-spa-minimal | parse | ok | components=6 total_nodes=24 container_cov=2
+2026-04-17T06:44:25+00:00 | 06-spa-minimal | compose | ok | elements=25
+2026-04-17T06:44:25+00:00 | 07-search | parse | start | archetype=search
+2026-04-17T06:44:29+00:00 | 07-search | parse | ok | components=3 total_nodes=26 container_cov=2
+2026-04-17T06:44:29+00:00 | 07-search | compose | ok | elements=27
+2026-04-17T06:44:29+00:00 | 08-explicit-structure | parse | start | archetype=detail
+2026-04-17T06:44:33+00:00 | 08-explicit-structure | parse | ok | components=3 total_nodes=11 container_cov=1
+2026-04-17T06:44:33+00:00 | 08-explicit-structure | compose | ok | elements=14
+2026-04-17T06:44:33+00:00 | 09-drawer-nav | parse | start | archetype=drawer-nav
+2026-04-17T06:44:36+00:00 | 09-drawer-nav | parse | ok | components=1 total_nodes=22 container_cov=2
+2026-04-17T06:44:36+00:00 | 09-drawer-nav | compose | ok | elements=23
+2026-04-17T06:44:36+00:00 | 10-onboarding-carousel | parse | start | archetype=onboarding-carousel
+2026-04-17T06:44:39+00:00 | 10-onboarding-carousel | parse | ok | components=7 total_nodes=20 container_cov=2
+2026-04-17T06:44:39+00:00 | 10-onboarding-carousel | compose | ok | elements=26
+2026-04-17T06:44:41+00:00 | 11-vague | parse | start | archetype=None
+2026-04-17T06:44:44+00:00 | 11-vague | parse | ok | components=5 total_nodes=23 container_cov=3
+2026-04-17T06:44:44+00:00 | 11-vague | compose | ok | elements=27
+2026-04-17T06:44:47+00:00 | 12-round-trip-test | parse | start | archetype=None
+2026-04-17T06:44:51+00:00 | 12-round-trip-test | parse | ok | components=7 total_nodes=29 container_cov=1
+2026-04-17T06:44:51+00:00 | 12-round-trip-test | compose | ok | elements=34
+2026-04-17T06:44:51+00:00 | _ | done | ok | matched=9 unmatched=3 refused=0 elapsed=52.5s

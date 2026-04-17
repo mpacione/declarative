@@ -1,0 +1,101 @@
+```json
+[
+  {
+    "type": "drawer",
+    "children": [
+      {
+        "type": "header",
+        "children": [
+          {
+            "type": "icon_button",
+            "component_key": "icon/close"
+          }
+        ]
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/wallet"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Home"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/new"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Create"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Tasks"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/font"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Messages"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/delete"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Archive"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/chevron-down"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Settings"}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+```

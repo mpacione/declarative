@@ -1,0 +1,11 @@
+{
+  "total_node_count": 22,
+  "top_level_count": 1,
+  "max_depth": 4,
+  "container_coverage": 2,
+  "component_key_rate": 0.3181818181818182,
+  "variant_rate": 0.0,
+  "json_valid": 1,
+  "empty_output": 0,
+  "clarification_refusal": 0
+}

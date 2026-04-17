@@ -1,0 +1,127 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "search_input",
+        "props": {
+          "placeholder": "Search"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "tabs",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "All"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "People"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Places"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Posts"
+        }
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Sarah Johnson"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Design Conference 2024"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "New Product Launch"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Team Meeting Notes"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      }
+    ]
+  }
+]

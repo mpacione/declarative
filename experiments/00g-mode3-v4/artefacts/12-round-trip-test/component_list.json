@@ -1,0 +1,177 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "iPhone 13 Pro Max"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Device Information"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Model: iPhone 13 Pro Max"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Storage: 256GB"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Color: Sierra Blue"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Display"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "6.7-inch Super Retina XDR"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Resolution: 2796 x 1290 pixels"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "120Hz ProMotion"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Camera System"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Rear: 12MP Wide, Ultra Wide, Telephoto"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Front: 12MP TrueDepth"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Night Mode, ProRAW, ProRes Video"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Performance"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Chip: A15 Bionic"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "RAM: 6GB"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Battery: 4373 mAh"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Features"
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "5G Support",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "Face ID",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "IP68 Water Resistance",
+          "checked": true
+        }
+      },
+      {
+        "type": "toggle",
+        "props": {
+          "label": "MagSafe",
+          "checked": true
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "View Full Specs"
+    }
+  }
+]
