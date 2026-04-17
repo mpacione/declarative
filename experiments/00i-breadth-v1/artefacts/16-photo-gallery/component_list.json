@@ -1,0 +1,108 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Gallery"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail1.jpg",
+                  "alt": "Photo 1"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail2.jpg",
+                  "alt": "Photo 2"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail3.jpg",
+                  "alt": "Photo 3"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail4.jpg",
+                  "alt": "Photo 4"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail5.jpg",
+                  "alt": "Photo 5"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "thumbnail6.jpg",
+                  "alt": "Photo 6"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "fab",
+    "props": {
+      "label": "Add photo"
+    },
+    "children": [
+      {
+        "type": "icon",
+        "component_key": "icon/new"
+      }
+    ]
+  }
+]

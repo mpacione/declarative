@@ -1,0 +1,96 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Create Account"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Step 1 of 3: Personal Information"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Tell us about yourself"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text_input",
+        "props": {
+          "label": "First Name",
+          "placeholder": "Enter your first name"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Last Name",
+          "placeholder": "Enter your last name"
+        }
+      },
+      {
+        "type": "date_picker",
+        "props": {
+          "label": "Date of Birth"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Progress"
+        }
+      },
+      {
+        "type": "slider",
+        "props": {
+          "value": 33,
+          "disabled": true
+        }
+      }
+    ]
+  },
+  {
+    "type": "button_group",
+    "children": [
+      {
+        "type": "button",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Back"
+        }
+      },
+      {
+        "type": "button",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Next"
+        }
+      }
+    ]
+  }
+]

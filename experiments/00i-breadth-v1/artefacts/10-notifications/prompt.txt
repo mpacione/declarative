@@ -1,0 +1,1 @@
+a notification center with grouped alerts each showing icon, title, and timestamp

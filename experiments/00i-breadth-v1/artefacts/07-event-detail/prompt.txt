@@ -1,0 +1,1 @@
+an event detail page with title, date, location, description, attendees, and RSVP buttons

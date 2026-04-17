@@ -1,0 +1,308 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:48708",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 396,
+      "height": 104,
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "INSTANCE",
+      "name": "button-2",
+      "width": 95,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 96,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 396,
+      "height": 159,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "slider-1": {
+      "type": "FRAME",
+      "name": "slider-1",
+      "width": 364,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 364,
+      "height": 15,
+      "characters": "Progress",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 276,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "date_picker-1": {
+      "type": "FRAME",
+      "name": "date_picker-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "text_input-2": {
+      "type": "FRAME",
+      "name": "text_input-2",
+      "width": 364,
+      "height": 60,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 340,
+      "height": 17,
+      "characters": "Enter your last name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 340,
+      "height": 17,
+      "characters": "Last Name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text_input-1": {
+      "type": "FRAME",
+      "name": "text_input-1",
+      "width": 364,
+      "height": 60,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 340,
+      "height": 17,
+      "characters": "Enter your first name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 340,
+      "height": 17,
+      "characters": "First Name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 74,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 364,
+      "height": 15,
+      "characters": "Tell us about yourself",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Step 1 of 3: Personal Information",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Create Account",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

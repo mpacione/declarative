@@ -1,0 +1,183 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Video Player"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Video thumbnail"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "slider",
+        "props": {
+          "label": "Progress",
+          "min": 0,
+          "max": 100,
+          "value": 45
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "2:15 / 5:00"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "button_group",
+        "children": [
+          {
+            "type": "icon_button",
+            "component_key": "icon/back"
+          },
+          {
+            "type": "fab",
+            "props": {
+              "label": "Play"
+            }
+          },
+          {
+            "type": "icon_button",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Video Title"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Channel Name"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "1.2M views \u2022 2 days ago"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Related Videos"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "alt": "Related video 1"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Related Video Title 1"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "alt": "Related video 2"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Related Video Title 2"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "alt": "Related video 3"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Related Video Title 3"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "alt": "Related video 4"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Related Video Title 4"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

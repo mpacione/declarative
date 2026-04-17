@@ -1,0 +1,1 @@
+a filter panel with category checkboxes, price range slider, and a clear filters button

@@ -1,0 +1,384 @@
+{
+  "experiment": "00i-breadth-v1",
+  "aggregate": {
+    "mean_render_fidelity": 0.7225,
+    "mean_prompt_fidelity": 0.6682,
+    "vlm_ok": 0,
+    "vlm_partial": 0,
+    "vlm_broken": 0,
+    "n_prompts": 20
+  },
+  "per_prompt": {
+    "01-shopping-cart": {
+      "slug": "01-shopping-cart",
+      "archetype": "none",
+      "component_count": 4,
+      "prompt_fidelity": 1.0,
+      "render_fidelity": 0.8667,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "image": 1.0,
+        "card": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "02-product-detail": {
+      "slug": "02-product-detail",
+      "archetype": "detail",
+      "component_count": 7,
+      "prompt_fidelity": 0.8333,
+      "render_fidelity": 0.8333,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "image": 1.0,
+        "button": 0.75,
+        "card": 1.0,
+        "badge": 1.0,
+        "list_item": 1.0,
+        "list": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "03-pricing-compare": {
+      "slug": "03-pricing-compare",
+      "archetype": "paywall",
+      "component_count": 6,
+      "prompt_fidelity": 0.8333,
+      "render_fidelity": 0.3077,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "icon": 0.0,
+        "card": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "partial"
+    },
+    "04-chat-thread": {
+      "slug": "04-chat-thread",
+      "archetype": "chat",
+      "component_count": 3,
+      "prompt_fidelity": 0.7826,
+      "render_fidelity": 0.75,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "text_input": 1.0,
+        "card": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "05-contact-list": {
+      "slug": "05-contact-list",
+      "archetype": "chat",
+      "component_count": 3,
+      "prompt_fidelity": 0.8696,
+      "render_fidelity": 0.92,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "search_input": 1.0,
+        "avatar": 1.0,
+        "card": 1.0,
+        "badge": 1.0,
+        "list_item": 1.0,
+        "list": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "06-calendar-day": {
+      "slug": "06-calendar-day",
+      "archetype": "none",
+      "component_count": 2,
+      "prompt_fidelity": 1.0,
+      "render_fidelity": 0.95,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "list_item": 1.0,
+        "badge": 1.0,
+        "list": 1.0,
+        "card": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "07-event-detail": {
+      "slug": "07-event-detail",
+      "archetype": "detail",
+      "component_count": 5,
+      "prompt_fidelity": 0.9167,
+      "render_fidelity": 0.6667,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "icon": 0.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "card": 1.0,
+        "avatar": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "partial"
+    },
+    "08-multi-step-form": {
+      "slug": "08-multi-step-form",
+      "archetype": "onboarding-carousel",
+      "component_count": 5,
+      "prompt_fidelity": 0.45,
+      "render_fidelity": 0.7,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "card": 1.0,
+        "text_input": 1.0,
+        "slider": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "09-filter-panel": {
+      "slug": "09-filter-panel",
+      "archetype": "search",
+      "component_count": 4,
+      "prompt_fidelity": 0.12,
+      "render_fidelity": 0.8182,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "checkbox": 1.0,
+        "card": 1.0,
+        "slider": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "10-notifications": {
+      "slug": "10-notifications",
+      "archetype": "feed",
+      "component_count": 4,
+      "prompt_fidelity": 0.4643,
+      "render_fidelity": 0.65,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "icon": 0.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "card": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "11-activity-history": {
+      "slug": "11-activity-history",
+      "archetype": "feed",
+      "component_count": 4,
+      "prompt_fidelity": 0.4643,
+      "render_fidelity": 0.6364,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "icon": 0.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "card": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "12-signup-form": {
+      "slug": "12-signup-form",
+      "archetype": "onboarding-carousel",
+      "component_count": 5,
+      "prompt_fidelity": 0.3,
+      "render_fidelity": 0.8889,
+      "render_by_type": {
+        "header": 1.0,
+        "text_input": 1.0,
+        "checkbox": 1.0,
+        "card": 1.0,
+        "button": 1.0,
+        "link": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "broken"
+    },
+    "13-password-reset": {
+      "slug": "13-password-reset",
+      "archetype": "login",
+      "component_count": 4,
+      "prompt_fidelity": 0.8182,
+      "render_fidelity": 0.6667,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "text_input": 1.0,
+        "card": 1.0,
+        "button": 1.0,
+        "link": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "broken"
+    },
+    "14-2fa-verify": {
+      "slug": "14-2fa-verify",
+      "archetype": "login",
+      "component_count": 3,
+      "prompt_fidelity": 0.8182,
+      "render_fidelity": 0.6667,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "text_input": 1.0,
+        "link": 0.0,
+        "card": 1.0,
+        "button": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "broken"
+    },
+    "15-video-player": {
+      "slug": "15-video-player",
+      "archetype": "detail",
+      "component_count": 6,
+      "prompt_fidelity": 0.7917,
+      "render_fidelity": 0.8095,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "image": 1.0,
+        "card": 1.0,
+        "slider": 1.0,
+        "list_item": 1.0,
+        "list": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "16-photo-gallery": {
+      "slug": "16-photo-gallery",
+      "archetype": "none",
+      "component_count": 3,
+      "prompt_fidelity": 1.0,
+      "render_fidelity": 0.8824,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "image": 1.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "card": 1.0,
+        "icon": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "17-map-screen": {
+      "slug": "17-map-screen",
+      "archetype": "search",
+      "component_count": 3,
+      "prompt_fidelity": 0.64,
+      "render_fidelity": 0.7333,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "search_input": 1.0,
+        "header": 1.0,
+        "image": 1.0,
+        "avatar": 1.0,
+        "icon": 0.0,
+        "list_item": 1.0,
+        "list": 1.0,
+        "card": 1.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "18-error-state": {
+      "slug": "18-error-state",
+      "archetype": "chat",
+      "component_count": 3,
+      "prompt_fidelity": 0.1739,
+      "render_fidelity": 0.6,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "image": 1.0,
+        "card": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "ok"
+    },
+    "19-success-confirm": {
+      "slug": "19-success-confirm",
+      "archetype": "chat",
+      "component_count": 2,
+      "prompt_fidelity": 0.087,
+      "render_fidelity": 0.3333,
+      "render_by_type": {
+        "icon": 0.0,
+        "card": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "partial"
+    },
+    "20-file-upload": {
+      "slug": "20-file-upload",
+      "archetype": "none",
+      "component_count": 4,
+      "prompt_fidelity": 1.0,
+      "render_fidelity": 0.7692,
+      "render_by_type": {
+        "icon_button": 0.0,
+        "header": 1.0,
+        "card": 1.0,
+        "slider": 1.0,
+        "list_item": 1.0,
+        "icon": 0.0,
+        "list": 1.0,
+        "button": 0.0
+      },
+      "vlm_verdict": "unknown",
+      "vlm_score": 0,
+      "combined_verdict": "partial"
+    }
+  }
+}

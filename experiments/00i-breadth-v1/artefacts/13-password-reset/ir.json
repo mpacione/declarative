@@ -1,0 +1,434 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "component_key": "icon/back",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Reset Password"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
+      },
+      "children": [
+        "icon_button-1",
+        "text-1"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Forgot your password?"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Enter your email address and we'll send you a link to reset your password."
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "props": {
+        "text": "Email address"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "you@example.com"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "input",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text_input-1": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug",
+          "heightPixels": 48
+        },
+        "padding": {
+          "top": "{space.input.padding_y}",
+          "bottom": "{space.input.padding_y}",
+          "left": "{space.input.padding_x}",
+          "right": "{space.input.padding_x}"
+        },
+        "gap": "{space.input.gap}"
+      },
+      "props": {
+        "label": "Email address",
+        "placeholder": "you@example.com"
+      },
+      "style": {
+        "fill": "{color.input.bg}",
+        "stroke": "{color.input.border}",
+        "radius": "{radius.input}"
+      },
+      "children": [
+        "text-3",
+        "text-4"
+      ]
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
+      },
+      "children": [
+        "heading-1",
+        "text-2",
+        "text_input-1"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "Send Reset Link"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": "primary",
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.primary.fg}"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "top": "{space.button.padding_y}",
+          "bottom": "{space.button.padding_y}",
+          "left": "{space.button.padding_x}",
+          "right": "{space.button.padding_x}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Send Reset Link"
+      },
+      "style": {
+        "fill": "{color.action.primary.bg}",
+        "fg": "{color.action.primary.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-5"
+      ]
+    },
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "Back to login"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "link",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}",
+        "fill": "{color.text.link}"
+      }
+    },
+    "link-1": {
+      "type": "link",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Back to login"
+      },
+      "style": {
+        "fill": null,
+        "fg": "{color.text.link}"
+      },
+      "children": [
+        "text-6"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "button-1",
+        "link-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "typography.header.fontSize": 17,
+    "typography.header.fontWeight": 600,
+    "typography.caption.fontSize": 12,
+    "typography.caption.fontWeight": 400,
+    "typography.badge.fontSize": 12,
+    "typography.badge.fontWeight": 600,
+    "typography.avatar.fontSize": 14,
+    "typography.avatar.fontWeight": 600,
+    "color.text.default": "#0F172A",
+    "color.text.heading": "#020617",
+    "color.text.caption": "#475569",
+    "color.text.link": "#2563EB",
+    "color.text.on_tooltip": "#FFFFFF",
+    "color.text.on_primary": "#F8FAFC",
+    "color.text.on_destructive": "#FFFFFF",
+    "color.surface.header": "#FFFFFF",
+    "color.surface.header_border": "#E2E8F0",
+    "color.surface.drawer": "#FFFFFF",
+    "color.surface.drawer_border": "#E2E8F0",
+    "color.surface.menu": "#FFFFFF",
+    "color.surface.menu_border": "#E2E8F0",
+    "color.surface.popover": "#FFFFFF",
+    "color.surface.popover_border": "#E2E8F0",
+    "color.surface.tooltip": "#0F172A",
+    "color.surface.badge": "#F1F5F9",
+    "color.surface.image_placeholder": "#E2E8F0",
+    "color.avatar.fill": "#E2E8F0",
+    "color.avatar.fg": "#334155",
+    "color.status.success.bg": "#22C55E",
+    "color.status.success.fg": "#FFFFFF",
+    "color.status.warning.bg": "#F59E0B",
+    "color.status.warning.fg": "#FFFFFF",
+    "color.status.info.bg": "#3B82F6",
+    "color.status.info.fg": "#FFFFFF",
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "space.header.padding_x": 16,
+    "space.header.padding_y": 12,
+    "space.header.gap": 8,
+    "space.drawer.padding_x": 16,
+    "space.drawer.padding_y": 24,
+    "space.drawer.gap": 4,
+    "space.menu.padding_x": 8,
+    "space.menu.padding_y": 8,
+    "space.menu.gap": 2,
+    "space.popover.padding_x": 16,
+    "space.popover.padding_y": 16,
+    "space.popover.gap": 8,
+    "space.tooltip.padding_x": 8,
+    "space.tooltip.padding_y": 4,
+    "space.badge.padding_x": 8,
+    "space.badge.padding_y": 4,
+    "space.badge.gap": 4,
+    "radius.badge": 999,
+    "radius.menu": 8,
+    "radius.popover": 8,
+    "radius.tooltip": 6,
+    "radius.image": 8,
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "text-1": -2,
+    "header-1": -3,
+    "heading-1": -4,
+    "text-2": -5,
+    "text-3": -6,
+    "text-4": -7,
+    "text_input-1": -8,
+    "card-1": -9,
+    "text-5": -10,
+    "button-1": -11,
+    "text-6": -12,
+    "link-1": -13,
+    "screen-1": -14
+  }
+}

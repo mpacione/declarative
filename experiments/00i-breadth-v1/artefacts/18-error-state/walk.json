@@ -1,0 +1,121 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:49275",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 396,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 201,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 30,
+      "characters": "We apologize for the inconvenience. Please try again or contact support if the problem persists.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Something went wrong",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 364,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

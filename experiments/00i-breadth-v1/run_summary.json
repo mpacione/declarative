@@ -1,0 +1,382 @@
+[
+  {
+    "slug": "01-shopping-cart",
+    "prompt": "a shopping cart with 3 items showing product image, name, price, quantity selector, and a checkout button",
+    "prompt_to_figma_latency_s": 6.7,
+    "archetype": "none",
+    "component_count": 4,
+    "element_count": 28,
+    "warnings": 27,
+    "render": {
+      "status": "ok",
+      "latency_ms": 145,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 142,
+      "eid_count": 28
+    }
+  },
+  {
+    "slug": "02-product-detail",
+    "prompt": "an e-commerce product detail page with image gallery, title, price, size selector, add to cart button, and reviews",
+    "prompt_to_figma_latency_s": 5.72,
+    "archetype": "detail",
+    "component_count": 7,
+    "element_count": 42,
+    "warnings": 37,
+    "render": {
+      "status": "ok",
+      "latency_ms": 176,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 191,
+      "eid_count": 42
+    }
+  },
+  {
+    "slug": "03-pricing-compare",
+    "prompt": "a pricing comparison table with 4 columns (Free, Pro, Team, Enterprise) and feature rows",
+    "prompt_to_figma_latency_s": 7.41,
+    "archetype": "paywall",
+    "component_count": 6,
+    "element_count": 55,
+    "warnings": 54,
+    "render": {
+      "status": "ok",
+      "latency_ms": 198,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 202,
+      "eid_count": 55
+    }
+  },
+  {
+    "slug": "04-chat-thread",
+    "prompt": "a chat conversation with message bubbles alternating between me and a contact, plus a composer at the bottom",
+    "prompt_to_figma_latency_s": 2.94,
+    "archetype": "chat",
+    "component_count": 3,
+    "element_count": 20,
+    "warnings": 18,
+    "render": {
+      "status": "ok",
+      "latency_ms": 285,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 120,
+      "eid_count": 20
+    }
+  },
+  {
+    "slug": "05-contact-list",
+    "prompt": "a contact list with avatars, names, last seen time, and an online status indicator",
+    "prompt_to_figma_latency_s": 4.6,
+    "archetype": "chat",
+    "component_count": 3,
+    "element_count": 42,
+    "warnings": 35,
+    "render": {
+      "status": "ok",
+      "latency_ms": 202,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 184,
+      "eid_count": 42
+    }
+  },
+  {
+    "slug": "06-calendar-day",
+    "prompt": "a calendar day view with hourly time slots and 3 colored event blocks",
+    "prompt_to_figma_latency_s": 5.21,
+    "archetype": "none",
+    "component_count": 2,
+    "element_count": 37,
+    "warnings": 30,
+    "render": {
+      "status": "ok",
+      "latency_ms": 170,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 148,
+      "eid_count": 37
+    }
+  },
+  {
+    "slug": "07-event-detail",
+    "prompt": "an event detail page with title, date, location, description, attendees, and RSVP buttons",
+    "prompt_to_figma_latency_s": 5.3,
+    "archetype": "detail",
+    "component_count": 5,
+    "element_count": 34,
+    "warnings": 33,
+    "render": {
+      "status": "ok",
+      "latency_ms": 311,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 166,
+      "eid_count": 34
+    }
+  },
+  {
+    "slug": "08-multi-step-form",
+    "prompt": "a multi-step signup form with progress indicator, current step fields, and next and back buttons",
+    "prompt_to_figma_latency_s": 3.71,
+    "archetype": "onboarding-carousel",
+    "component_count": 5,
+    "element_count": 21,
+    "warnings": 16,
+    "render": {
+      "status": "ok",
+      "latency_ms": 153,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 126,
+      "eid_count": 21
+    }
+  },
+  {
+    "slug": "09-filter-panel",
+    "prompt": "a filter panel with category checkboxes, price range slider, and a clear filters button",
+    "prompt_to_figma_latency_s": 3.33,
+    "archetype": "search",
+    "component_count": 4,
+    "element_count": 20,
+    "warnings": 13,
+    "render": {
+      "status": "ok",
+      "latency_ms": 127,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 115,
+      "eid_count": 20
+    }
+  },
+  {
+    "slug": "10-notifications",
+    "prompt": "a notification center with grouped alerts each showing icon, title, and timestamp",
+    "prompt_to_figma_latency_s": 5.89,
+    "archetype": "feed",
+    "component_count": 4,
+    "element_count": 37,
+    "warnings": 36,
+    "render": {
+      "status": "ok",
+      "latency_ms": 184,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 168,
+      "eid_count": 37
+    }
+  },
+  {
+    "slug": "11-activity-history",
+    "prompt": "an activity history list grouped by date, each activity showing icon, description, and time",
+    "prompt_to_figma_latency_s": 5.27,
+    "archetype": "feed",
+    "component_count": 4,
+    "element_count": 40,
+    "warnings": 39,
+    "render": {
+      "status": "ok",
+      "latency_ms": 174,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 160,
+      "eid_count": 40
+    }
+  },
+  {
+    "slug": "12-signup-form",
+    "prompt": "a signup form with name, email, password, confirm password, and terms checkbox",
+    "prompt_to_figma_latency_s": 3.34,
+    "archetype": "onboarding-carousel",
+    "component_count": 5,
+    "element_count": 23,
+    "warnings": 11,
+    "render": {
+      "status": "ok",
+      "latency_ms": 230,
+      "errors_count": 1
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 113,
+      "eid_count": 13
+    }
+  },
+  {
+    "slug": "13-password-reset",
+    "prompt": "a password reset screen with email input and a send reset link button",
+    "prompt_to_figma_latency_s": 3.95,
+    "archetype": "login",
+    "component_count": 4,
+    "element_count": 14,
+    "warnings": 9,
+    "render": {
+      "status": "ok",
+      "latency_ms": 112,
+      "errors_count": 1
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 97,
+      "eid_count": 11
+    }
+  },
+  {
+    "slug": "14-2fa-verify",
+    "prompt": "a 2FA verification screen with a 6-digit code input and a resend link",
+    "prompt_to_figma_latency_s": 3.04,
+    "archetype": "login",
+    "component_count": 3,
+    "element_count": 15,
+    "warnings": 10,
+    "render": {
+      "status": "ok",
+      "latency_ms": 157,
+      "errors_count": 1
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 102,
+      "eid_count": 14
+    }
+  },
+  {
+    "slug": "15-video-player",
+    "prompt": "a video player screen with play controls, progress bar, and a related videos list below",
+    "prompt_to_figma_latency_s": 5.64,
+    "archetype": "detail",
+    "component_count": 6,
+    "element_count": 35,
+    "warnings": 33,
+    "render": {
+      "status": "ok",
+      "latency_ms": 301,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 162,
+      "eid_count": 35
+    }
+  },
+  {
+    "slug": "16-photo-gallery",
+    "prompt": "a photo gallery grid with thumbnails and a floating action button",
+    "prompt_to_figma_latency_s": 4.16,
+    "archetype": "none",
+    "component_count": 3,
+    "element_count": 19,
+    "warnings": 18,
+    "render": {
+      "status": "ok",
+      "latency_ms": 264,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 124,
+      "eid_count": 19
+    }
+  },
+  {
+    "slug": "17-map-screen",
+    "prompt": "a map screen with a search bar at the top and location cards at the bottom",
+    "prompt_to_figma_latency_s": 2.66,
+    "archetype": "search",
+    "component_count": 3,
+    "element_count": 21,
+    "warnings": 19,
+    "render": {
+      "status": "ok",
+      "latency_ms": 232,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 123,
+      "eid_count": 21
+    }
+  },
+  {
+    "slug": "18-error-state",
+    "prompt": "an error state screen with illustration, apology message, and a retry button",
+    "prompt_to_figma_latency_s": 2.94,
+    "archetype": "chat",
+    "component_count": 3,
+    "element_count": 8,
+    "warnings": 7,
+    "render": {
+      "status": "ok",
+      "latency_ms": 176,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 92,
+      "eid_count": 8
+    }
+  },
+  {
+    "slug": "19-success-confirm",
+    "prompt": "a success confirmation screen with checkmark, message, and continue button",
+    "prompt_to_figma_latency_s": 1.37,
+    "archetype": "chat",
+    "component_count": 2,
+    "element_count": 6,
+    "warnings": 5,
+    "render": {
+      "status": "ok",
+      "latency_ms": 123,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 81,
+      "eid_count": 6
+    }
+  },
+  {
+    "slug": "20-file-upload",
+    "prompt": "a file upload page with drag-and-drop area, file list with progress bars, and upload all button",
+    "prompt_to_figma_latency_s": 4.61,
+    "archetype": "none",
+    "component_count": 4,
+    "element_count": 22,
+    "warnings": 21,
+    "render": {
+      "status": "ok",
+      "latency_ms": 188,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 130,
+      "eid_count": 22
+    }
+  }
+]

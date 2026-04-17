@@ -1,0 +1,1 @@
+a contact list with avatars, names, last seen time, and an online status indicator

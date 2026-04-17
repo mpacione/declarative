@@ -1,0 +1,191 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Notifications"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Today"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/wallet"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Payment received"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "2 minutes ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Order confirmed"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "15 minutes ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/new"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "New message from Sarah"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "1 hour ago"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Yesterday"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/delete"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Item removed from cart"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Yesterday at 3:45 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Subscription renewed"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Yesterday at 9:30 AM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Earlier"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/wallet"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Refund processed"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "3 days ago"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

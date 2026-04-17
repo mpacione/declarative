@@ -1,0 +1,211 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Product Details"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "src": "product-main.jpg",
+          "alt": "Product image"
+        }
+      },
+      {
+        "type": "pagination",
+        "children": [
+          {
+            "type": "button",
+            "props": {
+              "text": "1"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "2"
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "text": "3"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Premium Wireless Headphones"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "$149.99"
+        }
+      },
+      {
+        "type": "badge",
+        "props": {
+          "text": "4.8\u2605 (324 reviews)"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Select Size"
+        }
+      },
+      {
+        "type": "segmented_control",
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "text": "Small"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Medium"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Large"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "XL"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Description"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "High-quality sound with active noise cancellation, 30-hour battery life, and premium comfort for all-day wear."
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/solid",
+    "props": {
+      "text": "Add to Cart"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Customer Reviews"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Excellent quality! \u2605\u2605\u2605\u2605\u2605"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Best headphones I've ever owned. Sound quality is amazing."
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Great value \u2605\u2605\u2605\u2605\u2606"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Very comfortable and good battery life. Highly recommend."
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Perfect! \u2605\u2605\u2605\u2605\u2605"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Noise cancellation works great. Worth every penny."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

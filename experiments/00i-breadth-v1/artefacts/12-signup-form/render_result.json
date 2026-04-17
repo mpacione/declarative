@@ -1,0 +1,20 @@
+{
+  "returncode": 0,
+  "latency_ms": 230,
+  "timeout": false,
+  "stdout": "[script.js] OK in 184ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776451400647\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":1,\"after\":12,\"moved\":0,\"errors\":[{\"kind\":\"render_thrown\",\"error\":\"not a function\",\"stack\":\"    at <anonymous> (<input>:291:15) | \"}]}}}\n",
+  "stderr": "",
+  "parsed": {
+    "__ok": true,
+    "before": 1,
+    "after": 12,
+    "moved": 0,
+    "errors": [
+      {
+        "kind": "render_thrown",
+        "error": "not a function",
+        "stack": "    at <anonymous> (<input>:291:15) | "
+      }
+    ]
+  }
+}

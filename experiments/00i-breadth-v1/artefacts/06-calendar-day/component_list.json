@@ -1,0 +1,176 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Monday, January 15"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "8:00 AM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "9:00 AM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Team Standup",
+                  "variant": "primary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "10:00 AM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Design Review",
+                  "variant": "primary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "11:00 AM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Design Review",
+                  "variant": "primary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "12:00 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "1:00 PM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Lunch Break",
+                  "variant": "secondary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "2:00 PM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Lunch Break",
+                  "variant": "secondary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "3:00 PM"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Client Call",
+                  "variant": "tertiary"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "4:00 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "5:00 PM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

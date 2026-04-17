@@ -1,0 +1,73 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Create Account"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Full Name",
+          "placeholder": "Enter your full name"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email",
+          "placeholder": "Enter your email address"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Password",
+          "placeholder": "Enter a password",
+          "type": "password"
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Confirm Password",
+          "placeholder": "Confirm your password",
+          "type": "password"
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "I agree to the Terms and Conditions"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "props": {
+      "text": "Sign Up"
+    }
+  },
+  {
+    "type": "text",
+    "props": {
+      "text": "Already have an account?"
+    }
+  },
+  {
+    "type": "link",
+    "props": {
+      "text": "Log in"
+    }
+  }
+]

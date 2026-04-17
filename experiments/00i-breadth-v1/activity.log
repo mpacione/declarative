@@ -1,0 +1,62 @@
+2026-04-17T18:42:09+00:00 | _ | setup | ok | db=/Users/mattpacione/declarative-build/Dank-EXP-02.declarative.db n_prompts=20
+2026-04-17T18:42:17+00:00 | 01-shopping-cart | parse_compose | ok | archetype=None components=4 elements=28
+2026-04-17T18:42:17+00:00 | 01-shopping-cart | render | ok | errors=0 latency=145ms
+2026-04-17T18:42:17+00:00 | 01-shopping-cart | walk | ok | eids=28
+2026-04-17T18:42:23+00:00 | 02-product-detail | parse_compose | ok | archetype=detail components=7 elements=42
+2026-04-17T18:42:23+00:00 | 02-product-detail | render | ok | errors=0 latency=176ms
+2026-04-17T18:42:23+00:00 | 02-product-detail | walk | ok | eids=42
+2026-04-17T18:42:31+00:00 | 03-pricing-compare | parse_compose | ok | archetype=paywall components=6 elements=55
+2026-04-17T18:42:31+00:00 | 03-pricing-compare | render | ok | errors=0 latency=198ms
+2026-04-17T18:42:32+00:00 | 03-pricing-compare | walk | ok | eids=55
+2026-04-17T18:42:35+00:00 | 04-chat-thread | parse_compose | ok | archetype=chat components=3 elements=20
+2026-04-17T18:42:35+00:00 | 04-chat-thread | render | ok | errors=0 latency=285ms
+2026-04-17T18:42:35+00:00 | 04-chat-thread | walk | ok | eids=20
+2026-04-17T18:42:40+00:00 | 05-contact-list | parse_compose | ok | archetype=chat components=3 elements=42
+2026-04-17T18:42:41+00:00 | 05-contact-list | render | ok | errors=0 latency=202ms
+2026-04-17T18:42:41+00:00 | 05-contact-list | walk | ok | eids=42
+2026-04-17T18:42:47+00:00 | 06-calendar-day | parse_compose | ok | archetype=None components=2 elements=37
+2026-04-17T18:42:48+00:00 | 06-calendar-day | render | ok | errors=0 latency=170ms
+2026-04-17T18:42:48+00:00 | 06-calendar-day | walk | ok | eids=37
+2026-04-17T18:42:53+00:00 | 07-event-detail | parse_compose | ok | archetype=detail components=5 elements=34
+2026-04-17T18:42:53+00:00 | 07-event-detail | render | ok | errors=0 latency=311ms
+2026-04-17T18:42:54+00:00 | 07-event-detail | walk | ok | eids=34
+2026-04-17T18:42:58+00:00 | 08-multi-step-form | parse_compose | ok | archetype=onboarding-carousel components=5 elements=21
+2026-04-17T18:42:58+00:00 | 08-multi-step-form | render | ok | errors=0 latency=153ms
+2026-04-17T18:42:58+00:00 | 08-multi-step-form | walk | ok | eids=21
+2026-04-17T18:43:02+00:00 | 09-filter-panel | parse_compose | ok | archetype=search components=4 elements=20
+2026-04-17T18:43:02+00:00 | 09-filter-panel | render | ok | errors=0 latency=127ms
+2026-04-17T18:43:03+00:00 | 09-filter-panel | walk | ok | eids=20
+2026-04-17T18:43:09+00:00 | 10-notifications | parse_compose | ok | archetype=feed components=4 elements=37
+2026-04-17T18:43:09+00:00 | 10-notifications | render | ok | errors=0 latency=184ms
+2026-04-17T18:43:10+00:00 | 10-notifications | walk | ok | eids=37
+2026-04-17T18:43:16+00:00 | 11-activity-history | parse_compose | ok | archetype=feed components=4 elements=40
+2026-04-17T18:43:16+00:00 | 11-activity-history | render | ok | errors=0 latency=174ms
+2026-04-17T18:43:16+00:00 | 11-activity-history | walk | ok | eids=40
+2026-04-17T18:43:20+00:00 | 12-signup-form | parse_compose | ok | archetype=onboarding-carousel components=5 elements=23
+2026-04-17T18:43:20+00:00 | 12-signup-form | render | ok | errors=1 latency=230ms
+2026-04-17T18:43:20+00:00 | 12-signup-form | walk | ok | eids=13
+2026-04-17T18:43:25+00:00 | 13-password-reset | parse_compose | ok | archetype=login components=4 elements=14
+2026-04-17T18:43:25+00:00 | 13-password-reset | render | ok | errors=1 latency=112ms
+2026-04-17T18:43:25+00:00 | 13-password-reset | walk | ok | eids=11
+2026-04-17T18:43:29+00:00 | 14-2fa-verify | parse_compose | ok | archetype=login components=3 elements=15
+2026-04-17T18:43:29+00:00 | 14-2fa-verify | render | ok | errors=1 latency=157ms
+2026-04-17T18:43:29+00:00 | 14-2fa-verify | walk | ok | eids=14
+2026-04-17T18:43:36+00:00 | 15-video-player | parse_compose | ok | archetype=detail components=6 elements=35
+2026-04-17T18:43:36+00:00 | 15-video-player | render | ok | errors=0 latency=301ms
+2026-04-17T18:43:36+00:00 | 15-video-player | walk | ok | eids=35
+2026-04-17T18:43:42+00:00 | 16-photo-gallery | parse_compose | ok | archetype=None components=3 elements=19
+2026-04-17T18:43:42+00:00 | 16-photo-gallery | render | ok | errors=0 latency=264ms
+2026-04-17T18:43:42+00:00 | 16-photo-gallery | walk | ok | eids=19
+2026-04-17T18:43:45+00:00 | 17-map-screen | parse_compose | ok | archetype=search components=3 elements=21
+2026-04-17T18:43:45+00:00 | 17-map-screen | render | ok | errors=0 latency=232ms
+2026-04-17T18:43:45+00:00 | 17-map-screen | walk | ok | eids=21
+2026-04-17T18:43:48+00:00 | 18-error-state | parse_compose | ok | archetype=chat components=3 elements=8
+2026-04-17T18:43:48+00:00 | 18-error-state | render | ok | errors=0 latency=176ms
+2026-04-17T18:43:48+00:00 | 18-error-state | walk | ok | eids=8
+2026-04-17T18:43:49+00:00 | 19-success-confirm | parse_compose | ok | archetype=chat components=2 elements=6
+2026-04-17T18:43:50+00:00 | 19-success-confirm | render | ok | errors=0 latency=123ms
+2026-04-17T18:43:50+00:00 | 19-success-confirm | walk | ok | eids=6
+2026-04-17T18:43:55+00:00 | 20-file-upload | parse_compose | ok | archetype=None components=4 elements=22
+2026-04-17T18:43:56+00:00 | 20-file-upload | render | ok | errors=0 latency=188ms
+2026-04-17T18:43:56+00:00 | 20-file-upload | walk | ok | eids=22
+2026-04-17T18:43:56+00:00 | _ | done | ok | render_ok=20/20 refused=0 errored=0 elapsed=106.7s

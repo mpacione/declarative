@@ -1,0 +1,82 @@
+[
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/01-shopping-cart/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/01-shopping-cart/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/02-product-detail/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/02-product-detail/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/03-pricing-compare/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/03-pricing-compare/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/04-chat-thread/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/04-chat-thread/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/05-contact-list/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/05-contact-list/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/06-calendar-day/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/06-calendar-day/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/07-event-detail/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/07-event-detail/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/08-multi-step-form/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/08-multi-step-form/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/09-filter-panel/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/09-filter-panel/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/10-notifications/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/10-notifications/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/11-activity-history/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/11-activity-history/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/12-signup-form/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/12-signup-form/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/13-password-reset/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/13-password-reset/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/14-2fa-verify/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/14-2fa-verify/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/15-video-player/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/15-video-player/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/16-photo-gallery/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/16-photo-gallery/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/17-map-screen/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/17-map-screen/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/18-error-state/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/18-error-state/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/19-success-confirm/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/19-success-confirm/screenshot.png"
+  },
+  {
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/20-file-upload/script.js",
+    "out_png_path": "/Users/mattpacione/declarative-build/experiments/00i-breadth-v1/artefacts/20-file-upload/screenshot.png"
+  }
+]

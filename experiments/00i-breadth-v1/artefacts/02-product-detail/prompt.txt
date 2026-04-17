@@ -1,0 +1,1 @@
+an e-commerce product detail page with image gallery, title, price, size selector, add to cart button, and reviews

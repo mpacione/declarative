@@ -1,0 +1,1 @@
+an activity history list grouped by date, each activity showing icon, description, and time

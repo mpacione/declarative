@@ -1,0 +1,31 @@
+[
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "icon",
+        "component_key": "icon/check"
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Success!"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Your action has been completed successfully."
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/solid",
+    "props": {
+      "text": "Continue"
+    }
+  }
+]

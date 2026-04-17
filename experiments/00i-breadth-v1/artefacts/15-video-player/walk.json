@@ -1,0 +1,472 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:49129",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-5": {
+      "type": "FRAME",
+      "name": "card-5",
+      "width": 396,
+      "height": 703,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 364,
+      "height": 644,
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 340,
+      "height": 151,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 308,
+      "height": 15,
+      "characters": "Related Video Title 4",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-5": {
+      "type": "FRAME",
+      "name": "image-5",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 151,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 308,
+      "height": 15,
+      "characters": "Related Video Title 3",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-4": {
+      "type": "FRAME",
+      "name": "image-4",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 151,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 308,
+      "height": 15,
+      "characters": "Related Video Title 2",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-3": {
+      "type": "FRAME",
+      "name": "image-3",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 151,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 308,
+      "height": 15,
+      "characters": "Related Video Title 1",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-2": {
+      "type": "FRAME",
+      "name": "image-2",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 364,
+      "height": 15,
+      "characters": "Related Videos",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 396,
+      "height": 101,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 364,
+      "height": 15,
+      "characters": "1.2M views • 2 days ago",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 364,
+      "height": 15,
+      "characters": "Channel Name",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Video Title",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 396,
+      "height": 172,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "button_group-1": {
+      "type": "FRAME",
+      "name": "button_group-1",
+      "width": 100,
+      "height": 140,
+      "effectCount": 0
+    },
+    "icon_button-4": {
+      "type": "INSTANCE",
+      "name": "icon_button-4",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "fab-1": {
+      "type": "FRAME",
+      "name": "fab-1",
+      "width": 100,
+      "height": 100,
+      "effectCount": 0
+    },
+    "icon_button-3": {
+      "type": "INSTANCE",
+      "name": "icon_button-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 92,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 364,
+      "height": 15,
+      "characters": "2:15 / 5:00",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "slider-1": {
+      "type": "FRAME",
+      "name": "slider-1",
+      "width": 364,
+      "height": 33,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 340,
+      "height": 17,
+      "characters": "Progress",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 132,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 364,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-2": {
+      "type": "INSTANCE",
+      "name": "icon_button-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Video Player",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

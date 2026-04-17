@@ -1,0 +1,1 @@
+a pricing comparison table with 4 columns (Free, Pro, Team, Enterprise) and feature rows

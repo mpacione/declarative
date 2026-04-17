@@ -1,0 +1,1 @@
+a calendar day view with hourly time slots and 3 colored event blocks

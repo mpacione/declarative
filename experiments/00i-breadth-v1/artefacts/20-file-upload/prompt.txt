@@ -1,0 +1,1 @@
+a file upload page with drag-and-drop area, file list with progress bars, and upload all button

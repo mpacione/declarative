@@ -1,0 +1,1 @@
+a 2FA verification screen with a 6-digit code input and a resend link

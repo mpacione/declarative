@@ -1,0 +1,178 @@
+{
+  "__ok": true,
+  "errors": [
+    {
+      "kind": "render_thrown",
+      "error": "not a function",
+      "stack": "    at <anonymous> (<input>:257:15) | "
+    }
+  ],
+  "rendered_root": "5786:49043",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "link-1": {
+      "type": "TEXT",
+      "name": "link-1",
+      "width": 74,
+      "height": 15,
+      "characters": "Back to login",
+      "textAutoResize": "WIDTH_AND_HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 141,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 109,
+      "height": 17,
+      "characters": "Send Reset Link",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F8FAFC"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 149,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text_input-1": {
+      "type": "FRAME",
+      "name": "text_input-1",
+      "width": 364,
+      "height": 48,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 364,
+      "height": 30,
+      "characters": "Enter your email address and we'll send you a link to reset your password.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Forgot your password?",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Reset Password",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

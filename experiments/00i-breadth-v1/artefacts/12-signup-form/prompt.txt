@@ -1,0 +1,1 @@
+a signup form with name, email, password, confirm password, and terms checkbox

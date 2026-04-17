@@ -1,0 +1,88 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Filters"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Category"
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Electronics",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Clothing",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Home & Garden",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Sports",
+          "checked": false
+        }
+      },
+      {
+        "type": "checkbox",
+        "props": {
+          "label": "Books",
+          "checked": false
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Price Range"
+        }
+      },
+      {
+        "type": "slider",
+        "props": {
+          "min": 0,
+          "max": 1000,
+          "value": 500,
+          "label": "$0 - $1000"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Clear Filters"
+    }
+  }
+]

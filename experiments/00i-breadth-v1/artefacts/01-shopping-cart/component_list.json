@@ -1,0 +1,166 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Shopping Cart"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "product-1.jpg",
+                  "alt": "Wireless Headphones"
+                }
+              },
+              {
+                "type": "card",
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "Wireless Headphones"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "$79.99"
+                    }
+                  },
+                  {
+                    "type": "stepper",
+                    "props": {
+                      "value": 1,
+                      "min": 1,
+                      "max": 10
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "product-2.jpg",
+                  "alt": "USB-C Cable"
+                }
+              },
+              {
+                "type": "card",
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "USB-C Cable"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "$12.99"
+                    }
+                  },
+                  {
+                    "type": "stepper",
+                    "props": {
+                      "value": 2,
+                      "min": 1,
+                      "max": 10
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "image",
+                "props": {
+                  "src": "product-3.jpg",
+                  "alt": "Phone Case"
+                }
+              },
+              {
+                "type": "card",
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "Phone Case"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "text": "$24.99"
+                    }
+                  },
+                  {
+                    "type": "stepper",
+                    "props": {
+                      "value": 1,
+                      "min": 1,
+                      "max": 10
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "text",
+        "props": {
+          "text": "Subtotal: $117.97"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Shipping: $10.00"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Total: $127.97"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Proceed to Checkout"
+    }
+  }
+]

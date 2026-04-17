@@ -1,0 +1,319 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:48770",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 396,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 92,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "slider-1": {
+      "type": "FRAME",
+      "name": "slider-1",
+      "width": 364,
+      "height": 33,
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 340,
+      "height": 17,
+      "characters": "$0 - $1000",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 364,
+      "height": 15,
+      "characters": "Price Range",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 192,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "checkbox-5": {
+      "type": "FRAME",
+      "name": "checkbox-5",
+      "width": 41,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#94A3B8"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 41,
+      "height": 17,
+      "characters": "Books",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "checkbox-4": {
+      "type": "FRAME",
+      "name": "checkbox-4",
+      "width": 44,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#94A3B8"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 44,
+      "height": 17,
+      "characters": "Sports",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "checkbox-3": {
+      "type": "FRAME",
+      "name": "checkbox-3",
+      "width": 105,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#94A3B8"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 105,
+      "height": 17,
+      "characters": "Home & Garden",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "checkbox-2": {
+      "type": "FRAME",
+      "name": "checkbox-2",
+      "width": 56,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#94A3B8"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 56,
+      "height": 17,
+      "characters": "Clothing",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "checkbox-1": {
+      "type": "FRAME",
+      "name": "checkbox-1",
+      "width": 73,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#94A3B8"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 73,
+      "height": 17,
+      "characters": "Electronics",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Category",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

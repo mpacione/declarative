@@ -1,0 +1,278 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:49235",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 640,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 364,
+      "height": 581,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 183,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-3": {
+      "type": "INSTANCE",
+      "name": "icon-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 308,
+      "height": 15,
+      "characters": "City Library",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-3": {
+      "type": "FRAME",
+      "name": "avatar-3",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 183,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-2": {
+      "type": "INSTANCE",
+      "name": "icon-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 308,
+      "height": 15,
+      "characters": "Central Park",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-2": {
+      "type": "FRAME",
+      "name": "avatar-2",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 183,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 308,
+      "height": 15,
+      "characters": "Downtown Coffee Shop",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-1": {
+      "type": "FRAME",
+      "name": "avatar-1",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Nearby Locations",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 396,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "search_input-1": {
+      "type": "FRAME",
+      "name": "search_input-1",
+      "width": 364,
+      "height": 37,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 340,
+      "height": 17,
+      "characters": "Search locations",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

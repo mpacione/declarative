@@ -1,0 +1,14 @@
+{
+  "returncode": 0,
+  "latency_ms": 301,
+  "timeout": false,
+  "stdout": "[script.js] OK in 249ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776451416316\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":2,\"after\":3,\"moved\":0,\"errors\":[]}}}\n",
+  "stderr": "",
+  "parsed": {
+    "__ok": true,
+    "before": 2,
+    "after": 3,
+    "moved": 0,
+    "errors": []
+  }
+}

@@ -1,0 +1,680 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:48288",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 396,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 255,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 364,
+      "height": 196,
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-25": {
+      "type": "TEXT",
+      "name": "text-25",
+      "width": 308,
+      "height": 15,
+      "characters": "Enterprise — Custom pricing",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-24": {
+      "type": "TEXT",
+      "name": "text-24",
+      "width": 308,
+      "height": 15,
+      "characters": "Team — $99/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-23": {
+      "type": "TEXT",
+      "name": "text-23",
+      "width": 308,
+      "height": 15,
+      "characters": "Pro — $29/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 39,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-22": {
+      "type": "TEXT",
+      "name": "text-22",
+      "width": 308,
+      "height": 15,
+      "characters": "Free — $0/month",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 364,
+      "height": 15,
+      "characters": "Pricing",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 667,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "table-1": {
+      "type": "FRAME",
+      "name": "table-1",
+      "width": 100,
+      "height": 635,
+      "effectCount": 0
+    },
+    "icon-16": {
+      "type": "INSTANCE",
+      "name": "icon-16",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-15": {
+      "type": "INSTANCE",
+      "name": "icon-15",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-14": {
+      "type": "INSTANCE",
+      "name": "icon-14",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-13": {
+      "type": "INSTANCE",
+      "name": "icon-13",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-21": {
+      "type": "TEXT",
+      "name": "text-21",
+      "width": 100,
+      "height": 30,
+      "characters": "Custom Integrations",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-12": {
+      "type": "INSTANCE",
+      "name": "icon-12",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-11": {
+      "type": "INSTANCE",
+      "name": "icon-11",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-10": {
+      "type": "INSTANCE",
+      "name": "icon-10",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-9": {
+      "type": "INSTANCE",
+      "name": "icon-9",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-20": {
+      "type": "TEXT",
+      "name": "text-20",
+      "width": 100,
+      "height": 30,
+      "characters": "Advanced Analytics",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-8": {
+      "type": "INSTANCE",
+      "name": "icon-8",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-7": {
+      "type": "INSTANCE",
+      "name": "icon-7",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-6": {
+      "type": "INSTANCE",
+      "name": "icon-6",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-5": {
+      "type": "INSTANCE",
+      "name": "icon-5",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-19": {
+      "type": "TEXT",
+      "name": "text-19",
+      "width": 100,
+      "height": 15,
+      "characters": "Priority Support",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-4": {
+      "type": "INSTANCE",
+      "name": "icon-4",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-3": {
+      "type": "INSTANCE",
+      "name": "icon-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-2": {
+      "type": "INSTANCE",
+      "name": "icon-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-18": {
+      "type": "TEXT",
+      "name": "text-18",
+      "width": 100,
+      "height": 15,
+      "characters": "API Access",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-17": {
+      "type": "TEXT",
+      "name": "text-17",
+      "width": 100,
+      "height": 15,
+      "characters": "Custom",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-16": {
+      "type": "TEXT",
+      "name": "text-16",
+      "width": 100,
+      "height": 15,
+      "characters": "1 TB",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-15": {
+      "type": "TEXT",
+      "name": "text-15",
+      "width": 100,
+      "height": 15,
+      "characters": "100 GB",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-14": {
+      "type": "TEXT",
+      "name": "text-14",
+      "width": 100,
+      "height": 15,
+      "characters": "5 GB",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-13": {
+      "type": "TEXT",
+      "name": "text-13",
+      "width": 100,
+      "height": 15,
+      "characters": "Storage",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-12": {
+      "type": "TEXT",
+      "name": "text-12",
+      "width": 100,
+      "height": 15,
+      "characters": "Unlimited",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
+      "width": 100,
+      "height": 15,
+      "characters": "Unlimited",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 100,
+      "height": 15,
+      "characters": "Unlimited",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 100,
+      "height": 15,
+      "characters": "1",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 100,
+      "height": 15,
+      "characters": "Users",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 100,
+      "height": 15,
+      "characters": "Enterprise",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 100,
+      "height": 15,
+      "characters": "Team",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 15,
+      "characters": "Pro",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Free",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 15,
+      "characters": "Feature",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 396,
+      "height": 15,
+      "characters": "Choose the perfect plan for your needs",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 396,
+      "height": 15,
+      "characters": "Compare Our Plans",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Pricing Plans",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

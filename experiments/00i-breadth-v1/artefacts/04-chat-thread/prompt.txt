@@ -1,0 +1,1 @@
+a chat conversation with message bubbles alternating between me and a contact, plus a composer at the bottom

@@ -1,0 +1,54 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Reset Password"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Forgot your password?"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Enter your email address and we'll send you a link to reset your password."
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Email address",
+          "placeholder": "you@example.com"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "props": {
+      "text": "Send Reset Link"
+    }
+  },
+  {
+    "type": "link",
+    "props": {
+      "text": "Back to login"
+    }
+  }
+]

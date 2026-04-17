@@ -1,0 +1,285 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Pricing Plans"
+        }
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "props": {
+      "text": "Compare Our Plans"
+    }
+  },
+  {
+    "type": "text",
+    "props": {
+      "text": "Choose the perfect plan for your needs"
+    }
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "table",
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "text": "Feature"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Free"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Pro"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Team"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Enterprise"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Users"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "1"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Unlimited"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Unlimited"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Unlimited"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Storage"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "5 GB"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "100 GB"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "1 TB"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Custom"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "API Access"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Priority Support"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Advanced Analytics"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Custom Integrations"
+            }
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/close"
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/check"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Pricing"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Free \u2014 $0/month"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Pro \u2014 $29/month"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Team \u2014 $99/month"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Enterprise \u2014 Custom pricing"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Get Started"
+    }
+  }
+]

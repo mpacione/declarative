@@ -1,0 +1,126 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Upload Files"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Drag and drop files here"
+        }
+      },
+      {
+        "type": "file_upload",
+        "props": {
+          "text": "or click to browse",
+          "accept": "*"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Files to Upload"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "document.pdf"
+                }
+              },
+              {
+                "type": "slider",
+                "props": {
+                  "value": 45,
+                  "disabled": true
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "45%"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "image.jpg"
+                }
+              },
+              {
+                "type": "slider",
+                "props": {
+                  "value": 100,
+                  "disabled": true
+                }
+              },
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "presentation.pptx"
+                }
+              },
+              {
+                "type": "slider",
+                "props": {
+                  "value": 0,
+                  "disabled": true
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Pending"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Upload All"
+    }
+  }
+]

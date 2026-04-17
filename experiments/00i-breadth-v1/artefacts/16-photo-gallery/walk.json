@@ -1,0 +1,242 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:49189",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "fab-1": {
+      "type": "FRAME",
+      "name": "fab-1",
+      "width": 396,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 832,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 364,
+      "height": 800,
+      "effectCount": 0
+    },
+    "list_item-6": {
+      "type": "FRAME",
+      "name": "list_item-6",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-6": {
+      "type": "FRAME",
+      "name": "image-6",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-5": {
+      "type": "FRAME",
+      "name": "image-5",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-4": {
+      "type": "FRAME",
+      "name": "image-4",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-3": {
+      "type": "FRAME",
+      "name": "image-3",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-2": {
+      "type": "FRAME",
+      "name": "image-2",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 124,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 308,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

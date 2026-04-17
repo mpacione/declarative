@@ -1,0 +1,1 @@
+a success confirmation screen with checkmark, message, and continue button

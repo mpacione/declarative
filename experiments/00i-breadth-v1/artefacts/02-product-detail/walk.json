@@ -1,0 +1,595 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5786:48166",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-5": {
+      "type": "FRAME",
+      "name": "card-5",
+      "width": 396,
+      "height": 319,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 364,
+      "height": 260,
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 340,
+      "height": 66,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-17": {
+      "type": "TEXT",
+      "name": "text-17",
+      "width": 308,
+      "height": 15,
+      "characters": "Noise cancellation works great. Worth every penny.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-16": {
+      "type": "TEXT",
+      "name": "text-16",
+      "width": 308,
+      "height": 15,
+      "characters": "Perfect! ★★★★★",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 340,
+      "height": 81,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-15": {
+      "type": "TEXT",
+      "name": "text-15",
+      "width": 308,
+      "height": 30,
+      "characters": "Very comfortable and good battery life. Highly recommend.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-14": {
+      "type": "TEXT",
+      "name": "text-14",
+      "width": 308,
+      "height": 15,
+      "characters": "Great value ★★★★☆",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 340,
+      "height": 81,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-13": {
+      "type": "TEXT",
+      "name": "text-13",
+      "width": 308,
+      "height": 30,
+      "characters": "Best headphones I've ever owned. Sound quality is amazing.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-12": {
+      "type": "TEXT",
+      "name": "text-12",
+      "width": 308,
+      "height": 15,
+      "characters": "Excellent quality! ★★★★★",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-4": {
+      "type": "TEXT",
+      "name": "heading-4",
+      "width": 364,
+      "height": 15,
+      "characters": "Customer Reviews",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-4": {
+      "type": "FRAME",
+      "name": "button-4",
+      "width": 396,
+      "height": 100,
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 396,
+      "height": 89,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "text-11": {
+      "type": "TEXT",
+      "name": "text-11",
+      "width": 364,
+      "height": 30,
+      "characters": "High-quality sound with active noise cancellation, 30-hour battery life, and premium comfort for all-day wear.",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-3": {
+      "type": "TEXT",
+      "name": "heading-3",
+      "width": 364,
+      "height": 15,
+      "characters": "Description",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-3": {
+      "type": "FRAME",
+      "name": "card-3",
+      "width": 396,
+      "height": 119,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "segmented_control-1": {
+      "type": "FRAME",
+      "name": "segmented_control-1",
+      "width": 100,
+      "height": 60,
+      "effectCount": 0
+    },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 100,
+      "height": 15,
+      "characters": "XL",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 100,
+      "height": 15,
+      "characters": "Large",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 100,
+      "height": 15,
+      "characters": "Medium",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 100,
+      "height": 15,
+      "characters": "Small",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-2": {
+      "type": "TEXT",
+      "name": "heading-2",
+      "width": 364,
+      "height": 15,
+      "characters": "Select Size",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-2": {
+      "type": "FRAME",
+      "name": "card-2",
+      "width": 396,
+      "height": 109,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "badge-1": {
+      "type": "FRAME",
+      "name": "badge-1",
+      "width": 131,
+      "height": 23,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 115,
+      "height": 15,
+      "characters": "4.8★ (324 reviews)",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 364,
+      "height": 15,
+      "characters": "$149.99",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "heading-1": {
+      "type": "TEXT",
+      "name": "heading-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Premium Wireless Headphones",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "card-1": {
+      "type": "FRAME",
+      "name": "card-1",
+      "width": 396,
+      "height": 276,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "pagination-1": {
+      "type": "FRAME",
+      "name": "pagination-1",
+      "width": 100,
+      "height": 132,
+      "effectCount": 0
+    },
+    "button-3": {
+      "type": "FRAME",
+      "name": "button-3",
+      "width": 42,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 10,
+      "height": 17,
+      "characters": "3",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-2": {
+      "type": "FRAME",
+      "name": "button-2",
+      "width": 41,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 9,
+      "height": 17,
+      "characters": "2",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-1": {
+      "type": "FRAME",
+      "name": "button-1",
+      "width": 39,
+      "height": 44,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 7,
+      "height": 17,
+      "characters": "1",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-1": {
+      "type": "FRAME",
+      "name": "image-1",
+      "width": 364,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-2": {
+      "type": "INSTANCE",
+      "name": "icon_button-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 364,
+      "height": 15,
+      "characters": "Product Details",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

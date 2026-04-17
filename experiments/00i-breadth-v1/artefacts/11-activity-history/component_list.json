@@ -1,0 +1,209 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Activity History"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Today"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/wallet"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Payment received"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "2:45 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Task completed"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "1:30 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/new"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "New file created"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "11:15 AM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Yesterday"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/delete"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Item deleted"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "4:20 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/wallet"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Payment sent"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "3:00 PM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Last Week"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Project milestone reached"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Mar 15, 2:30 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/new"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Account updated"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Mar 12, 10:45 AM"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

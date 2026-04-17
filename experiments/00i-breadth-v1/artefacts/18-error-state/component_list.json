@@ -1,0 +1,45 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Error"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "image",
+        "props": {
+          "alt": "Error illustration"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "Something went wrong"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "We apologize for the inconvenience. Please try again or contact support if the problem persists."
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "Retry"
+    }
+  }
+]

@@ -1,0 +1,60 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Verify Your Identity"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Enter Verification Code"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "We've sent a 6-digit code to your registered email or phone number."
+        }
+      },
+      {
+        "type": "text_input",
+        "props": {
+          "label": "Verification Code",
+          "placeholder": "000000"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Didn't receive the code? "
+        }
+      },
+      {
+        "type": "link",
+        "props": {
+          "text": "Resend"
+        }
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "props": {
+      "text": "Verify"
+    }
+  }
+]

@@ -1,0 +1,851 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "component_key": "icon/back",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pricing Plans"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
+      },
+      "children": [
+        "icon_button-1",
+        "text-1"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Compare Our Plans"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Choose the perfect plan for your needs"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Feature"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Free"
+      }
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pro"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Team"
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Enterprise"
+      }
+    },
+    "text-8": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Users"
+      }
+    },
+    "text-9": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1"
+      }
+    },
+    "text-10": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited"
+      }
+    },
+    "text-11": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited"
+      }
+    },
+    "text-12": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Unlimited"
+      }
+    },
+    "text-13": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Storage"
+      }
+    },
+    "text-14": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "5 GB"
+      }
+    },
+    "text-15": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "100 GB"
+      }
+    },
+    "text-16": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "1 TB"
+      }
+    },
+    "text-17": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Custom"
+      }
+    },
+    "text-18": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "API Access"
+      }
+    },
+    "icon-1": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-2": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-3": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-4": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-19": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Priority Support"
+      }
+    },
+    "icon-5": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-6": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-7": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-8": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-20": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Advanced Analytics"
+      }
+    },
+    "icon-9": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-10": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-11": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-12": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-21": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Custom Integrations"
+      }
+    },
+    "icon-13": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-14": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-15": {
+      "type": "icon",
+      "component_key": "icon/close",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon-16": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "table-1": {
+      "type": "table",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-3",
+        "text-4",
+        "text-5",
+        "text-6",
+        "text-7",
+        "text-8",
+        "text-9",
+        "text-10",
+        "text-11",
+        "text-12",
+        "text-13",
+        "text-14",
+        "text-15",
+        "text-16",
+        "text-17",
+        "text-18",
+        "icon-1",
+        "icon-2",
+        "icon-3",
+        "icon-4",
+        "text-19",
+        "icon-5",
+        "icon-6",
+        "icon-7",
+        "icon-8",
+        "text-20",
+        "icon-9",
+        "icon-10",
+        "icon-11",
+        "icon-12",
+        "text-21",
+        "icon-13",
+        "icon-14",
+        "icon-15",
+        "icon-16"
+      ]
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
+      },
+      "children": [
+        "table-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pricing"
+      }
+    },
+    "text-22": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Free \u2014 $0/month"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "text-22"
+      ]
+    },
+    "text-23": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pro \u2014 $29/month"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "text-23"
+      ]
+    },
+    "text-24": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Team \u2014 $99/month"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "text-24"
+      ]
+    },
+    "text-25": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Enterprise \u2014 Custom pricing"
+      }
+    },
+    "list_item-4": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "text-25"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.generic.padding_y}",
+          "bottom": "{space.generic.padding_y}",
+          "left": "{space.generic.padding_x}",
+          "right": "{space.generic.padding_x}"
+        },
+        "gap": "{space.generic.gap}"
+      },
+      "style": {
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3",
+        "list_item-4"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
+      },
+      "children": [
+        "heading-2",
+        "list-1"
+      ]
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Get Started"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "heading-1",
+        "text-2",
+        "card-1",
+        "card-2",
+        "button-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "space.generic.gap": 8,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "typography.header.fontSize": 17,
+    "typography.header.fontWeight": 600,
+    "typography.caption.fontSize": 12,
+    "typography.caption.fontWeight": 400,
+    "typography.badge.fontSize": 12,
+    "typography.badge.fontWeight": 600,
+    "typography.avatar.fontSize": 14,
+    "typography.avatar.fontWeight": 600,
+    "color.text.default": "#0F172A",
+    "color.text.heading": "#020617",
+    "color.text.caption": "#475569",
+    "color.text.link": "#2563EB",
+    "color.text.on_tooltip": "#FFFFFF",
+    "color.text.on_primary": "#F8FAFC",
+    "color.text.on_destructive": "#FFFFFF",
+    "color.surface.header": "#FFFFFF",
+    "color.surface.header_border": "#E2E8F0",
+    "color.surface.drawer": "#FFFFFF",
+    "color.surface.drawer_border": "#E2E8F0",
+    "color.surface.menu": "#FFFFFF",
+    "color.surface.menu_border": "#E2E8F0",
+    "color.surface.popover": "#FFFFFF",
+    "color.surface.popover_border": "#E2E8F0",
+    "color.surface.tooltip": "#0F172A",
+    "color.surface.badge": "#F1F5F9",
+    "color.surface.image_placeholder": "#E2E8F0",
+    "color.avatar.fill": "#E2E8F0",
+    "color.avatar.fg": "#334155",
+    "color.status.success.bg": "#22C55E",
+    "color.status.success.fg": "#FFFFFF",
+    "color.status.warning.bg": "#F59E0B",
+    "color.status.warning.fg": "#FFFFFF",
+    "color.status.info.bg": "#3B82F6",
+    "color.status.info.fg": "#FFFFFF",
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "space.header.padding_x": 16,
+    "space.header.padding_y": 12,
+    "space.header.gap": 8,
+    "space.drawer.padding_x": 16,
+    "space.drawer.padding_y": 24,
+    "space.drawer.gap": 4,
+    "space.menu.padding_x": 8,
+    "space.menu.padding_y": 8,
+    "space.menu.gap": 2,
+    "space.popover.padding_x": 16,
+    "space.popover.padding_y": 16,
+    "space.popover.gap": 8,
+    "space.tooltip.padding_x": 8,
+    "space.tooltip.padding_y": 4,
+    "space.badge.padding_x": 8,
+    "space.badge.padding_y": 4,
+    "space.badge.gap": 4,
+    "radius.badge": 999,
+    "radius.menu": 8,
+    "radius.popover": 8,
+    "radius.tooltip": 6,
+    "radius.image": 8,
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "text-1": -2,
+    "header-1": -3,
+    "heading-1": -4,
+    "text-2": -5,
+    "text-3": -6,
+    "text-4": -7,
+    "text-5": -8,
+    "text-6": -9,
+    "text-7": -10,
+    "text-8": -11,
+    "text-9": -12,
+    "text-10": -13,
+    "text-11": -14,
+    "text-12": -15,
+    "text-13": -16,
+    "text-14": -17,
+    "text-15": -18,
+    "text-16": -19,
+    "text-17": -20,
+    "text-18": -21,
+    "icon-1": -22,
+    "icon-2": -23,
+    "icon-3": -24,
+    "icon-4": -25,
+    "text-19": -26,
+    "icon-5": -27,
+    "icon-6": -28,
+    "icon-7": -29,
+    "icon-8": -30,
+    "text-20": -31,
+    "icon-9": -32,
+    "icon-10": -33,
+    "icon-11": -34,
+    "icon-12": -35,
+    "text-21": -36,
+    "icon-13": -37,
+    "icon-14": -38,
+    "icon-15": -39,
+    "icon-16": -40,
+    "table-1": -41,
+    "card-1": -42,
+    "heading-2": -43,
+    "text-22": -44,
+    "list_item-1": -45,
+    "text-23": -46,
+    "list_item-2": -47,
+    "text-24": -48,
+    "list_item-3": -49,
+    "text-25": -50,
+    "list_item-4": -51,
+    "list-1": -52,
+    "card-2": -53,
+    "button-1": -54,
+    "screen-1": -55
+  }
+}

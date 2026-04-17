@@ -1,0 +1,1 @@
+a multi-step signup form with progress indicator, current step fields, and next and back buttons

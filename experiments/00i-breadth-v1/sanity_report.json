@@ -1,0 +1,429 @@
+{
+  "total": 20,
+  "broken": 3,
+  "partial": 4,
+  "ok": 13,
+  "gate_passes": true,
+  "per_prompt": {
+    "01-shopping-cart": {
+      "rule": {
+        "total_content_nodes": 18,
+        "total_text_nodes": 9,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 9,
+        "frames_with_visible_content": 13,
+        "default_frame_ratio": 0.1667,
+        "visible_ratio": 0.8148,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 27,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "02-product-detail": {
+      "rule": {
+        "total_content_nodes": 20,
+        "total_text_nodes": 21,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 21,
+        "frames_with_visible_content": 14,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.8537,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 41,
+        "container_coverage": 3
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "03-pricing-compare": {
+      "rule": {
+        "total_content_nodes": 27,
+        "total_text_nodes": 27,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 27,
+        "frames_with_visible_content": 8,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.6481,
+        "verdict": "partial",
+        "had_render_errors": false,
+        "total_node_count": 54,
+        "container_coverage": 3
+      },
+      "verdict": "partial",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "04-chat-thread": {
+      "rule": {
+        "total_content_nodes": 12,
+        "total_text_nodes": 7,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 8,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.7895,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 19,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "05-contact-list": {
+      "rule": {
+        "total_content_nodes": 25,
+        "total_text_nodes": 16,
+        "default_sized_frame_nodes": 5,
+        "visible_text_nodes": 16,
+        "frames_with_visible_content": 22,
+        "default_frame_ratio": 0.2,
+        "visible_ratio": 0.9268,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 41,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "06-calendar-day": {
+      "rule": {
+        "total_content_nodes": 20,
+        "total_text_nodes": 16,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 16,
+        "frames_with_visible_content": 18,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.9444,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 36,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "07-event-detail": {
+      "rule": {
+        "total_content_nodes": 22,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 6,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 14,
+        "default_frame_ratio": 0.2727,
+        "visible_ratio": 0.7576,
+        "verdict": "partial",
+        "had_render_errors": false,
+        "total_node_count": 33,
+        "container_coverage": 3
+      },
+      "verdict": "partial",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "08-multi-step-form": {
+      "rule": {
+        "total_content_nodes": 12,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 8,
+        "default_frame_ratio": 0.0833,
+        "visible_ratio": 0.8,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 20,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "09-filter-panel": {
+      "rule": {
+        "total_content_nodes": 11,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 9,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.8947,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 19,
+        "container_coverage": 1
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "10-notifications": {
+      "rule": {
+        "total_content_nodes": 20,
+        "total_text_nodes": 16,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 16,
+        "frames_with_visible_content": 10,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.7222,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 36,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "11-activity-history": {
+      "rule": {
+        "total_content_nodes": 22,
+        "total_text_nodes": 17,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 17,
+        "frames_with_visible_content": 11,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.7179,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 39,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "12-signup-form": {
+      "rule": {
+        "total_content_nodes": 8,
+        "total_text_nodes": 4,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 4,
+        "frames_with_visible_content": 8,
+        "default_frame_ratio": 0.125,
+        "visible_ratio": 1.0,
+        "verdict": "broken",
+        "had_render_errors": true,
+        "total_node_count": 12,
+        "container_coverage": 1
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "13-password-reset": {
+      "rule": {
+        "total_content_nodes": 5,
+        "total_text_nodes": 5,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 5,
+        "frames_with_visible_content": 4,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.9,
+        "verdict": "broken",
+        "had_render_errors": true,
+        "total_node_count": 10,
+        "container_coverage": 1
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "14-2fa-verify": {
+      "rule": {
+        "total_content_nodes": 5,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 4,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.9231,
+        "verdict": "broken",
+        "had_render_errors": true,
+        "total_node_count": 13,
+        "container_coverage": 1
+      },
+      "verdict": "broken",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "15-video-player": {
+      "rule": {
+        "total_content_nodes": 23,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 15,
+        "default_frame_ratio": 0.0435,
+        "visible_ratio": 0.7647,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 34,
+        "container_coverage": 3
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "16-photo-gallery": {
+      "rule": {
+        "total_content_nodes": 18,
+        "total_text_nodes": 0,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 0,
+        "frames_with_visible_content": 14,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.7778,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 18,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "17-map-screen": {
+      "rule": {
+        "total_content_nodes": 15,
+        "total_text_nodes": 5,
+        "default_sized_frame_nodes": 3,
+        "visible_text_nodes": 5,
+        "frames_with_visible_content": 10,
+        "default_frame_ratio": 0.2,
+        "visible_ratio": 0.75,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 20,
+        "container_coverage": 2
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "18-error-state": {
+      "rule": {
+        "total_content_nodes": 5,
+        "total_text_nodes": 2,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 2,
+        "frames_with_visible_content": 4,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.8571,
+        "verdict": "ok",
+        "had_render_errors": false,
+        "total_node_count": 7,
+        "container_coverage": 1
+      },
+      "verdict": "ok",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "19-success-confirm": {
+      "rule": {
+        "total_content_nodes": 3,
+        "total_text_nodes": 2,
+        "default_sized_frame_nodes": 0,
+        "visible_text_nodes": 2,
+        "frames_with_visible_content": 1,
+        "default_frame_ratio": 0.0,
+        "visible_ratio": 0.6,
+        "verdict": "partial",
+        "had_render_errors": false,
+        "total_node_count": 5,
+        "container_coverage": 0
+      },
+      "verdict": "partial",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    },
+    "20-file-upload": {
+      "rule": {
+        "total_content_nodes": 14,
+        "total_text_nodes": 7,
+        "default_sized_frame_nodes": 1,
+        "visible_text_nodes": 7,
+        "frames_with_visible_content": 7,
+        "default_frame_ratio": 0.0714,
+        "visible_ratio": 0.6667,
+        "verdict": "partial",
+        "had_render_errors": false,
+        "total_node_count": 21,
+        "container_coverage": 2
+      },
+      "verdict": "partial",
+      "vlm": {
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
+      }
+    }
+  }
+}

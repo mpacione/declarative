@@ -1,0 +1,1 @@
+a map screen with a search bar at the top and location cards at the bottom

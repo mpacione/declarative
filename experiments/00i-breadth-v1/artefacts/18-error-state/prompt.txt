@@ -1,0 +1,1 @@
+an error state screen with illustration, apology message, and a retry button

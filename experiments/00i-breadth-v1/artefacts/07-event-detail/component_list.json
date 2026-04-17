@@ -1,0 +1,186 @@
+[
+  {
+    "type": "header",
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Event Details"
+        }
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Summer Music Festival 2024"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/calendar"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Saturday, July 20, 2024 \u2022 6:00 PM"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/location"
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Central Park, New York, NY"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "About"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Join us for an unforgettable evening of live music featuring local and international artists. Enjoy food trucks, craft beverages, and a vibrant community atmosphere under the stars."
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Attendees"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "245 people attending"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "avatar",
+                "props": {
+                  "initials": "JD"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Jane Doe"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "avatar",
+                "props": {
+                  "initials": "MS"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Mike Smith"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "avatar",
+                "props": {
+                  "initials": "AR"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Alex Rodriguez"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button_group",
+    "children": [
+      {
+        "type": "button",
+        "variant": "primary",
+        "props": {
+          "text": "RSVP Going"
+        },
+        "component_key": "button/large/solid"
+      },
+      {
+        "type": "button",
+        "variant": "secondary",
+        "props": {
+          "text": "Maybe"
+        },
+        "component_key": "button/large/translucent"
+      },
+      {
+        "type": "button",
+        "variant": "secondary",
+        "props": {
+          "text": "Can't Go"
+        },
+        "component_key": "button/large/translucent"
+      }
+    ]
+  }
+]

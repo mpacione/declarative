@@ -1,0 +1,199 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Contacts"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      },
+      {
+        "type": "icon_button",
+        "component_key": "icon/new"
+      }
+    ]
+  },
+  {
+    "type": "search_input",
+    "props": {
+      "placeholder": "Search contacts"
+    }
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "JD"
+            }
+          },
+          {
+            "type": "card",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "John Doe"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Last seen 2 hours ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Online"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "SM"
+            }
+          },
+          {
+            "type": "card",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Sarah Miller"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Last seen 30 minutes ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Online"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "MC"
+            }
+          },
+          {
+            "type": "card",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Michael Chen"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Last seen 1 day ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Offline"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "EJ"
+            }
+          },
+          {
+            "type": "card",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Emma Johnson"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Last seen 5 minutes ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Online"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "RP"
+            }
+          },
+          {
+            "type": "card",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Robert Park"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Last seen 3 days ago"
+                }
+              }
+            ]
+          },
+          {
+            "type": "badge",
+            "props": {
+              "text": "Offline"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
