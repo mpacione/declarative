@@ -22,6 +22,19 @@ _DEFAULT_MIN_INSTANCES = 50
 _CKR_MIN_INSTANCES = 1
 _CKR_ENTRIES_PER_PREFIX = 8
 
+# Prefixes we prefer when surfacing the CKR to the LLM. Project components
+# with these prefixes are semantically useful for composition; the ones
+# NOT in this list (single-char keyboard keys, `_Key`, `.?123`, `!,`, etc.)
+# add noise. Unknown prefixes still appear but are pushed below the
+# semantic ones.
+_CKR_SEMANTIC_PREFIXES: tuple[str, ...] = (
+    "button", "icon", "nav", "logo", "avatar", "badge", "card", "list",
+    "header", "footer", "toolbar", "menu", "tab", "tabs", "dialog",
+    "sheet", "drawer", "toast", "alert", "input", "search", "toggle",
+    "checkbox", "radio", "slider", "chip", "divider", "progress",
+    "fab", "action", "link",
+)
+
 
 def build_project_vocabulary(
     conn: sqlite3.Connection,
@@ -103,7 +116,7 @@ def build_project_vocabulary(
         for component_key, name, instance_count in ckr_rows:
             if not name:
                 continue
-            prefix = name.split("/", 1)[0] if "/" in name else name
+            prefix = name.split("/", 1)[0].lower() if "/" in name else name.lower()
             by_prefix[prefix].append((name, instance_count))
 
         if by_prefix:
@@ -114,7 +127,15 @@ def build_project_vocabulary(
                 "to reuse the exact instance from this project's corpus). "
                 "The component_key name is authoritative; do NOT alter it."
             )
-            for prefix in sorted(by_prefix.keys()):
+            # Semantic prefixes first (button, icon, nav, logo, …), then
+            # everything else alphabetically. Within each bucket, order by
+            # prefix name. This shifts the LLM-useful entries to the top
+            # of the block.
+            semantic = [p for p in by_prefix.keys() if p in _CKR_SEMANTIC_PREFIXES]
+            non_semantic = [p for p in by_prefix.keys() if p not in _CKR_SEMANTIC_PREFIXES]
+            semantic.sort()
+            non_semantic.sort()
+            for prefix in semantic + non_semantic:
                 entries = by_prefix[prefix][:_CKR_ENTRIES_PER_PREFIX]
                 formatted = ", ".join(f"{n} ({c})" for n, c in entries)
                 overflow = len(by_prefix[prefix]) - len(entries)
@@ -136,7 +157,9 @@ Containment & Overlay: card, dialog, sheet, accordion
 
 Output format — a JSON array:
 [
-  {"type": "header", "props": {"text": "Settings"}},
+  {"type": "header", "props": {"title": "Settings"}, "children": [
+    {"type": "icon_button", "component_key": "icon/back"}
+  ]},
   {"type": "card", "children": [
     {"type": "heading", "props": {"text": "Notifications"}},
     {"type": "toggle", "props": {"label": "Push alerts", "checked": true}},
@@ -144,11 +167,22 @@ Output format — a JSON array:
   ]},
   {"type": "card", "children": [
     {"type": "heading", "props": {"text": "Privacy"}},
-    {"type": "navigation_row", "props": {"text": "Blocked users"}},
+    {"type": "navigation_row", "props": {"text": "Blocked users"}, "children": [
+      {"type": "text", "props": {"text": "Blocked users"}},
+      {"type": "icon", "component_key": "icon/chevron-right"}
+    ]},
     {"type": "navigation_row", "props": {"text": "Data export"}}
   ]},
-  {"type": "button", "props": {"text": "Save Changes"}}
+  {"type": "button", "variant": "primary", "props": {"text": "Save Changes"}}
 ]
+
+Notice:
+- `component_key: "icon/back"` reuses an EXACT instance from this project
+  via Mode-1 lookup. Use component_key values from the "Project component
+  keys" section below whenever you'd otherwise emit a generic `icon` or
+  generic `button` variant. Project-native always beats catalog-default.
+- `variant: "primary"` picks a named variant axis from the component
+  catalog (see catalog variant_axes).
 
 Rules:
 - Use ONLY the component types listed above

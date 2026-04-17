@@ -1,0 +1,1 @@
+a data dashboard with a line chart and a table of recent transactions

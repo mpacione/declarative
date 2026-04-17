@@ -1,0 +1,222 @@
+{
+  "__ok": true,
+  "errors": [],
+  "rendered_root": "5767:5206",
+  "eid_map": {
+    "screen-1": {
+      "type": "FRAME",
+      "name": "screen-1",
+      "width": 428,
+      "height": 926,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F6F6F6"
+        }
+      ],
+      "effectCount": 0
+    },
+    "drawer-1": {
+      "type": "FRAME",
+      "name": "drawer-1",
+      "width": 396,
+      "height": 230,
+      "effectCount": 0
+    },
+    "list-1": {
+      "type": "FRAME",
+      "name": "list-1",
+      "width": 100,
+      "height": 210,
+      "effectCount": 0
+    },
+    "list_item-6": {
+      "type": "FRAME",
+      "name": "list_item-6",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-6": {
+      "type": "INSTANCE",
+      "name": "icon-6",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-6": {
+      "type": "TEXT",
+      "name": "text-6",
+      "width": 100,
+      "height": 15,
+      "characters": "Logout",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-5": {
+      "type": "INSTANCE",
+      "name": "icon-5",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 100,
+      "height": 15,
+      "characters": "Help",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-4": {
+      "type": "FRAME",
+      "name": "list_item-4",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-4": {
+      "type": "INSTANCE",
+      "name": "icon-4",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 100,
+      "height": 15,
+      "characters": "Notifications",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-3": {
+      "type": "FRAME",
+      "name": "list_item-3",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-3": {
+      "type": "INSTANCE",
+      "name": "icon-3",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-3": {
+      "type": "TEXT",
+      "name": "text-3",
+      "width": 100,
+      "height": 15,
+      "characters": "Settings",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-2": {
+      "type": "FRAME",
+      "name": "list_item-2",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-2": {
+      "type": "INSTANCE",
+      "name": "icon-2",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-2": {
+      "type": "TEXT",
+      "name": "text-2",
+      "width": 100,
+      "height": 15,
+      "characters": "Profile",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "list_item-1": {
+      "type": "FRAME",
+      "name": "list_item-1",
+      "width": 100,
+      "height": 35,
+      "effectCount": 0
+    },
+    "icon-1": {
+      "type": "INSTANCE",
+      "name": "icon-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 100,
+      "height": 15,
+      "characters": "Home",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "header-1": {
+      "type": "FRAME",
+      "name": "header-1",
+      "width": 396,
+      "height": 20,
+      "effectCount": 0
+    },
+    "icon_button-1": {
+      "type": "INSTANCE",
+      "name": "icon_button-1",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    }
+  }
+}

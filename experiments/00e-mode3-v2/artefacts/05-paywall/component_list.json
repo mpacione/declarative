@@ -1,0 +1,277 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Choose Your Plan"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/close"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Pricing Plans"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Select the perfect plan for your needs"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Starter"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "$9/month"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Up to 10 projects"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Basic analytics"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Email support"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Choose Plan"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Professional"
+        }
+      },
+      {
+        "type": "heading",
+        "props": {
+          "text": "$29/month"
+        }
+      },
+      {
+        "type": "badge",
+        "props": {
+          "text": "Most Popular"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Unlimited projects"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Advanced analytics"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Priority support"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Custom integrations"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Choose Plan"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Enterprise"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Custom pricing"
+        }
+      },
+      {
+        "type": "list",
+        "children": [
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Everything in Professional"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Dedicated account manager"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Custom SLA"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Advanced security"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "variant": "primary",
+        "component_key": "button/large/translucent",
+        "props": {
+          "text": "Contact Sales"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "What Our Users Say"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "\"This platform transformed how we manage our projects. Highly recommended!\""
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "\u2014 Sarah Johnson, CEO at TechStartup"
+        }
+      },
+      {
+        "type": "avatar",
+        "props": {
+          "initials": "SJ"
+        }
+      }
+    ]
+  }
+]

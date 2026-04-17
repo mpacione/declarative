@@ -64,6 +64,8 @@ def _button_template(variant: str | None) -> PresentationTemplate:
             "padding": {"x": "{space.button.padding_x}", "y": "{space.button.padding_y}"},
             "gap": "{space.button.gap}",
             "align": "center",
+            "mainAxisAlignment": "CENTER",
+            "crossAxisAlignment": "CENTER",
         },
         slots={
             "icon": SlotSpec(allowed=["icon"], required=False, position="start"),
@@ -73,7 +75,11 @@ def _button_template(variant: str | None) -> PresentationTemplate:
             "fill": fill,
             "fg": fg,
             "radius": "{radius.button}",
-            "typography": "{typography.button.label}",
+            "typography": {
+                "fontFamily": "{typography.button.fontFamily}",
+                "fontSize": "{typography.button.fontSize}",
+                "fontWeight": "{typography.button.fontWeight}",
+            },
             "height_pixels": 44,
         },
     )
@@ -87,6 +93,7 @@ def _text_input_template(variant: str | None) -> PresentationTemplate:
         layout={
             "direction": "vertical",
             "sizing": {"width": "fill", "height": "hug"},
+            "padding": {"x": "{space.input.padding_x}", "y": "{space.input.padding_y}"},
             "gap": "{space.input.gap}",
         },
         slots={
@@ -100,7 +107,11 @@ def _text_input_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.input.bg}",
             "stroke": "{color.input.border}",
             "radius": "{radius.input}",
-            "typography": "{typography.input.value}",
+            "typography": {
+                "fontFamily": "{typography.input.fontFamily}",
+                "fontSize": "{typography.input.fontSize}",
+                "fontWeight": "{typography.input.fontWeight}",
+            },
             "height_pixels": 48,
         },
     )
@@ -154,6 +165,11 @@ def _dialog_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.surface.dialog}",
             "radius": "{radius.dialog}",
             "shadow": "{shadow.dialog}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
         },
     )
 
@@ -168,6 +184,7 @@ def _toggle_template(variant: str | None) -> PresentationTemplate:
             "sizing": {"width": "hug", "height": "hug"},
             "gap": "{space.toggle.gap}",
             "align": "center",
+            "crossAxisAlignment": "CENTER",
         },
         slots={
             "track": SlotSpec(allowed=[], required=True, position="start"),
@@ -180,6 +197,11 @@ def _toggle_template(variant: str | None) -> PresentationTemplate:
             "radius": "{radius.toggle}",
             "track_width_pixels": 44,
             "track_height_pixels": 26,
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
         },
     )
 
@@ -194,6 +216,7 @@ def _checkbox_template(variant: str | None) -> PresentationTemplate:
             "sizing": {"width": "hug", "height": "hug"},
             "gap": "{space.checkbox.gap}",
             "align": "center",
+            "crossAxisAlignment": "CENTER",
         },
         slots={
             "indicator": SlotSpec(allowed=[], required=True, position="start"),
@@ -204,6 +227,11 @@ def _checkbox_template(variant: str | None) -> PresentationTemplate:
             "stroke": "{color.checkbox.border}",
             "radius": "{radius.checkbox}",
             "size_pixels": 20,
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
         },
     )
 
@@ -217,6 +245,8 @@ def _icon_button_template(variant: str | None) -> PresentationTemplate:
             "direction": "horizontal",
             "sizing": {"width": "fixed", "height": "fixed"},
             "align": "center",
+            "crossAxisAlignment": "CENTER",
+            "mainAxisAlignment": "CENTER",
             "padding": {"x": "{space.icon_button.padding}", "y": "{space.icon_button.padding}"},
             "width_pixels": 40,
             "height_pixels": 40,
@@ -242,6 +272,7 @@ def _list_item_template(variant: str | None) -> PresentationTemplate:
             "padding": {"x": "{space.list_item.padding_x}", "y": "{space.list_item.padding_y}"},
             "gap": "{space.list_item.gap}",
             "align": "center",
+            "crossAxisAlignment": "CENTER",
         },
         slots={
             "leading": SlotSpec(allowed=["icon", "avatar", "image"], required=False, position="start"),
@@ -253,6 +284,11 @@ def _list_item_template(variant: str | None) -> PresentationTemplate:
         },
         style={
             "fill": "{color.surface.list_item}",
+            "typography": {
+                "fontFamily": "{typography.list_item.fontFamily}",
+                "fontSize": "{typography.list_item.fontSize}",
+                "fontWeight": "{typography.list_item.fontWeight}",
+            },
         },
     )
 
@@ -276,6 +312,7 @@ def _generic_frame_template(
             "sizing": {"width": "hug", "height": "hug"},
             "padding": {"x": "{space.generic.padding_x}", "y": "{space.generic.padding_y}"},
             "align": "center",
+            "crossAxisAlignment": "CENTER",
         },
         slots={
             "label": SlotSpec(allowed=["text", "icon"], required=False, position="fill"),
@@ -283,6 +320,11 @@ def _generic_frame_template(
         style={
             "fill": "{color.surface.default}",
             "radius": "{radius.default}",
+            "typography": {
+                "fontFamily": "{typography.body.fontFamily}",
+                "fontSize": "{typography.body.fontSize}",
+                "fontWeight": "{typography.body.fontWeight}",
+            },
         },
     )
 

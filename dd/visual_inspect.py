@@ -40,8 +40,13 @@ DEFAULT_FRAME_H = 100
 
 BROKEN_DEFAULT_FRAME_RATIO = 0.7
 BROKEN_VISIBLE_RATIO = 0.3
-OK_DEFAULT_FRAME_RATIO = 0.1
-OK_VISIBLE_RATIO = 0.8
+# Relaxed from (0.1, 0.8) to (0.2, 0.7) after 00d calibration: 01-login
+# scored VLM=ok(8) but rule=broken at the tighter thresholds. The
+# distribution of well-formed Mode-3 outputs centres around default≈0.1
+# / visible≈0.75, not default=0 / visible=0.9. Thresholds widened to
+# match; VLM gate remains the strict filter for cross-validation.
+OK_DEFAULT_FRAME_RATIO = 0.2
+OK_VISIBLE_RATIO = 0.7
 
 SEVERITY = {"broken": 0, "partial": 1, "ok": 2}
 

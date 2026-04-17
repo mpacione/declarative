@@ -1,0 +1,143 @@
+[
+  {
+    "type": "header",
+    "props": {
+      "title": "Meme Feed"
+    },
+    "children": [
+      {
+        "type": "icon_button",
+        "component_key": "icon/back"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "children": [
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "meme-1.jpg",
+              "alt": "Meme"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "meme-2.jpg",
+              "alt": "Meme"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "meme-3.jpg",
+              "alt": "Meme"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "image",
+            "props": {
+              "src": "meme-4.jpg",
+              "alt": "Meme"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

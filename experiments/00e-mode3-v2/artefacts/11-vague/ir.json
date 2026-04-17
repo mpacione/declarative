@@ -1,0 +1,490 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "component_key": "icon/back",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "title": "Discover"
+      },
+      "children": [
+        "icon_button-1"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Featured Today"
+      }
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "https://images.unsplash.com/photo-1579274455760-cbf5f1f20967?w=500&h=300",
+        "alt": "Featured"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "image-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Trending Now"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Indie Games Rising"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "props": {
+        "text": "Hot"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "badge-1": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Hot"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-2"
+      ]
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-1",
+        "badge-1"
+      ]
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "AI Art Revolution"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "New"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "badge-2": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "New"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-3",
+        "badge-2"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Web3 Communities"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "Top"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "badge-3": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "x": "{space.generic.padding_x}",
+          "y": "{space.generic.padding_y}"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Top"
+      },
+      "style": {
+        "fill": "{color.surface.default}",
+        "radius": "{radius.default}"
+      },
+      "children": [
+        "text-6"
+      ]
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-5",
+        "badge-3"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-2",
+        "list-1"
+      ]
+    },
+    "heading-3": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Curated Collections"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/small/solid",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Design"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "component_key": "button/small/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Code"
+      }
+    },
+    "button-3": {
+      "type": "button",
+      "component_key": "button/small/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Music"
+      }
+    },
+    "button_group-1": {
+      "type": "button_group",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "button-1",
+        "button-2",
+        "button-3"
+      ]
+    },
+    "card-3": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-3",
+        "button_group-1"
+      ]
+    },
+    "button-4": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Explore More"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2",
+        "card-3",
+        "button-4"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "header-1": -2,
+    "heading-1": -3,
+    "image-1": -4,
+    "card-1": -5,
+    "heading-2": -6,
+    "text-1": -7,
+    "text-2": -8,
+    "badge-1": -9,
+    "list_item-1": -10,
+    "text-3": -11,
+    "text-4": -12,
+    "badge-2": -13,
+    "list_item-2": -14,
+    "text-5": -15,
+    "text-6": -16,
+    "badge-3": -17,
+    "list_item-3": -18,
+    "list-1": -19,
+    "card-2": -20,
+    "heading-3": -21,
+    "button-1": -22,
+    "button-2": -23,
+    "button-3": -24,
+    "button_group-1": -25,
+    "card-3": -26,
+    "button-4": -27,
+    "screen-1": -28
+  }
+}

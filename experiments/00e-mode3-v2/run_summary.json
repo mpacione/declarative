@@ -1,0 +1,618 @@
+[
+  {
+    "slug": "01-login",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 5
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 15,
+        "warnings": 9,
+        "element_types": {
+          "header": 1,
+          "heading": 1,
+          "text": 6,
+          "card": 2,
+          "text_input": 2,
+          "button": 1,
+          "link": 1,
+          "screen": 1
+        },
+        "script_chars": 10744
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 1,
+        "error_kinds": {
+          "render_thrown": 1
+        },
+        "before": 1,
+        "after": 7,
+        "nodes_created": 6
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 118,
+        "rendered_root": "5767:4891",
+        "eid_count": 10,
+        "types": {
+          "FRAME": 6,
+          "TEXT": 3,
+          "INSTANCE": 1
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a login screen with email, password, and a sign-in button"
+  },
+  {
+    "slug": "02-profile-settings",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 4
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 19,
+        "warnings": 14,
+        "element_types": {
+          "icon_button": 1,
+          "text": 6,
+          "header": 1,
+          "avatar": 1,
+          "heading": 2,
+          "card": 2,
+          "toggle": 4,
+          "button": 1,
+          "screen": 1
+        },
+        "script_chars": 12461
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 7,
+        "after": 8,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 111,
+        "rendered_root": "5767:4911",
+        "eid_count": 19,
+        "types": {
+          "FRAME": 9,
+          "INSTANCE": 2,
+          "TEXT": 8
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a profile settings page with avatar, name, email, notification toggles, and a save button"
+  },
+  {
+    "slug": "03-meme-feed",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 2
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 24,
+        "warnings": 23,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "image": 4,
+          "button": 8,
+          "button_group": 4,
+          "card": 4,
+          "list": 1,
+          "screen": 1
+        },
+        "script_chars": 13970
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 8,
+        "after": 9,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 79024,
+        "rendered_root": "5767:4938",
+        "eid_count": 24,
+        "types": {
+          "FRAME": 15,
+          "INSTANCE": 9
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a feed of memes with upvote and share buttons under each"
+  },
+  {
+    "slug": "04-dashboard",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 3
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 37,
+        "warnings": 32,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "heading": 2,
+          "image": 1,
+          "card": 2,
+          "text": 20,
+          "badge": 4,
+          "list_item": 4,
+          "table": 1,
+          "screen": 1
+        },
+        "script_chars": 18474
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 9,
+        "after": 10,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 162,
+        "rendered_root": "5767:5018",
+        "eid_count": 37,
+        "types": {
+          "FRAME": 14,
+          "TEXT": 22,
+          "INSTANCE": 1
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a data dashboard with a line chart and a table of recent transactions"
+  },
+  {
+    "slug": "05-paywall",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 6
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 50,
+        "warnings": 48,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "heading": 7,
+          "text": 16,
+          "card": 5,
+          "list_item": 11,
+          "list": 3,
+          "button": 3,
+          "badge": 1,
+          "avatar": 1,
+          "screen": 1
+        },
+        "script_chars": 22986
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 10,
+        "after": 11,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 188,
+        "rendered_root": "5767:5056",
+        "eid_count": 50,
+        "types": {
+          "FRAME": 23,
+          "TEXT": 23,
+          "INSTANCE": 4
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a paywall screen with three pricing tiers and a testimonial"
+  },
+  {
+    "slug": "06-spa-minimal",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 5
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 21,
+        "warnings": 20,
+        "element_types": {
+          "icon_button": 2,
+          "header": 1,
+          "image": 1,
+          "heading": 2,
+          "text": 6,
+          "card": 3,
+          "list_item": 3,
+          "list": 1,
+          "button": 1,
+          "screen": 1
+        },
+        "script_chars": 11546
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 11,
+        "after": 12,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 104,
+        "rendered_root": "5767:5127",
+        "eid_count": 21,
+        "types": {
+          "FRAME": 11,
+          "TEXT": 8,
+          "INSTANCE": 2
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "make something minimal and luxurious for a spa app"
+  },
+  {
+    "slug": "07-search",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 4
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 30,
+        "warnings": 29,
+        "element_types": {
+          "icon_button": 5,
+          "text": 7,
+          "header": 1,
+          "search_input": 1,
+          "heading": 2,
+          "list_item": 6,
+          "list": 2,
+          "card": 2,
+          "icon": 3,
+          "screen": 1
+        },
+        "script_chars": 15938
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 12,
+        "after": 13,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 117,
+        "rendered_root": "5767:5150",
+        "eid_count": 30,
+        "types": {
+          "FRAME": 13,
+          "TEXT": 9,
+          "INSTANCE": 8
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a search screen"
+  },
+  {
+    "slug": "08-explicit-structure",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 3
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 14,
+        "warnings": 11,
+        "element_types": {
+          "icon_button": 2,
+          "heading": 2,
+          "header": 1,
+          "text": 5,
+          "button": 2,
+          "card": 1,
+          "screen": 1
+        },
+        "script_chars": 10911
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 13,
+        "after": 14,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 91,
+        "rendered_root": "5767:5188",
+        "eid_count": 14,
+        "types": {
+          "FRAME": 5,
+          "TEXT": 7,
+          "INSTANCE": 2
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "header with back button, title, share button. Then a card with a heading, 3 lines of body text, and a primary button. Then a secondary button below."
+  },
+  {
+    "slug": "09-drawer-nav",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 1
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 23,
+        "warnings": 22,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "text": 6,
+          "icon": 6,
+          "list_item": 6,
+          "list": 1,
+          "drawer": 1,
+          "screen": 1
+        },
+        "script_chars": 12904
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 14,
+        "after": 15,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 120,
+        "rendered_root": "5767:5206",
+        "eid_count": 23,
+        "types": {
+          "FRAME": 10,
+          "INSTANCE": 7,
+          "TEXT": 6
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "a drawer menu with 6 nav items"
+  },
+  {
+    "slug": "10-onboarding-carousel",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 6
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 25,
+        "warnings": 21,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "image": 3,
+          "heading": 3,
+          "text": 6,
+          "card": 3,
+          "button": 5,
+          "pagination": 1,
+          "button_group": 1,
+          "screen": 1
+        },
+        "script_chars": 15002
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 15,
+        "after": 16,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 136,
+        "rendered_root": "5767:5236",
+        "eid_count": 25,
+        "types": {
+          "FRAME": 13,
+          "INSTANCE": 3,
+          "TEXT": 9
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "an onboarding carousel with 3 slides, each with an illustration, headline, and subtext"
+  },
+  {
+    "slug": "11-vague",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 5
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 28,
+        "warnings": 24,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "heading": 3,
+          "image": 1,
+          "card": 3,
+          "text": 6,
+          "badge": 3,
+          "list_item": 3,
+          "list": 1,
+          "button": 4,
+          "button_group": 1,
+          "screen": 1
+        },
+        "script_chars": 16034
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 16,
+        "after": 17,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 154,
+        "rendered_root": "5767:5275",
+        "eid_count": 28,
+        "types": {
+          "FRAME": 14,
+          "INSTANCE": 5,
+          "TEXT": 9
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "something cool"
+  },
+  {
+    "slug": "12-round-trip-test",
+    "stages": {
+      "parse": {
+        "status": "ok",
+        "components": 7
+      },
+      "compose": {
+        "status": "ok",
+        "elements": 34,
+        "warnings": 29,
+        "element_types": {
+          "icon_button": 1,
+          "header": 1,
+          "heading": 5,
+          "text": 16,
+          "card": 5,
+          "toggle": 4,
+          "button": 1,
+          "screen": 1
+        },
+        "script_chars": 18883
+      },
+      "render": {
+        "status": "ok",
+        "errors_count": 0,
+        "error_kinds": {},
+        "before": 17,
+        "after": 18,
+        "nodes_created": 1
+      },
+      "walk": {
+        "status": "ok",
+        "latency_ms": 167,
+        "rendered_root": "5767:5332",
+        "eid_count": 34,
+        "types": {
+          "FRAME": 11,
+          "INSTANCE": 2,
+          "TEXT": 21
+        },
+        "zero_dim_nodes": [],
+        "missing_vectors": [],
+        "tiny_text_nodes": [],
+        "max_width": 428,
+        "max_height": 926
+      }
+    },
+    "prompt": "rebuild iPhone 13 Pro Max - 109 from scratch"
+  }
+]

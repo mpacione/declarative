@@ -1,0 +1,329 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "component_key": "icon/back",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "icon_button-2": {
+      "type": "icon_button",
+      "component_key": "icon/wallet",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "title": "Serenity"
+      },
+      "children": [
+        "icon_button-1",
+        "icon_button-2"
+      ]
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "spa-hero.jpg",
+        "alt": "Spa treatment"
+      }
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Signature Massage",
+        "level": 2
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "90 minutes of pure tranquility"
+      }
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "image-1",
+        "heading-1",
+        "text-1"
+      ]
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Available Times"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "2:00 PM"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-3"
+      ]
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "3:30 PM"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "5:00 PM"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-5"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3"
+      ]
+    },
+    "card-2": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "text-2",
+        "list-1"
+      ]
+    },
+    "heading-2": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "$280",
+        "level": 3
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Per session"
+      }
+    },
+    "card-3": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-2",
+        "text-6"
+      ]
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/solid",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "Book Now"
+      }
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "card-2",
+        "card-3",
+        "button-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "shadow.card": 0,
+    "shadow.dialog": 0
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "icon_button-2": -2,
+    "header-1": -3,
+    "image-1": -4,
+    "heading-1": -5,
+    "text-1": -6,
+    "card-1": -7,
+    "text-2": -8,
+    "text-3": -9,
+    "list_item-1": -10,
+    "text-4": -11,
+    "list_item-2": -12,
+    "text-5": -13,
+    "list_item-3": -14,
+    "list-1": -15,
+    "card-2": -16,
+    "heading-2": -17,
+    "text-6": -18,
+    "card-3": -19,
+    "button-1": -20,
+    "screen-1": -21
+  }
+}

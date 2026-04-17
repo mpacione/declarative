@@ -288,9 +288,26 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "color.toggle.thumb": "#FFFFFF",
     "color.checkbox.fill": "#FFFFFF",
     "color.checkbox.border": "#94A3B8",
-    # Typography (pass-through hints — Phase 1 of renderer consumes raw text layout defaults)
-    "typography.button.label": "Inter-Medium-14",
-    "typography.input.value": "Inter-Regular-14",
+    # Typography — split into per-type (family, size, weight) so
+    # the renderer's _emit_text_props can consume them directly.
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    # Spacing (additional)
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
     # Effects
     "shadow.card": 0,
     "shadow.dialog": 0,
@@ -395,8 +412,26 @@ def _mode3_synthesise_children(
         if not value:
             continue
 
+        # Inherit typography from the parent template's style.typography.
+        # The renderer's _emit_text_props consumes style.fontFamily /
+        # fontSize / fontWeight directly — split the dict now to match.
+        child_style: dict[str, Any] = {}
+        typography = (template.style or {}).get("typography") or {}
+        if isinstance(typography, dict):
+            for key in ("fontFamily", "fontSize", "fontWeight"):
+                if typography.get(key) is not None:
+                    child_style[key] = typography[key]
+
+        # Label-ish slots inherit the parent's `fg` color ref. Text-node
+        # color in Figma is expressed as a `fills` paint, so we stash the
+        # ref under `style.fill` — the renderer's Mode-3 IR-style overlay
+        # synthesises a SOLID fill from it.
+        fg_ref = (template.style or {}).get("fg")
+        if fg_ref and slot_name in ("label", "headline", "title", "text"):
+            child_style.setdefault("fill", fg_ref)
+
         child_eid = allocate_id("text")
-        elements[child_eid] = {
+        child: dict[str, Any] = {
             "type": "text",
             "props": {"text": str(value)},
             "layout": {"direction": "vertical"},
@@ -407,6 +442,9 @@ def _mode3_synthesise_children(
                 "provider": template.provider,
             },
         }
+        if child_style:
+            child["style"] = child_style
+        elements[child_eid] = child
         child_ids.append(child_eid)
 
     return child_ids
@@ -510,6 +548,7 @@ def _extract_bound_variables(
 def build_template_visuals(
     spec: dict[str, Any],
     templates: dict[str, list[dict[str, Any]]],
+    conn: sqlite3.Connection | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Map spec elements to template visual data.
 
@@ -517,7 +556,26 @@ def build_template_visuals(
     db_visuals-compatible dict from template visual defaults. Mutates
     spec to add _node_id_map. Extracts boundVariables from template
     fills/strokes for token rebinding.
+
+    ADR-008 Mode-3: when an element carries an IR-level `component_key`
+    (emitted by the LLM from the CKR vocabulary), look up its Figma
+    node id in `component_key_registry` so the renderer's Mode-1
+    path can call ``getNodeByIdAsync(figma_node_id).createInstance()``.
+    A ``conn`` must be supplied to enable this lookup; tests without a
+    DB connection get the pre-ADR-008 behaviour (component_key is set
+    but component_figma_id stays None, so Mode-1 falls through to
+    a placeholder).
     """
+    ckr_by_name: dict[str, str] = {}
+    if conn is not None:
+        try:
+            ckr_rows = conn.execute(
+                "SELECT name, figma_node_id FROM component_key_registry"
+            ).fetchall()
+            ckr_by_name = {row[0]: row[1] for row in ckr_rows if row[0] and row[1]}
+        except sqlite3.OperationalError:
+            ckr_by_name = {}
+
     node_id_map: dict[str, int] = {}
     visuals: dict[int, dict[str, Any]] = {}
 
@@ -547,6 +605,14 @@ def build_template_visuals(
                 if val is not None:
                     font_data[fk] = val
 
+        # Resolve Mode-1 identity with the IR element taking precedence
+        # over the old component_templates row when both are present.
+        ir_component_key = element.get("component_key")
+        resolved_component_key = ir_component_key or (tmpl.get("component_key") if tmpl else None)
+        resolved_component_figma_id = tmpl.get("component_figma_id") if tmpl else None
+        if ir_component_key and ir_component_key in ckr_by_name:
+            resolved_component_figma_id = ckr_by_name[ir_component_key]
+
         visual_entry: dict[str, Any] = {
             "fills": tmpl.get("fills") if tmpl else None,
             "strokes": tmpl.get("strokes") if tmpl else None,
@@ -554,8 +620,8 @@ def build_template_visuals(
             "corner_radius": tmpl.get("corner_radius") if tmpl else None,
             "opacity": tmpl.get("opacity") if tmpl else None,
             "stroke_weight": None,
-            "component_key": tmpl.get("component_key") if tmpl else None,
-            "component_figma_id": tmpl.get("component_figma_id") if tmpl else None,
+            "component_key": resolved_component_key,
+            "component_figma_id": resolved_component_figma_id,
             "bindings": bindings,
         }
         if font_data:
@@ -816,7 +882,9 @@ def generate_from_prompt(
     templates = query_templates(conn)
     components, warnings = validate_components(components, templates)
     spec = compose_screen(components, templates=templates)
-    visuals = build_template_visuals(spec, templates)
+    # Pass conn through so build_template_visuals can resolve IR-level
+    # component_key refs against component_key_registry (ADR-008 Mode-3).
+    visuals = build_template_visuals(spec, templates, conn=conn)
     script, token_refs = generate_figma_script(spec, db_visuals=visuals, page_name=page_name)
     template_rebind_entries = collect_template_rebind_entries(spec, visuals)
 

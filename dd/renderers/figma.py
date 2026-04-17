@@ -1238,13 +1238,15 @@ def generate_figma_script(
             # id, so without this overlay their template-supplied fills
             # are silently dropped and the frame renders with the
             # default `fills = []` clearing below.
+            # Text nodes also get the overlay — text color in Figma is
+            # expressed as a fills paint.
+            ir_style = element.get("style", {}) or {}
+            fill_ref = ir_style.get("fill")
+            if fill_ref and not visual.get("fills"):
+                resolved, _tok = resolve_style_value(fill_ref, tokens)
+                if isinstance(resolved, str) and resolved.startswith("#"):
+                    visual["fills"] = [{"type": "solid", "color": resolved}]
             if not is_text:
-                ir_style = element.get("style", {}) or {}
-                fill_ref = ir_style.get("fill")
-                if fill_ref and not visual.get("fills"):
-                    resolved, _tok = resolve_style_value(fill_ref, tokens)
-                    if isinstance(resolved, str) and resolved.startswith("#"):
-                        visual["fills"] = [{"type": "solid", "color": resolved}]
                 stroke_ref = ir_style.get("stroke")
                 if stroke_ref and not visual.get("strokes"):
                     resolved, _tok = resolve_style_value(stroke_ref, tokens)

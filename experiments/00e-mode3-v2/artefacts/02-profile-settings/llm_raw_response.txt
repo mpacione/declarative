@@ -1,0 +1,35 @@
+```json
+[
+  {
+    "type": "header",
+    "children": [
+      {"type": "icon_button", "component_key": "icon/back"},
+      {"type": "text", "props": {"text": "Profile Settings"}}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "avatar", "props": {"initials": "JD", "size": "large"}},
+      {"type": "heading", "props": {"text": "John Doe"}},
+      {"type": "text", "props": {"text": "john.doe@example.com"}}
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {"type": "heading", "props": {"text": "Notifications"}},
+      {"type": "toggle", "props": {"label": "Push notifications", "checked": true}},
+      {"type": "toggle", "props": {"label": "Email notifications", "checked": true}},
+      {"type": "toggle", "props": {"label": "SMS notifications", "checked": false}},
+      {"type": "toggle", "props": {"label": "Marketing emails", "checked": false}}
+    ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {"text": "Save Changes"}
+  }
+]
+```
