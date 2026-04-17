@@ -1,0 +1,27 @@
+[
+  {"type": "header", "children": [
+    {"type": "text"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "image"},
+    {"type": "heading"},
+    {"type": "text"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "image"},
+    {"type": "heading"},
+    {"type": "text"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "image"},
+    {"type": "heading"},
+    {"type": "text"}
+  ]},
+  {"type": "segmented_control", "children": [
+    {"type": "text"},
+    {"type": "text"},
+    {"type": "text"}
+  ]},
+  {"type": "button", "variant": "primary"},
+  {"type": "link"}
+]

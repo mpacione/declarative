@@ -1,0 +1,15 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "text"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading"},
+    {"type": "text"},
+    {"type": "text_input"},
+    {"type": "text_input"},
+    {"type": "link"},
+    {"type": "button", "variant": "primary"}
+  ]},
+  {"type": "button", "variant": "secondary"}
+]

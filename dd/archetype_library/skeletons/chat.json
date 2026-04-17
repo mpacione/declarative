@@ -1,0 +1,20 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "avatar"},
+    {"type": "text"},
+    {"type": "icon_button"}
+  ]},
+  {"type": "list", "children": [
+    {"type": "list_item", "children": [{"type": "avatar"}, {"type": "text"}]},
+    {"type": "list_item", "children": [{"type": "text"}]},
+    {"type": "list_item", "children": [{"type": "avatar"}, {"type": "text"}]},
+    {"type": "list_item", "children": [{"type": "text"}]},
+    {"type": "list_item", "children": [{"type": "avatar"}, {"type": "text"}]}
+  ]},
+  {"type": "card", "children": [
+    {"type": "icon_button"},
+    {"type": "text_input"},
+    {"type": "icon_button"}
+  ]}
+]

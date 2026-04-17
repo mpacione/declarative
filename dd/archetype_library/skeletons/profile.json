@@ -1,0 +1,26 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "text"},
+    {"type": "icon_button"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "avatar"},
+    {"type": "heading"},
+    {"type": "text"},
+    {"type": "button_group", "children": [
+      {"type": "button", "variant": "primary"},
+      {"type": "button", "variant": "secondary"}
+    ]}
+  ]},
+  {"type": "list", "children": [
+    {"type": "list_item", "children": [{"type": "text"}, {"type": "badge"}]},
+    {"type": "list_item", "children": [{"type": "text"}, {"type": "badge"}]},
+    {"type": "list_item", "children": [{"type": "text"}, {"type": "badge"}]}
+  ]},
+  {"type": "tabs", "children": [
+    {"type": "text"},
+    {"type": "text"},
+    {"type": "text"}
+  ]}
+]

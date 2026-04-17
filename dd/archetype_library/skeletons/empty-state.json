@@ -1,0 +1,13 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "text"}
+  ]},
+  {"type": "empty_state", "children": [
+    {"type": "image"},
+    {"type": "heading"},
+    {"type": "text"},
+    {"type": "button", "variant": "primary"},
+    {"type": "link"}
+  ]}
+]

@@ -1,0 +1,30 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "text"}
+  ]},
+  {"type": "heading"},
+  {"type": "text"},
+  {"type": "card", "children": [
+    {"type": "heading"},
+    {"type": "text"},
+    {"type": "list", "children": [
+      {"type": "list_item", "children": [{"type": "icon"}, {"type": "text"}]},
+      {"type": "list_item", "children": [{"type": "icon"}, {"type": "text"}]}
+    ]},
+    {"type": "button", "variant": "primary"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "heading"},
+    {"type": "text"},
+    {"type": "list", "children": [
+      {"type": "list_item", "children": [{"type": "icon"}, {"type": "text"}]},
+      {"type": "list_item", "children": [{"type": "icon"}, {"type": "text"}]}
+    ]},
+    {"type": "button", "variant": "secondary"}
+  ]},
+  {"type": "card", "children": [
+    {"type": "avatar"},
+    {"type": "text"}
+  ]}
+]

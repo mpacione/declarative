@@ -1,0 +1,86 @@
+{
+  "login": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "01-login",
+    "description": "Email + password + sign-in primary button, with secondary action (register / forgot).",
+    "corpus_coverage_note": "Dank has login-shaped screens but the components/screen_component_instances tables are empty in the current DB snapshot; corpus-mining deferred to v0.2."
+  },
+  "settings": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "02-profile-settings",
+    "description": "Profile edit card + toggle_group for preferences + navigation_row list + save button.",
+    "corpus_coverage_note": "Dank has settings-adjacent screens; not yet mined."
+  },
+  "feed": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "03-meme-feed",
+    "description": "Scrolling list of cards: avatar + text + image + button_group (upvote / share / comment).",
+    "corpus_coverage_note": "Wallet/finance app doesn't feature meme feeds; hand-authored from Mobbin pattern."
+  },
+  "dashboard": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "04-dashboard",
+    "description": "Tabs + chart card + table card. Table uses list_item rows with badges.",
+    "corpus_coverage_note": "Dank's transaction-history screens are dashboard-shaped; not yet mined."
+  },
+  "paywall": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "05-paywall",
+    "description": "Hero + three pricing-tier cards (each with feature list + CTA) + testimonial.",
+    "corpus_coverage_note": "Standard SaaS paywall; hand-authored from canonical taxonomy."
+  },
+  "search": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "07-search",
+    "description": "Header with search_input + filter tabs + recent / popular chip group + results list.",
+    "corpus_coverage_note": "Dank has a search screen variant; not yet mined."
+  },
+  "drawer-nav": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "09-drawer-nav",
+    "description": "Drawer containing user header + 6 navigation rows + sign-out button.",
+    "corpus_coverage_note": "Dank has drawer menus but the node tree is flat-typed; hand-authored to surface structure."
+  },
+  "onboarding-carousel": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": "10-onboarding-carousel",
+    "description": "3 card slides (image + heading + body) + segmented_control pagination + primary CTA + skip link.",
+    "corpus_coverage_note": "Standard onboarding pattern; hand-authored."
+  },
+  "profile": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": null,
+    "description": "Header + hero card (avatar + heading + bio + follow/message buttons) + stats list + tabs. Not tied to a canonical prompt; covers 'profile' classifier route.",
+    "corpus_coverage_note": "Generic Mobbin profile pattern; v0.2 should validate against Dank profile screens."
+  },
+  "chat": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": null,
+    "description": "Header + scrolling list of message bubbles (alternating avatar-prefixed and text-only) + composer row. Not tied to a canonical prompt.",
+    "corpus_coverage_note": "Generic messaging pattern."
+  },
+  "empty-state": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": null,
+    "description": "Header + empty_state block (image + heading + body + primary CTA + secondary link). Covers 'nothing to show' screens.",
+    "corpus_coverage_note": "Generic empty-state pattern."
+  },
+  "detail": {
+    "origin": "hand-authored",
+    "author": "ADR-008 v0.1.5",
+    "canonical_prompt_slug": null,
+    "description": "Header + hero card (image + heading + body) + spec-list card + primary/secondary action row. Covers product/article/item detail.",
+    "corpus_coverage_note": "Standard detail pattern; hand-authored. Used for 12-round-trip-test fallback when the clarification refusal fires."
+  }
+}

@@ -1,0 +1,34 @@
+[
+  {"type": "header", "children": [
+    {"type": "icon_button"},
+    {"type": "search_input"},
+    {"type": "icon_button"}
+  ]},
+  {"type": "tabs", "children": [
+    {"type": "text"},
+    {"type": "text"},
+    {"type": "text"}
+  ]},
+  {"type": "button_group", "children": [
+    {"type": "button"},
+    {"type": "button"},
+    {"type": "button"}
+  ]},
+  {"type": "list", "children": [
+    {"type": "list_item", "children": [
+      {"type": "avatar"},
+      {"type": "text"},
+      {"type": "icon"}
+    ]},
+    {"type": "list_item", "children": [
+      {"type": "avatar"},
+      {"type": "text"},
+      {"type": "icon"}
+    ]},
+    {"type": "list_item", "children": [
+      {"type": "avatar"},
+      {"type": "text"},
+      {"type": "icon"}
+    ]}
+  ]}
+]
