@@ -23,8 +23,25 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
       },
       "children": [
         "icon_button-1",
@@ -113,8 +130,10 @@
           "heightPixels": 48
         },
         "padding": {
-          "x": "{space.input.padding_x}",
-          "y": "{space.input.padding_y}"
+          "top": "{space.input.padding_y}",
+          "bottom": "{space.input.padding_y}",
+          "left": "{space.input.padding_x}",
+          "right": "{space.input.padding_x}"
         },
         "gap": "{space.input.gap}"
       },
@@ -182,8 +201,10 @@
           "heightPixels": 48
         },
         "padding": {
-          "x": "{space.input.padding_x}",
-          "y": "{space.input.padding_y}"
+          "top": "{space.input.padding_y}",
+          "bottom": "{space.input.padding_y}",
+          "left": "{space.input.padding_x}",
+          "right": "{space.input.padding_x}"
         },
         "gap": "{space.input.gap}"
       },
@@ -210,15 +231,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "avatar-1",
@@ -421,15 +445,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-2",
@@ -471,8 +498,10 @@
           "heightPixels": 44
         },
         "padding": {
-          "x": "{space.button.padding_x}",
-          "y": "{space.button.padding_y}"
+          "top": "{space.button.padding_y}",
+          "bottom": "{space.button.padding_y}",
+          "left": "{space.button.padding_x}",
+          "right": "{space.button.padding_x}"
         },
         "gap": "{space.button.gap}",
         "align": "center",
@@ -639,10 +668,10 @@
     "radius.popover": 8,
     "radius.tooltip": 6,
     "radius.image": 8,
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
   },
   "_node_id_map": {
     "icon_button-1": -1,

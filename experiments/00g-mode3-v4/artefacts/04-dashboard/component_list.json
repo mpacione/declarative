@@ -10,7 +10,7 @@
       },
       {
         "type": "icon_button",
-        "component_key": "icon/close"
+        "component_key": "icon/wallet"
       }
     ]
   },
@@ -85,7 +85,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "$2,500.00"
+                  "text": "$2,450.00"
                 }
               },
               {
@@ -108,19 +108,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Invoice issued"
+                  "text": "Subscription renewal"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$1,800.00"
+                  "text": "$99.99"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Pending"
+                  "text": "Completed"
                 }
               }
             ]
@@ -137,19 +137,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Refund processed"
+                  "text": "Refund issued"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "-$500.00"
+                  "text": "-$150.00"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Completed"
+                  "text": "Processed"
                 }
               }
             ]
@@ -166,19 +166,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Payment received"
+                  "text": "Invoice payment"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$3,200.00"
+                  "text": "$1,200.00"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Completed"
+                  "text": "Pending"
                 }
               }
             ]
@@ -195,19 +195,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Invoice issued"
+                  "text": "Wire transfer"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$1,200.00"
+                  "text": "$5,000.00"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Pending"
+                  "text": "Completed"
                 }
               }
             ]
@@ -215,5 +215,13 @@
         ]
       }
     ]
+  },
+  {
+    "type": "button",
+    "variant": "primary",
+    "component_key": "button/large/translucent",
+    "props": {
+      "text": "View All Transactions"
+    }
   }
 ]

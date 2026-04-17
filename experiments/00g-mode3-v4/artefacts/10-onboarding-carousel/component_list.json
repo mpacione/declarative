@@ -22,13 +22,13 @@
       {
         "type": "heading",
         "props": {
-          "text": "Welcome to Your Journey"
+          "text": "Welcome to Our App"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Discover amazing features designed to enhance your experience"
+          "text": "Discover amazing features designed to make your life easier"
         }
       }
     ]
@@ -51,7 +51,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Keep up with everything that matters to you in one place"
+          "text": "Keep up with everything that matters to you in real time"
         }
       }
     ]
@@ -74,7 +74,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Create your account and unlock all the possibilities"
+          "text": "Join thousands of users enjoying a better experience"
         }
       }
     ]
@@ -112,7 +112,7 @@
   {
     "type": "link",
     "props": {
-      "text": "Skip"
+      "text": "Skip for now"
     }
   }
 ]

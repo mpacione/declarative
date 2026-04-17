@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5776:38557",
+  "rendered_root": "5779:41338",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -19,7 +19,7 @@
     "button-2": {
       "type": "FRAME",
       "name": "button-2",
-      "width": 121,
+      "width": 153,
       "height": 44,
       "fills": [
         {
@@ -48,7 +48,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 152,
+      "height": 184,
       "fills": [
         {
           "type": "solid",
@@ -61,12 +61,12 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "button-1": {
       "type": "FRAME",
       "name": "button-1",
-      "width": 101,
+      "width": 133,
       "height": 44,
       "fills": [
         {
@@ -94,7 +94,7 @@
     "text-4": {
       "type": "TEXT",
       "name": "text-4",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Third line of body text.",
       "textAutoResize": "HEIGHT",
@@ -109,7 +109,7 @@
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Second line of body text.",
       "textAutoResize": "HEIGHT",
@@ -124,7 +124,7 @@
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "First line of body text.",
       "textAutoResize": "HEIGHT",
@@ -139,7 +139,7 @@
     "heading-1": {
       "type": "TEXT",
       "name": "heading-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Heading",
       "textAutoResize": "HEIGHT",
@@ -155,7 +155,19 @@
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 55,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-2": {
@@ -168,7 +180,7 @@
     "text-1": {
       "type": "TEXT",
       "name": "text-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Title",
       "textAutoResize": "HEIGHT",

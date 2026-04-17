@@ -382,10 +382,14 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "radius.tooltip": 6,
     "radius.image": 8,
     # Effects
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0,
+    # ADR-008 v0.1.5 H2: non-zero shadow elevations. Cards / dialogs /
+    # menus / popovers all want modest elevation to read as floating
+    # surfaces. Elevation is a y-offset in pixels; renderer synthesises
+    # the drop-shadow with 2× blur + 10 % alpha.
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4,
 }
 
 
@@ -437,6 +441,30 @@ def _apply_template_to_parent(
             sizing = parent_layout.setdefault("sizing", {})
             for sk, sv in (value or {}).items():
                 sizing.setdefault(sk, sv)
+        elif key == "padding":
+            # PresentationTemplates express padding as {x, y} (horizontal
+            # and vertical). The renderer's `_emit_auto_layout` reads
+            # `padding.{top,right,bottom,left}`. Normalise at merge time
+            # so padding actually lands in the generated script.
+            existing = parent_layout.setdefault("padding", {})
+            if isinstance(value, dict):
+                x_val = value.get("x")
+                y_val = value.get("y")
+                for side, v in (("top", y_val), ("bottom", y_val),
+                                ("left", x_val), ("right", x_val)):
+                    if v is not None and side not in existing:
+                        existing[side] = v
+                # If the template already used top/right/bottom/left,
+                # still forward those.
+                for side in ("top", "right", "bottom", "left"):
+                    if side in value and side not in existing:
+                        existing[side] = value[side]
+        elif key == "gap":
+            # Gap in auto-layout maps to itemSpacing. The renderer reads
+            # layout.gap directly, but it also accepts layout.itemSpacing.
+            # Leave as `gap` so renderer handles either form.
+            if "gap" not in parent_layout:
+                parent_layout["gap"] = value
         elif key not in parent_layout:
             parent_layout[key] = value
     # Seed pixel dims from the template's style.height_pixels /
@@ -449,10 +477,12 @@ def _apply_template_to_parent(
         sizing["heightPixels"] = style["height_pixels"]
     if "widthPixels" not in sizing and isinstance(style.get("width_pixels"), (int, float)):
         sizing["widthPixels"] = style["width_pixels"]
-    # Surface fills / radius / stroke refs as IR style so the
-    # renderer's _emit_visual path picks them up.
+    # Surface fills / radius / stroke / shadow refs as IR style so
+    # the renderer's _emit_visual path picks them up. H2 adds shadow
+    # to the allowlist; before v0.1.5 the template's `shadow` token
+    # (e.g. `{shadow.card}`) silently dropped on the floor.
     parent_style = element.setdefault("style", {})
-    for key in ("fill", "fg", "stroke", "radius"):
+    for key in ("fill", "fg", "stroke", "radius", "shadow"):
         if key in style and key not in parent_style:
             parent_style[key] = style[key]
 

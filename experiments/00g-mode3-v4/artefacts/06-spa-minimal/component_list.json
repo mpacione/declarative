@@ -68,7 +68,7 @@
           {
             "type": "text",
             "props": {
-              "text": "Preferred therapist"
+              "text": "Therapist Selection"
             }
           },
           {
@@ -86,7 +86,7 @@
           {
             "type": "text",
             "props": {
-              "text": "Aromatherapy, hot stones"
+              "text": "Add-ons"
             }
           },
           {
@@ -103,7 +103,7 @@
       {
         "type": "text",
         "props": {
-          "text": "Total Price"
+          "text": "Total"
         }
       },
       {

@@ -2,255 +2,112 @@
 [
   {
     "type": "header",
+    "props": {"title": "Choose Your Plan"},
     "children": [
-      {
-        "type": "icon_button",
-        "component_key": "icon/back"
-      },
-      {
-        "type": "text",
-        "props": {"text": "Choose Your Plan"}
-      }
+      {"type": "icon_button", "component_key": "icon/close"}
     ]
   },
   {
     "type": "heading",
-    "props": {"text": "Unlock Premium Features"}
+    "props": {"text": "Simple, transparent pricing"}
   },
   {
     "type": "text",
-    "props": {"text": "Select the perfect plan for your needs"}
+    "props": {"text": "Pick the plan that works best for you"}
   },
   {
     "type": "card",
     "children": [
-      {
-        "type": "heading",
-        "props": {"text": "Starter"}
-      },
-      {
-        "type": "text",
-        "props": {"text": "$9/month"}
-      },
+      {"type": "heading", "props": {"text": "Starter"}},
+      {"type": "text", "props": {"text": "$9/month"}},
+      {"type": "text", "props": {"text": "Perfect for getting started"}},
       {
         "type": "list",
         "children": [
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Basic features"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Up to 10 projects"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Email support"}
-              }
-            ]
-          }
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "5 projects"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Basic analytics"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Email support"}}
+          ]}
         ]
       },
-      {
-        "type": "button",
-        "component_key": "button/large/translucent",
-        "props": {"text": "Get Started"}
-      }
+      {"type": "button", "variant": "primary", "props": {"text": "Get Started"}, "component_key": "button/large/translucent"}
     ]
   },
   {
     "type": "card",
     "children": [
-      {
-        "type": "heading",
-        "props": {"text": "Professional"}
-      },
-      {
-        "type": "text",
-        "props": {"text": "$29/month"}
-      },
-      {
-        "type": "badge",
-        "props": {"text": "Most Popular"}
-      },
+      {"type": "heading", "props": {"text": "Professional"}},
+      {"type": "text", "props": {"text": "$29/month"}},
+      {"type": "text", "props": {"text": "For growing teams"}},
       {
         "type": "list",
         "children": [
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Advanced features"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Unlimited projects"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Priority support"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Team collaboration"}
-              }
-            ]
-          }
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Unlimited projects"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Advanced analytics"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Priority support"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Team collaboration"}}
+          ]}
         ]
       },
-      {
-        "type": "button",
-        "component_key": "button/large/translucent",
-        "props": {"text": "Subscribe Now"}
-      }
+      {"type": "button", "variant": "primary", "props": {"text": "Subscribe Now"}, "component_key": "button/large/translucent"}
     ]
   },
   {
     "type": "card",
     "children": [
-      {
-        "type": "heading",
-        "props": {"text": "Enterprise"}
-      },
-      {
-        "type": "text",
-        "props": {"text": "Custom pricing"}
-      },
+      {"type": "heading", "props": {"text": "Enterprise"}},
+      {"type": "text", "props": {"text": "Custom pricing"}},
+      {"type": "text", "props": {"text": "For large organizations"}},
       {
         "type": "list",
         "children": [
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "All features included"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Dedicated account manager"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "Custom integrations"}
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "icon",
-                "component_key": "icon/check"
-              },
-              {
-                "type": "text",
-                "props": {"text": "SLA guarantee"}
-              }
-            ]
-          }
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Everything in Professional"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Custom integrations"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "Dedicated account manager"}}
+          ]},
+          {"type": "list_item", "children": [
+            {"type": "icon", "component_key": "icon/check"},
+            {"type": "text", "props": {"text": "SLA guarantee"}}
+          ]}
         ]
       },
-      {
-        "type": "button",
-        "component_key": "button/large/translucent",
-        "props": {"text": "Contact Sales"}
-      }
+      {"type": "button", "variant": "primary", "props": {"text": "Contact Sales"}, "component_key": "button/large/translucent"}
     ]
   },
   {
     "type": "card",
     "children": [
-      {
-        "type": "avatar"
-      },
-      {
-        "type": "text",
-        "props": {"text": "\"This service transformed how we manage our workflow. Highly recommended!\""}
-      },
-      {
-        "type": "text",
-        "props": {"text": "Sarah Chen, Product Manager"}
-      }
+      {"type": "text", "props": {"text": "\"This service transformed how we manage our projects. Highly recommended!\""}},
+      {"type": "avatar"},
+      {"type": "text", "props": {"text": "Sarah Chen"}},
+      {"type": "text", "props": {"text": "CEO at TechStart Inc."}}
     ]
   }
 ]

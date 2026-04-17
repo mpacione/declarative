@@ -21,11 +21,28 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
       },
       "props": {
         "title": "Serenity"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
       },
       "children": [
         "icon_button-1",
@@ -35,11 +52,20 @@
     "image-1": {
       "type": "image",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed"
+        },
+        "height_pixels": 160
       },
       "props": {
         "src": "spa-hero.jpg",
         "alt": "Spa treatment"
+      },
+      "style": {
+        "fill": "{color.surface.image_placeholder}",
+        "radius": "{radius.image}"
       }
     },
     "heading-1": {
@@ -69,15 +95,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "image-1",
@@ -112,15 +141,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-2",
@@ -133,7 +165,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Preferred therapist"
+        "text": "Therapist Selection"
       }
     },
     "icon-1": {
@@ -146,10 +178,29 @@
     "navigation_row-1": {
       "type": "navigation_row",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug",
+          "heightPixels": 48
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
       },
       "props": {
         "text": "Therapist Selection"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}",
+        "fg": "{color.text.default}"
       },
       "children": [
         "text-2",
@@ -162,7 +213,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Aromatherapy, hot stones"
+        "text": "Add-ons"
       }
     },
     "icon-2": {
@@ -175,10 +226,29 @@
     "navigation_row-2": {
       "type": "navigation_row",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug",
+          "heightPixels": 48
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
       },
       "props": {
         "text": "Add-ons"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}",
+        "fg": "{color.text.default}"
       },
       "children": [
         "text-3",
@@ -194,15 +264,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "navigation_row-1",
@@ -215,7 +288,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Total Price"
+        "text": "Total"
       }
     },
     "heading-3": {
@@ -236,15 +309,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "text-4",
@@ -415,10 +491,10 @@
     "radius.popover": 8,
     "radius.tooltip": 6,
     "radius.image": 8,
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
   },
   "_node_id_map": {
     "icon_button-1": -1,

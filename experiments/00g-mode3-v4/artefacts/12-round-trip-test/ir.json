@@ -14,11 +14,28 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
       },
       "props": {
         "title": "iPhone 13 Pro Max"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
       },
       "children": [
         "icon_button-1"
@@ -42,29 +59,6 @@
         "text": "Model: iPhone 13 Pro Max"
       }
     },
-    "list_item-1": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-1"
-      ]
-    },
     "text-2": {
       "type": "text",
       "layout": {
@@ -73,29 +67,6 @@
       "props": {
         "text": "Storage: 256GB"
       }
-    },
-    "list_item-2": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-2"
-      ]
     },
     "text-3": {
       "type": "text",
@@ -106,53 +77,6 @@
         "text": "Color: Sierra Blue"
       }
     },
-    "list_item-3": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-3"
-      ]
-    },
-    "list-1": {
-      "type": "list",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.generic.padding_x}",
-          "y": "{space.generic.padding_y}"
-        },
-        "gap": "{space.generic.gap}"
-      },
-      "style": {
-        "fill": "{color.surface.default}",
-        "radius": "{radius.default}"
-      },
-      "children": [
-        "list_item-1",
-        "list_item-2",
-        "list_item-3"
-      ]
-    },
     "card-1": {
       "type": "card",
       "layout": {
@@ -162,19 +86,24 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-1",
-        "list-1"
+        "text-1",
+        "text-2",
+        "text-3"
       ]
     },
     "heading-2": {
@@ -183,7 +112,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Battery & Power"
+        "text": "Display"
       }
     },
     "text-4": {
@@ -192,31 +121,8 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Battery Health: 98%"
+        "text": "6.7-inch Super Retina XDR"
       }
-    },
-    "list_item-4": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-4"
-      ]
     },
     "text-5": {
       "type": "text",
@@ -224,54 +130,17 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Charging: Fast Charge Enabled"
+        "text": "2796 x 1290 resolution"
       }
     },
-    "list_item-5": {
-      "type": "list_item",
+    "text-6": {
+      "type": "text",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
+        "direction": "vertical"
       },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-5"
-      ]
-    },
-    "list-2": {
-      "type": "list",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.generic.padding_x}",
-          "y": "{space.generic.padding_y}"
-        },
-        "gap": "{space.generic.gap}"
-      },
-      "style": {
-        "fill": "{color.surface.default}",
-        "radius": "{radius.default}"
-      },
-      "children": [
-        "list_item-4",
-        "list_item-5"
-      ]
+      "props": {
+        "text": "120Hz ProMotion"
+      }
     },
     "card-2": {
       "type": "card",
@@ -282,19 +151,24 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-2",
-        "list-2"
+        "text-4",
+        "text-5",
+        "text-6"
       ]
     },
     "heading-3": {
@@ -303,40 +177,8 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Display"
+        "text": "Camera"
       }
-    },
-    "text-6": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Screen Size: 6.7 inches"
-      }
-    },
-    "list_item-6": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-6"
-      ]
     },
     "text-7": {
       "type": "text",
@@ -344,31 +186,8 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Resolution: 2778 x 1284"
+        "text": "Rear: 12MP Wide + Ultra Wide + Telephoto"
       }
-    },
-    "list_item-7": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-7"
-      ]
     },
     "text-8": {
       "type": "text",
@@ -376,55 +195,17 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "ProMotion: 120Hz"
+        "text": "Front: 12MP TrueDepth"
       }
     },
-    "list_item-8": {
-      "type": "list_item",
+    "text-9": {
+      "type": "text",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
+        "direction": "vertical"
       },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-8"
-      ]
-    },
-    "list-3": {
-      "type": "list",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.generic.padding_x}",
-          "y": "{space.generic.padding_y}"
-        },
-        "gap": "{space.generic.gap}"
-      },
-      "style": {
-        "fill": "{color.surface.default}",
-        "radius": "{radius.default}"
-      },
-      "children": [
-        "list_item-6",
-        "list_item-7",
-        "list_item-8"
-      ]
+      "props": {
+        "text": "ProRAW & ProRes Video"
+      }
     },
     "card-3": {
       "type": "card",
@@ -435,19 +216,24 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-3",
-        "list-3"
+        "text-7",
+        "text-8",
+        "text-9"
       ]
     },
     "heading-4": {
@@ -456,40 +242,8 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Camera"
+        "text": "Performance"
       }
-    },
-    "text-9": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Rear: Triple 12MP Camera System"
-      }
-    },
-    "list_item-9": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-9"
-      ]
     },
     "text-10": {
       "type": "text",
@@ -497,31 +251,8 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Front: 12MP TrueDepth"
+        "text": "Chip: A15 Bionic"
       }
-    },
-    "list_item-10": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-10"
-      ]
     },
     "text-11": {
       "type": "text",
@@ -529,55 +260,17 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Video: 4K ProRes Recording"
+        "text": "RAM: 6GB"
       }
     },
-    "list_item-11": {
-      "type": "list_item",
+    "text-12": {
+      "type": "text",
       "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
+        "direction": "vertical"
       },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "text-11"
-      ]
-    },
-    "list-4": {
-      "type": "list",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "x": "{space.generic.padding_x}",
-          "y": "{space.generic.padding_y}"
-        },
-        "gap": "{space.generic.gap}"
-      },
-      "style": {
-        "fill": "{color.surface.default}",
-        "radius": "{radius.default}"
-      },
-      "children": [
-        "list_item-9",
-        "list_item-10",
-        "list_item-11"
-      ]
+      "props": {
+        "text": "Battery: 4373 mAh"
+      }
     },
     "card-4": {
       "type": "card",
@@ -588,19 +281,24 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-4",
-        "list-4"
+        "text-10",
+        "text-11",
+        "text-12"
       ]
     },
     "heading-5": {
@@ -609,13 +307,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Security"
+        "text": "Connectivity"
       }
     },
-    "text-12": {
+    "text-13": {
       "type": "text",
       "props": {
-        "text": "Face ID"
+        "text": "5G"
       },
       "layout": {
         "direction": "vertical"
@@ -645,7 +343,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "label": "Face ID",
+        "label": "5G",
         "checked": true
       },
       "style": {
@@ -653,13 +351,13 @@
         "radius": "{radius.toggle}"
       },
       "children": [
-        "text-12"
+        "text-13"
       ]
     },
-    "text-13": {
+    "text-14": {
       "type": "text",
       "props": {
-        "text": "Encrypted Backup"
+        "text": "WiFi 6E"
       },
       "layout": {
         "direction": "vertical"
@@ -689,7 +387,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "label": "Encrypted Backup",
+        "label": "WiFi 6E",
         "checked": true
       },
       "style": {
@@ -697,7 +395,51 @@
         "radius": "{radius.toggle}"
       },
       "children": [
-        "text-13"
+        "text-14"
+      ]
+    },
+    "text-15": {
+      "type": "text",
+      "props": {
+        "text": "Bluetooth 5.3"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "toggle",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}"
+      }
+    },
+    "toggle-3": {
+      "type": "toggle",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "gap": "{space.toggle.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Bluetooth 5.3",
+        "checked": true
+      },
+      "style": {
+        "fill": "{color.toggle.track.off}",
+        "radius": "{radius.toggle}"
+      },
+      "children": [
+        "text-15"
       ]
     },
     "card-5": {
@@ -709,54 +451,39 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-5",
         "toggle-1",
-        "toggle-2"
+        "toggle-2",
+        "toggle-3"
       ]
     },
     "button-1": {
       "type": "button",
-      "component_key": "button/small/translucent",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Settings"
-      }
-    },
-    "button-2": {
-      "type": "button",
-      "component_key": "button/small/solid",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "About"
-      }
-    },
-    "button_group-1": {
-      "type": "button_group",
+      "variant": "primary",
+      "component_key": "button/large/translucent",
       "layout": {
         "direction": "vertical",
         "sizing": {
           "width": "fill"
         }
       },
-      "children": [
-        "button-1",
-        "button-2"
-      ]
+      "props": {
+        "text": "View Full Specs"
+      }
     },
     "screen-1": {
       "type": "screen",
@@ -784,7 +511,7 @@
         "card-3",
         "card-4",
         "card-5",
-        "button_group-1"
+        "button-1"
       ]
     }
   },
@@ -909,57 +636,43 @@
     "radius.popover": 8,
     "radius.tooltip": 6,
     "radius.image": 8,
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
   },
   "_node_id_map": {
     "icon_button-1": -1,
     "header-1": -2,
     "heading-1": -3,
     "text-1": -4,
-    "list_item-1": -5,
-    "text-2": -6,
-    "list_item-2": -7,
-    "text-3": -8,
-    "list_item-3": -9,
-    "list-1": -10,
-    "card-1": -11,
-    "heading-2": -12,
-    "text-4": -13,
-    "list_item-4": -14,
-    "text-5": -15,
-    "list_item-5": -16,
-    "list-2": -17,
-    "card-2": -18,
-    "heading-3": -19,
-    "text-6": -20,
-    "list_item-6": -21,
-    "text-7": -22,
-    "list_item-7": -23,
-    "text-8": -24,
-    "list_item-8": -25,
-    "list-3": -26,
-    "card-3": -27,
-    "heading-4": -28,
-    "text-9": -29,
-    "list_item-9": -30,
-    "text-10": -31,
-    "list_item-10": -32,
-    "text-11": -33,
-    "list_item-11": -34,
-    "list-4": -35,
-    "card-4": -36,
-    "heading-5": -37,
-    "text-12": -38,
-    "toggle-1": -39,
-    "text-13": -40,
-    "toggle-2": -41,
-    "card-5": -42,
-    "button-1": -43,
-    "button-2": -44,
-    "button_group-1": -45,
-    "screen-1": -46
+    "text-2": -5,
+    "text-3": -6,
+    "card-1": -7,
+    "heading-2": -8,
+    "text-4": -9,
+    "text-5": -10,
+    "text-6": -11,
+    "card-2": -12,
+    "heading-3": -13,
+    "text-7": -14,
+    "text-8": -15,
+    "text-9": -16,
+    "card-3": -17,
+    "heading-4": -18,
+    "text-10": -19,
+    "text-11": -20,
+    "text-12": -21,
+    "card-4": -22,
+    "heading-5": -23,
+    "text-13": -24,
+    "toggle-1": -25,
+    "text-14": -26,
+    "toggle-2": -27,
+    "text-15": -28,
+    "toggle-3": -29,
+    "card-5": -30,
+    "button-1": -31,
+    "screen-1": -32
   }
 }

@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5776:38507",
+  "rendered_root": "5779:41281",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,7 +20,7 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 396,
-      "height": 660,
+      "height": 963,
       "fills": [
         {
           "type": "solid",
@@ -29,11 +29,59 @@
       ],
       "effectCount": 0
     },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 372,
+      "height": 183,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "icon-5": {
+      "type": "INSTANCE",
+      "name": "icon-5",
+      "width": 20,
+      "height": 20,
+      "effectCount": 0
+    },
+    "text-10": {
+      "type": "TEXT",
+      "name": "text-10",
+      "width": 340,
+      "height": 15,
+      "characters": "Q4 Strategy Meeting",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-5": {
+      "type": "FRAME",
+      "name": "avatar-5",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
     "list_item-4": {
       "type": "FRAME",
       "name": "list_item-4",
-      "width": 396,
-      "height": 159,
+      "width": 372,
+      "height": 183,
       "fills": [
         {
           "type": "solid",
@@ -49,12 +97,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-7": {
+    "text-9": {
       "type": "TEXT",
-      "name": "text-7",
-      "width": 396,
+      "name": "text-9",
+      "width": 340,
       "height": 15,
-      "characters": "Emma Davis",
+      "characters": "Marketing Team",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -80,8 +128,8 @@
     "list_item-3": {
       "type": "FRAME",
       "name": "list_item-3",
-      "width": 396,
-      "height": 159,
+      "width": 372,
+      "height": 183,
       "fills": [
         {
           "type": "solid",
@@ -97,12 +145,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-6": {
+    "text-8": {
       "type": "TEXT",
-      "name": "text-6",
-      "width": 396,
+      "name": "text-8",
+      "width": 340,
       "height": 15,
-      "characters": "Mike Chen",
+      "characters": "New Product Launch",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -128,8 +176,8 @@
     "list_item-2": {
       "type": "FRAME",
       "name": "list_item-2",
-      "width": 396,
-      "height": 159,
+      "width": 372,
+      "height": 183,
       "fills": [
         {
           "type": "solid",
@@ -145,12 +193,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-5": {
+    "text-7": {
       "type": "TEXT",
-      "name": "text-5",
-      "width": 396,
+      "name": "text-7",
+      "width": 340,
       "height": 15,
-      "characters": "Sarah Johnson",
+      "characters": "Design Conference 2024",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -176,8 +224,8 @@
     "list_item-1": {
       "type": "FRAME",
       "name": "list_item-1",
-      "width": 396,
-      "height": 159,
+      "width": 372,
+      "height": 183,
       "fills": [
         {
           "type": "solid",
@@ -193,12 +241,12 @@
       "height": 20,
       "effectCount": 0
     },
-    "text-4": {
+    "text-6": {
       "type": "TEXT",
-      "name": "text-4",
-      "width": 396,
+      "name": "text-6",
+      "width": 340,
       "height": 15,
-      "characters": "John Smith",
+      "characters": "Sarah Johnson",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -225,7 +273,7 @@
       "type": "FRAME",
       "name": "tabs-1",
       "width": 396,
-      "height": 61,
+      "height": 100,
       "fills": [
         {
           "type": "solid",
@@ -234,12 +282,42 @@
       ],
       "effectCount": 0
     },
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 372,
+      "height": 15,
+      "characters": "Posts",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-4": {
+      "type": "TEXT",
+      "name": "text-4",
+      "width": 372,
+      "height": 15,
+      "characters": "Places",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 396,
+      "width": 372,
       "height": 15,
-      "characters": "Places",
+      "characters": "People",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -252,22 +330,7 @@
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 396,
-      "height": 15,
-      "characters": "People",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-1": {
-      "type": "TEXT",
-      "name": "text-1",
-      "width": 396,
+      "width": 372,
       "height": 15,
       "characters": "All",
       "textAutoResize": "HEIGHT",
@@ -283,7 +346,19 @@
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 140,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-2": {
@@ -296,8 +371,35 @@
     "search_input-1": {
       "type": "FRAME",
       "name": "search_input-1",
-      "width": 396,
-      "height": 100,
+      "width": 364,
+      "height": 37,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#CBD5E1"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-1": {
+      "type": "TEXT",
+      "name": "text-1",
+      "width": 340,
+      "height": 17,
+      "characters": "Search",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-1": {

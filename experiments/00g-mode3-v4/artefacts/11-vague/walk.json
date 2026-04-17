@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5776:38730",
+  "rendered_root": "5779:41510",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,18 +16,18 @@
       ],
       "effectCount": 0
     },
-    "button-3": {
-      "type": "FRAME",
-      "name": "button-3",
+    "fab-1": {
+      "type": "INSTANCE",
+      "name": "fab-1",
       "width": 396,
-      "height": 100,
+      "height": 20,
       "effectCount": 0
     },
     "card-3": {
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 131,
+      "height": 163,
       "fills": [
         {
           "type": "solid",
@@ -40,7 +40,7 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "button_group-1": {
       "type": "FRAME",
@@ -78,7 +78,7 @@
     "heading-3": {
       "type": "TEXT",
       "name": "heading-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Quick Actions",
       "textAutoResize": "HEIGHT",
@@ -94,7 +94,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 510,
+      "height": 614,
       "fills": [
         {
           "type": "solid",
@@ -107,13 +107,13 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "list-1": {
       "type": "FRAME",
       "name": "list-1",
-      "width": 396,
-      "height": 483,
+      "width": 364,
+      "height": 555,
       "fills": [
         {
           "type": "solid",
@@ -125,8 +125,8 @@
     "list_item-3": {
       "type": "FRAME",
       "name": "list_item-3",
-      "width": 396,
-      "height": 159,
+      "width": 340,
+      "height": 151,
       "fills": [
         {
           "type": "solid",
@@ -135,17 +135,10 @@
       ],
       "effectCount": 0
     },
-    "icon-1": {
-      "type": "INSTANCE",
-      "name": "icon-1",
-      "width": 20,
-      "height": 20,
-      "effectCount": 0
-    },
     "text-5": {
       "type": "TEXT",
       "name": "text-5",
-      "width": 396,
+      "width": 308,
       "height": 15,
       "characters": "AR Prototyping",
       "textAutoResize": "HEIGHT",
@@ -173,8 +166,8 @@
     "list_item-2": {
       "type": "FRAME",
       "name": "list_item-2",
-      "width": 396,
-      "height": 154,
+      "width": 340,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -186,8 +179,8 @@
     "badge-2": {
       "type": "FRAME",
       "name": "badge-2",
-      "width": 27,
-      "height": 15,
+      "width": 43,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -214,7 +207,7 @@
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 396,
+      "width": 308,
       "height": 15,
       "characters": "3D Web Experiences",
       "textAutoResize": "HEIGHT",
@@ -242,8 +235,8 @@
     "list_item-1": {
       "type": "FRAME",
       "name": "list_item-1",
-      "width": 396,
-      "height": 154,
+      "width": 340,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -255,8 +248,8 @@
     "badge-1": {
       "type": "FRAME",
       "name": "badge-1",
-      "width": 21,
-      "height": 15,
+      "width": 37,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -283,7 +276,7 @@
     "text-1": {
       "type": "TEXT",
       "name": "text-1",
-      "width": 396,
+      "width": 308,
       "height": 15,
       "characters": "AI Design Tools",
       "textAutoResize": "HEIGHT",
@@ -311,7 +304,7 @@
     "heading-2": {
       "type": "TEXT",
       "name": "heading-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Trending Now",
       "textAutoResize": "HEIGHT",
@@ -327,7 +320,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 127,
+      "height": 159,
       "fills": [
         {
           "type": "solid",
@@ -340,19 +333,25 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "image-1": {
       "type": "FRAME",
       "name": "image-1",
-      "width": 100,
+      "width": 364,
       "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "heading-1": {
       "type": "TEXT",
       "name": "heading-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Featured",
       "textAutoResize": "HEIGHT",
@@ -368,7 +367,19 @@
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 20,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-1": {

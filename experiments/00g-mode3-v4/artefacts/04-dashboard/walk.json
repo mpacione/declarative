@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5776:38182",
+  "rendered_root": "5779:40939",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,11 +16,24 @@
       ],
       "effectCount": 0
     },
+    "button-1": {
+      "type": "INSTANCE",
+      "name": "button-1",
+      "width": 396,
+      "height": 52,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
     "card-2": {
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 612,
+      "height": 834,
       "fills": [
         {
           "type": "solid",
@@ -33,20 +46,20 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "table-1": {
       "type": "FRAME",
       "name": "table-1",
       "width": 100,
-      "height": 585,
+      "height": 775,
       "effectCount": 0
     },
     "list_item-5": {
       "type": "FRAME",
       "name": "list_item-5",
       "width": 100,
-      "height": 96,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -58,8 +71,8 @@
     "badge-5": {
       "type": "FRAME",
       "name": "badge-5",
-      "width": 48,
-      "height": 15,
+      "width": 80,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -71,9 +84,9 @@
     "text-25": {
       "type": "TEXT",
       "name": "text-25",
-      "width": 48,
+      "width": 64,
       "height": 15,
-      "characters": "Pending",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -86,9 +99,9 @@
     "text-24": {
       "type": "TEXT",
       "name": "text-24",
-      "width": 100,
+      "width": 68,
       "height": 15,
-      "characters": "$1,200.00",
+      "characters": "$5,000.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -101,9 +114,9 @@
     "text-23": {
       "type": "TEXT",
       "name": "text-23",
-      "width": 100,
-      "height": 15,
-      "characters": "Invoice issued",
+      "width": 68,
+      "height": 30,
+      "characters": "Wire transfer",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -116,7 +129,7 @@
     "text-22": {
       "type": "TEXT",
       "name": "text-22",
-      "width": 100,
+      "width": 68,
       "height": 15,
       "characters": "2024-01-11",
       "textAutoResize": "HEIGHT",
@@ -132,7 +145,7 @@
       "type": "FRAME",
       "name": "list_item-4",
       "width": 100,
-      "height": 111,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -145,7 +158,7 @@
       "type": "FRAME",
       "name": "badge-4",
       "width": 64,
-      "height": 15,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -157,9 +170,9 @@
     "text-21": {
       "type": "TEXT",
       "name": "text-21",
-      "width": 64,
+      "width": 48,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Pending",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -172,9 +185,9 @@
     "text-20": {
       "type": "TEXT",
       "name": "text-20",
-      "width": 100,
+      "width": 68,
       "height": 15,
-      "characters": "$3,200.00",
+      "characters": "$1,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -187,9 +200,9 @@
     "text-19": {
       "type": "TEXT",
       "name": "text-19",
-      "width": 100,
+      "width": 68,
       "height": 30,
-      "characters": "Payment received",
+      "characters": "Invoice payment",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -202,7 +215,7 @@
     "text-18": {
       "type": "TEXT",
       "name": "text-18",
-      "width": 100,
+      "width": 68,
       "height": 15,
       "characters": "2024-01-12",
       "textAutoResize": "HEIGHT",
@@ -218,7 +231,7 @@
       "type": "FRAME",
       "name": "list_item-3",
       "width": 100,
-      "height": 111,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -230,8 +243,8 @@
     "badge-3": {
       "type": "FRAME",
       "name": "badge-3",
-      "width": 64,
-      "height": 15,
+      "width": 78,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -243,9 +256,9 @@
     "text-17": {
       "type": "TEXT",
       "name": "text-17",
-      "width": 64,
+      "width": 62,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Processed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -258,9 +271,9 @@
     "text-16": {
       "type": "TEXT",
       "name": "text-16",
-      "width": 100,
+      "width": 68,
       "height": 15,
-      "characters": "-$500.00",
+      "characters": "-$150.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -273,9 +286,9 @@
     "text-15": {
       "type": "TEXT",
       "name": "text-15",
-      "width": 100,
+      "width": 68,
       "height": 30,
-      "characters": "Refund processed",
+      "characters": "Refund issued",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -288,7 +301,7 @@
     "text-14": {
       "type": "TEXT",
       "name": "text-14",
-      "width": 100,
+      "width": 68,
       "height": 15,
       "characters": "2024-01-13",
       "textAutoResize": "HEIGHT",
@@ -304,7 +317,7 @@
       "type": "FRAME",
       "name": "list_item-2",
       "width": 100,
-      "height": 96,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -316,8 +329,8 @@
     "badge-2": {
       "type": "FRAME",
       "name": "badge-2",
-      "width": 48,
-      "height": 15,
+      "width": 80,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -329,9 +342,9 @@
     "text-13": {
       "type": "TEXT",
       "name": "text-13",
-      "width": 48,
+      "width": 64,
       "height": 15,
-      "characters": "Pending",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -344,9 +357,9 @@
     "text-12": {
       "type": "TEXT",
       "name": "text-12",
-      "width": 100,
+      "width": 68,
       "height": 15,
-      "characters": "$1,800.00",
+      "characters": "$99.99",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -359,9 +372,9 @@
     "text-11": {
       "type": "TEXT",
       "name": "text-11",
-      "width": 100,
-      "height": 15,
-      "characters": "Invoice issued",
+      "width": 68,
+      "height": 30,
+      "characters": "Subscription renewal",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -374,7 +387,7 @@
     "text-10": {
       "type": "TEXT",
       "name": "text-10",
-      "width": 100,
+      "width": 68,
       "height": 15,
       "characters": "2024-01-14",
       "textAutoResize": "HEIGHT",
@@ -390,7 +403,7 @@
       "type": "FRAME",
       "name": "list_item-1",
       "width": 100,
-      "height": 111,
+      "height": 143,
       "fills": [
         {
           "type": "solid",
@@ -402,8 +415,8 @@
     "badge-1": {
       "type": "FRAME",
       "name": "badge-1",
-      "width": 64,
-      "height": 15,
+      "width": 80,
+      "height": 23,
       "fills": [
         {
           "type": "solid",
@@ -430,9 +443,9 @@
     "text-8": {
       "type": "TEXT",
       "name": "text-8",
-      "width": 100,
+      "width": 68,
       "height": 15,
-      "characters": "$2,500.00",
+      "characters": "$2,450.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -445,7 +458,7 @@
     "text-7": {
       "type": "TEXT",
       "name": "text-7",
-      "width": 100,
+      "width": 68,
       "height": 30,
       "characters": "Payment received",
       "textAutoResize": "HEIGHT",
@@ -460,7 +473,7 @@
     "text-6": {
       "type": "TEXT",
       "name": "text-6",
-      "width": 100,
+      "width": 68,
       "height": 15,
       "characters": "2024-01-15",
       "textAutoResize": "HEIGHT",
@@ -535,7 +548,7 @@
     "heading-2": {
       "type": "TEXT",
       "name": "heading-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Recent Transactions",
       "textAutoResize": "HEIGHT",
@@ -551,7 +564,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 127,
+      "height": 159,
       "fills": [
         {
           "type": "solid",
@@ -564,19 +577,25 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "image-1": {
       "type": "FRAME",
       "name": "image-1",
-      "width": 100,
+      "width": 364,
       "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "heading-1": {
       "type": "TEXT",
       "name": "heading-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Revenue Trend",
       "textAutoResize": "HEIGHT",
@@ -592,7 +611,19 @@
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 35,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-1": {
@@ -605,7 +636,7 @@
     "text-1": {
       "type": "TEXT",
       "name": "text-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Dashboard",
       "textAutoResize": "HEIGHT",

@@ -18,11 +18,11 @@
       },
       {
         "type": "heading",
-        "props": {"text": "Welcome to Your Journey"}
+        "props": {"text": "Welcome to Our App"}
       },
       {
         "type": "text",
-        "props": {"text": "Discover amazing features designed to enhance your experience"}
+        "props": {"text": "Discover amazing features designed to make your life easier"}
       }
     ]
   },
@@ -39,7 +39,7 @@
       },
       {
         "type": "text",
-        "props": {"text": "Keep up with everything that matters to you in one place"}
+        "props": {"text": "Keep up with everything that matters to you in real time"}
       }
     ]
   },
@@ -56,7 +56,7 @@
       },
       {
         "type": "text",
-        "props": {"text": "Create your account and unlock all the possibilities"}
+        "props": {"text": "Join thousands of users enjoying a better experience"}
       }
     ]
   },
@@ -84,7 +84,7 @@
   },
   {
     "type": "link",
-    "props": {"text": "Skip"}
+    "props": {"text": "Skip for now"}
   }
 ]
 ```

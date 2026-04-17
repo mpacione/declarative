@@ -96,7 +96,16 @@ M["screen-1"] = n0.id;
 const n1 = figma.createFrame();
 n1.name = "header-1";
 n1.layoutMode = "VERTICAL";
-n1.fills = [];
+n1.itemSpacing = 8;
+n1.paddingTop = 12;
+n1.paddingRight = 16;
+n1.paddingBottom = 12;
+n1.paddingLeft = 16;
+n1.resize(n1.width, 56);
+n1.primaryAxisAlignItems = "SPACE_BETWEEN";
+n1.counterAxisAlignItems = "CENTER";
+n1.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
+n1.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
 n1.clipsContent = false;
 M["header-1"] = n1.id;
 
@@ -104,6 +113,10 @@ const n2 = figma.createFrame();
 n2.name = "list-1";
 n2.layoutMode = "VERTICAL";
 n2.itemSpacing = 8;
+n2.paddingTop = 8;
+n2.paddingRight = 12;
+n2.paddingBottom = 8;
+n2.paddingLeft = 12;
 n2.fills = [{type: "SOLID", color: {r:0.9725,g:0.9804,b:0.9882}}];
 n2.cornerRadius = 8;
 n2.clipsContent = false;
@@ -122,8 +135,13 @@ const n5 = figma.createFrame();
 n5.name = "card-1";
 n5.layoutMode = "VERTICAL";
 n5.itemSpacing = 12;
+n5.paddingTop = 16;
+n5.paddingRight = 16;
+n5.paddingBottom = 16;
+n5.paddingLeft = 16;
 n5.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n5.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n5.effects = [{type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", color: {r:0.0,g:0.0,b:0.0,a:0.102}, offset: {x:0,y:2}, radius: 4, spread: 0}];
 n5.cornerRadius = 12;
 n5.clipsContent = false;
 M["card-1"] = n5.id;
@@ -132,8 +150,13 @@ const n6 = figma.createFrame();
 n6.name = "card-2";
 n6.layoutMode = "VERTICAL";
 n6.itemSpacing = 12;
+n6.paddingTop = 16;
+n6.paddingRight = 16;
+n6.paddingBottom = 16;
+n6.paddingLeft = 16;
 n6.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n6.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n6.effects = [{type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", color: {r:0.0,g:0.0,b:0.0,a:0.102}, offset: {x:0,y:2}, radius: 4, spread: 0}];
 n6.cornerRadius = 12;
 n6.clipsContent = false;
 M["card-2"] = n6.id;
@@ -142,8 +165,13 @@ const n7 = figma.createFrame();
 n7.name = "card-3";
 n7.layoutMode = "VERTICAL";
 n7.itemSpacing = 12;
+n7.paddingTop = 16;
+n7.paddingRight = 16;
+n7.paddingBottom = 16;
+n7.paddingLeft = 16;
 n7.fills = [{type: "SOLID", color: {r:1.0,g:1.0,b:1.0}}];
 n7.strokes = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n7.effects = [{type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", color: {r:0.0,g:0.0,b:0.0,a:0.102}, offset: {x:0,y:2}, radius: 4, spread: 0}];
 n7.cornerRadius = 12;
 n7.clipsContent = false;
 M["card-3"] = n7.id;
@@ -165,7 +193,8 @@ M["text-2"] = n9.id;
 
 const n10 = figma.createFrame();
 n10.name = "image-1";
-n10.fills = [];
+n10.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n10.cornerRadius = 8;
 n10.clipsContent = false;
 M["image-1"] = n10.id;
 
@@ -198,7 +227,8 @@ M["text-4"] = n14.id;
 
 const n15 = figma.createFrame();
 n15.name = "image-2";
-n15.fills = [];
+n15.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n15.cornerRadius = 8;
 n15.clipsContent = false;
 M["image-2"] = n15.id;
 
@@ -231,7 +261,8 @@ M["text-6"] = n19.id;
 
 const n20 = figma.createFrame();
 n20.name = "image-3";
-n20.fills = [];
+n20.fills = [{type: "SOLID", color: {r:0.8863,g:0.9098,b:0.9412}}];
+n20.cornerRadius = 8;
 n20.clipsContent = false;
 M["image-3"] = n20.id;
 
@@ -283,6 +314,7 @@ await new Promise(r => setTimeout(r, 0));
 
 n0.appendChild(n1);
 n1.layoutSizingHorizontal = "FILL";
+n1.layoutSizingVertical = "FIXED";
 n0.appendChild(n2);
 n2.layoutSizingHorizontal = "FILL";
 n2.layoutSizingVertical = "HUG";
@@ -303,9 +335,11 @@ n5.appendChild(n8);
 n8.layoutSizingHorizontal = "FIXED";
 n8.layoutSizingVertical = "FIXED";
 n5.appendChild(n9);
-try { n9.characters = "John Doe"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n9.characters = "johndoe"; } catch (__e) { __errors.push({eid:"text-2", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n9.layoutSizingHorizontal = "FILL";
 n5.appendChild(n10);
+n10.layoutSizingHorizontal = "FILL";
+n10.layoutSizingVertical = "FIXED";
 n5.appendChild(n11);
 try { n11.characters = "When you finally understand the assignment"; } catch (__e) { __errors.push({eid:"text-3", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n11.layoutSizingHorizontal = "FILL";
@@ -314,9 +348,11 @@ n6.appendChild(n13);
 n13.layoutSizingHorizontal = "FIXED";
 n13.layoutSizingVertical = "FIXED";
 n6.appendChild(n14);
-try { n14.characters = "Sarah Miller"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n14.characters = "sarahmeme"; } catch (__e) { __errors.push({eid:"text-4", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n14.layoutSizingHorizontal = "FILL";
 n6.appendChild(n15);
+n15.layoutSizingHorizontal = "FILL";
+n15.layoutSizingVertical = "FIXED";
 n6.appendChild(n16);
 try { n16.characters = "POV: You're trying to be productive on Monday"; } catch (__e) { __errors.push({eid:"text-5", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n16.layoutSizingHorizontal = "FILL";
@@ -325,9 +361,11 @@ n7.appendChild(n18);
 n18.layoutSizingHorizontal = "FIXED";
 n18.layoutSizingVertical = "FIXED";
 n7.appendChild(n19);
-try { n19.characters = "Tom Chen"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n19.characters = "thememeking"; } catch (__e) { __errors.push({eid:"text-6", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n19.layoutSizingHorizontal = "FILL";
 n7.appendChild(n20);
+n20.layoutSizingHorizontal = "FILL";
+n20.layoutSizingVertical = "FIXED";
 n7.appendChild(n21);
 try { n21.characters = "Me explaining why I need another coffee"; } catch (__e) { __errors.push({eid:"text-7", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n21.layoutSizingHorizontal = "FILL";

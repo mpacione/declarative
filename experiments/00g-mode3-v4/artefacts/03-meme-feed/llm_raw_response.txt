@@ -25,11 +25,11 @@
           },
           {
             "type": "text",
-            "props": {"text": "John Doe"}
+            "props": {"text": "johndoe"}
           },
           {
             "type": "image",
-            "props": {"src": "meme1.jpg", "alt": "Meme"}
+            "props": {"src": "meme1.jpg"}
           },
           {
             "type": "text",
@@ -61,11 +61,11 @@
           },
           {
             "type": "text",
-            "props": {"text": "Sarah Miller"}
+            "props": {"text": "sarahmeme"}
           },
           {
             "type": "image",
-            "props": {"src": "meme2.jpg", "alt": "Meme"}
+            "props": {"src": "meme2.jpg"}
           },
           {
             "type": "text",
@@ -93,15 +93,15 @@
         "children": [
           {
             "type": "avatar",
-            "props": {"initials": "TC"}
+            "props": {"initials": "TK"}
           },
           {
             "type": "text",
-            "props": {"text": "Tom Chen"}
+            "props": {"text": "thememeking"}
           },
           {
             "type": "image",
-            "props": {"src": "meme3.jpg", "alt": "Meme"}
+            "props": {"src": "meme3.jpg"}
           },
           {
             "type": "text",

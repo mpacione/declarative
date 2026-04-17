@@ -7,7 +7,7 @@
     "usage": {
       "input_tokens": 1748,
       "output_tokens": 293,
-      "latency_s": 2.904491901397705
+      "latency_s": 2.17618727684021
     },
     "measures": {
       "total_node_count": 9,
@@ -24,7 +24,7 @@
     "compose": {
       "element_count": 16,
       "warnings": 9,
-      "latency_s": 0.016816139221191406
+      "latency_s": 0.003874063491821289
     }
   },
   {
@@ -35,7 +35,7 @@
     "usage": {
       "input_tokens": 2054,
       "output_tokens": 443,
-      "latency_s": 2.583164930343628
+      "latency_s": 2.704468011856079
     },
     "measures": {
       "total_node_count": 15,
@@ -52,7 +52,7 @@
     "compose": {
       "element_count": 25,
       "warnings": 15,
-      "latency_s": 0.007633209228515625
+      "latency_s": 0.0019409656524658203
     }
   },
   {
@@ -62,8 +62,8 @@
     "system_prompt_chars": 6847,
     "usage": {
       "input_tokens": 2026,
-      "output_tokens": 885,
-      "latency_s": 4.6122660636901855
+      "output_tokens": 865,
+      "latency_s": 4.571833848953247
     },
     "measures": {
       "total_node_count": 28,
@@ -80,7 +80,7 @@
     "compose": {
       "element_count": 29,
       "warnings": 28,
-      "latency_s": 0.0022840499877929688
+      "latency_s": 0.023008108139038086
     }
   },
   {
@@ -90,25 +90,25 @@
     "system_prompt_chars": 6553,
     "usage": {
       "input_tokens": 1983,
-      "output_tokens": 1021,
-      "latency_s": 4.916514873504639
+      "output_tokens": 1072,
+      "latency_s": 5.497662782669067
     },
     "measures": {
-      "total_node_count": 38,
-      "top_level_count": 3,
+      "total_node_count": 39,
+      "top_level_count": 4,
       "max_depth": 4,
       "container_coverage": 2,
-      "component_key_rate": 0.02631578947368421,
-      "variant_rate": 0.0,
+      "component_key_rate": 0.05128205128205128,
+      "variant_rate": 0.02564102564102564,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
-    "component_count": 3,
+    "component_count": 4,
     "compose": {
-      "element_count": 44,
-      "warnings": 38,
-      "latency_s": 0.0035479068756103516
+      "element_count": 45,
+      "warnings": 39,
+      "latency_s": 0.0024728775024414062
     }
   },
   {
@@ -118,25 +118,25 @@
     "system_prompt_chars": 6906,
     "usage": {
       "input_tokens": 2090,
-      "output_tokens": 1556,
-      "latency_s": 7.04690408706665
+      "output_tokens": 1274,
+      "latency_s": 6.885936975479126
     },
     "measures": {
-      "total_node_count": 58,
+      "total_node_count": 60,
       "top_level_count": 7,
       "max_depth": 4,
       "container_coverage": 2,
-      "component_key_rate": 0.25862068965517243,
-      "variant_rate": 0.0,
+      "component_key_rate": 0.25,
+      "variant_rate": 0.05,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
     "component_count": 7,
     "compose": {
-      "element_count": 60,
-      "warnings": 58,
-      "latency_s": 0.0025129318237304688
+      "element_count": 61,
+      "warnings": 60,
+      "latency_s": 0.002602100372314453
     }
   },
   {
@@ -146,8 +146,8 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1470,
-      "output_tokens": 534,
-      "latency_s": 3.4685239791870117
+      "output_tokens": 529,
+      "latency_s": 3.3291738033294678
     },
     "measures": {
       "total_node_count": 21,
@@ -164,7 +164,7 @@
     "compose": {
       "element_count": 22,
       "warnings": 21,
-      "latency_s": 0.0013651847839355469
+      "latency_s": 0.0030939579010009766
     }
   },
   {
@@ -174,15 +174,15 @@
     "system_prompt_chars": 6422,
     "usage": {
       "input_tokens": 1970,
-      "output_tokens": 614,
-      "latency_s": 3.3221561908721924
+      "output_tokens": 740,
+      "latency_s": 3.4702670574188232
     },
     "measures": {
-      "total_node_count": 25,
+      "total_node_count": 30,
       "top_level_count": 3,
       "max_depth": 3,
       "container_coverage": 2,
-      "component_key_rate": 0.24,
+      "component_key_rate": 0.23333333333333334,
       "variant_rate": 0.0,
       "json_valid": 1,
       "empty_output": 0,
@@ -190,9 +190,9 @@
     },
     "component_count": 3,
     "compose": {
-      "element_count": 26,
-      "warnings": 25,
-      "latency_s": 0.0035278797149658203
+      "element_count": 32,
+      "warnings": 30,
+      "latency_s": 0.0017399787902832031
     }
   },
   {
@@ -203,7 +203,7 @@
     "usage": {
       "input_tokens": 2012,
       "output_tokens": 322,
-      "latency_s": 1.848958969116211
+      "latency_s": 1.9781298637390137
     },
     "measures": {
       "total_node_count": 11,
@@ -220,7 +220,7 @@
     "compose": {
       "element_count": 14,
       "warnings": 11,
-      "latency_s": 0.0022449493408203125
+      "latency_s": 0.0018150806427001953
     }
   },
   {
@@ -230,8 +230,8 @@
     "system_prompt_chars": 6930,
     "usage": {
       "input_tokens": 2002,
-      "output_tokens": 567,
-      "latency_s": 2.7698538303375244
+      "output_tokens": 568,
+      "latency_s": 3.005699872970581
     },
     "measures": {
       "total_node_count": 22,
@@ -248,7 +248,7 @@
     "compose": {
       "element_count": 23,
       "warnings": 22,
-      "latency_s": 0.002274751663208008
+      "latency_s": 0.0015873908996582031
     }
   },
   {
@@ -258,8 +258,8 @@
     "system_prompt_chars": 6015,
     "usage": {
       "input_tokens": 1901,
-      "output_tokens": 545,
-      "latency_s": 3.2562460899353027
+      "output_tokens": 548,
+      "latency_s": 3.135732889175415
     },
     "measures": {
       "total_node_count": 20,
@@ -276,7 +276,7 @@
     "compose": {
       "element_count": 26,
       "warnings": 20,
-      "latency_s": 0.0018551349639892578
+      "latency_s": 0.0023229122161865234
     }
   },
   {
@@ -286,25 +286,25 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1461,
-      "output_tokens": 608,
-      "latency_s": 4.167999982833862
+      "output_tokens": 581,
+      "latency_s": 3.4975972175598145
     },
     "measures": {
-      "total_node_count": 26,
+      "total_node_count": 25,
       "top_level_count": 5,
       "max_depth": 4,
       "container_coverage": 3,
-      "component_key_rate": 0.19230769230769232,
-      "variant_rate": 0.11538461538461539,
+      "component_key_rate": 0.16,
+      "variant_rate": 0.08,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
     "component_count": 5,
     "compose": {
-      "element_count": 29,
-      "warnings": 26,
-      "latency_s": 0.0020427703857421875
+      "element_count": 28,
+      "warnings": 25,
+      "latency_s": 0.002317667007446289
     }
   },
   {
@@ -314,25 +314,25 @@
     "system_prompt_chars": 4781,
     "usage": {
       "input_tokens": 1472,
-      "output_tokens": 1024,
-      "latency_s": 5.359502077102661
+      "output_tokens": 708,
+      "latency_s": 4.311972141265869
     },
     "measures": {
-      "total_node_count": 43,
+      "total_node_count": 28,
       "top_level_count": 7,
-      "max_depth": 4,
-      "container_coverage": 3,
-      "component_key_rate": 0.06976744186046512,
-      "variant_rate": 0.0,
+      "max_depth": 2,
+      "container_coverage": 1,
+      "component_key_rate": 0.07142857142857142,
+      "variant_rate": 0.03571428571428571,
       "json_valid": 1,
       "empty_output": 0,
       "clarification_refusal": 0
     },
     "component_count": 7,
     "compose": {
-      "element_count": 46,
-      "warnings": 43,
-      "latency_s": 0.002635955810546875
+      "element_count": 32,
+      "warnings": 28,
+      "latency_s": 0.0017862319946289062
     }
   }
 ]

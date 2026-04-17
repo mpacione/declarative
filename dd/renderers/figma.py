@@ -1257,6 +1257,24 @@ def generate_figma_script(
                     resolved, _tok = resolve_style_value(radius_ref, tokens)
                     if isinstance(resolved, (int, float)):
                         visual["cornerRadius"] = resolved
+                # ADR-008 v0.1.5 H2: shadow overlay. PresentationTemplate
+                # expresses shadow as an elevation number (`{shadow.card}`
+                # → e.g. 2); we synthesize a drop-shadow at that y-offset
+                # + 2× blur at 10 % opacity. An elevation of 0 skips —
+                # some templates declare the token but the resolved
+                # value is 0 (e.g. flat paywall cards).
+                shadow_ref = ir_style.get("shadow")
+                if shadow_ref is not None and "effects" not in visual:
+                    resolved, _tok = resolve_style_value(shadow_ref, tokens)
+                    if isinstance(resolved, (int, float)) and resolved > 0:
+                        elev = int(resolved)
+                        visual["effects"] = [{
+                            "type": "drop-shadow",
+                            "color": "#0000001A",
+                            "offset": {"x": 0, "y": elev},
+                            "blur": elev * 2,
+                            "spread": 0,
+                        }]
 
             # Transform detection: when relative_transform is available
             # and its 2x2 submatrix is non-identity (any rotation OR

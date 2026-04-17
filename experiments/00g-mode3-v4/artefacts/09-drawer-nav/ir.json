@@ -12,7 +12,27 @@
     "header-1": {
       "type": "header",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
       },
       "children": [
         "icon_button-1"
@@ -43,8 +63,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -83,8 +105,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -123,8 +147,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -163,8 +189,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -191,7 +219,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Archive"
+        "text": "Trash"
       }
     },
     "list_item-5": {
@@ -203,8 +231,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -243,8 +273,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -267,8 +299,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.generic.padding_x}",
-          "y": "{space.generic.padding_y}"
+          "top": "{space.generic.padding_y}",
+          "bottom": "{space.generic.padding_y}",
+          "left": "{space.generic.padding_x}",
+          "right": "{space.generic.padding_x}"
         },
         "gap": "{space.generic.gap}"
       },
@@ -290,8 +324,21 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "fill"
+        },
+        "padding": {
+          "top": "{space.drawer.padding_y}",
+          "bottom": "{space.drawer.padding_y}",
+          "left": "{space.drawer.padding_x}",
+          "right": "{space.drawer.padding_x}"
+        },
+        "gap": "{space.drawer.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.drawer}",
+        "fg": "{color.text.default}",
+        "stroke": "{color.surface.drawer_border}"
       },
       "children": [
         "header-1",
@@ -443,10 +490,10 @@
     "radius.popover": 8,
     "radius.tooltip": 6,
     "radius.image": 8,
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
   },
   "_node_id_map": {
     "icon_button-1": -1,

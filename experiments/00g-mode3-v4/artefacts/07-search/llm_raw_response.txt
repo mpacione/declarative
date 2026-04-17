@@ -31,28 +31,16 @@
       {
         "type": "text",
         "props": {"text": "Places"}
+      },
+      {
+        "type": "text",
+        "props": {"text": "Posts"}
       }
     ]
   },
   {
     "type": "list",
     "children": [
-      {
-        "type": "list_item",
-        "children": [
-          {
-            "type": "avatar"
-          },
-          {
-            "type": "text",
-            "props": {"text": "John Smith"}
-          },
-          {
-            "type": "icon",
-            "component_key": "icon/chevron-down"
-          }
-        ]
-      },
       {
         "type": "list_item",
         "children": [
@@ -77,7 +65,7 @@
           },
           {
             "type": "text",
-            "props": {"text": "Mike Chen"}
+            "props": {"text": "Design Conference 2024"}
           },
           {
             "type": "icon",
@@ -93,7 +81,39 @@
           },
           {
             "type": "text",
-            "props": {"text": "Emma Davis"}
+            "props": {"text": "New Product Launch"}
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {"text": "Marketing Team"}
+          },
+          {
+            "type": "icon",
+            "component_key": "icon/chevron-down"
+          }
+        ]
+      },
+      {
+        "type": "list_item",
+        "children": [
+          {
+            "type": "avatar"
+          },
+          {
+            "type": "text",
+            "props": {"text": "Q4 Strategy Meeting"}
           },
           {
             "type": "icon",

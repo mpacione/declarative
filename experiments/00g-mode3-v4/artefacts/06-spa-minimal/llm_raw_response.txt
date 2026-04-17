@@ -27,11 +27,11 @@
     "type": "card",
     "children": [
       {"type": "navigation_row", "props": {"text": "Therapist Selection"}, "children": [
-        {"type": "text", "props": {"text": "Preferred therapist"}},
+        {"type": "text", "props": {"text": "Therapist Selection"}},
         {"type": "icon", "component_key": "icon/chevron-down"}
       ]},
       {"type": "navigation_row", "props": {"text": "Add-ons"}, "children": [
-        {"type": "text", "props": {"text": "Aromatherapy, hot stones"}},
+        {"type": "text", "props": {"text": "Add-ons"}},
         {"type": "icon", "component_key": "icon/chevron-down"}
       ]}
     ]
@@ -39,7 +39,7 @@
   {
     "type": "card",
     "children": [
-      {"type": "text", "props": {"text": "Total Price"}},
+      {"type": "text", "props": {"text": "Total"}},
       {"type": "heading", "props": {"text": "$280"}}
     ]
   },

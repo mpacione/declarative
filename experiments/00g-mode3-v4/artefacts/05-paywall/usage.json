@@ -1,5 +1,5 @@
 {
   "input_tokens": 2090,
-  "output_tokens": 1556,
-  "latency_s": 7.04690408706665
+  "output_tokens": 1274,
+  "latency_s": 6.885936975479126
 }

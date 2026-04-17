@@ -1,14 +1,15 @@
 {
   "returncode": 0,
-  "latency_ms": 1312,
+  "latency_ms": 55267,
   "timeout": false,
-  "stdout": "[script.js] OK in 1275ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776446355859\",\"result\":{\"success\":true,\"result\":{\"__ok\":true,\"before\":1,\"after\":2,\"moved\":0,\"errors\":[]}}}\n",
+  "stdout": "[script.js] OK in 55231ms: {\"type\":\"PROXY_EXECUTE_RESULT\",\"id\":\"run_1776447340853\",\"result\":{\"success\":false,\"error\":\"Error: Execution timed out after 55000ms\"}}\n",
   "stderr": "",
   "parsed": {
-    "__ok": true,
-    "before": 1,
-    "after": 2,
-    "moved": 0,
-    "errors": []
+    "type": "PROXY_EXECUTE_RESULT",
+    "id": "run_1776447340853",
+    "result": {
+      "success": false,
+      "error": "Error: Execution timed out after 55000ms"
+    }
   }
 }

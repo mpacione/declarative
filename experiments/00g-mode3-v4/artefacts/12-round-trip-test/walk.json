@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5776:38835",
+  "rendered_root": "5779:41593",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -16,31 +16,11 @@
       ],
       "effectCount": 0
     },
-    "button_group-1": {
-      "type": "FRAME",
-      "name": "button_group-1",
-      "width": 396,
-      "height": 80,
-      "effectCount": 0
-    },
-    "button-2": {
-      "type": "INSTANCE",
-      "name": "button-2",
-      "width": 40,
-      "height": 40,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#D4D4D8"
-        }
-      ],
-      "effectCount": 0
-    },
     "button-1": {
       "type": "INSTANCE",
       "name": "button-1",
-      "width": 40,
-      "height": 40,
+      "width": 396,
+      "height": 52,
       "fills": [
         {
           "type": "solid",
@@ -53,7 +33,7 @@
       "type": "FRAME",
       "name": "card-5",
       "width": 396,
-      "height": 73,
+      "height": 134,
       "fills": [
         {
           "type": "solid",
@@ -66,12 +46,12 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
-    "toggle-2": {
+    "toggle-3": {
       "type": "FRAME",
-      "name": "toggle-2",
-      "width": 122,
+      "name": "toggle-3",
+      "width": 89,
       "height": 17,
       "fills": [
         {
@@ -81,12 +61,40 @@
       ],
       "effectCount": 0
     },
-    "text-13": {
+    "text-15": {
       "type": "TEXT",
-      "name": "text-13",
-      "width": 122,
+      "name": "text-15",
+      "width": 89,
       "height": 17,
-      "characters": "Encrypted Backup",
+      "characters": "Bluetooth 5.3",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "toggle-2": {
+      "type": "FRAME",
+      "name": "toggle-2",
+      "width": 50,
+      "height": 17,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-14": {
+      "type": "TEXT",
+      "name": "text-14",
+      "width": 50,
+      "height": 17,
+      "characters": "WiFi 6E",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -99,7 +107,7 @@
     "toggle-1": {
       "type": "FRAME",
       "name": "toggle-1",
-      "width": 50,
+      "width": 19,
       "height": 17,
       "fills": [
         {
@@ -109,12 +117,12 @@
       ],
       "effectCount": 0
     },
-    "text-12": {
+    "text-13": {
       "type": "TEXT",
-      "name": "text-12",
-      "width": 50,
+      "name": "text-13",
+      "width": 19,
       "height": 17,
-      "characters": "Face ID",
+      "characters": "5G",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -127,9 +135,9 @@
     "heading-5": {
       "type": "TEXT",
       "name": "heading-5",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Security",
+      "characters": "Connectivity",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -143,7 +151,7 @@
       "type": "FRAME",
       "name": "card-4",
       "width": 396,
-      "height": 88,
+      "height": 128,
       "fills": [
         {
           "type": "solid",
@@ -156,30 +164,19 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
-    "list-4": {
-      "type": "FRAME",
-      "name": "list-4",
-      "width": 396,
-      "height": 61,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-11": {
-      "type": "FRAME",
-      "name": "list_item-11",
-      "width": 396,
+    "text-12": {
+      "type": "TEXT",
+      "name": "text-12",
+      "width": 364,
       "height": 15,
+      "characters": "Battery: 4373 mAh",
+      "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
-          "color": "#FFFFFF"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -187,27 +184,14 @@
     "text-11": {
       "type": "TEXT",
       "name": "text-11",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Video: 4K ProRes Recording",
+      "characters": "RAM: 6GB",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-10": {
-      "type": "FRAME",
-      "name": "list_item-10",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
         }
       ],
       "effectCount": 0
@@ -215,37 +199,9 @@
     "text-10": {
       "type": "TEXT",
       "name": "text-10",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Front: 12MP TrueDepth",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-9": {
-      "type": "FRAME",
-      "name": "list_item-9",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-9": {
-      "type": "TEXT",
-      "name": "text-9",
-      "width": 396,
-      "height": 15,
-      "characters": "Rear: Triple 12MP Camera System",
+      "characters": "Chip: A15 Bionic",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -258,9 +214,9 @@
     "heading-4": {
       "type": "TEXT",
       "name": "heading-4",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Camera",
+      "characters": "Performance",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -274,7 +230,7 @@
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 88,
+      "height": 128,
       "fills": [
         {
           "type": "solid",
@@ -287,30 +243,19 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
-    "list-3": {
-      "type": "FRAME",
-      "name": "list-3",
-      "width": 396,
-      "height": 61,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-8": {
-      "type": "FRAME",
-      "name": "list_item-8",
-      "width": 396,
+    "text-9": {
+      "type": "TEXT",
+      "name": "text-9",
+      "width": 364,
       "height": 15,
+      "characters": "ProRAW & ProRes Video",
+      "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
-          "color": "#FFFFFF"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -318,27 +263,14 @@
     "text-8": {
       "type": "TEXT",
       "name": "text-8",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "ProMotion: 120Hz",
+      "characters": "Front: 12MP TrueDepth",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
           "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-7": {
-      "type": "FRAME",
-      "name": "list_item-7",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
         }
       ],
       "effectCount": 0
@@ -346,37 +278,9 @@
     "text-7": {
       "type": "TEXT",
       "name": "text-7",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Resolution: 2778 x 1284",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-6": {
-      "type": "FRAME",
-      "name": "list_item-6",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-6": {
-      "type": "TEXT",
-      "name": "text-6",
-      "width": 396,
-      "height": 15,
-      "characters": "Screen Size: 6.7 inches",
+      "characters": "Rear: 12MP Wide + Ultra Wide + Telephoto",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -389,9 +293,9 @@
     "heading-3": {
       "type": "TEXT",
       "name": "heading-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Display",
+      "characters": "Camera",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -405,7 +309,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 65,
+      "height": 128,
       "fills": [
         {
           "type": "solid",
@@ -418,40 +322,14 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
-    "list-2": {
-      "type": "FRAME",
-      "name": "list-2",
-      "width": 396,
-      "height": 38,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-5": {
-      "type": "FRAME",
-      "name": "list_item-5",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
-    "text-5": {
+    "text-6": {
       "type": "TEXT",
-      "name": "text-5",
-      "width": 396,
+      "name": "text-6",
+      "width": 364,
       "height": 15,
-      "characters": "Charging: Fast Charge Enabled",
+      "characters": "120Hz ProMotion",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -461,15 +339,17 @@
       ],
       "effectCount": 0
     },
-    "list_item-4": {
-      "type": "FRAME",
-      "name": "list_item-4",
-      "width": 396,
+    "text-5": {
+      "type": "TEXT",
+      "name": "text-5",
+      "width": 364,
       "height": 15,
+      "characters": "2796 x 1290 resolution",
+      "textAutoResize": "HEIGHT",
       "fills": [
         {
           "type": "solid",
-          "color": "#FFFFFF"
+          "color": "#000000"
         }
       ],
       "effectCount": 0
@@ -477,9 +357,9 @@
     "text-4": {
       "type": "TEXT",
       "name": "text-4",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Battery Health: 98%",
+      "characters": "6.7-inch Super Retina XDR",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -492,9 +372,9 @@
     "heading-2": {
       "type": "TEXT",
       "name": "heading-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Battery & Power",
+      "characters": "Display",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -508,7 +388,7 @@
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 88,
+      "height": 128,
       "fills": [
         {
           "type": "solid",
@@ -521,38 +401,12 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
-    },
-    "list-1": {
-      "type": "FRAME",
-      "name": "list-1",
-      "width": 396,
-      "height": 61,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#F8FAFC"
-        }
-      ],
-      "effectCount": 0
-    },
-    "list_item-3": {
-      "type": "FRAME",
-      "name": "list_item-3",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Color: Sierra Blue",
       "textAutoResize": "HEIGHT",
@@ -564,23 +418,10 @@
       ],
       "effectCount": 0
     },
-    "list_item-2": {
-      "type": "FRAME",
-      "name": "list_item-2",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Storage: 256GB",
       "textAutoResize": "HEIGHT",
@@ -592,23 +433,10 @@
       ],
       "effectCount": 0
     },
-    "list_item-1": {
-      "type": "FRAME",
-      "name": "list_item-1",
-      "width": 396,
-      "height": 15,
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#FFFFFF"
-        }
-      ],
-      "effectCount": 0
-    },
     "text-1": {
       "type": "TEXT",
       "name": "text-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Model: iPhone 13 Pro Max",
       "textAutoResize": "HEIGHT",
@@ -623,7 +451,7 @@
     "heading-1": {
       "type": "TEXT",
       "name": "heading-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Device Information",
       "textAutoResize": "HEIGHT",
@@ -639,7 +467,19 @@
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 20,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "icon_button-1": {

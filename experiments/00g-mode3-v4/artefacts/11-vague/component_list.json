@@ -101,10 +101,6 @@
                 "props": {
                   "text": "AR Prototyping"
                 }
-              },
-              {
-                "type": "icon",
-                "component_key": "icon/chevron-down"
               }
             ]
           }
@@ -127,29 +123,28 @@
           {
             "type": "button",
             "variant": "primary",
+            "component_key": "button/large/translucent",
             "props": {
               "text": "Explore"
-            },
-            "component_key": "button/large/translucent"
+            }
           },
           {
             "type": "button",
-            "variant": "secondary",
+            "variant": "primary",
+            "component_key": "button/large/translucent",
             "props": {
               "text": "Save"
-            },
-            "component_key": "button/large/translucent"
+            }
           }
         ]
       }
     ]
   },
   {
-    "type": "button",
-    "variant": "primary",
+    "type": "fab",
     "props": {
-      "text": "Get Started"
+      "text": "Create"
     },
-    "component_key": "button/large/solid"
+    "component_key": "icon/new"
   }
 ]

@@ -4,10 +4,10 @@
     {
       "kind": "render_thrown",
       "error": "not a function",
-      "stack": "    at <anonymous> (<input>:284:15) | "
+      "stack": "    at <anonymous> (<input>:334:15) | "
     }
   ],
-  "rendered_root": "5776:38661",
+  "rendered_root": "5779:41442",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -25,9 +25,9 @@
     "link-1": {
       "type": "TEXT",
       "name": "link-1",
-      "width": 25,
+      "width": 71,
       "height": 15,
-      "characters": "Skip",
+      "characters": "Skip for now",
       "textAutoResize": "WIDTH_AND_HEIGHT",
       "fills": [
         {
@@ -40,7 +40,7 @@
     "button-4": {
       "type": "FRAME",
       "name": "button-4",
-      "width": 32,
+      "width": 64,
       "height": 44,
       "fills": [
         {
@@ -115,7 +115,7 @@
       "type": "FRAME",
       "name": "card-3",
       "width": 396,
-      "height": 154,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -128,14 +128,14 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "text-4": {
       "type": "TEXT",
       "name": "text-4",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Create your account and unlock all the possibilities",
+      "characters": "Join thousands of users enjoying a better experience",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -148,7 +148,7 @@
     "heading-3": {
       "type": "TEXT",
       "name": "heading-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Get Started Now",
       "textAutoResize": "HEIGHT",
@@ -163,15 +163,21 @@
     "image-3": {
       "type": "FRAME",
       "name": "image-3",
-      "width": 100,
+      "width": 364,
       "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "card-2": {
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 154,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -184,14 +190,14 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "text-3": {
       "type": "TEXT",
       "name": "text-3",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Keep up with everything that matters to you in one place",
+      "characters": "Keep up with everything that matters to you in real time",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -204,7 +210,7 @@
     "heading-2": {
       "type": "TEXT",
       "name": "heading-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
       "characters": "Stay Connected",
       "textAutoResize": "HEIGHT",
@@ -219,15 +225,21 @@
     "image-2": {
       "type": "FRAME",
       "name": "image-2",
-      "width": 100,
+      "width": 364,
       "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "card-1": {
       "type": "FRAME",
       "name": "card-1",
       "width": 396,
-      "height": 154,
+      "height": 186,
       "fills": [
         {
           "type": "solid",
@@ -240,14 +252,14 @@
           "color": "#E2E8F0"
         }
       ],
-      "effectCount": 0
+      "effectCount": 1
     },
     "text-2": {
       "type": "TEXT",
       "name": "text-2",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Discover amazing features designed to enhance your experience",
+      "characters": "Discover amazing features designed to make your life easier",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -260,9 +272,9 @@
     "heading-1": {
       "type": "TEXT",
       "name": "heading-1",
-      "width": 396,
+      "width": 364,
       "height": 15,
-      "characters": "Welcome to Your Journey",
+      "characters": "Welcome to Our App",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -275,15 +287,33 @@
     "image-1": {
       "type": "FRAME",
       "name": "image-1",
-      "width": 100,
+      "width": 364,
       "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "header-1": {
       "type": "FRAME",
       "name": "header-1",
       "width": 396,
-      "height": 15,
+      "height": 56,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "text-1": {

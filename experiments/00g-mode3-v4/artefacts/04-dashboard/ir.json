@@ -13,7 +13,7 @@
     },
     "icon_button-1": {
       "type": "icon_button",
-      "component_key": "icon/close",
+      "component_key": "icon/wallet",
       "layout": {
         "direction": "vertical"
       }
@@ -23,8 +23,25 @@
       "layout": {
         "direction": "vertical",
         "sizing": {
-          "width": "fill"
-        }
+          "width": "fill",
+          "height": "fixed",
+          "heightPixels": 56
+        },
+        "padding": {
+          "top": "{space.header.padding_y}",
+          "bottom": "{space.header.padding_y}",
+          "left": "{space.header.padding_x}",
+          "right": "{space.header.padding_x}"
+        },
+        "gap": "{space.header.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "SPACE_BETWEEN"
+      },
+      "style": {
+        "fill": "{color.surface.header}",
+        "fg": "{color.text.heading}",
+        "stroke": "{color.surface.header_border}"
       },
       "children": [
         "text-1",
@@ -43,10 +60,19 @@
     "image-1": {
       "type": "image",
       "layout": {
-        "direction": "vertical"
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed"
+        },
+        "height_pixels": 160
       },
       "props": {
         "alt": "Line chart showing revenue over time"
+      },
+      "style": {
+        "fill": "{color.surface.image_placeholder}",
+        "radius": "{radius.image}"
       }
     },
     "card-1": {
@@ -58,15 +84,18 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-1",
@@ -142,7 +171,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$2,500.00"
+        "text": "$2,450.00"
       }
     },
     "text-9": {
@@ -175,8 +204,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
         },
         "gap": "{space.badge.gap}",
         "align": "center",
@@ -203,8 +234,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -235,7 +268,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice issued"
+        "text": "Subscription renewal"
       }
     },
     "text-12": {
@@ -244,13 +277,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$1,800.00"
+        "text": "$99.99"
       }
     },
     "text-13": {
       "type": "text",
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -277,15 +310,17 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
         },
         "gap": "{space.badge.gap}",
         "align": "center",
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -305,8 +340,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -337,7 +374,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Refund processed"
+        "text": "Refund issued"
       }
     },
     "text-16": {
@@ -346,13 +383,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$500.00"
+        "text": "-$150.00"
       }
     },
     "text-17": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Processed"
       },
       "layout": {
         "direction": "vertical"
@@ -379,15 +416,17 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
         },
         "gap": "{space.badge.gap}",
         "align": "center",
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Processed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -407,8 +446,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -439,7 +480,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Payment received"
+        "text": "Invoice payment"
       }
     },
     "text-20": {
@@ -448,13 +489,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$3,200.00"
+        "text": "$1,200.00"
       }
     },
     "text-21": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "layout": {
         "direction": "vertical"
@@ -481,15 +522,17 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
         },
         "gap": "{space.badge.gap}",
         "align": "center",
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Pending"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -509,8 +552,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -541,7 +586,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice issued"
+        "text": "Wire transfer"
       }
     },
     "text-24": {
@@ -550,13 +595,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$1,200.00"
+        "text": "$5,000.00"
       }
     },
     "text-25": {
       "type": "text",
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -583,15 +628,17 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.badge.padding_x}",
-          "y": "{space.badge.padding_y}"
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
         },
         "gap": "{space.badge.gap}",
         "align": "center",
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -611,8 +658,10 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.list_item.padding_x}",
-          "y": "{space.list_item.padding_y}"
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
         },
         "gap": "{space.list_item.gap}",
         "align": "center",
@@ -654,20 +703,37 @@
           "height": "hug"
         },
         "padding": {
-          "x": "{space.card.padding_x}",
-          "y": "{space.card.padding_y}"
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
         },
         "gap": "{space.card.gap}"
       },
       "style": {
         "fill": "{color.surface.card}",
         "stroke": "{color.surface.card_border}",
-        "radius": "{radius.card}"
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
       },
       "children": [
         "heading-2",
         "table-1"
       ]
+    },
+    "button-1": {
+      "type": "button",
+      "variant": "primary",
+      "component_key": "button/large/translucent",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "props": {
+        "text": "View All Transactions"
+      }
     },
     "screen-1": {
       "type": "screen",
@@ -691,7 +757,8 @@
       "children": [
         "header-1",
         "card-1",
-        "card-2"
+        "card-2",
+        "button-1"
       ]
     }
   },
@@ -816,10 +883,10 @@
     "radius.popover": 8,
     "radius.tooltip": 6,
     "radius.image": 8,
-    "shadow.card": 0,
-    "shadow.dialog": 0,
-    "shadow.menu": 0,
-    "shadow.popover": 0
+    "shadow.card": 2,
+    "shadow.dialog": 8,
+    "shadow.menu": 4,
+    "shadow.popover": 4
   },
   "_node_id_map": {
     "text-1": -1,
@@ -865,6 +932,7 @@
     "list_item-5": -41,
     "table-1": -42,
     "card-2": -43,
-    "screen-1": -44
+    "button-1": -44,
+    "screen-1": -45
   }
 }

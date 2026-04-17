@@ -28,13 +28,22 @@ from dd.composition.protocol import (
 )
 
 
-# 22-type universal backbone (ADR-008 §10). Extended types fall through
-# to ingested providers.
+# 27-type universal backbone (ADR-008 §10 + v0.1.5 H2 extension).
+# Extended types fall through to ingested providers.
+#
+# v0.1.5 H2 audit revealed 5 types with dedicated builders in
+# `_BUILDERS` that were absent from `_BACKBONE`: drawer, image, header,
+# navigation_row, search_input. Because the ProviderRegistry gates on
+# `supports()` (which tests BACKBONE membership), those types never
+# received their template's fill / radius / sizing. The carousel's
+# blank-image, the drawer's hollow frame, and the search screen's
+# unstyled header all trace back here.
 _BACKBONE: frozenset[str] = frozenset({
-    "button", "icon_button", "text_input", "textarea", "checkbox",
-    "radio", "toggle", "select", "combobox", "slider", "tabs", "card",
-    "list", "list_item", "avatar", "badge", "icon", "dialog", "tooltip",
-    "popover", "menu", "link",
+    "button", "icon_button", "text_input", "textarea", "search_input",
+    "checkbox", "radio", "toggle", "select", "combobox", "slider",
+    "tabs", "card", "list", "list_item", "avatar", "badge", "icon",
+    "image", "dialog", "tooltip", "popover", "menu", "link",
+    "drawer", "header", "navigation_row",
 })
 
 

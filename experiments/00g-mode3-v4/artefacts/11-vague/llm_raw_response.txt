@@ -31,8 +31,7 @@
         ]},
         {"type": "list_item", "children": [
           {"type": "avatar", "props": {"initials": "AR"}},
-          {"type": "text", "props": {"text": "AR Prototyping"}},
-          {"type": "icon", "component_key": "icon/chevron-down"}
+          {"type": "text", "props": {"text": "AR Prototyping"}}
         ]}
       ]}
     ]
@@ -42,13 +41,15 @@
     "children": [
       {"type": "heading", "props": {"text": "Quick Actions"}},
       {"type": "button_group", "children": [
-        {"type": "button", "variant": "primary", "props": {"text": "Explore"}, "component_key": "button/large/translucent"},
-        {"type": "button", "variant": "secondary", "props": {"text": "Save"}, "component_key": "button/large/translucent"}
+        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Explore"}},
+        {"type": "button", "variant": "primary", "component_key": "button/large/translucent", "props": {"text": "Save"}}
       ]}
     ]
   },
   {
-    "type": "button", "variant": "primary", "props": {"text": "Get Started"}, "component_key": "button/large/solid"
+    "type": "fab",
+    "props": {"text": "Create"},
+    "component_key": "icon/new"
   }
 ]
 ```

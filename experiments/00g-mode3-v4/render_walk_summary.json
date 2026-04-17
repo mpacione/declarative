@@ -4,11 +4,11 @@
     "compose": {
       "element_count": 16,
       "warnings": 9,
-      "latency_ms": 15
+      "latency_ms": 17
     },
     "render": {
       "status": "ok",
-      "latency_ms": 101,
+      "latency_ms": 132,
       "errors_count": 1,
       "error_kinds": [
         "render_thrown"
@@ -16,9 +16,9 @@
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 103,
+      "latency_ms": 104,
       "eid_count": 15,
-      "rendered_root": "5776:37931"
+      "rendered_root": "5779:40746"
     }
   },
   {
@@ -26,19 +26,19 @@
     "compose": {
       "element_count": 25,
       "warnings": 15,
-      "latency_ms": 1
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 168,
+      "latency_ms": 164,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 141,
+      "latency_ms": 135,
       "eid_count": 25,
-      "rendered_root": "5776:37974"
+      "rendered_root": "5779:40789"
     }
   },
   {
@@ -49,56 +49,50 @@
       "latency_ms": 1
     },
     "render": {
-      "status": "ok",
-      "latency_ms": 1312,
+      "status": "fail",
+      "latency_ms": 55267,
       "errors_count": 0,
       "error_kinds": []
-    },
-    "walk": {
-      "status": "ok",
-      "latency_ms": 1995,
-      "eid_count": 29,
-      "rendered_root": "5776:38066"
     }
   },
   {
     "slug": "04-dashboard",
     "compose": {
-      "element_count": 44,
-      "warnings": 38,
-      "latency_ms": 2
+      "element_count": 45,
+      "warnings": 39,
+      "latency_ms": 4
     },
     "render": {
       "status": "ok",
-      "latency_ms": 265,
+      "latency_ms": 213,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 184,
-      "eid_count": 44,
-      "rendered_root": "5776:38182"
+      "latency_ms": 205,
+      "eid_count": 45,
+      "rendered_root": "5779:40939"
     }
   },
   {
     "slug": "05-paywall",
     "compose": {
-      "element_count": 60,
-      "warnings": 58,
-      "latency_ms": 2
+      "element_count": 61,
+      "warnings": 60,
+      "latency_ms": 4
     },
     "render": {
       "status": "ok",
-      "latency_ms": 347,
+      "latency_ms": 481,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 257,
-      "eid_count": 60,
-      "rendered_root": "5776:38317"
+      "latency_ms": 245,
+      "eid_count": 61,
+      "rendered_root": "5779:41083"
     }
   },
   {
@@ -110,35 +104,35 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 432,
+      "latency_ms": 294,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 275,
+      "latency_ms": 142,
       "eid_count": 22,
-      "rendered_root": "5776:38442"
+      "rendered_root": "5779:41209"
     }
   },
   {
     "slug": "07-search",
     "compose": {
-      "element_count": 26,
-      "warnings": 25,
+      "element_count": 32,
+      "warnings": 30,
       "latency_ms": 1
     },
     "render": {
       "status": "ok",
-      "latency_ms": 249,
+      "latency_ms": 330,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 279,
-      "eid_count": 26,
-      "rendered_root": "5776:38507"
+      "latency_ms": 155,
+      "eid_count": 32,
+      "rendered_root": "5779:41281"
     }
   },
   {
@@ -150,15 +144,15 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 209,
+      "latency_ms": 175,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 193,
+      "latency_ms": 102,
       "eid_count": 14,
-      "rendered_root": "5776:38557"
+      "rendered_root": "5779:41338"
     }
   },
   {
@@ -170,15 +164,15 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 214,
+      "latency_ms": 210,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 209,
+      "latency_ms": 125,
       "eid_count": 23,
-      "rendered_root": "5776:38605"
+      "rendered_root": "5779:41386"
     }
   },
   {
@@ -190,7 +184,7 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 234,
+      "latency_ms": 182,
       "errors_count": 1,
       "error_kinds": [
         "render_thrown"
@@ -198,49 +192,49 @@
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 229,
+      "latency_ms": 129,
       "eid_count": 22,
-      "rendered_root": "5776:38661"
+      "rendered_root": "5779:41442"
     }
   },
   {
     "slug": "11-vague",
     "compose": {
-      "element_count": 29,
-      "warnings": 26,
-      "latency_ms": 2
+      "element_count": 28,
+      "warnings": 25,
+      "latency_ms": 1
     },
     "render": {
       "status": "ok",
-      "latency_ms": 363,
+      "latency_ms": 213,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 337,
-      "eid_count": 29,
-      "rendered_root": "5776:38730"
+      "latency_ms": 158,
+      "eid_count": 28,
+      "rendered_root": "5779:41510"
     }
   },
   {
     "slug": "12-round-trip-test",
     "compose": {
-      "element_count": 46,
-      "warnings": 43,
-      "latency_ms": 3
+      "element_count": 32,
+      "warnings": 28,
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 410,
+      "latency_ms": 266,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 453,
-      "eid_count": 46,
-      "rendered_root": "5776:38835"
+      "latency_ms": 160,
+      "eid_count": 32,
+      "rendered_root": "5779:41593"
     }
   }
 ]
