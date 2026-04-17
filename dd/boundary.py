@@ -34,6 +34,15 @@ KIND_API_ERROR = "api_error"
 KIND_MALFORMED_RESPONSE = "malformed_response"
 KIND_RATE_LIMITED = "rate_limited"
 
+# Mode 3 composition — resolution boundary (ADR-008)
+# Provider registry walk and DTCG cascade both feed these back through the
+# existing ADR-007 per-node __errors channel. Consumers switch on `kind`.
+KIND_NO_PROVIDER_MATCH = "no_provider_match"
+KIND_VARIANT_NOT_FOUND = "variant_not_found"
+KIND_TOKEN_UNRESOLVED = "token_unresolved"
+KIND_SLOT_TYPE_MISMATCH = "slot_type_mismatch"
+KIND_VARIANT_BINDING_MISSING = "variant_binding_missing"
+
 # Codegen-time degradation (ADR-007 Position 1)
 KIND_DEGRADED_TO_MODE2 = "degraded_to_mode2"
 KIND_DEGRADED_TO_LITERAL = "degraded_to_literal"
