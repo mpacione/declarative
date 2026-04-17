@@ -277,11 +277,15 @@ def _default_gemini_call(
     *,
     endpoint: str = GEMINI_ENDPOINT,
     timeout: float = 30.0,
+    retries: int = 2,
 ) -> dict[str, Any]:
     """Default Gemini call using stdlib urllib.
 
     Injected ``call_fn`` signatures take (prompt, png_bytes); the API key
-    is bound at ``inspect_screenshot`` call time via a partial.
+    is bound at ``inspect_screenshot`` call time via a partial. Retries
+    up to ``retries`` times on transient ``URLError`` / ``TimeoutError``
+    with exponential backoff (2s, 4s, 8s) so a single Google-side
+    hiccup doesn't drop a prompt from the sanity gate.
     """
     body = {
         "contents": [{
@@ -302,14 +306,29 @@ def _default_gemini_call(
         },
     }
     url = f"{endpoint}?key={api_key}"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError) as e:
+            last_error = e
+            if attempt < retries:
+                import time as _time
+                _time.sleep(2 ** (attempt + 1))
+                continue
+            raise
+
+    raise RuntimeError(  # pragma: no cover — unreachable (raise fires inside loop)
+        f"Gemini call exhausted retries: {last_error}"
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
 
 
 def _extract_text(raw: dict[str, Any]) -> str:

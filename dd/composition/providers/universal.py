@@ -328,17 +328,23 @@ def _header_template(variant: str | None) -> PresentationTemplate:
 
 
 def _drawer_template(variant: str | None) -> PresentationTemplate:
-    """Side drawer: header + vertical nav menu + footer."""
+    """Side drawer: header + vertical nav menu + footer.
+
+    Width is FILL by default (mobile-first: drawer IS the screen when
+    opened on small form factors). Desktop fixed-width side-panel
+    usage can pass ``variant="side-panel"`` in v0.2 to get a pinned
+    280-wide shape; v0.1 ships with FILL to match the 00e → 00f
+    "drawer + 6 nav items" LLM prompt shape.
+    """
     return PresentationTemplate(
         catalog_type="drawer",
         variant=variant,
         provider="catalog:universal",
         layout={
             "direction": "vertical",
-            "sizing": {"width": "fixed", "height": "fill"},
+            "sizing": {"width": "fill", "height": "fill"},
             "padding": {"x": "{space.drawer.padding_x}", "y": "{space.drawer.padding_y}"},
             "gap": "{space.drawer.gap}",
-            "width_pixels": 280,
         },
         slots={
             "header": SlotSpec(allowed=["heading", "avatar", "text"], required=False, position="top"),
