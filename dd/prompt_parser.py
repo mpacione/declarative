@@ -12,6 +12,8 @@ import re
 import sqlite3
 from typing import Any
 
+from dd.composition.archetype_classifier import classify_archetype
+from dd.composition.archetype_injection import inject_archetype
 from dd.compose import generate_from_prompt as _generate_from_prompt
 from dd.screen_patterns import extract_screen_archetypes, get_archetype_prompt_context
 
@@ -338,6 +340,14 @@ def prompt_to_figma(
         system = system + "\n\n" + archetype_context
     if vocabulary_context:
         system = system + "\n\n" + vocabulary_context
+
+    # ADR-008 v0.1.5 A1: classify the prompt → one of the 12 canonical
+    # archetypes → append the skeleton as few-shot inspiration. No-op
+    # when the keyword classifier misses and Haiku either isn't
+    # available or also doesn't route. ``DD_DISABLE_ARCHETYPE_LIBRARY=1``
+    # short-circuits the whole path.
+    matched_archetype = classify_archetype(prompt, client=client)
+    system = inject_archetype(system, archetype=matched_archetype)
 
     components = parse_prompt(prompt, client, system_prompt=system, temperature=_COMPOSE_TEMPERATURE)
 

@@ -210,6 +210,50 @@ class TestPromptToFigma:
         assert result["element_count"] == 1  # just the root screen element
         client.messages.create.assert_not_called()
 
+    def test_archetype_skeleton_injected_when_classifier_matches(self, db):
+        """ADR-008 v0.1.5 A1: when the prompt routes to a known
+        archetype, the skeleton JSON is appended to the system prompt
+        so the LLM sees it as few-shot inspiration."""
+        client = _mock_client(VALID_RESPONSE)
+        prompt_to_figma("a dashboard with line chart and a table", db, client)
+        call = client.messages.create.call_args
+        system = call.kwargs.get("system", "")
+        assert "dashboard" in system.lower()
+        # Skeleton fragment includes a JSON code fence
+        assert "```json" in system
+
+    def test_no_archetype_injection_when_classifier_misses(self, db):
+        """Prompts that don't match any keyword and fall through to the
+        Haiku classifier returning None should see an unchanged
+        SYSTEM_PROMPT."""
+        # Haiku classifier can be hit in this path; stub it to return
+        # an "unknown" payload so classify_archetype → None.
+        noop_client = MagicMock()
+        # First call = classifier (returns malformed); second call = parse
+        classify_msg = MagicMock()
+        classify_msg.content = [MagicMock(text='{"archetype": null}')]
+        parse_msg = MagicMock()
+        parse_msg.content = [MagicMock(text=VALID_RESPONSE)]
+        noop_client.messages.create.side_effect = [classify_msg, parse_msg]
+
+        prompt_to_figma("something cool", db, noop_client)
+
+        # The parse call (second) is the one we care about.
+        calls = noop_client.messages.create.call_args_list
+        parse_call_system = calls[-1].kwargs.get("system", "")
+        # No archetype fragment — framing template's signature line absent.
+        assert "canonical skeleton for the" not in parse_call_system.lower()
+
+    def test_archetype_injection_disabled_by_flag(self, db, monkeypatch):
+        monkeypatch.setenv("DD_DISABLE_ARCHETYPE_LIBRARY", "1")
+        client = _mock_client(VALID_RESPONSE)
+        prompt_to_figma("a dashboard with line chart", db, client)
+        call = client.messages.create.call_args
+        system = call.kwargs.get("system", "")
+        assert "canonical skeleton for the" not in system.lower()
+        # Only one Haiku call — no classifier call when flag is set.
+        assert client.messages.create.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # System prompt tests
