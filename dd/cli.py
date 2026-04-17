@@ -1008,6 +1008,76 @@ def _parse_figma_input(raw: str) -> str:
     return raw
 
 
+def _run_induce_variants(db_path: str, args: argparse.Namespace) -> None:
+    """Induce variant_token_binding rows for the user's corpus (ADR-008).
+
+    Opt-in Stream-B inducer: clusters classified instances per catalog
+    type, calls Gemini 3.1 Pro to label each cluster with a variant
+    name from a closed vocabulary, and persists one row per
+    (catalog_type, variant, slot) to ``variant_token_binding``.
+    ``ProjectCKRProvider`` queries these rows at Mode-3 resolution
+    time to attach project-native presentation values.
+
+    Usage: ``dd induce-variants [--db PATH]``. Idempotent — re-running
+    updates existing rows (UPSERT on the unique key).
+    """
+    from dd.cluster_variants import induce_variants
+    from dd.visual_inspect import _default_gemini_call, VLM_PROMPT
+
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        print(
+            "Warning: GOOGLE_API_KEY not set — inducer will run with a stub "
+            "VLM that labels every cluster 'unknown' (rows persist as "
+            "custom_N). Set GOOGLE_API_KEY to get real variant labels.",
+            file=sys.stderr,
+        )
+
+    def vlm_call(prompt: str, images: list) -> dict:
+        """Adapter from the inducer's simple call shape to Gemini 3.1 Pro.
+
+        v0.1: the inducer shell doesn't pass real rendered images yet
+        (cluster analysis is a shell). When images are present, route
+        through the existing Gemini call; otherwise return a conservative
+        'unknown' verdict so the row persists as custom_N.
+        """
+        if not images or not api_key:
+            return {"verdict": "unknown", "confidence": 0.0}
+        try:
+            import json as _json
+            import re as _re
+            raw = _default_gemini_call(prompt, images[0], api_key)
+            text = raw["candidates"][0]["content"]["parts"][0]["text"]
+            text = text.strip()
+            if text.startswith("```"):
+                text = _re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=_re.S)
+            data = _json.loads(text)
+            return {
+                "verdict": str(data.get("verdict", "unknown")).lower(),
+                "confidence": float(data.get("confidence", 0.5)),
+            }
+        except Exception as e:
+            print(f"  VLM call failed: {e}", file=sys.stderr)
+            return {"verdict": "unknown", "confidence": 0.0}
+
+    conn = get_connection(db_path)
+    try:
+        written_per_type = induce_variants(conn, vlm_call)
+    finally:
+        conn.close()
+
+    total_rows = sum(written_per_type.values())
+    print(f"Induced variant_token_binding rows for {len(written_per_type)} catalog types:")
+    for catalog_type in sorted(written_per_type.keys()):
+        rows = written_per_type[catalog_type]
+        print(f"  {catalog_type:<25} {rows:>3} rows")
+    print(f"Total: {total_rows} rows written.")
+
+
 def _run_inspect_experiment(args: argparse.Namespace) -> None:
     """Auto-inspect an experiment's rendered output before escalating to rating.
 
@@ -1151,6 +1221,12 @@ def main(argv: list | None = None) -> None:
     push_parser.add_argument("--writeback", action="store_true", help="Apply variable ID writeback from Figma response")
     push_parser.add_argument("--out", help="Write manifest to file instead of stdout")
 
+    induce_parser = subparsers.add_parser(
+        "induce-variants",
+        help="Induce variant_token_binding rows for Mode 3 (ADR-008 Stream B)",
+    )
+    induce_parser.add_argument("--db", help="Database path")
+
     inspect_parser = subparsers.add_parser(
         "inspect-experiment",
         help="Auto-inspect an experiment's rendered output (visual-sanity gate)",
@@ -1246,6 +1322,9 @@ def main(argv: list | None = None) -> None:
         _run_verify(db_path, args)
     elif args.command == "inspect-experiment":
         _run_inspect_experiment(args)
+    elif args.command == "induce-variants":
+        db_path = detect_db_path(args.db)
+        _run_induce_variants(db_path, args)
 
 
 if __name__ == "__main__":

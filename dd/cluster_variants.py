@@ -178,6 +178,13 @@ def induce_variants(
             "SELECT DISTINCT canonical_type FROM screen_component_instances"
         ).fetchall()
         catalog_types = [r[0] for r in rows]
+        if not catalog_types:
+            # Empty SCI (classify stage hasn't run). Fall back to the full
+            # catalog so every known type gets at least a custom_1
+            # placeholder row — gives ProjectCKRProvider something to
+            # query at Mode-3 resolution time.
+            from dd.catalog import CATALOG_ENTRIES
+            catalog_types = [entry["canonical_name"] for entry in CATALOG_ENTRIES]
 
     for catalog_type in catalog_types:
         instances = _collect_instances(conn, catalog_type)
