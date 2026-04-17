@@ -1,0 +1,544 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "icon_button-1": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "arrow_back"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Login"
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "icon_button-1",
+        "text-1"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Welcome Back"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Sign in to your account to continue"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "props": {
+        "text": "Email"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "Enter your email"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "input",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text_input-1": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug",
+          "heightPixels": 48
+        },
+        "padding": {
+          "x": "{space.input.padding_x}",
+          "y": "{space.input.padding_y}"
+        },
+        "gap": "{space.input.gap}"
+      },
+      "props": {
+        "label": "Email",
+        "placeholder": "Enter your email"
+      },
+      "style": {
+        "fill": "{color.input.bg}",
+        "stroke": "{color.input.border}",
+        "radius": "{radius.input}"
+      },
+      "children": [
+        "text-3",
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "Password"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "props": {
+        "text": "Enter your password"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "text_input",
+        "parent_variant": null,
+        "slot": "input",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.input.fontFamily}",
+        "fontSize": "{typography.input.fontSize}",
+        "fontWeight": "{typography.input.fontWeight}"
+      }
+    },
+    "text_input-2": {
+      "type": "text_input",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug",
+          "heightPixels": 48
+        },
+        "padding": {
+          "x": "{space.input.padding_x}",
+          "y": "{space.input.padding_y}"
+        },
+        "gap": "{space.input.gap}"
+      },
+      "props": {
+        "label": "Password",
+        "placeholder": "Enter your password",
+        "type": "password"
+      },
+      "style": {
+        "fill": "{color.input.bg}",
+        "stroke": "{color.input.border}",
+        "radius": "{radius.input}"
+      },
+      "children": [
+        "text-5",
+        "text-6"
+      ]
+    },
+    "text-7": {
+      "type": "text",
+      "props": {
+        "text": "Forgot password?"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "link",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.body.fontSize}",
+        "fontWeight": "{typography.body.fontWeight}",
+        "fill": "{color.text.link}"
+      }
+    },
+    "link-1": {
+      "type": "link",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Forgot password?"
+      },
+      "style": {
+        "fill": null,
+        "fg": "{color.text.link}"
+      },
+      "children": [
+        "text-7"
+      ]
+    },
+    "text-8": {
+      "type": "text",
+      "props": {
+        "text": "Sign In"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.default.fg}"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Sign In"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-8"
+      ]
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "text-2",
+        "text_input-1",
+        "text_input-2",
+        "link-1",
+        "button-1"
+      ]
+    },
+    "text-9": {
+      "type": "text",
+      "props": {
+        "text": "Don't have an account? Sign Up"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.default.fg}"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Don't have an account? Sign Up"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-9"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "button-2"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "typography.header.fontSize": 17,
+    "typography.header.fontWeight": 600,
+    "typography.caption.fontSize": 12,
+    "typography.caption.fontWeight": 400,
+    "typography.badge.fontSize": 12,
+    "typography.badge.fontWeight": 600,
+    "typography.avatar.fontSize": 14,
+    "typography.avatar.fontWeight": 600,
+    "color.text.default": "#0F172A",
+    "color.text.heading": "#020617",
+    "color.text.caption": "#475569",
+    "color.text.link": "#2563EB",
+    "color.text.on_tooltip": "#FFFFFF",
+    "color.text.on_primary": "#F8FAFC",
+    "color.text.on_destructive": "#FFFFFF",
+    "color.surface.header": "#FFFFFF",
+    "color.surface.header_border": "#E2E8F0",
+    "color.surface.drawer": "#FFFFFF",
+    "color.surface.drawer_border": "#E2E8F0",
+    "color.surface.menu": "#FFFFFF",
+    "color.surface.menu_border": "#E2E8F0",
+    "color.surface.popover": "#FFFFFF",
+    "color.surface.popover_border": "#E2E8F0",
+    "color.surface.tooltip": "#0F172A",
+    "color.surface.badge": "#F1F5F9",
+    "color.surface.image_placeholder": "#E2E8F0",
+    "color.avatar.fill": "#E2E8F0",
+    "color.avatar.fg": "#334155",
+    "color.status.success.bg": "#22C55E",
+    "color.status.success.fg": "#FFFFFF",
+    "color.status.warning.bg": "#F59E0B",
+    "color.status.warning.fg": "#FFFFFF",
+    "color.status.info.bg": "#3B82F6",
+    "color.status.info.fg": "#FFFFFF",
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "space.header.padding_x": 16,
+    "space.header.padding_y": 12,
+    "space.header.gap": 8,
+    "space.drawer.padding_x": 16,
+    "space.drawer.padding_y": 24,
+    "space.drawer.gap": 4,
+    "space.menu.padding_x": 8,
+    "space.menu.padding_y": 8,
+    "space.menu.gap": 2,
+    "space.popover.padding_x": 16,
+    "space.popover.padding_y": 16,
+    "space.popover.gap": 8,
+    "space.tooltip.padding_x": 8,
+    "space.tooltip.padding_y": 4,
+    "space.badge.padding_x": 8,
+    "space.badge.padding_y": 4,
+    "space.badge.gap": 4,
+    "radius.badge": 999,
+    "radius.menu": 8,
+    "radius.popover": 8,
+    "radius.tooltip": 6,
+    "radius.image": 8,
+    "shadow.card": 0,
+    "shadow.dialog": 0,
+    "shadow.menu": 0,
+    "shadow.popover": 0
+  },
+  "_node_id_map": {
+    "icon_button-1": -1,
+    "text-1": -2,
+    "header-1": -3,
+    "heading-1": -4,
+    "text-2": -5,
+    "text-3": -6,
+    "text-4": -7,
+    "text_input-1": -8,
+    "text-5": -9,
+    "text-6": -10,
+    "text_input-2": -11,
+    "text-7": -12,
+    "link-1": -13,
+    "text-8": -14,
+    "button-1": -15,
+    "card-1": -16,
+    "text-9": -17,
+    "button-2": -18,
+    "screen-1": -19
+  }
+}

@@ -1,0 +1,135 @@
+[
+  {
+    "ok": true,
+    "rootId": "5774:36638",
+    "width": 428,
+    "height": 926,
+    "size": 15524,
+    "errors": [
+      {
+        "kind": "render_thrown",
+        "error": "not a function",
+        "stack": "    at <anonymous> (<input>:218:16) | "
+      }
+    ],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/01-login/screenshot.png",
+    "ms": 107,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/01-login/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36657",
+    "width": 428,
+    "height": 926,
+    "size": 22075,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/02-profile-settings/screenshot.png",
+    "ms": 125,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/02-profile-settings/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36687",
+    "width": 428,
+    "height": 926,
+    "size": 32037,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/03-meme-feed/screenshot.png",
+    "ms": 173,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/03-meme-feed/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36736",
+    "width": 428,
+    "height": 926,
+    "size": 24924,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/04-dashboard/screenshot.png",
+    "ms": 148,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/04-dashboard/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36780",
+    "width": 428,
+    "height": 926,
+    "size": 23419,
+    "errors": [
+      {
+        "kind": "render_thrown",
+        "error": "not a function",
+        "stack": "    at <anonymous> (<input>:352:16) | "
+      }
+    ],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/06-spa-minimal/screenshot.png",
+    "ms": 121,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/06-spa-minimal/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36817",
+    "width": 428,
+    "height": 926,
+    "size": 20936,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/07-search/screenshot.png",
+    "ms": 119,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/07-search/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36850",
+    "width": 428,
+    "height": 926,
+    "size": 12880,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/08-explicit-structure/screenshot.png",
+    "ms": 69,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/08-explicit-structure/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36864",
+    "width": 428,
+    "height": 926,
+    "size": 11667,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/09-drawer-nav/screenshot.png",
+    "ms": 92,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/09-drawer-nav/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36891",
+    "width": 428,
+    "height": 926,
+    "size": 15307,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/10-onboarding-carousel/screenshot.png",
+    "ms": 84,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/10-onboarding-carousel/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36908",
+    "width": 428,
+    "height": 926,
+    "size": 22184,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/11-vague/screenshot.png",
+    "ms": 101,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/11-vague/script.js"
+  },
+  {
+    "ok": true,
+    "rootId": "5774:36931",
+    "width": 428,
+    "height": 926,
+    "size": 27093,
+    "errors": [],
+    "out": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/12-round-trip-test/screenshot.png",
+    "ms": 156,
+    "script_path": "/Users/mattpacione/declarative-build/experiments/00h-mode3-v5/artefacts/12-round-trip-test/script.js"
+  }
+]

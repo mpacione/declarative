@@ -1,0 +1,107 @@
+[
+  {
+    "type": "list",
+    "id": "carousel",
+    "children": [
+      {
+        "type": "card",
+        "id": "slide",
+        "children": [
+          {
+            "type": "image",
+            "id": "illustration",
+            "props": {
+              "src": "onboarding-step-1.png",
+              "alt": "Welcome illustration"
+            }
+          },
+          {
+            "type": "heading",
+            "id": "headline",
+            "props": {
+              "text": "Welcome to Our App"
+            }
+          },
+          {
+            "type": "text",
+            "id": "subtext",
+            "props": {
+              "text": "Get started with our intuitive platform designed for your success."
+            }
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "slide",
+        "children": [
+          {
+            "type": "image",
+            "id": "illustration",
+            "props": {
+              "src": "onboarding-step-2.png",
+              "alt": "Features illustration"
+            }
+          },
+          {
+            "type": "heading",
+            "id": "headline",
+            "props": {
+              "text": "Powerful Features"
+            }
+          },
+          {
+            "type": "text",
+            "id": "subtext",
+            "props": {
+              "text": "Explore all the tools you need to accomplish your goals."
+            }
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "slide",
+        "children": [
+          {
+            "type": "image",
+            "id": "illustration",
+            "props": {
+              "src": "onboarding-step-3.png",
+              "alt": "Get started illustration"
+            }
+          },
+          {
+            "type": "heading",
+            "id": "headline",
+            "props": {
+              "text": "Ready to Begin?"
+            }
+          },
+          {
+            "type": "text",
+            "id": "subtext",
+            "props": {
+              "text": "Create your account and start your journey today."
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "pagination",
+    "id": "slide_indicators",
+    "props": {
+      "total": 3,
+      "current": 1
+    }
+  },
+  {
+    "type": "button",
+    "id": "next_button",
+    "props": {
+      "label": "Next"
+    }
+  }
+]

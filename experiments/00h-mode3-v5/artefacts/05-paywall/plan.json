@@ -1,0 +1,96 @@
+[
+  {
+    "type": "header",
+    "id": "hdr",
+    "children": [
+      {
+        "type": "icon_button",
+        "id": "back_btn"
+      },
+      {
+        "type": "text",
+        "id": "title"
+      }
+    ]
+  },
+  {
+    "type": "heading",
+    "id": "main_heading"
+  },
+  {
+    "type": "text",
+    "id": "subtitle"
+  },
+  {
+    "type": "list",
+    "id": "pricing_tiers",
+    "children": [
+      {
+        "type": "card",
+        "id": "tier",
+        "count_hint": 3,
+        "children": [
+          {
+            "type": "heading",
+            "id": "tier_name"
+          },
+          {
+            "type": "text",
+            "id": "tier_price"
+          },
+          {
+            "type": "text",
+            "id": "tier_description"
+          },
+          {
+            "type": "list",
+            "id": "tier_features",
+            "children": [
+              {
+                "type": "list_item",
+                "id": "feature",
+                "count_hint": 4,
+                "children": [
+                  {
+                    "type": "icon",
+                    "id": "feature_icon"
+                  },
+                  {
+                    "type": "text",
+                    "id": "feature_text"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "tier_cta"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "testimonial",
+    "children": [
+      {
+        "type": "text",
+        "id": "testimonial_quote"
+      },
+      {
+        "type": "avatar",
+        "id": "testimonial_avatar"
+      },
+      {
+        "type": "text",
+        "id": "testimonial_author"
+      },
+      {
+        "type": "text",
+        "id": "testimonial_role"
+      }
+    ]
+  }
+]

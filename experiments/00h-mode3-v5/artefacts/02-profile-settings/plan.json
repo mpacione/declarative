@@ -1,0 +1,73 @@
+[
+  {
+    "type": "header",
+    "id": "hdr",
+    "children": [
+      {
+        "type": "icon_button",
+        "id": "back"
+      },
+      {
+        "type": "text",
+        "id": "title"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "profile_card",
+    "children": [
+      {
+        "type": "heading",
+        "id": "profile_heading"
+      },
+      {
+        "type": "avatar",
+        "id": "profile_avatar"
+      },
+      {
+        "type": "text_input",
+        "id": "name_input"
+      },
+      {
+        "type": "text_input",
+        "id": "email_input"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "notifications_card",
+    "children": [
+      {
+        "type": "heading",
+        "id": "notifications_heading"
+      },
+      {
+        "type": "list",
+        "id": "notification_toggles",
+        "children": [
+          {
+            "type": "navigation_row",
+            "id": "toggle_row",
+            "count_hint": 4,
+            "children": [
+              {
+                "type": "text",
+                "id": "toggle_label"
+              },
+              {
+                "type": "toggle",
+                "id": "toggle_switch"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "id": "save_button"
+  }
+]

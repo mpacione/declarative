@@ -186,31 +186,54 @@ def plan_diff(plan: list[dict], fill: list[dict]) -> PlanDiff:
 # Plan / fill prompts                                                         #
 # --------------------------------------------------------------------------- #
 
-_PLAN_SYSTEM = (
-    "You are a UI structural planner. Given a natural language screen "
-    "description, emit a JSON array describing the screen's structural "
-    "skeleton — types + nesting only, no text or props.\n\n"
-    "Each node:\n"
-    "  - type: string, MUST be from the catalog\n"
-    "  - id: string, unique within the tree\n"
-    "  - children: optional array of further nodes\n"
-    "  - count_hint: optional int ≥ 1 when a child is a repeated template\n\n"
-    "Container types that typically need count_hint on their child "
-    "template: list (count_hint ≥ 4 for feeds), button_group "
-    "(count_hint ≥ 2), pagination, toggle_group, segmented_control, "
-    "navigation_row list, table rows.\n\n"
-    "Example:\n"
-    '[\n'
-    '  {"type": "header", "id": "hdr", "children": [\n'
-    '    {"type": "icon_button", "id": "back"},\n'
-    '    {"type": "text", "id": "title"}\n'
-    '  ]},\n'
-    '  {"type": "list", "id": "feed", "children": [\n'
-    '    {"type": "card", "id": "post", "count_hint": 4}\n'
-    '  ]}\n'
-    ']\n\n'
-    "Output ONLY the JSON array. No prose. No markdown fences."
-)
+def _build_plan_system() -> str:
+    """Compose the plan SYSTEM prompt with the catalog allowlist baked in.
+
+    The first run of 00h showed Haiku confidently inventing types like
+    ``container`` / ``footer`` / ``carousel`` when the catalog wasn't
+    explicitly listed. Failing closed at the validator is the right
+    behaviour, but it burns plan calls — so the allowlist is in the
+    prompt, not just the validator.
+    """
+    types_sorted = sorted(_VALID_TYPES)
+    # Group for readability matching SYSTEM_PROMPT's categorisation.
+    return (
+        "You are a UI structural planner. Given a natural language screen "
+        "description, emit a JSON array describing the screen's structural "
+        "skeleton — types + nesting only, no text or props.\n\n"
+        "Each node:\n"
+        "  - type: string, MUST be one of the catalog types below\n"
+        "  - id: string, unique within the tree\n"
+        "  - children: optional array of further nodes\n"
+        "  - count_hint: optional int ≥ 1 when a child is a repeated template\n\n"
+        "Catalog types (use ONLY these — no 'container', 'footer', "
+        "'carousel', 'section' etc.):\n"
+        f"  {', '.join(types_sorted)}\n\n"
+        "Mapping rules for common UI concepts that aren't in the catalog:\n"
+        "  - a generic container / section / wrapper → use `card`\n"
+        "  - a footer → use `card` at the bottom (there is no footer type)\n"
+        "  - a carousel / slider → use `list` (count_hint ≥ 3) of `card` "
+        "children\n"
+        "  - a hero → use `card` with an `image` + `heading` + `text`\n\n"
+        "Container types that typically need count_hint on their child "
+        "template: list (count_hint ≥ 4 for feeds), button_group "
+        "(count_hint ≥ 2), pagination, toggle_group, segmented_control, "
+        "navigation_row list, table rows.\n\n"
+        "Example:\n"
+        '[\n'
+        '  {"type": "header", "id": "hdr", "children": [\n'
+        '    {"type": "icon_button", "id": "back"},\n'
+        '    {"type": "text", "id": "title"}\n'
+        '  ]},\n'
+        '  {"type": "list", "id": "feed", "children": [\n'
+        '    {"type": "card", "id": "post", "count_hint": 4}\n'
+        '  ]}\n'
+        ']\n\n'
+        "Output ONLY the JSON array. No prose. No markdown fences."
+    )
+
+
+_PLAN_SYSTEM = _build_plan_system()
 
 
 def _fill_system(plan: list[dict]) -> str:
@@ -281,8 +304,40 @@ def _extract_fill(raw_text: str) -> list[dict]:
 # Orchestrator                                                                #
 # --------------------------------------------------------------------------- #
 
-def plan_then_fill(prompt: str, client: Any) -> dict:
+def _plan_system_with_skeleton(skeleton: list[dict]) -> str:
+    """Plan prompt with an archetype skeleton baked in as a floor.
+
+    The first 00h run showed Haiku planning minimally when given only
+    the catalog list — outputs had fewer elements than A1's archetype-
+    injected skeletons. Treating the skeleton as a structural floor
+    (not a template) recovers the A1 density without giving up A2's
+    plan-diff guarantees.
+    """
+    return (
+        _PLAN_SYSTEM + "\n\n"
+        "Structural floor (a canonical skeleton for this prompt's "
+        "archetype — your plan should include AT LEAST these nodes; "
+        "you may enrich with more containers / items as the prompt "
+        "warrants):\n"
+        f"```json\n{json.dumps(skeleton, indent=2)}\n```\n\n"
+        "Respect the skeleton's nesting; add count_hint ≥ the visible "
+        "repetition (e.g. a list of cards → count_hint ≥ 4). Don't "
+        "reduce its structure."
+    )
+
+
+def plan_then_fill(
+    prompt: str,
+    client: Any,
+    *,
+    archetype_skeleton: list[dict] | None = None,
+) -> dict:
     """Orchestrate plan + validate + fill (+ one retry on drift).
+
+    Optional ``archetype_skeleton`` gets injected into the plan prompt
+    as a structural floor — a canonical skeleton the plan must cover
+    or exceed. Omit for a pure plan-then-fill (classifier returned
+    None or flag off).
 
     Returns:
         On success: ``{"components": [...], "plan": [...], "retried": bool}``.
@@ -293,12 +348,18 @@ def plan_then_fill(prompt: str, client: Any) -> dict:
     if not prompt or not prompt.strip():
         return {"components": [], "plan": None, "retried": False}
 
+    plan_system = (
+        _plan_system_with_skeleton(archetype_skeleton)
+        if archetype_skeleton is not None
+        else _PLAN_SYSTEM
+    )
+
     # ── Stage 1: plan ────────────────────────────────────────────────────
     plan_resp = client.messages.create(
         model=_HAIKU_MODEL,
         max_tokens=1024,
         temperature=0.0,
-        system=_PLAN_SYSTEM,
+        system=plan_system,
         messages=[{"role": "user", "content": prompt}],
     )
     plan_raw = plan_resp.content[0].text

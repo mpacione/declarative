@@ -1,0 +1,99 @@
+[
+  {
+    "type": "header",
+    "id": "spa_header",
+    "children": [
+      {
+        "type": "icon_button",
+        "id": "menu_btn"
+      },
+      {
+        "type": "text",
+        "id": "logo"
+      },
+      {
+        "type": "icon_button",
+        "id": "profile_btn"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "hero_banner",
+    "children": [
+      {
+        "type": "image",
+        "id": "hero_image"
+      },
+      {
+        "type": "heading",
+        "id": "hero_title"
+      },
+      {
+        "type": "text",
+        "id": "hero_subtitle"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "id": "services_grid",
+    "children": [
+      {
+        "type": "card",
+        "id": "service_item",
+        "count_hint": 4,
+        "children": [
+          {
+            "type": "image",
+            "id": "service_image"
+          },
+          {
+            "type": "heading",
+            "id": "service_name"
+          },
+          {
+            "type": "text",
+            "id": "service_price"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "booking_section",
+    "children": [
+      {
+        "type": "heading",
+        "id": "booking_title"
+      },
+      {
+        "type": "date_picker",
+        "id": "date_select"
+      },
+      {
+        "type": "select",
+        "id": "time_select"
+      },
+      {
+        "type": "button",
+        "id": "book_btn"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "footer_info",
+    "children": [
+      {
+        "type": "text",
+        "id": "contact_info"
+      },
+      {
+        "type": "link",
+        "id": "contact_link"
+      }
+    ]
+  }
+]

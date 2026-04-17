@@ -1,0 +1,168 @@
+[
+  {
+    "type": "drawer",
+    "id": "drawer",
+    "children": [
+      {
+        "type": "header",
+        "id": "drawer_header",
+        "children": [
+          {
+            "type": "avatar",
+            "id": "avatar",
+            "props": {
+              "initials": "JD"
+            }
+          },
+          {
+            "type": "heading",
+            "id": "heading",
+            "props": {
+              "text": "Menu"
+            }
+          },
+          {
+            "type": "text",
+            "id": "subtitle",
+            "props": {
+              "text": "Navigation"
+            }
+          }
+        ]
+      },
+      {
+        "type": "list",
+        "id": "nav_list",
+        "children": [
+          {
+            "type": "navigation_row",
+            "id": "nav_item_1",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_1",
+                "props": {
+                  "name": "home"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_1",
+                "props": {
+                  "text": "Home"
+                }
+              }
+            ]
+          },
+          {
+            "type": "navigation_row",
+            "id": "nav_item_2",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_2",
+                "props": {
+                  "name": "search"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_2",
+                "props": {
+                  "text": "Search"
+                }
+              }
+            ]
+          },
+          {
+            "type": "navigation_row",
+            "id": "nav_item_3",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_3",
+                "props": {
+                  "name": "settings"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_3",
+                "props": {
+                  "text": "Settings"
+                }
+              }
+            ]
+          },
+          {
+            "type": "navigation_row",
+            "id": "nav_item_4",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_4",
+                "props": {
+                  "name": "user"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_4",
+                "props": {
+                  "text": "Profile"
+                }
+              }
+            ]
+          },
+          {
+            "type": "navigation_row",
+            "id": "nav_item_5",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_5",
+                "props": {
+                  "name": "bell"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_5",
+                "props": {
+                  "text": "Notifications"
+                }
+              }
+            ]
+          },
+          {
+            "type": "navigation_row",
+            "id": "nav_item_6",
+            "children": [
+              {
+                "type": "icon",
+                "id": "nav_icon_6",
+                "props": {
+                  "name": "help"
+                }
+              },
+              {
+                "type": "text",
+                "id": "nav_text_6",
+                "props": {
+                  "text": "Help"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "id": "action_button",
+        "props": {
+          "label": "Sign Out"
+        }
+      }
+    ]
+  }
+]

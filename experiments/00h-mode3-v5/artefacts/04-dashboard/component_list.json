@@ -1,0 +1,265 @@
+[
+  {
+    "type": "header",
+    "id": "hdr",
+    "children": [
+      {
+        "type": "text",
+        "id": "title",
+        "props": {
+          "text": "Dashboard"
+        }
+      },
+      {
+        "type": "icon_button",
+        "id": "menu",
+        "props": {
+          "icon": "menu"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "chart_card",
+    "children": [
+      {
+        "type": "heading",
+        "id": "chart_title",
+        "props": {
+          "text": "Revenue Trend"
+        }
+      },
+      {
+        "type": "image",
+        "id": "line_chart",
+        "props": {
+          "src": "chart.png",
+          "alt": "Revenue line chart"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "transactions_card",
+    "children": [
+      {
+        "type": "heading",
+        "id": "transactions_title",
+        "props": {
+          "text": "Recent Transactions"
+        }
+      },
+      {
+        "type": "table",
+        "id": "transactions_table",
+        "children": [
+          {
+            "type": "text",
+            "id": "col_date",
+            "props": {
+              "text": "Date"
+            }
+          },
+          {
+            "type": "text",
+            "id": "col_description",
+            "props": {
+              "text": "Description"
+            }
+          },
+          {
+            "type": "text",
+            "id": "col_amount",
+            "props": {
+              "text": "Amount"
+            }
+          },
+          {
+            "type": "text",
+            "id": "col_status",
+            "props": {
+              "text": "Status"
+            }
+          },
+          {
+            "type": "list_item",
+            "id": "row_1",
+            "children": [
+              {
+                "type": "text",
+                "id": "cell_date_1",
+                "props": {
+                  "text": "2024-01-15"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_description_1",
+                "props": {
+                  "text": "Client Payment"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_amount_1",
+                "props": {
+                  "text": "$2,500.00"
+                }
+              },
+              {
+                "type": "badge",
+                "id": "cell_status_1",
+                "props": {
+                  "text": "Completed",
+                  "variant": "success"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "id": "row_2",
+            "children": [
+              {
+                "type": "text",
+                "id": "cell_date_2",
+                "props": {
+                  "text": "2024-01-14"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_description_2",
+                "props": {
+                  "text": "Vendor Invoice"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_amount_2",
+                "props": {
+                  "text": "-$1,200.00"
+                }
+              },
+              {
+                "type": "badge",
+                "id": "cell_status_2",
+                "props": {
+                  "text": "Completed",
+                  "variant": "success"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "id": "row_3",
+            "children": [
+              {
+                "type": "text",
+                "id": "cell_date_3",
+                "props": {
+                  "text": "2024-01-13"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_description_3",
+                "props": {
+                  "text": "Refund Request"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_amount_3",
+                "props": {
+                  "text": "-$350.00"
+                }
+              },
+              {
+                "type": "badge",
+                "id": "cell_status_3",
+                "props": {
+                  "text": "Pending",
+                  "variant": "warning"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "id": "row_4",
+            "children": [
+              {
+                "type": "text",
+                "id": "cell_date_4",
+                "props": {
+                  "text": "2024-01-12"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_description_4",
+                "props": {
+                  "text": "Service Fee"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_amount_4",
+                "props": {
+                  "text": "-$99.99"
+                }
+              },
+              {
+                "type": "badge",
+                "id": "cell_status_4",
+                "props": {
+                  "text": "Completed",
+                  "variant": "success"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "id": "row_5",
+            "children": [
+              {
+                "type": "text",
+                "id": "cell_date_5",
+                "props": {
+                  "text": "2024-01-11"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_description_5",
+                "props": {
+                  "text": "Subscription Renewal"
+                }
+              },
+              {
+                "type": "text",
+                "id": "cell_amount_5",
+                "props": {
+                  "text": "$5,000.00"
+                }
+              },
+              {
+                "type": "badge",
+                "id": "cell_status_5",
+                "props": {
+                  "text": "Completed",
+                  "variant": "success"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

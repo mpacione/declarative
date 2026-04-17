@@ -1,0 +1,50 @@
+[
+  {
+    "type": "header",
+    "id": "hdr",
+    "children": [
+      {
+        "type": "icon_button",
+        "id": "back_btn"
+      },
+      {
+        "type": "text",
+        "id": "title"
+      },
+      {
+        "type": "icon_button",
+        "id": "share_btn"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "content_card",
+    "children": [
+      {
+        "type": "heading",
+        "id": "card_heading"
+      },
+      {
+        "type": "text",
+        "id": "body_text_1"
+      },
+      {
+        "type": "text",
+        "id": "body_text_2"
+      },
+      {
+        "type": "text",
+        "id": "body_text_3"
+      },
+      {
+        "type": "button",
+        "id": "primary_btn"
+      }
+    ]
+  },
+  {
+    "type": "button",
+    "id": "secondary_btn"
+  }
+]

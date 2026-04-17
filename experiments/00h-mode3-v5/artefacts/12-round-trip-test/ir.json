@@ -1,0 +1,731 @@
+{
+  "version": "1.0",
+  "root": "screen-1",
+  "elements": {
+    "text-1": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "9:41"
+      }
+    },
+    "icon-1": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "signal"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "icon-2": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "wifi"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "icon-3": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "battery"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "header-1": {
+      "type": "header",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "text-1",
+        "icon-1",
+        "icon-2",
+        "icon-3"
+      ]
+    },
+    "heading-1": {
+      "type": "heading",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "iPhone 13 Pro Max"
+      }
+    },
+    "text-2": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Powerful. Pro. Max."
+      }
+    },
+    "image-1": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "src": "iphone-13-pro-max-hero.jpg",
+        "alt": "iPhone 13 Pro Max"
+      }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "The largest iPhone display ever. A new camera system with advanced computational photography. And a powerful chip that does it all."
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "props": {
+        "text": "Learn More"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.default.fg}"
+      }
+    },
+    "button-1": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Learn More",
+        "variant": "primary"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-4"
+      ]
+    },
+    "text-5": {
+      "type": "text",
+      "props": {
+        "text": "Buy Now"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "button",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.button.fontFamily}",
+        "fontSize": "{typography.button.fontSize}",
+        "fontWeight": "{typography.button.fontWeight}",
+        "fill": "{color.action.default.fg}"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "fixed",
+          "heightPixels": 44
+        },
+        "padding": {
+          "x": "{space.button.padding_x}",
+          "y": "{space.button.padding_y}"
+        },
+        "gap": "{space.button.gap}",
+        "align": "center",
+        "mainAxisAlignment": "CENTER",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "label": "Buy Now",
+        "variant": "secondary"
+      },
+      "style": {
+        "fill": "{color.action.default.bg}",
+        "fg": "{color.action.default.fg}",
+        "radius": "{radius.button}"
+      },
+      "children": [
+        "text-5"
+      ]
+    },
+    "button_group-1": {
+      "type": "button_group",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "button-1",
+        "button-2"
+      ]
+    },
+    "card-1": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "heading-1",
+        "text-2",
+        "image-1",
+        "text-3",
+        "button_group-1"
+      ]
+    },
+    "icon-4": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "camera"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "text-6": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Pro Camera System with 48MP main camera"
+      }
+    },
+    "list_item-1": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-4",
+        "text-6"
+      ]
+    },
+    "icon-5": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "display"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "6.7-inch Super Retina XDR display"
+      }
+    },
+    "list_item-2": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-5",
+        "text-7"
+      ]
+    },
+    "icon-6": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "chip"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "text-8": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "A15 Bionic chip for lightning-fast performance"
+      }
+    },
+    "list_item-3": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-6",
+        "text-8"
+      ]
+    },
+    "icon-7": {
+      "type": "icon",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "width_pixels": 20,
+        "height_pixels": 20
+      },
+      "props": {
+        "name": "battery"
+      },
+      "style": {
+        "fill": "{color.text.default}",
+        "radius": 4
+      }
+    },
+    "text-9": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "All-day battery life with fast charging"
+      }
+    },
+    "list_item-4": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "icon-7",
+        "text-9"
+      ]
+    },
+    "list-1": {
+      "type": "list",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "list_item-1",
+        "list_item-2",
+        "list_item-3",
+        "list_item-4"
+      ]
+    },
+    "icon_button-1": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "home",
+        "label": "Home"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "icon_button-2": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "search",
+        "label": "Search"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "icon_button-3": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "plus",
+        "label": "Add"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "icon_button-4": {
+      "type": "icon_button",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "padding": {
+          "x": "{space.icon_button.padding}",
+          "y": "{space.icon_button.padding}"
+        },
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "icon": "profile",
+        "label": "Profile"
+      },
+      "style": {
+        "fill": "{color.action.ghost.bg}",
+        "radius": "{radius.button}"
+      }
+    },
+    "bottom_nav-1": {
+      "type": "bottom_nav",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill"
+        }
+      },
+      "children": [
+        "icon_button-1",
+        "icon_button-2",
+        "icon_button-3",
+        "icon_button-4"
+      ]
+    },
+    "screen-1": {
+      "type": "screen",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": 428.0,
+          "height": 926.0
+        },
+        "padding": {
+          "top": 16,
+          "right": 16,
+          "bottom": 16,
+          "left": 16
+        },
+        "gap": 12,
+        "primary_axis_sizing": "FIXED",
+        "counter_axis_sizing": "FIXED"
+      },
+      "clipsContent": true,
+      "children": [
+        "header-1",
+        "card-1",
+        "list-1",
+        "bottom_nav-1"
+      ]
+    }
+  },
+  "tokens": {
+    "space.button.padding_x": 16,
+    "space.button.padding_y": 10,
+    "space.button.gap": 8,
+    "space.icon_button.padding": 8,
+    "space.input.gap": 6,
+    "space.card.padding_x": 16,
+    "space.card.padding_y": 16,
+    "space.card.gap": 12,
+    "space.dialog.padding_x": 24,
+    "space.dialog.padding_y": 24,
+    "space.dialog.gap": 16,
+    "space.toggle.gap": 8,
+    "space.checkbox.gap": 8,
+    "space.list_item.padding_x": 16,
+    "space.list_item.padding_y": 12,
+    "space.list_item.gap": 12,
+    "space.generic.padding_x": 12,
+    "space.generic.padding_y": 8,
+    "radius.button": 8,
+    "radius.input": 8,
+    "radius.card": 12,
+    "radius.dialog": 16,
+    "radius.toggle": 999,
+    "radius.checkbox": 4,
+    "radius.default": 8,
+    "color.action.primary.bg": "#0F172A",
+    "color.action.primary.fg": "#F8FAFC",
+    "color.action.secondary.bg": "#E2E8F0",
+    "color.action.secondary.fg": "#0F172A",
+    "color.action.destructive.bg": "#EF4444",
+    "color.action.destructive.fg": "#FFFFFF",
+    "color.action.ghost.bg": "#FFFFFF00",
+    "color.action.ghost.fg": "#0F172A",
+    "color.action.default.bg": "#F1F5F9",
+    "color.action.default.fg": "#0F172A",
+    "color.input.bg": "#FFFFFF",
+    "color.input.border": "#CBD5E1",
+    "color.surface.card": "#FFFFFF",
+    "color.surface.card_border": "#E2E8F0",
+    "color.surface.dialog": "#FFFFFF",
+    "color.surface.list_item": "#FFFFFF",
+    "color.surface.default": "#F8FAFC",
+    "color.toggle.track.off": "#E2E8F0",
+    "color.toggle.thumb": "#FFFFFF",
+    "color.checkbox.fill": "#FFFFFF",
+    "color.checkbox.border": "#94A3B8",
+    "typography.button.fontFamily": "Inter",
+    "typography.button.fontSize": 14,
+    "typography.button.fontWeight": 600,
+    "typography.input.fontFamily": "Inter",
+    "typography.input.fontSize": 14,
+    "typography.input.fontWeight": 400,
+    "typography.list_item.fontFamily": "Inter",
+    "typography.list_item.fontSize": 15,
+    "typography.list_item.fontWeight": 500,
+    "typography.body.fontFamily": "Inter",
+    "typography.body.fontSize": 14,
+    "typography.body.fontWeight": 400,
+    "typography.heading.fontFamily": "Inter",
+    "typography.heading.fontSize": 20,
+    "typography.heading.fontWeight": 700,
+    "typography.header.fontSize": 17,
+    "typography.header.fontWeight": 600,
+    "typography.caption.fontSize": 12,
+    "typography.caption.fontWeight": 400,
+    "typography.badge.fontSize": 12,
+    "typography.badge.fontWeight": 600,
+    "typography.avatar.fontSize": 14,
+    "typography.avatar.fontWeight": 600,
+    "color.text.default": "#0F172A",
+    "color.text.heading": "#020617",
+    "color.text.caption": "#475569",
+    "color.text.link": "#2563EB",
+    "color.text.on_tooltip": "#FFFFFF",
+    "color.text.on_primary": "#F8FAFC",
+    "color.text.on_destructive": "#FFFFFF",
+    "color.surface.header": "#FFFFFF",
+    "color.surface.header_border": "#E2E8F0",
+    "color.surface.drawer": "#FFFFFF",
+    "color.surface.drawer_border": "#E2E8F0",
+    "color.surface.menu": "#FFFFFF",
+    "color.surface.menu_border": "#E2E8F0",
+    "color.surface.popover": "#FFFFFF",
+    "color.surface.popover_border": "#E2E8F0",
+    "color.surface.tooltip": "#0F172A",
+    "color.surface.badge": "#F1F5F9",
+    "color.surface.image_placeholder": "#E2E8F0",
+    "color.avatar.fill": "#E2E8F0",
+    "color.avatar.fg": "#334155",
+    "color.status.success.bg": "#22C55E",
+    "color.status.success.fg": "#FFFFFF",
+    "color.status.warning.bg": "#F59E0B",
+    "color.status.warning.fg": "#FFFFFF",
+    "color.status.info.bg": "#3B82F6",
+    "color.status.info.fg": "#FFFFFF",
+    "space.input.padding_x": 12,
+    "space.input.padding_y": 10,
+    "space.header.padding_x": 16,
+    "space.header.padding_y": 12,
+    "space.header.gap": 8,
+    "space.drawer.padding_x": 16,
+    "space.drawer.padding_y": 24,
+    "space.drawer.gap": 4,
+    "space.menu.padding_x": 8,
+    "space.menu.padding_y": 8,
+    "space.menu.gap": 2,
+    "space.popover.padding_x": 16,
+    "space.popover.padding_y": 16,
+    "space.popover.gap": 8,
+    "space.tooltip.padding_x": 8,
+    "space.tooltip.padding_y": 4,
+    "space.badge.padding_x": 8,
+    "space.badge.padding_y": 4,
+    "space.badge.gap": 4,
+    "radius.badge": 999,
+    "radius.menu": 8,
+    "radius.popover": 8,
+    "radius.tooltip": 6,
+    "radius.image": 8,
+    "shadow.card": 0,
+    "shadow.dialog": 0,
+    "shadow.menu": 0,
+    "shadow.popover": 0
+  },
+  "_node_id_map": {
+    "text-1": -1,
+    "icon-1": -2,
+    "icon-2": -3,
+    "icon-3": -4,
+    "header-1": -5,
+    "heading-1": -6,
+    "text-2": -7,
+    "image-1": -8,
+    "text-3": -9,
+    "text-4": -10,
+    "button-1": -11,
+    "text-5": -12,
+    "button-2": -13,
+    "button_group-1": -14,
+    "card-1": -15,
+    "icon-4": -16,
+    "text-6": -17,
+    "list_item-1": -18,
+    "icon-5": -19,
+    "text-7": -20,
+    "list_item-2": -21,
+    "icon-6": -22,
+    "text-8": -23,
+    "list_item-3": -24,
+    "icon-7": -25,
+    "text-9": -26,
+    "list_item-4": -27,
+    "list-1": -28,
+    "icon_button-1": -29,
+    "icon_button-2": -30,
+    "icon_button-3": -31,
+    "icon_button-4": -32,
+    "bottom_nav-1": -33,
+    "screen-1": -34
+  }
+}

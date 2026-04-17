@@ -1,0 +1,244 @@
+[
+  {
+    "type": "header",
+    "id": "hdr",
+    "children": [
+      {
+        "type": "text",
+        "id": "title",
+        "props": {
+          "text": "Meme Feed"
+        }
+      },
+      {
+        "type": "icon_button",
+        "id": "menu",
+        "props": {
+          "label": "Menu"
+        }
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "id": "meme_feed",
+    "children": [
+      {
+        "type": "card",
+        "id": "meme_post_1",
+        "children": [
+          {
+            "type": "avatar",
+            "id": "user_avatar_1",
+            "props": {
+              "label": "User"
+            }
+          },
+          {
+            "type": "text",
+            "id": "user_name_1",
+            "props": {
+              "text": "MemeKing92"
+            }
+          },
+          {
+            "type": "image",
+            "id": "meme_image_1",
+            "props": {
+              "alt": "Funny meme"
+            }
+          },
+          {
+            "type": "text",
+            "id": "meme_caption_1",
+            "props": {
+              "text": "When you finally understand the assignment"
+            }
+          },
+          {
+            "type": "button_group",
+            "id": "actions_1",
+            "children": [
+              {
+                "type": "button",
+                "id": "upvote_1",
+                "props": {
+                  "label": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "id": "share_1",
+                "props": {
+                  "label": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "meme_post_2",
+        "children": [
+          {
+            "type": "avatar",
+            "id": "user_avatar_2",
+            "props": {
+              "label": "User"
+            }
+          },
+          {
+            "type": "text",
+            "id": "user_name_2",
+            "props": {
+              "text": "ComedyGold"
+            }
+          },
+          {
+            "type": "image",
+            "id": "meme_image_2",
+            "props": {
+              "alt": "Hilarious meme"
+            }
+          },
+          {
+            "type": "text",
+            "id": "meme_caption_2",
+            "props": {
+              "text": "POV: You're scrolling at 3 AM"
+            }
+          },
+          {
+            "type": "button_group",
+            "id": "actions_2",
+            "children": [
+              {
+                "type": "button",
+                "id": "upvote_2",
+                "props": {
+                  "label": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "id": "share_2",
+                "props": {
+                  "label": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "meme_post_3",
+        "children": [
+          {
+            "type": "avatar",
+            "id": "user_avatar_3",
+            "props": {
+              "label": "User"
+            }
+          },
+          {
+            "type": "text",
+            "id": "user_name_3",
+            "props": {
+              "text": "LaughTrack"
+            }
+          },
+          {
+            "type": "image",
+            "id": "meme_image_3",
+            "props": {
+              "alt": "Relatable meme"
+            }
+          },
+          {
+            "type": "text",
+            "id": "meme_caption_3",
+            "props": {
+              "text": "Me pretending to understand what's happening"
+            }
+          },
+          {
+            "type": "button_group",
+            "id": "actions_3",
+            "children": [
+              {
+                "type": "button",
+                "id": "upvote_3",
+                "props": {
+                  "label": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "id": "share_3",
+                "props": {
+                  "label": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "meme_post_4",
+        "children": [
+          {
+            "type": "avatar",
+            "id": "user_avatar_4",
+            "props": {
+              "label": "User"
+            }
+          },
+          {
+            "type": "text",
+            "id": "user_name_4",
+            "props": {
+              "text": "ViralVibe"
+            }
+          },
+          {
+            "type": "image",
+            "id": "meme_image_4",
+            "props": {
+              "alt": "Trending meme"
+            }
+          },
+          {
+            "type": "text",
+            "id": "meme_caption_4",
+            "props": {
+              "text": "This is fine"
+            }
+          },
+          {
+            "type": "button_group",
+            "id": "actions_4",
+            "children": [
+              {
+                "type": "button",
+                "id": "upvote_4",
+                "props": {
+                  "label": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "id": "share_4",
+                "props": {
+                  "label": "\u2197\ufe0f Share"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

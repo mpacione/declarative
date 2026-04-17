@@ -1,0 +1,63 @@
+[
+  {
+    "type": "header",
+    "id": "header_main"
+  },
+  {
+    "type": "card",
+    "id": "hero_section",
+    "children": [
+      {
+        "type": "image",
+        "id": "hero_image"
+      },
+      {
+        "type": "heading",
+        "id": "hero_title"
+      },
+      {
+        "type": "text",
+        "id": "hero_description"
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "id": "features_list",
+    "children": [
+      {
+        "type": "card",
+        "id": "feature_item",
+        "count_hint": 3,
+        "children": [
+          {
+            "type": "icon",
+            "id": "feature_icon"
+          },
+          {
+            "type": "heading",
+            "id": "feature_title"
+          },
+          {
+            "type": "text",
+            "id": "feature_text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "cta_section",
+    "children": [
+      {
+        "type": "heading",
+        "id": "cta_title"
+      },
+      {
+        "type": "button",
+        "id": "cta_button"
+      }
+    ]
+  }
+]

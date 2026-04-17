@@ -1,0 +1,220 @@
+[
+  {
+    "slug": "01-login",
+    "prompt": "a login screen with email, password, and a sign-in button",
+    "prompt_to_figma_latency_s": 5.102997064590454,
+    "component_count": 3,
+    "plan_retried": false,
+    "element_count": 19,
+    "warnings": 11,
+    "render": {
+      "status": "ok",
+      "latency_ms": 139,
+      "errors_count": 1
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 128,
+      "eid_count": 17
+    }
+  },
+  {
+    "slug": "02-profile-settings",
+    "prompt": "a profile settings page with avatar, name, email, notification toggles, and a save button",
+    "prompt_to_figma_latency_s": 6.932678937911987,
+    "component_count": 4,
+    "plan_retried": false,
+    "element_count": 30,
+    "warnings": 24,
+    "render": {
+      "status": "ok",
+      "latency_ms": 214,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 153,
+      "eid_count": 30
+    }
+  },
+  {
+    "slug": "03-meme-feed",
+    "prompt": "a feed of memes with upvote and share buttons under each",
+    "prompt_to_figma_latency_s": 9.009265184402466,
+    "component_count": 2,
+    "plan_retried": false,
+    "element_count": 49,
+    "warnings": 36,
+    "render": {
+      "status": "ok",
+      "latency_ms": 293,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 216,
+      "eid_count": 49
+    }
+  },
+  {
+    "slug": "04-dashboard",
+    "prompt": "a data dashboard with a line chart and a table of recent transactions",
+    "prompt_to_figma_latency_s": 8.719282865524292,
+    "component_count": 3,
+    "plan_retried": false,
+    "element_count": 44,
+    "warnings": 38,
+    "render": {
+      "status": "ok",
+      "latency_ms": 331,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 198,
+      "eid_count": 44
+    }
+  },
+  {
+    "slug": "05-paywall",
+    "prompt": "a paywall screen with three pricing tiers and a testimonial",
+    "prompt_to_figma_latency_s": 19.065675973892212,
+    "component_count": 0,
+    "plan_retried": false,
+    "kind": "KIND_PLAN_INVALID",
+    "detail": "fill drift after retry: missing=['header (expected 1, got 0)', 'icon_button (expected 1, got 0)', 'text (expected 8, got 0)', 'heading (expected 2, got 0)', 'list (expected 2, got 0)', 'card (expected 4, got 0)', 'list_item (expected 4, got 0)', 'icon (expected 1, got 0)', 'button (expected 1, got 0)', 'avatar (expected 1, got 0)'] undercount=[]"
+  },
+  {
+    "slug": "06-spa-minimal",
+    "prompt": "make something minimal and luxurious for a spa app",
+    "prompt_to_figma_latency_s": 11.414909839630127,
+    "component_count": 5,
+    "plan_retried": false,
+    "element_count": 37,
+    "warnings": 33,
+    "render": {
+      "status": "ok",
+      "latency_ms": 425,
+      "errors_count": 1
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 381,
+      "eid_count": 36
+    }
+  },
+  {
+    "slug": "07-search",
+    "prompt": "a search screen",
+    "prompt_to_figma_latency_s": 7.3334619998931885,
+    "component_count": 4,
+    "plan_retried": false,
+    "element_count": 33,
+    "warnings": 29,
+    "render": {
+      "status": "ok",
+      "latency_ms": 262,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 165,
+      "eid_count": 33
+    }
+  },
+  {
+    "slug": "08-explicit-structure",
+    "prompt": "header with back button, title, share button. Then a card with a heading, 3 lines of body text, and a primary button. Then a secondary button below.",
+    "prompt_to_figma_latency_s": 5.677046775817871,
+    "component_count": 3,
+    "plan_retried": false,
+    "element_count": 14,
+    "warnings": 11,
+    "render": {
+      "status": "ok",
+      "latency_ms": 196,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 106,
+      "eid_count": 14
+    }
+  },
+  {
+    "slug": "09-drawer-nav",
+    "prompt": "a drawer menu with 6 nav items",
+    "prompt_to_figma_latency_s": 6.352675199508667,
+    "component_count": 1,
+    "plan_retried": false,
+    "element_count": 27,
+    "warnings": 25,
+    "render": {
+      "status": "ok",
+      "latency_ms": 170,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 136,
+      "eid_count": 27
+    }
+  },
+  {
+    "slug": "10-onboarding-carousel",
+    "prompt": "an onboarding carousel with 3 slides, each with an illustration, headline, and subtext",
+    "prompt_to_figma_latency_s": 4.894777059555054,
+    "component_count": 3,
+    "plan_retried": false,
+    "element_count": 17,
+    "warnings": 15,
+    "render": {
+      "status": "ok",
+      "latency_ms": 212,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 106,
+      "eid_count": 17
+    }
+  },
+  {
+    "slug": "11-vague",
+    "prompt": "something cool",
+    "prompt_to_figma_latency_s": 9.36026120185852,
+    "component_count": 4,
+    "plan_retried": false,
+    "element_count": 23,
+    "warnings": 21,
+    "render": {
+      "status": "ok",
+      "latency_ms": 165,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 117,
+      "eid_count": 23
+    }
+  },
+  {
+    "slug": "12-round-trip-test",
+    "prompt": "rebuild iPhone 13 Pro Max - 109 from scratch",
+    "prompt_to_figma_latency_s": 10.401983976364136,
+    "component_count": 4,
+    "plan_retried": false,
+    "element_count": 34,
+    "warnings": 31,
+    "render": {
+      "status": "ok",
+      "latency_ms": 158,
+      "errors_count": 0
+    },
+    "walk": {
+      "status": "ok",
+      "latency_ms": 150,
+      "eid_count": 34
+    }
+  }
+]

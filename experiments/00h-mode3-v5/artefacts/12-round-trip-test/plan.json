@@ -1,0 +1,103 @@
+[
+  {
+    "type": "header",
+    "id": "status_bar",
+    "children": [
+      {
+        "type": "text",
+        "id": "time"
+      },
+      {
+        "type": "icon",
+        "id": "signal"
+      },
+      {
+        "type": "icon",
+        "id": "wifi"
+      },
+      {
+        "type": "icon",
+        "id": "battery"
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "id": "main_content",
+    "children": [
+      {
+        "type": "heading",
+        "id": "title"
+      },
+      {
+        "type": "text",
+        "id": "subtitle"
+      },
+      {
+        "type": "image",
+        "id": "hero_image"
+      },
+      {
+        "type": "text",
+        "id": "description"
+      },
+      {
+        "type": "button_group",
+        "id": "action_buttons",
+        "children": [
+          {
+            "type": "button",
+            "id": "primary_btn"
+          },
+          {
+            "type": "button",
+            "id": "secondary_btn"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "list",
+    "id": "features_list",
+    "children": [
+      {
+        "type": "list_item",
+        "id": "feature",
+        "count_hint": 4,
+        "children": [
+          {
+            "type": "icon",
+            "id": "feature_icon"
+          },
+          {
+            "type": "text",
+            "id": "feature_text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "bottom_nav",
+    "id": "navigation",
+    "children": [
+      {
+        "type": "icon_button",
+        "id": "nav_home"
+      },
+      {
+        "type": "icon_button",
+        "id": "nav_search"
+      },
+      {
+        "type": "icon_button",
+        "id": "nav_add"
+      },
+      {
+        "type": "icon_button",
+        "id": "nav_profile"
+      }
+    ]
+  }
+]

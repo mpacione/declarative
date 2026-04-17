@@ -357,7 +357,20 @@ def prompt_to_figma(
     # the same pipeline-result shape as the A1 clarification-refusal
     # case, so downstream consumers route both to notes.md / skip render.
     if os.environ.get("DD_ENABLE_PLAN_THEN_FILL") == "1":
-        plan_result = plan_then_fill(prompt, client)
+        # Thread the matched archetype skeleton into the planner as a
+        # structural floor. Without this, first-run 00h showed Haiku
+        # planning minimally and regressing to 3/12 VLM-ok vs A1's
+        # 6/12 baseline.
+        arch_skeleton = None
+        if matched_archetype:
+            from dd.archetype_library import load_skeleton
+            try:
+                arch_skeleton = load_skeleton(matched_archetype)
+            except ValueError:
+                arch_skeleton = None
+        plan_result = plan_then_fill(
+            prompt, client, archetype_skeleton=arch_skeleton
+        )
         if "_clarification_refusal" in plan_result:
             return {
                 "components": [],
