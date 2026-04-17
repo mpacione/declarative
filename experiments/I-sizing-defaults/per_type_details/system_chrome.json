@@ -1,0 +1,383 @@
+{
+  "canonical_type": "system_chrome",
+  "count": 2256,
+  "sufficient_data": true,
+  "width": {
+    "mean": 304.45,
+    "median": 54.0,
+    "stdev": 465.09,
+    "mode": [
+      17.0,
+      270
+    ],
+    "p25": 27.4,
+    "p50": 54.0,
+    "p75": 428.0,
+    "p95": 1536.0,
+    "min": 17.0,
+    "max": 1536.0,
+    "top_modes": [
+      [
+        17.0,
+        270
+      ],
+      [
+        25.0,
+        270
+      ],
+      [
+        428.0,
+        216
+      ],
+      [
+        834.0,
+        210
+      ],
+      [
+        1536.0,
+        207
+      ]
+    ]
+  },
+  "height": {
+    "mean": 41.14,
+    "median": 42.0,
+    "stdev": 35.11,
+    "mode": [
+      42.0,
+      558
+    ],
+    "p25": 22.0,
+    "p50": 42.0,
+    "p75": 47.0,
+    "p95": 85.24,
+    "min": 3.89,
+    "max": 493.0,
+    "top_modes": [
+      [
+        42.0,
+        558
+      ],
+      [
+        22.0,
+        540
+      ],
+      [
+        34.0,
+        213
+      ],
+      [
+        85.0,
+        144
+      ],
+      [
+        52.0,
+        144
+      ]
+    ]
+  },
+  "sizing_h": {
+    "FIXED": 1614,
+    "HUG": 405,
+    "FILL": 237
+  },
+  "sizing_v": {
+    "FIXED": 1533,
+    "HUG": 723
+  },
+  "node_types": {
+    "INSTANCE": 1716,
+    "TEXT": 270,
+    "RECTANGLE": 84,
+    "FRAME": 186
+  },
+  "aspect_distribution": {
+    "very_wide": 738,
+    "portrait": 720,
+    "landscape": 516,
+    "wide": 228,
+    "1:1": 54
+  },
+  "aspect_ratio_stats": {
+    "mean": 9.055,
+    "median": 1.136,
+    "p25": 0.905,
+    "p75": 11.12
+  },
+  "screen_width_ratio_stats": {
+    "median": 0.089,
+    "mean": 0.35
+  },
+  "variants": {
+    "_default": {
+      "count": 1833,
+      "width_median": 38.0,
+      "height_median": 42.0,
+      "width_mode": [
+        17.0,
+        270
+      ],
+      "height_mode": [
+        42.0,
+        558
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        1191
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        1380
+      ]
+    },
+    "safari-nav": {
+      "count": 135,
+      "width_median": 834.0,
+      "height_median": 75.0,
+      "width_mode": [
+        834.0,
+        68
+      ],
+      "height_mode": [
+        75.0,
+        135
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        135
+      ],
+      "sizing_v_dominant": [
+        "HUG",
+        135
+      ]
+    },
+    "status-bar": {
+      "count": 135,
+      "width_median": 834.0,
+      "height_median": 24.0,
+      "width_mode": [
+        834.0,
+        68
+      ],
+      "height_mode": [
+        24.0,
+        135
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        135
+      ],
+      "sizing_v_dominant": [
+        "HUG",
+        135
+      ]
+    },
+    "homeindicator": {
+      "count": 69,
+      "width_median": 428.0,
+      "height_median": 34.0,
+      "width_mode": [
+        428.0,
+        69
+      ],
+      "height_mode": [
+        34.0,
+        69
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        69
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        69
+      ]
+    },
+    "statusbar": {
+      "count": 69,
+      "width_median": 428.0,
+      "height_median": 47.0,
+      "width_mode": [
+        428.0,
+        69
+      ],
+      "height_mode": [
+        47.0,
+        69
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        69
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        69
+      ]
+    },
+    "alpha-keyboard": {
+      "count": 9,
+      "width_median": 428.0,
+      "height_median": 290.0,
+      "width_mode": [
+        428.0,
+        9
+      ],
+      "height_mode": [
+        290.0,
+        9
+      ],
+      "sizing_h_dominant": [
+        "FIXED",
+        9
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        9
+      ]
+    }
+  },
+  "width_histogram": [
+    [
+      16.0,
+      609
+    ],
+    [
+      32.0,
+      504
+    ],
+    [
+      48.0,
+      162
+    ],
+    [
+      64.0,
+      6
+    ],
+    [
+      80.0,
+      60
+    ],
+    [
+      96.0,
+      96
+    ],
+    [
+      112.0,
+      9
+    ],
+    [
+      128.0,
+      87
+    ],
+    [
+      144.0,
+      15
+    ],
+    [
+      160.0,
+      6
+    ],
+    [
+      176.0,
+      3
+    ],
+    [
+      192.0,
+      3
+    ],
+    [
+      208.0,
+      6
+    ],
+    [
+      224.0,
+      24
+    ],
+    [
+      240.0,
+      3
+    ],
+    [
+      352.0,
+      3
+    ],
+    [
+      416.0,
+      228
+    ],
+    [
+      432.0,
+      3
+    ],
+    [
+      784.0,
+      3
+    ],
+    [
+      800.0,
+      3
+    ],
+    [
+      816.0,
+      3
+    ],
+    [
+      832.0,
+      210
+    ],
+    [
+      1488.0,
+      3
+    ],
+    [
+      1536.0,
+      207
+    ]
+  ],
+  "height_histogram": [
+    [
+      0.0,
+      156
+    ],
+    [
+      16.0,
+      747
+    ],
+    [
+      32.0,
+      840
+    ],
+    [
+      48.0,
+      210
+    ],
+    [
+      64.0,
+      135
+    ],
+    [
+      80.0,
+      144
+    ],
+    [
+      144.0,
+      3
+    ],
+    [
+      224.0,
+      3
+    ],
+    [
+      288.0,
+      12
+    ],
+    [
+      368.0,
+      3
+    ],
+    [
+      480.0,
+      3
+    ]
+  ]
+}

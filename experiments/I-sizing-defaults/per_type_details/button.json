@@ -1,0 +1,366 @@
+{
+  "canonical_type": "button",
+  "count": 8440,
+  "sufficient_data": true,
+  "width": {
+    "mean": 91.94,
+    "median": 48.0,
+    "stdev": 88.04,
+    "mode": [
+      48.0,
+      2712
+    ],
+    "p25": 40.0,
+    "p50": 48.0,
+    "p75": 116.0,
+    "p95": 340.0,
+    "min": 16.0,
+    "max": 410.0,
+    "top_modes": [
+      [
+        48.0,
+        2712
+      ],
+      [
+        40.0,
+        1894
+      ],
+      [
+        99.0,
+        326
+      ],
+      [
+        129.0,
+        278
+      ],
+      [
+        16.0,
+        270
+      ]
+    ]
+  },
+  "height": {
+    "mean": 53.08,
+    "median": 52.0,
+    "stdev": 42.94,
+    "mode": [
+      52.0,
+      3711
+    ],
+    "p25": 40.0,
+    "p50": 52.0,
+    "p75": 52.0,
+    "p95": 60.0,
+    "min": 22.0,
+    "max": 428.0,
+    "top_modes": [
+      [
+        52.0,
+        3711
+      ],
+      [
+        40.0,
+        2503
+      ],
+      [
+        44.0,
+        816
+      ],
+      [
+        60.0,
+        604
+      ],
+      [
+        22.0,
+        456
+      ]
+    ]
+  },
+  "sizing_h": {
+    "HUG": 6734,
+    "FIXED": 1556,
+    "FILL": 150
+  },
+  "sizing_v": {
+    "FIXED": 7159,
+    "HUG": 1281
+  },
+  "node_types": {
+    "INSTANCE": 7500,
+    "FRAME": 940
+  },
+  "aspect_distribution": {
+    "1:1": 2239,
+    "very_wide": 560,
+    "tall": 218,
+    "portrait": 2993,
+    "wide": 2218,
+    "landscape": 212
+  },
+  "aspect_ratio_stats": {
+    "mean": 1.906,
+    "median": 1.0,
+    "p25": 0.923,
+    "p75": 2.475
+  },
+  "screen_width_ratio_stats": {
+    "median": 0.058,
+    "mean": 0.116
+  },
+  "variants": {
+    "small": {
+      "count": 3323,
+      "width_median": 40.0,
+      "height_median": 40.0,
+      "width_mode": [
+        40.0,
+        1894
+      ],
+      "height_mode": [
+        40.0,
+        2503
+      ],
+      "sizing_h_dominant": [
+        "HUG",
+        1888
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        3319
+      ]
+    },
+    "white": {
+      "count": 73,
+      "width_median": 183.0,
+      "height_median": 52.0,
+      "width_mode": [
+        183.0,
+        32
+      ],
+      "height_mode": [
+        52.0,
+        73
+      ],
+      "sizing_h_dominant": [
+        "FILL",
+        40
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        73
+      ]
+    },
+    "toolbar": {
+      "count": 872,
+      "width_median": 296.0,
+      "height_median": 60.0,
+      "width_mode": [
+        56.0,
+        218
+      ],
+      "height_mode": [
+        60.0,
+        604
+      ],
+      "sizing_h_dominant": [
+        "HUG",
+        872
+      ],
+      "sizing_v_dominant": [
+        "HUG",
+        872
+      ]
+    },
+    "large": {
+      "count": 3644,
+      "width_median": 48.0,
+      "height_median": 52.0,
+      "width_mode": [
+        48.0,
+        2712
+      ],
+      "height_mode": [
+        52.0,
+        3638
+      ],
+      "sizing_h_dominant": [
+        "HUG",
+        3569
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        3644
+      ]
+    },
+    "_default": {
+      "count": 477,
+      "width_median": 16.0,
+      "height_median": 22.0,
+      "width_mode": [
+        16.0,
+        270
+      ],
+      "height_mode": [
+        22.0,
+        405
+      ],
+      "sizing_h_dominant": [
+        "HUG",
+        405
+      ],
+      "sizing_v_dominant": [
+        "HUG",
+        405
+      ]
+    },
+    "slider": {
+      "count": 51,
+      "width_median": 340.0,
+      "height_median": 22.0,
+      "width_mode": [
+        340.0,
+        51
+      ],
+      "height_mode": [
+        22.0,
+        51
+      ],
+      "sizing_h_dominant": [
+        "FILL",
+        51
+      ],
+      "sizing_v_dominant": [
+        "FIXED",
+        51
+      ]
+    }
+  },
+  "width_histogram": [
+    [
+      16.0,
+      441
+    ],
+    [
+      32.0,
+      1899
+    ],
+    [
+      48.0,
+      3237
+    ],
+    [
+      80.0,
+      231
+    ],
+    [
+      96.0,
+      390
+    ],
+    [
+      112.0,
+      180
+    ],
+    [
+      128.0,
+      494
+    ],
+    [
+      144.0,
+      588
+    ],
+    [
+      176.0,
+      132
+    ],
+    [
+      192.0,
+      13
+    ],
+    [
+      224.0,
+      95
+    ],
+    [
+      240.0,
+      24
+    ],
+    [
+      256.0,
+      158
+    ],
+    [
+      272.0,
+      9
+    ],
+    [
+      288.0,
+      78
+    ],
+    [
+      304.0,
+      20
+    ],
+    [
+      320.0,
+      13
+    ],
+    [
+      336.0,
+      51
+    ],
+    [
+      352.0,
+      118
+    ],
+    [
+      368.0,
+      145
+    ],
+    [
+      384.0,
+      72
+    ],
+    [
+      400.0,
+      52
+    ]
+  ],
+  "height_histogram": [
+    [
+      16.0,
+      492
+    ],
+    [
+      32.0,
+      3319
+    ],
+    [
+      48.0,
+      4363
+    ],
+    [
+      112.0,
+      40
+    ],
+    [
+      160.0,
+      31
+    ],
+    [
+      176.0,
+      65
+    ],
+    [
+      320.0,
+      65
+    ],
+    [
+      368.0,
+      20
+    ],
+    [
+      416.0,
+      45
+    ]
+  ]
+}
