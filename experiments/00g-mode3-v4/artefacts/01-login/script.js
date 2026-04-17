@@ -226,7 +226,7 @@ n2.appendChild(n5);
 try { n5.characters = "Welcome Back"; } catch (__e) { __errors.push({eid:"heading-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n5.layoutSizingHorizontal = "FILL";
 n2.appendChild(n6);
-try { n6.characters = "Enter your credentials to sign in"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
+try { n6.characters = "Enter your credentials to continue"; } catch (__e) { __errors.push({eid:"text-1", kind:"text_set_failed", error: String(__e && __e.message || __e)}); }
 n6.layoutSizingHorizontal = "FILL";
 n2.appendChild(n7);
 n7.layoutSizingHorizontal = "FILL";

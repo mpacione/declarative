@@ -123,14 +123,43 @@
         "text": "Select Time"
       }
     },
-    "date_picker-1": {
-      "type": "date_picker",
+    "text-2": {
+      "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "label": "Date & Time"
+        "text": "10:00 AM"
       }
+    },
+    "text-3": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "2:00 PM"
+      }
+    },
+    "text-4": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "6:00 PM"
+      }
+    },
+    "segmented_control-1": {
+      "type": "segmented_control",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "text-2",
+        "text-3",
+        "text-4"
+      ]
     },
     "card-2": {
       "type": "card",
@@ -156,7 +185,7 @@
       },
       "children": [
         "heading-2",
-        "date_picker-1"
+        "segmented_control-1"
       ]
     },
     "heading-3": {
@@ -183,7 +212,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "AM"
+        "name": "Elena"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -191,13 +220,13 @@
         "radius": 999
       }
     },
-    "text-2": {
+    "text-5": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Amara"
+        "text": "Elena - Swedish Specialist"
       }
     },
     "list_item-1": {
@@ -223,7 +252,7 @@
       },
       "children": [
         "avatar-1",
-        "text-2"
+        "text-5"
       ]
     },
     "avatar-2": {
@@ -241,7 +270,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "JL"
+        "name": "Sophia"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -249,13 +278,13 @@
         "radius": 999
       }
     },
-    "text-3": {
+    "text-6": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Jade"
+        "text": "Sophia - Deep Tissue Expert"
       }
     },
     "list_item-2": {
@@ -281,7 +310,7 @@
       },
       "children": [
         "avatar-2",
-        "text-3"
+        "text-6"
       ]
     },
     "list-1": {
@@ -335,102 +364,23 @@
         "list-1"
       ]
     },
-    "heading-4": {
-      "type": "heading",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Preferences"
-      }
-    },
-    "text-4": {
+    "text-7": {
       "type": "text",
-      "props": {
-        "text": "Aromatherapy"
-      },
       "layout": {
         "direction": "vertical"
       },
-      "_synthesised_from": {
-        "parent_type": "toggle",
-        "parent_variant": null,
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.body.fontFamily}",
-        "fontSize": "{typography.body.fontSize}",
-        "fontWeight": "{typography.body.fontWeight}"
+      "props": {
+        "text": "$180"
       }
     },
-    "toggle-1": {
-      "type": "toggle",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "hug",
-          "height": "hug"
-        },
-        "gap": "{space.toggle.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "props": {
-        "label": "Aromatherapy",
-        "checked": true
-      },
-      "style": {
-        "fill": "{color.toggle.track.off}",
-        "radius": "{radius.toggle}"
-      },
-      "children": [
-        "text-4"
-      ]
-    },
-    "text-5": {
+    "text-8": {
       "type": "text",
-      "props": {
-        "text": "Hot stone therapy"
-      },
       "layout": {
         "direction": "vertical"
       },
-      "_synthesised_from": {
-        "parent_type": "toggle",
-        "parent_variant": null,
-        "slot": "label",
-        "provider": "catalog:universal"
-      },
-      "style": {
-        "fontFamily": "{typography.body.fontFamily}",
-        "fontSize": "{typography.body.fontSize}",
-        "fontWeight": "{typography.body.fontWeight}"
-      }
-    },
-    "toggle-2": {
-      "type": "toggle",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "hug",
-          "height": "hug"
-        },
-        "gap": "{space.toggle.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
       "props": {
-        "label": "Hot stone therapy",
-        "checked": false
-      },
-      "style": {
-        "fill": "{color.toggle.track.off}",
-        "radius": "{radius.toggle}"
-      },
-      "children": [
-        "text-5"
-      ]
+        "text": "Includes complimentary tea & aromatherapy"
+      }
     },
     "card-4": {
       "type": "card",
@@ -455,22 +405,9 @@
         "shadow": "{shadow.card}"
       },
       "children": [
-        "heading-4",
-        "toggle-1",
-        "toggle-2"
+        "text-7",
+        "text-8"
       ]
-    },
-    "text-6": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill"
-        }
-      },
-      "props": {
-        "text": "$180"
-      }
     },
     "button-1": {
       "type": "button",
@@ -483,7 +420,7 @@
         }
       },
       "props": {
-        "text": "Book Now"
+        "text": "Book Appointment"
       }
     },
     "screen-1": {
@@ -511,7 +448,6 @@
         "card-2",
         "card-3",
         "card-4",
-        "text-6",
         "button-1"
       ]
     }
@@ -651,25 +587,24 @@
     "text-1": -6,
     "card-1": -7,
     "heading-2": -8,
-    "date_picker-1": -9,
-    "card-2": -10,
-    "heading-3": -11,
-    "avatar-1": -12,
-    "text-2": -13,
-    "list_item-1": -14,
-    "avatar-2": -15,
-    "text-3": -16,
-    "list_item-2": -17,
-    "list-1": -18,
-    "card-3": -19,
-    "heading-4": -20,
-    "text-4": -21,
-    "toggle-1": -22,
-    "text-5": -23,
-    "toggle-2": -24,
+    "text-2": -9,
+    "text-3": -10,
+    "text-4": -11,
+    "segmented_control-1": -12,
+    "card-2": -13,
+    "heading-3": -14,
+    "avatar-1": -15,
+    "text-5": -16,
+    "list_item-1": -17,
+    "avatar-2": -18,
+    "text-6": -19,
+    "list_item-2": -20,
+    "list-1": -21,
+    "card-3": -22,
+    "text-7": -23,
+    "text-8": -24,
     "card-4": -25,
-    "text-6": -26,
-    "button-1": -27,
-    "screen-1": -28
+    "button-1": -26,
+    "screen-1": -27
   }
 }

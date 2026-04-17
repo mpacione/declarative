@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5782:42985",
+  "rendered_root": "5784:46941",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -33,7 +33,7 @@
       "type": "FRAME",
       "name": "card-2",
       "width": 396,
-      "height": 751,
+      "height": 909,
       "fills": [
         {
           "type": "solid",
@@ -52,7 +52,93 @@
       "type": "FRAME",
       "name": "table-1",
       "width": 100,
-      "height": 692,
+      "height": 850,
+      "effectCount": 0
+    },
+    "list_item-5": {
+      "type": "FRAME",
+      "name": "list_item-5",
+      "width": 100,
+      "height": 158,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "effectCount": 0
+    },
+    "badge-5": {
+      "type": "FRAME",
+      "name": "badge-5",
+      "width": 64,
+      "height": 23,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#F1F5F9"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-25": {
+      "type": "TEXT",
+      "name": "text-25",
+      "width": 48,
+      "height": 15,
+      "characters": "Pending",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#0F172A"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-24": {
+      "type": "TEXT",
+      "name": "text-24",
+      "width": 68,
+      "height": 15,
+      "characters": "-$1,000.00",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-23": {
+      "type": "TEXT",
+      "name": "text-23",
+      "width": 68,
+      "height": 30,
+      "characters": "Transfer out",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-22": {
+      "type": "TEXT",
+      "name": "text-22",
+      "width": 68,
+      "height": 30,
+      "characters": "Jan 11, 2024",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
       "effectCount": 0
     },
     "list_item-4": {
@@ -101,7 +187,7 @@
       "name": "text-20",
       "width": 68,
       "height": 15,
-      "characters": "$3,200.00",
+      "characters": "$5,200.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -116,7 +202,7 @@
       "name": "text-19",
       "width": 68,
       "height": 30,
-      "characters": "Payment received",
+      "characters": "Invoice payment",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -157,7 +243,7 @@
     "badge-3": {
       "type": "FRAME",
       "name": "badge-3",
-      "width": 80,
+      "width": 78,
       "height": 23,
       "fills": [
         {
@@ -170,9 +256,9 @@
     "text-17": {
       "type": "TEXT",
       "name": "text-17",
-      "width": 64,
+      "width": 62,
       "height": 15,
-      "characters": "Completed",
+      "characters": "Processed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -187,7 +273,7 @@
       "name": "text-16",
       "width": 68,
       "height": 15,
-      "characters": "-$450.00",
+      "characters": "-$150.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -243,7 +329,7 @@
     "badge-2": {
       "type": "FRAME",
       "name": "badge-2",
-      "width": 64,
+      "width": 80,
       "height": 23,
       "fills": [
         {
@@ -256,9 +342,9 @@
     "text-13": {
       "type": "TEXT",
       "name": "text-13",
-      "width": 48,
+      "width": 64,
       "height": 15,
-      "characters": "Pending",
+      "characters": "Completed",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -273,7 +359,7 @@
       "name": "text-12",
       "width": 68,
       "height": 15,
-      "characters": "$1,800.00",
+      "characters": "$99.99",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -288,7 +374,7 @@
       "name": "text-11",
       "width": 68,
       "height": 30,
-      "characters": "Invoice #1024",
+      "characters": "Subscription renewal",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -359,7 +445,7 @@
       "name": "text-8",
       "width": 68,
       "height": 15,
-      "characters": "$2,500.00",
+      "characters": "$2,450.00",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

@@ -103,7 +103,7 @@
     "text-3": {
       "type": "text",
       "props": {
-        "text": "John Doe"
+        "text": "Enter your name"
       },
       "layout": {
         "direction": "vertical"
@@ -139,7 +139,7 @@
       },
       "props": {
         "label": "Name",
-        "placeholder": "John Doe"
+        "placeholder": "Enter your name"
       },
       "style": {
         "fill": "{color.input.bg}",
@@ -174,7 +174,7 @@
     "text-5": {
       "type": "text",
       "props": {
-        "text": "john@example.com"
+        "text": "Enter your email"
       },
       "layout": {
         "direction": "vertical"
@@ -210,7 +210,7 @@
       },
       "props": {
         "label": "Email",
-        "placeholder": "john@example.com"
+        "placeholder": "Enter your email"
       },
       "style": {
         "fill": "{color.input.bg}",

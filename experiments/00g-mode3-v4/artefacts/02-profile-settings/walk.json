@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5782:42776",
+  "rendered_root": "5784:46686",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -233,7 +233,7 @@
       "name": "text-5",
       "width": 340,
       "height": 17,
-      "characters": "john@example.com",
+      "characters": "Enter your email",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -282,7 +282,7 @@
       "name": "text-3",
       "width": 340,
       "height": 17,
-      "characters": "John Doe",
+      "characters": "Enter your name",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

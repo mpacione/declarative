@@ -1,16 +1,13 @@
 [
   {
     "type": "header",
+    "props": {
+      "title": "Meme Feed"
+    },
     "children": [
       {
-        "type": "text",
-        "props": {
-          "text": "Meme Feed"
-        }
-      },
-      {
         "type": "icon_button",
-        "component_key": "icon/new"
+        "component_key": "icon/back"
       }
     ]
   },
@@ -23,20 +20,19 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "JD"
+              "initials": "U"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "meme_lord_42"
+              "text": "user_memes"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme1.jpg",
-              "alt": "Funny meme"
+              "src": "meme1.jpg"
             }
           },
           {
@@ -72,26 +68,25 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "SK"
+              "initials": "M"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "silly_kitten"
+              "text": "meme_lord"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme2.jpg",
-              "alt": "Funny meme"
+              "src": "meme2.jpg"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "POV: You're the last slice of pizza"
+              "text": "POV: You're about to make a terrible decision"
             }
           },
           {
@@ -121,26 +116,73 @@
           {
             "type": "avatar",
             "props": {
-              "initials": "CM"
+              "initials": "D"
             }
           },
           {
             "type": "text",
             "props": {
-              "text": "cosmic_memes"
+              "text": "dank_memes"
             }
           },
           {
             "type": "image",
             "props": {
-              "src": "meme3.jpg",
-              "alt": "Funny meme"
+              "src": "meme3.jpg"
             }
           },
           {
             "type": "text",
             "props": {
               "text": "Me pretending to understand what's happening"
+            }
+          },
+          {
+            "type": "button_group",
+            "children": [
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "\ud83d\udc4d Upvote"
+                }
+              },
+              {
+                "type": "button",
+                "component_key": "button/small/translucent",
+                "props": {
+                  "text": "Share"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "children": [
+          {
+            "type": "avatar",
+            "props": {
+              "initials": "C"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "comedy_gold"
+            }
+          },
+          {
+            "type": "image",
+            "props": {
+              "src": "meme4.jpg"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "Scrolling at 3 AM be like"
             }
           },
           {

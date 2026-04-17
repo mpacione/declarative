@@ -2,18 +2,9 @@
   "version": "1.0",
   "root": "screen-1",
   "elements": {
-    "text-1": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Meme Feed"
-      }
-    },
     "icon_button-1": {
       "type": "icon_button",
-      "component_key": "icon/new",
+      "component_key": "icon/back",
       "layout": {
         "direction": "vertical"
       }
@@ -38,13 +29,15 @@
         "crossAxisAlignment": "CENTER",
         "mainAxisAlignment": "SPACE_BETWEEN"
       },
+      "props": {
+        "title": "Meme Feed"
+      },
       "style": {
         "fill": "{color.surface.header}",
         "fg": "{color.text.heading}",
         "stroke": "{color.surface.header_border}"
       },
       "children": [
-        "text-1",
         "icon_button-1"
       ]
     },
@@ -63,7 +56,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "JD"
+        "initials": "U"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -71,13 +64,13 @@
         "radius": 999
       }
     },
-    "text-2": {
+    "text-1": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "meme_lord_42"
+        "text": "user_memes"
       }
     },
     "image-1": {
@@ -91,15 +84,14 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme1.jpg",
-        "alt": "Funny meme"
+        "src": "meme1.jpg"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
       }
     },
-    "text-3": {
+    "text-2": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -162,9 +154,9 @@
       },
       "children": [
         "avatar-1",
-        "text-2",
+        "text-1",
         "image-1",
-        "text-3",
+        "text-2",
         "button_group-1"
       ]
     },
@@ -183,7 +175,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "SK"
+        "initials": "M"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -191,13 +183,13 @@
         "radius": 999
       }
     },
-    "text-4": {
+    "text-3": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "silly_kitten"
+        "text": "meme_lord"
       }
     },
     "image-2": {
@@ -211,21 +203,20 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme2.jpg",
-        "alt": "Funny meme"
+        "src": "meme2.jpg"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
       }
     },
-    "text-5": {
+    "text-4": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "POV: You're the last slice of pizza"
+        "text": "POV: You're about to make a terrible decision"
       }
     },
     "button-3": {
@@ -282,9 +273,9 @@
       },
       "children": [
         "avatar-2",
-        "text-4",
+        "text-3",
         "image-2",
-        "text-5",
+        "text-4",
         "button_group-2"
       ]
     },
@@ -303,7 +294,7 @@
         "height_pixels": 40
       },
       "props": {
-        "initials": "CM"
+        "initials": "D"
       },
       "style": {
         "fill": "{color.avatar.fill}",
@@ -311,13 +302,13 @@
         "radius": 999
       }
     },
-    "text-6": {
+    "text-5": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "cosmic_memes"
+        "text": "dank_memes"
       }
     },
     "image-3": {
@@ -331,15 +322,14 @@
         "height_pixels": 160
       },
       "props": {
-        "src": "meme3.jpg",
-        "alt": "Funny meme"
+        "src": "meme3.jpg"
       },
       "style": {
         "fill": "{color.surface.image_placeholder}",
         "radius": "{radius.image}"
       }
     },
-    "text-7": {
+    "text-6": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -402,10 +392,129 @@
       },
       "children": [
         "avatar-3",
-        "text-6",
+        "text-5",
         "image-3",
-        "text-7",
+        "text-6",
         "button_group-3"
+      ]
+    },
+    "avatar-4": {
+      "type": "avatar",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fixed",
+          "height": "fixed"
+        },
+        "align": "center",
+        "crossAxisAlignment": "CENTER",
+        "mainAxisAlignment": "CENTER",
+        "width_pixels": 40,
+        "height_pixels": 40
+      },
+      "props": {
+        "initials": "C"
+      },
+      "style": {
+        "fill": "{color.avatar.fill}",
+        "fg": "{color.avatar.fg}",
+        "radius": 999
+      }
+    },
+    "text-7": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "comedy_gold"
+      }
+    },
+    "image-4": {
+      "type": "image",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "fixed"
+        },
+        "height_pixels": 160
+      },
+      "props": {
+        "src": "meme4.jpg"
+      },
+      "style": {
+        "fill": "{color.surface.image_placeholder}",
+        "radius": "{radius.image}"
+      }
+    },
+    "text-8": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Scrolling at 3 AM be like"
+      }
+    },
+    "button-7": {
+      "type": "button",
+      "component_key": "button/small/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "\ud83d\udc4d Upvote"
+      }
+    },
+    "button-8": {
+      "type": "button",
+      "component_key": "button/small/translucent",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Share"
+      }
+    },
+    "button_group-4": {
+      "type": "button_group",
+      "layout": {
+        "direction": "vertical"
+      },
+      "children": [
+        "button-7",
+        "button-8"
+      ]
+    },
+    "card-4": {
+      "type": "card",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.card.padding_y}",
+          "bottom": "{space.card.padding_y}",
+          "left": "{space.card.padding_x}",
+          "right": "{space.card.padding_x}"
+        },
+        "gap": "{space.card.gap}"
+      },
+      "style": {
+        "fill": "{color.surface.card}",
+        "stroke": "{color.surface.card_border}",
+        "radius": "{radius.card}",
+        "shadow": "{shadow.card}"
+      },
+      "children": [
+        "avatar-4",
+        "text-7",
+        "image-4",
+        "text-8",
+        "button_group-4"
       ]
     },
     "list-1": {
@@ -430,7 +539,8 @@
       "children": [
         "card-1",
         "card-2",
-        "card-3"
+        "card-3",
+        "card-4"
       ]
     },
     "screen-1": {
@@ -585,34 +695,41 @@
     "shadow.popover": 4
   },
   "_node_id_map": {
-    "text-1": -1,
-    "icon_button-1": -2,
-    "header-1": -3,
-    "avatar-1": -4,
-    "text-2": -5,
-    "image-1": -6,
-    "text-3": -7,
-    "button-1": -8,
-    "button-2": -9,
-    "button_group-1": -10,
-    "card-1": -11,
-    "avatar-2": -12,
-    "text-4": -13,
-    "image-2": -14,
-    "text-5": -15,
-    "button-3": -16,
-    "button-4": -17,
-    "button_group-2": -18,
-    "card-2": -19,
-    "avatar-3": -20,
-    "text-6": -21,
-    "image-3": -22,
-    "text-7": -23,
-    "button-5": -24,
-    "button-6": -25,
-    "button_group-3": -26,
-    "card-3": -27,
-    "list-1": -28,
-    "screen-1": -29
+    "icon_button-1": -1,
+    "header-1": -2,
+    "avatar-1": -3,
+    "text-1": -4,
+    "image-1": -5,
+    "text-2": -6,
+    "button-1": -7,
+    "button-2": -8,
+    "button_group-1": -9,
+    "card-1": -10,
+    "avatar-2": -11,
+    "text-3": -12,
+    "image-2": -13,
+    "text-4": -14,
+    "button-3": -15,
+    "button-4": -16,
+    "button_group-2": -17,
+    "card-2": -18,
+    "avatar-3": -19,
+    "text-5": -20,
+    "image-3": -21,
+    "text-6": -22,
+    "button-5": -23,
+    "button-6": -24,
+    "button_group-3": -25,
+    "card-3": -26,
+    "avatar-4": -27,
+    "text-7": -28,
+    "image-4": -29,
+    "text-8": -30,
+    "button-7": -31,
+    "button-8": -32,
+    "button_group-4": -33,
+    "card-4": -34,
+    "list-1": -35,
+    "screen-1": -36
   }
 }

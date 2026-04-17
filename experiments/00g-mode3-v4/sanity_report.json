@@ -21,9 +21,9 @@
       },
       "verdict": "broken",
       "vlm": {
-        "score": 9,
-        "verdict": "ok",
-        "reason": "The screen displays a clear, well-structured login form with recognizable input fields, labels, and a submit button."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "02-profile-settings": {
@@ -42,114 +42,114 @@
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear and coherent profile settings interface with recognizable elements like a header, profile picture placeholder, input fields, notification toggles (though rendered as text with background), and a save button."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "03-meme-feed": {
       "rule": {
-        "total_content_nodes": 21,
-        "total_text_nodes": 7,
-        "default_sized_frame_nodes": 3,
-        "visible_text_nodes": 7,
-        "frames_with_visible_content": 16,
-        "default_frame_ratio": 0.1429,
-        "visible_ratio": 0.8214,
+        "total_content_nodes": 27,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 4,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 21,
+        "default_frame_ratio": 0.1481,
+        "visible_ratio": 0.8286,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 28,
+        "total_node_count": 35,
         "container_coverage": 3
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The UI presents a clear, repeating card structure typical of a feed, with recognizable placeholders for avatars, images, text, and action buttons, making it a coherent and plausible starting point."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "04-dashboard": {
       "rule": {
-        "total_content_nodes": 15,
-        "total_text_nodes": 23,
+        "total_content_nodes": 17,
+        "total_text_nodes": 27,
         "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 23,
-        "frames_with_visible_content": 13,
+        "visible_text_nodes": 27,
+        "frames_with_visible_content": 15,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.9474,
+        "visible_ratio": 0.9545,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 38,
+        "total_node_count": 44,
         "container_coverage": 2
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The UI has a clear structure with a header, a chart placeholder, a list of transactions with distinct columns/rows, and a footer button, making it a plausible starting point."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "05-paywall": {
       "rule": {
-        "total_content_nodes": 31,
-        "total_text_nodes": 23,
+        "total_content_nodes": 36,
+        "total_text_nodes": 26,
         "default_sized_frame_nodes": 1,
-        "visible_text_nodes": 23,
-        "frames_with_visible_content": 18,
-        "default_frame_ratio": 0.0323,
-        "visible_ratio": 0.7593,
+        "visible_text_nodes": 26,
+        "frames_with_visible_content": 21,
+        "default_frame_ratio": 0.0278,
+        "visible_ratio": 0.7581,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 54,
+        "total_node_count": 62,
         "container_coverage": 2
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear and coherent pricing plan structure with distinct cards, features, and call-to-action buttons, making it a plausible UI starting point."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "06-spa-minimal": {
       "rule": {
-        "total_content_nodes": 17,
-        "total_text_nodes": 10,
-        "default_sized_frame_nodes": 3,
-        "visible_text_nodes": 10,
-        "frames_with_visible_content": 13,
-        "default_frame_ratio": 0.1765,
-        "visible_ratio": 0.8519,
+        "total_content_nodes": 15,
+        "total_text_nodes": 11,
+        "default_sized_frame_nodes": 2,
+        "visible_text_nodes": 11,
+        "frames_with_visible_content": 11,
+        "default_frame_ratio": 0.1333,
+        "visible_ratio": 0.8462,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 27,
+        "total_node_count": 26,
         "container_coverage": 2
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen has a clear, interpretable UI structure with distinct sections for service details, time selection, therapist choice, preferences, and a booking button, making it a plausible starting point for a booking interface."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "07-search": {
       "rule": {
-        "total_content_nodes": 21,
-        "total_text_nodes": 10,
-        "default_sized_frame_nodes": 5,
-        "visible_text_nodes": 10,
-        "frames_with_visible_content": 12,
-        "default_frame_ratio": 0.2381,
-        "visible_ratio": 0.7097,
+        "total_content_nodes": 18,
+        "total_text_nodes": 8,
+        "default_sized_frame_nodes": 4,
+        "visible_text_nodes": 8,
+        "frames_with_visible_content": 10,
+        "default_frame_ratio": 0.2222,
+        "visible_ratio": 0.6923,
         "verdict": "partial",
         "had_render_errors": false,
-        "total_node_count": 31,
+        "total_node_count": 26,
         "container_coverage": 3
       },
       "verdict": "partial",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with a search bar, filter options, and a list of items containing avatars, text, and expand icons, making it a plausible starting point for a design."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "08-explicit-structure": {
@@ -168,9 +168,9 @@
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with a title bar, a card containing text and a primary action button, and a secondary action button below it."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "09-drawer-nav": {
@@ -189,9 +189,9 @@
       },
       "verdict": "partial",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear, coherent vertical navigation menu with icons and labels, representing a plausible UI structure."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "10-onboarding-carousel": {
@@ -210,51 +210,51 @@
       },
       "verdict": "broken",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear, coherent list of cards with image placeholders, titles, and descriptions, along with navigation buttons at the bottom, forming a plausible onboarding or feature showcase UI."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "11-vague": {
       "rule": {
-        "total_content_nodes": 19,
-        "total_text_nodes": 10,
+        "total_content_nodes": 20,
+        "total_text_nodes": 11,
         "default_sized_frame_nodes": 3,
-        "visible_text_nodes": 10,
+        "visible_text_nodes": 11,
         "frames_with_visible_content": 16,
-        "default_frame_ratio": 0.1579,
-        "visible_ratio": 0.8966,
+        "default_frame_ratio": 0.15,
+        "visible_ratio": 0.871,
         "verdict": "ok",
         "had_render_errors": false,
-        "total_node_count": 29,
+        "total_node_count": 31,
         "container_coverage": 3
       },
       "verdict": "ok",
       "vlm": {
-        "score": 8,
-        "verdict": "ok",
-        "reason": "The screen displays a clear and coherent UI structure with distinct sections for 'Featured', 'Trending Now', and 'Quick Actions', including recognizable elements like a back button, image placeholders, text labels, tags, and action buttons."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     },
     "12-round-trip-test": {
       "rule": {
-        "total_content_nodes": 16,
-        "total_text_nodes": 15,
+        "total_content_nodes": 11,
+        "total_text_nodes": 20,
         "default_sized_frame_nodes": 0,
-        "visible_text_nodes": 15,
-        "frames_with_visible_content": 14,
+        "visible_text_nodes": 20,
+        "frames_with_visible_content": 10,
         "default_frame_ratio": 0.0,
-        "visible_ratio": 0.9355,
+        "visible_ratio": 0.9677,
         "verdict": "ok",
         "had_render_errors": false,
         "total_node_count": 31,
-        "container_coverage": 2
+        "container_coverage": 1
       },
       "verdict": "ok",
       "vlm": {
-        "score": 9,
-        "verdict": "ok",
-        "reason": "The UI is well-structured with clear sections for device details, specifications, and features, along with functional navigation and action buttons."
+        "score": 0,
+        "verdict": "unknown",
+        "reason": "VLM API error: HTTP Error 429: Too Many Requests"
       }
     }
   }

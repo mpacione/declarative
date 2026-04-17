@@ -26,11 +26,11 @@
       },
       {
         "type": "text_input",
-        "props": {"label": "Name", "placeholder": "John Doe"}
+        "props": {"label": "Name", "placeholder": "Enter your name"}
       },
       {
         "type": "text_input",
-        "props": {"label": "Email", "placeholder": "john@example.com"}
+        "props": {"label": "Email", "placeholder": "Enter your email"}
       }
     ]
   },

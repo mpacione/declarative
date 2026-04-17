@@ -123,15 +123,6 @@
         "text": "Places"
       }
     },
-    "text-5": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Posts"
-      }
-    },
     "tabs-1": {
       "type": "tabs",
       "layout": {
@@ -154,8 +145,7 @@
       "children": [
         "text-2",
         "text-3",
-        "text-4",
-        "text-5"
+        "text-4"
       ]
     },
     "avatar-1": {
@@ -178,13 +168,13 @@
         "radius": 999
       }
     },
-    "text-6": {
+    "text-5": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Sarah Johnson"
+        "text": "John Smith"
       }
     },
     "icon-1": {
@@ -217,7 +207,7 @@
       },
       "children": [
         "avatar-1",
-        "text-6",
+        "text-5",
         "icon-1"
       ]
     },
@@ -241,13 +231,13 @@
         "radius": 999
       }
     },
-    "text-7": {
+    "text-6": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Design Conference 2024"
+        "text": "Sarah Johnson"
       }
     },
     "icon-2": {
@@ -280,7 +270,7 @@
       },
       "children": [
         "avatar-2",
-        "text-7",
+        "text-6",
         "icon-2"
       ]
     },
@@ -304,13 +294,13 @@
         "radius": 999
       }
     },
-    "text-8": {
+    "text-7": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "New project kickoff"
+        "text": "Mike Chen"
       }
     },
     "icon-3": {
@@ -343,7 +333,7 @@
       },
       "children": [
         "avatar-3",
-        "text-8",
+        "text-7",
         "icon-3"
       ]
     },
@@ -367,13 +357,13 @@
         "radius": 999
       }
     },
-    "text-9": {
+    "text-8": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Marketing Team"
+        "text": "Emma Davis"
       }
     },
     "icon-4": {
@@ -406,71 +396,8 @@
       },
       "children": [
         "avatar-4",
-        "text-9",
+        "text-8",
         "icon-4"
-      ]
-    },
-    "avatar-5": {
-      "type": "avatar",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fixed",
-          "height": "fixed"
-        },
-        "align": "center",
-        "crossAxisAlignment": "CENTER",
-        "mainAxisAlignment": "CENTER",
-        "width_pixels": 40,
-        "height_pixels": 40
-      },
-      "style": {
-        "fill": "{color.avatar.fill}",
-        "fg": "{color.avatar.fg}",
-        "radius": 999
-      }
-    },
-    "text-10": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "Q4 Planning Session"
-      }
-    },
-    "icon-5": {
-      "type": "icon",
-      "component_key": "icon/chevron-down",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "list_item-5": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.list_item.padding_y}",
-          "bottom": "{space.list_item.padding_y}",
-          "left": "{space.list_item.padding_x}",
-          "right": "{space.list_item.padding_x}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "avatar-5",
-        "text-10",
-        "icon-5"
       ]
     },
     "list-1": {
@@ -496,8 +423,7 @@
         "list_item-1",
         "list_item-2",
         "list_item-3",
-        "list_item-4",
-        "list_item-5"
+        "list_item-4"
       ]
     },
     "screen-1": {
@@ -661,29 +587,24 @@
     "text-2": -6,
     "text-3": -7,
     "text-4": -8,
-    "text-5": -9,
-    "tabs-1": -10,
-    "avatar-1": -11,
-    "text-6": -12,
-    "icon-1": -13,
-    "list_item-1": -14,
-    "avatar-2": -15,
-    "text-7": -16,
-    "icon-2": -17,
-    "list_item-2": -18,
-    "avatar-3": -19,
-    "text-8": -20,
-    "icon-3": -21,
-    "list_item-3": -22,
-    "avatar-4": -23,
-    "text-9": -24,
-    "icon-4": -25,
-    "list_item-4": -26,
-    "avatar-5": -27,
-    "text-10": -28,
-    "icon-5": -29,
-    "list_item-5": -30,
-    "list-1": -31,
-    "screen-1": -32
+    "tabs-1": -9,
+    "avatar-1": -10,
+    "text-5": -11,
+    "icon-1": -12,
+    "list_item-1": -13,
+    "avatar-2": -14,
+    "text-6": -15,
+    "icon-2": -16,
+    "list_item-2": -17,
+    "avatar-3": -18,
+    "text-7": -19,
+    "icon-3": -20,
+    "list_item-3": -21,
+    "avatar-4": -22,
+    "text-8": -23,
+    "icon-4": -24,
+    "list_item-4": -25,
+    "list-1": -26,
+    "screen-1": -27
   }
 }

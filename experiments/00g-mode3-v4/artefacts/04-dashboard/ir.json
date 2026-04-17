@@ -171,7 +171,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$2,500.00"
+        "text": "$2,450.00"
       }
     },
     "text-9": {
@@ -268,7 +268,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Invoice #1024"
+        "text": "Subscription renewal"
       }
     },
     "text-12": {
@@ -277,13 +277,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$1,800.00"
+        "text": "$99.99"
       }
     },
     "text-13": {
       "type": "text",
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "layout": {
         "direction": "vertical"
@@ -320,7 +320,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Pending"
+        "text": "Completed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -383,13 +383,13 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "-$450.00"
+        "text": "-$150.00"
       }
     },
     "text-17": {
       "type": "text",
       "props": {
-        "text": "Completed"
+        "text": "Processed"
       },
       "layout": {
         "direction": "vertical"
@@ -426,7 +426,7 @@
         "crossAxisAlignment": "CENTER"
       },
       "props": {
-        "text": "Completed"
+        "text": "Processed"
       },
       "style": {
         "fill": "{color.surface.badge}",
@@ -480,7 +480,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Payment received"
+        "text": "Invoice payment"
       }
     },
     "text-20": {
@@ -489,7 +489,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "$3,200.00"
+        "text": "$5,200.00"
       }
     },
     "text-21": {
@@ -571,6 +571,112 @@
         "badge-4"
       ]
     },
+    "text-22": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Jan 11, 2024"
+      }
+    },
+    "text-23": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Transfer out"
+      }
+    },
+    "text-24": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "-$1,000.00"
+      }
+    },
+    "text-25": {
+      "type": "text",
+      "props": {
+        "text": "Pending"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-5": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Pending"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-25"
+      ]
+    },
+    "list_item-5": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "text-22",
+        "text-23",
+        "text-24",
+        "badge-5"
+      ]
+    },
     "table-1": {
       "type": "table",
       "layout": {
@@ -584,7 +690,8 @@
         "list_item-1",
         "list_item-2",
         "list_item-3",
-        "list_item-4"
+        "list_item-4",
+        "list_item-5"
       ]
     },
     "card-2": {
@@ -817,9 +924,15 @@
     "text-21": -33,
     "badge-4": -34,
     "list_item-4": -35,
-    "table-1": -36,
-    "card-2": -37,
-    "button-1": -38,
-    "screen-1": -39
+    "text-22": -36,
+    "text-23": -37,
+    "text-24": -38,
+    "text-25": -39,
+    "badge-5": -40,
+    "list_item-5": -41,
+    "table-1": -42,
+    "card-2": -43,
+    "button-1": -44,
+    "screen-1": -45
   }
 }

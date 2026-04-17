@@ -20,7 +20,11 @@
     "type": "card",
     "children": [
       {"type": "heading", "props": {"text": "Select Time"}},
-      {"type": "date_picker", "props": {"label": "Date & Time"}}
+      {"type": "segmented_control", "children": [
+        {"type": "text", "props": {"text": "10:00 AM"}},
+        {"type": "text", "props": {"text": "2:00 PM"}},
+        {"type": "text", "props": {"text": "6:00 PM"}}
+      ]}
     ]
   },
   {
@@ -28,34 +32,35 @@
     "children": [
       {"type": "heading", "props": {"text": "Therapist"}},
       {"type": "list", "children": [
-        {"type": "list_item", "children": [
-          {"type": "avatar", "props": {"initials": "AM"}},
-          {"type": "text", "props": {"text": "Amara"}}
-        ]},
-        {"type": "list_item", "children": [
-          {"type": "avatar", "props": {"initials": "JL"}},
-          {"type": "text", "props": {"text": "Jade"}}
-        ]}
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "avatar", "props": {"name": "Elena"}},
+            {"type": "text", "props": {"text": "Elena - Swedish Specialist"}}
+          ]
+        },
+        {
+          "type": "list_item",
+          "children": [
+            {"type": "avatar", "props": {"name": "Sophia"}},
+            {"type": "text", "props": {"text": "Sophia - Deep Tissue Expert"}}
+          ]
+        }
       ]}
     ]
   },
   {
     "type": "card",
     "children": [
-      {"type": "heading", "props": {"text": "Preferences"}},
-      {"type": "toggle", "props": {"label": "Aromatherapy", "checked": true}},
-      {"type": "toggle", "props": {"label": "Hot stone therapy", "checked": false}}
+      {"type": "text", "props": {"text": "$180"}},
+      {"type": "text", "props": {"text": "Includes complimentary tea & aromatherapy"}}
     ]
-  },
-  {
-    "type": "text",
-    "props": {"text": "$180"}
   },
   {
     "type": "button",
     "variant": "primary",
     "component_key": "button/large/translucent",
-    "props": {"text": "Book Now"}
+    "props": {"text": "Book Appointment"}
   }
 ]
 ```

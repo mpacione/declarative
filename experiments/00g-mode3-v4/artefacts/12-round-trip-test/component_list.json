@@ -2,7 +2,7 @@
   {
     "type": "header",
     "props": {
-      "title": ""
+      "title": "iPhone 13 Pro Max"
     },
     "children": [
       {
@@ -17,13 +17,13 @@
       {
         "type": "heading",
         "props": {
-          "text": "iPhone 13 Pro Max"
+          "text": "Device Information"
         }
       },
       {
         "type": "text",
         "props": {
-          "text": "Model: A2644"
+          "text": "Model: iPhone 13 Pro Max"
         }
       },
       {
@@ -46,68 +46,26 @@
       {
         "type": "heading",
         "props": {
-          "text": "Specifications"
+          "text": "Display"
         }
       },
       {
-        "type": "list",
-        "children": [
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "Display: 6.7-inch Super Retina XDR"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "Processor: A15 Bionic"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "RAM: 6GB"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "Camera: Dual 12MP Pro"
-                }
-              }
-            ]
-          },
-          {
-            "type": "list_item",
-            "children": [
-              {
-                "type": "text",
-                "props": {
-                  "text": "Battery: 4373 mAh"
-                }
-              }
-            ]
-          }
-        ]
+        "type": "text",
+        "props": {
+          "text": "6.7-inch Super Retina XDR"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Resolution: 2796 x 1290"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "120Hz ProMotion"
+        }
       }
     ]
   },
@@ -117,34 +75,85 @@
       {
         "type": "heading",
         "props": {
-          "text": "Features"
+          "text": "Camera"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Rear: 12MP Triple Camera"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Front: 12MP TrueDepth"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Night Mode & ProRAW"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Performance"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Chip: A15 Bionic"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "RAM: 6GB"
+        }
+      },
+      {
+        "type": "text",
+        "props": {
+          "text": "Battery: 4373 mAh"
+        }
+      }
+    ]
+  },
+  {
+    "type": "card",
+    "children": [
+      {
+        "type": "heading",
+        "props": {
+          "text": "Connectivity"
         }
       },
       {
         "type": "toggle",
         "props": {
-          "label": "ProMotion 120Hz",
+          "label": "5G",
           "checked": true
         }
       },
       {
         "type": "toggle",
         "props": {
-          "label": "Always-On Display",
+          "label": "WiFi 6E",
           "checked": true
         }
       },
       {
         "type": "toggle",
         "props": {
-          "label": "ProRAW Support",
-          "checked": true
-        }
-      },
-      {
-        "type": "toggle",
-        "props": {
-          "label": "LiDAR Scanner",
+          "label": "Bluetooth 5.3",
           "checked": true
         }
       }
@@ -155,7 +164,7 @@
     "variant": "primary",
     "component_key": "button/large/translucent",
     "props": {
-      "text": "Save Device"
+      "text": "View Full Specs"
     }
   }
 ]

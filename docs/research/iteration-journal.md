@@ -253,3 +253,54 @@ unaffected.
 The diagnostic path that led to the fix (T1..T8 property-strip
 ablation) is repeatable and cheap (~30 s per variant). It should
 be a standard tool when render perf regresses.
+
+## Round 4 — H7 image stroke (attempted + reverted)
+
+**Goal:** push VLM scores from mostly-8s to more 9s by making
+`image` placeholders read as "picture frames" rather than flat
+paint rectangles. Added `stroke: {color.surface.image_border}`
+to `_image_template.style` + `#CBD5E1` token.
+
+**Result:** H7 regressed 03-meme-feed back to the 55 s render
+timeout. The stroke is a SECOND paint pass per image; in
+meme-feed's 4-card × 4-image cascade, two paint passes per image
+multiply the paint-cascade cost that R3 had just resolved.
+
+Interesting data point: on prompts WITHOUT the nested-image-
+cascade structure (paywall, profile-settings), H7 bumped VLM
+scores from 8 → 9. So the heuristic is real but the
+implementation cost (paint cascade) exceeds the benefit.
+
+**Reverted.** Left a comment in `_image_template` explaining why
+so the next session doesn't repeat the mistake. Perceived-quality
+polish (stroked placeholders, photo-frame hint) deferred to v0.2
+where we can address the paint-cascade root cause directly —
+options include: per-parent Phase-2 batching, deferred auto-layout
+activation, or a renderer-side `_imagePlaceholder()` helper that
+emits the hatched-pattern inline without a second paint pass on
+the frame fill.
+
+## Final ship state (v0.1.5 closed at R3 / f16dfc0)
+
+| round | VLM ok | partial | broken | render-fid | render timeouts |
+|---|---:|---:|---:|---:|---:|
+| 00f (pre-v0.1.5) | 4 | 5 | 3 | — | 0 |
+| R0 (A1 live) | 6 | 4 | 2 | 0.25 | 0 |
+| R1 (H1) | 9 | 3 | 0 | 0.45 | 0 |
+| R2 (H2) | 11 | 0 | 0 | 0.73 | 1 |
+| **R3 (container fill strip)** | **12** | **0** | **0** | **0.75** | **0** |
+| R4 (H7 attempted) | 10 / 11 | 1 | 0 | n/a | 1 (reverted) |
+
+**v0.1.5 ships at R3 `f16dfc0`: 12/12 VLM-ok, 0 timeouts,
+0.75 render-fidelity, 0.83 prompt-fidelity, 204/204 parity.**
+
+Further VLM-score polish hits diminishing returns vs VLM noise
+(γ's bimodal-classifier finding): a single prompt can swing 8→5
+across runs on identical input due to Gemini's internal rubric
+non-determinism. Pushing past mean 8.2 requires either:
+1. A more stable VLM rubric (5-dim rubric prototype in v0.2)
+2. Render-layer polish without paint-cascade cost (v0.2
+   investigation — H3-style hatched `_imagePlaceholder` helper,
+   Phase-2 layout deferral)
+3. Both, with calibration against DIY human ratings per γ's
+   recommendation.

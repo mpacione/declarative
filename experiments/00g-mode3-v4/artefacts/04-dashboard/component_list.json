@@ -85,7 +85,7 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "$2,500.00"
+                  "text": "$2,450.00"
                 }
               },
               {
@@ -108,19 +108,19 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Invoice #1024"
+                  "text": "Subscription renewal"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$1,800.00"
+                  "text": "$99.99"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Pending"
+                  "text": "Completed"
                 }
               }
             ]
@@ -143,13 +143,13 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "-$450.00"
+                  "text": "-$150.00"
                 }
               },
               {
                 "type": "badge",
                 "props": {
-                  "text": "Completed"
+                  "text": "Processed"
                 }
               }
             ]
@@ -166,19 +166,48 @@
               {
                 "type": "text",
                 "props": {
-                  "text": "Payment received"
+                  "text": "Invoice payment"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "$3,200.00"
+                  "text": "$5,200.00"
                 }
               },
               {
                 "type": "badge",
                 "props": {
                   "text": "Completed"
+                }
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "text": "Jan 11, 2024"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "Transfer out"
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "text": "-$1,000.00"
+                }
+              },
+              {
+                "type": "badge",
+                "props": {
+                  "text": "Pending"
                 }
               }
             ]

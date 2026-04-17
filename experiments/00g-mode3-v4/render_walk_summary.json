@@ -4,11 +4,11 @@
     "compose": {
       "element_count": 15,
       "warnings": 9,
-      "latency_ms": 16
+      "latency_ms": 18
     },
     "render": {
       "status": "ok",
-      "latency_ms": 115,
+      "latency_ms": 290,
       "errors_count": 1,
       "error_kinds": [
         "render_thrown"
@@ -16,9 +16,9 @@
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 128,
+      "latency_ms": 267,
       "eid_count": 14,
-      "rendered_root": "5782:42727"
+      "rendered_root": "5784:46637"
     }
   },
   {
@@ -30,115 +30,115 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 175,
+      "latency_ms": 249,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 138,
+      "latency_ms": 230,
       "eid_count": 25,
-      "rendered_root": "5782:42776"
+      "rendered_root": "5784:46686"
     }
   },
   {
     "slug": "03-meme-feed",
     "compose": {
-      "element_count": 29,
-      "warnings": 28,
-      "latency_ms": 1
+      "element_count": 36,
+      "warnings": 35,
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 2083,
+      "latency_ms": 686,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 2019,
-      "eid_count": 29,
-      "rendered_root": "5782:42868"
+      "latency_ms": 610,
+      "eid_count": 36,
+      "rendered_root": "5784:46797"
     }
   },
   {
     "slug": "04-dashboard",
     "compose": {
-      "element_count": 39,
-      "warnings": 34,
+      "element_count": 45,
+      "warnings": 39,
       "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 260,
+      "latency_ms": 536,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 190,
-      "eid_count": 39,
-      "rendered_root": "5782:42985"
+      "latency_ms": 866,
+      "eid_count": 45,
+      "rendered_root": "5784:46941"
     }
   },
   {
     "slug": "05-paywall",
     "compose": {
-      "element_count": 55,
-      "warnings": 51,
-      "latency_ms": 2
+      "element_count": 63,
+      "warnings": 58,
+      "latency_ms": 6
     },
     "render": {
       "status": "ok",
-      "latency_ms": 305,
+      "latency_ms": 710,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 254,
-      "eid_count": 55,
-      "rendered_root": "5782:43097"
+      "latency_ms": 840,
+      "eid_count": 63,
+      "rendered_root": "5784:47069"
     }
   },
   {
     "slug": "06-spa-minimal",
     "compose": {
-      "element_count": 28,
-      "warnings": 25,
-      "latency_ms": 1
+      "element_count": 27,
+      "warnings": 26,
+      "latency_ms": 10
     },
     "render": {
       "status": "ok",
-      "latency_ms": 215,
+      "latency_ms": 555,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 149,
-      "eid_count": 28,
-      "rendered_root": "5782:43198"
+      "latency_ms": 567,
+      "eid_count": 27,
+      "rendered_root": "5784:47179"
     }
   },
   {
     "slug": "07-search",
     "compose": {
-      "element_count": 32,
-      "warnings": 30,
+      "element_count": 27,
+      "warnings": 25,
       "latency_ms": 1
     },
     "render": {
       "status": "ok",
-      "latency_ms": 271,
+      "latency_ms": 351,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 205,
-      "eid_count": 32,
-      "rendered_root": "5782:43274"
+      "latency_ms": 250,
+      "eid_count": 27,
+      "rendered_root": "5784:47248"
     }
   },
   {
@@ -146,19 +146,19 @@
     "compose": {
       "element_count": 14,
       "warnings": 11,
-      "latency_ms": 1
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 177,
+      "latency_ms": 200,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 107,
+      "latency_ms": 196,
       "eid_count": 14,
-      "rendered_root": "5782:43331"
+      "rendered_root": "5784:47299"
     }
   },
   {
@@ -166,19 +166,19 @@
     "compose": {
       "element_count": 23,
       "warnings": 22,
-      "latency_ms": 1
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 208,
+      "latency_ms": 213,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 118,
+      "latency_ms": 223,
       "eid_count": 23,
-      "rendered_root": "5782:43379"
+      "rendered_root": "5784:47347"
     }
   },
   {
@@ -190,7 +190,7 @@
     },
     "render": {
       "status": "ok",
-      "latency_ms": 186,
+      "latency_ms": 247,
       "errors_count": 1,
       "error_kinds": [
         "render_thrown"
@@ -198,49 +198,49 @@
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 133,
+      "latency_ms": 256,
       "eid_count": 22,
-      "rendered_root": "5782:43435"
+      "rendered_root": "5784:47403"
     }
   },
   {
     "slug": "11-vague",
     "compose": {
-      "element_count": 30,
-      "warnings": 25,
-      "latency_ms": 1
+      "element_count": 32,
+      "warnings": 26,
+      "latency_ms": 2
     },
     "render": {
       "status": "ok",
-      "latency_ms": 220,
+      "latency_ms": 259,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 151,
-      "eid_count": 30,
-      "rendered_root": "5782:43498"
+      "latency_ms": 260,
+      "eid_count": 32,
+      "rendered_root": "5784:47463"
     }
   },
   {
     "slug": "12-round-trip-test",
     "compose": {
       "element_count": 32,
-      "warnings": 27,
+      "warnings": 28,
       "latency_ms": 1
     },
     "render": {
       "status": "ok",
-      "latency_ms": 279,
+      "latency_ms": 338,
       "errors_count": 0,
       "error_kinds": []
     },
     "walk": {
       "status": "ok",
-      "latency_ms": 170,
+      "latency_ms": 500,
       "eid_count": 32,
-      "rendered_root": "5782:43574"
+      "rendered_root": "5784:47536"
     }
   }
 ]

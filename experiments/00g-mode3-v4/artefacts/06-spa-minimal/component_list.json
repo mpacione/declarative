@@ -49,10 +49,27 @@
         }
       },
       {
-        "type": "date_picker",
-        "props": {
-          "label": "Date & Time"
-        }
+        "type": "segmented_control",
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "text": "10:00 AM"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "2:00 PM"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "text": "6:00 PM"
+            }
+          }
+        ]
       }
     ]
   },
@@ -74,13 +91,13 @@
               {
                 "type": "avatar",
                 "props": {
-                  "initials": "AM"
+                  "name": "Elena"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Amara"
+                  "text": "Elena - Swedish Specialist"
                 }
               }
             ]
@@ -91,13 +108,13 @@
               {
                 "type": "avatar",
                 "props": {
-                  "initials": "JL"
+                  "name": "Sophia"
                 }
               },
               {
                 "type": "text",
                 "props": {
-                  "text": "Jade"
+                  "text": "Sophia - Deep Tissue Expert"
                 }
               }
             ]
@@ -110,39 +127,25 @@
     "type": "card",
     "children": [
       {
-        "type": "heading",
+        "type": "text",
         "props": {
-          "text": "Preferences"
+          "text": "$180"
         }
       },
       {
-        "type": "toggle",
+        "type": "text",
         "props": {
-          "label": "Aromatherapy",
-          "checked": true
-        }
-      },
-      {
-        "type": "toggle",
-        "props": {
-          "label": "Hot stone therapy",
-          "checked": false
+          "text": "Includes complimentary tea & aromatherapy"
         }
       }
     ]
-  },
-  {
-    "type": "text",
-    "props": {
-      "text": "$180"
-    }
   },
   {
     "type": "button",
     "variant": "primary",
     "component_key": "button/large/translucent",
     "props": {
-      "text": "Book Now"
+      "text": "Book Appointment"
     }
   }
 ]

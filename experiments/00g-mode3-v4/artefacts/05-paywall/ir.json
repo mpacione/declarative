@@ -145,7 +145,7 @@
         "direction": "vertical"
       },
       "props": {
-        "text": "Up to 5 projects"
+        "text": "Up to 10 projects"
       }
     },
     "list_item-2": {
@@ -342,6 +342,57 @@
         "text": "$29/month"
       }
     },
+    "text-9": {
+      "type": "text",
+      "props": {
+        "text": "Most Popular"
+      },
+      "layout": {
+        "direction": "vertical"
+      },
+      "_synthesised_from": {
+        "parent_type": "badge",
+        "parent_variant": null,
+        "slot": "label",
+        "provider": "catalog:universal"
+      },
+      "style": {
+        "fontFamily": "{typography.body.fontFamily}",
+        "fontSize": "{typography.badge.fontSize}",
+        "fontWeight": "{typography.badge.fontWeight}",
+        "fill": "{color.text.default}"
+      }
+    },
+    "badge-1": {
+      "type": "badge",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "hug",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.badge.padding_y}",
+          "bottom": "{space.badge.padding_y}",
+          "left": "{space.badge.padding_x}",
+          "right": "{space.badge.padding_x}"
+        },
+        "gap": "{space.badge.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "props": {
+        "text": "Most Popular"
+      },
+      "style": {
+        "fill": "{color.surface.badge}",
+        "fg": "{color.text.default}",
+        "radius": "{radius.badge}"
+      },
+      "children": [
+        "text-9"
+      ]
+    },
     "icon-4": {
       "type": "icon",
       "component_key": "icon/check",
@@ -349,7 +400,7 @@
         "direction": "vertical"
       }
     },
-    "text-9": {
+    "text-10": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -381,7 +432,7 @@
       },
       "children": [
         "icon-4",
-        "text-9"
+        "text-10"
       ]
     },
     "icon-5": {
@@ -391,7 +442,7 @@
         "direction": "vertical"
       }
     },
-    "text-10": {
+    "text-11": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -423,7 +474,7 @@
       },
       "children": [
         "icon-5",
-        "text-10"
+        "text-11"
       ]
     },
     "icon-6": {
@@ -433,7 +484,7 @@
         "direction": "vertical"
       }
     },
-    "text-11": {
+    "text-12": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -465,7 +516,49 @@
       },
       "children": [
         "icon-6",
-        "text-11"
+        "text-12"
+      ]
+    },
+    "icon-7": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-13": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Team collaboration"
+      }
+    },
+    "list_item-7": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "icon-7",
+        "text-13"
       ]
     },
     "list-2": {
@@ -490,10 +583,11 @@
       "children": [
         "list_item-4",
         "list_item-5",
-        "list_item-6"
+        "list_item-6",
+        "list_item-7"
       ]
     },
-    "text-12": {
+    "text-14": {
       "type": "text",
       "props": {
         "text": "Subscribe Now"
@@ -544,7 +638,7 @@
         "radius": "{radius.button}"
       },
       "children": [
-        "text-12"
+        "text-14"
       ]
     },
     "card-2": {
@@ -572,6 +666,7 @@
       "children": [
         "heading-3",
         "text-8",
+        "badge-1",
         "list-2",
         "button-2"
       ]
@@ -585,7 +680,7 @@
         "text": "Enterprise"
       }
     },
-    "text-13": {
+    "text-15": {
       "type": "text",
       "layout": {
         "direction": "vertical"
@@ -594,48 +689,6 @@
         "text": "Custom pricing"
       }
     },
-    "icon-7": {
-      "type": "icon",
-      "component_key": "icon/check",
-      "layout": {
-        "direction": "vertical"
-      }
-    },
-    "text-14": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "All features included"
-      }
-    },
-    "list_item-7": {
-      "type": "list_item",
-      "layout": {
-        "direction": "vertical",
-        "sizing": {
-          "width": "fill",
-          "height": "hug"
-        },
-        "padding": {
-          "top": "{space.list_item.padding_y}",
-          "bottom": "{space.list_item.padding_y}",
-          "left": "{space.list_item.padding_x}",
-          "right": "{space.list_item.padding_x}"
-        },
-        "gap": "{space.list_item.gap}",
-        "align": "center",
-        "crossAxisAlignment": "CENTER"
-      },
-      "style": {
-        "fill": "{color.surface.list_item}"
-      },
-      "children": [
-        "icon-7",
-        "text-14"
-      ]
-    },
     "icon-8": {
       "type": "icon",
       "component_key": "icon/check",
@@ -643,13 +696,13 @@
         "direction": "vertical"
       }
     },
-    "text-15": {
+    "text-16": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "Dedicated account manager"
+        "text": "All features included"
       }
     },
     "list_item-8": {
@@ -675,7 +728,7 @@
       },
       "children": [
         "icon-8",
-        "text-15"
+        "text-16"
       ]
     },
     "icon-9": {
@@ -685,13 +738,13 @@
         "direction": "vertical"
       }
     },
-    "text-16": {
+    "text-17": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "24/7 phone support"
+        "text": "Dedicated account manager"
       }
     },
     "list_item-9": {
@@ -717,7 +770,91 @@
       },
       "children": [
         "icon-9",
-        "text-16"
+        "text-17"
+      ]
+    },
+    "icon-10": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-18": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "Custom integrations"
+      }
+    },
+    "list_item-10": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "icon-10",
+        "text-18"
+      ]
+    },
+    "icon-11": {
+      "type": "icon",
+      "component_key": "icon/check",
+      "layout": {
+        "direction": "vertical"
+      }
+    },
+    "text-19": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "24/7 phone support"
+      }
+    },
+    "list_item-11": {
+      "type": "list_item",
+      "layout": {
+        "direction": "vertical",
+        "sizing": {
+          "width": "fill",
+          "height": "hug"
+        },
+        "padding": {
+          "top": "{space.list_item.padding_y}",
+          "bottom": "{space.list_item.padding_y}",
+          "left": "{space.list_item.padding_x}",
+          "right": "{space.list_item.padding_x}"
+        },
+        "gap": "{space.list_item.gap}",
+        "align": "center",
+        "crossAxisAlignment": "CENTER"
+      },
+      "style": {
+        "fill": "{color.surface.list_item}"
+      },
+      "children": [
+        "icon-11",
+        "text-19"
       ]
     },
     "list-3": {
@@ -740,12 +877,13 @@
         "radius": "{radius.default}"
       },
       "children": [
-        "list_item-7",
         "list_item-8",
-        "list_item-9"
+        "list_item-9",
+        "list_item-10",
+        "list_item-11"
       ]
     },
-    "text-17": {
+    "text-20": {
       "type": "text",
       "props": {
         "text": "Contact Sales"
@@ -796,7 +934,7 @@
         "radius": "{radius.button}"
       },
       "children": [
-        "text-17"
+        "text-20"
       ]
     },
     "card-3": {
@@ -823,10 +961,19 @@
       },
       "children": [
         "heading-4",
-        "text-13",
+        "text-15",
         "list-3",
         "button-3"
       ]
+    },
+    "text-21": {
+      "type": "text",
+      "layout": {
+        "direction": "vertical"
+      },
+      "props": {
+        "text": "\"This service transformed how we manage our workflow. Highly recommended!\""
+      }
     },
     "avatar-1": {
       "type": "avatar",
@@ -848,22 +995,13 @@
         "radius": 999
       }
     },
-    "text-18": {
+    "text-22": {
       "type": "text",
       "layout": {
         "direction": "vertical"
       },
       "props": {
-        "text": "\"This service transformed how we manage our workflow. Highly recommended!\""
-      }
-    },
-    "text-19": {
-      "type": "text",
-      "layout": {
-        "direction": "vertical"
-      },
-      "props": {
-        "text": "\u2014 Sarah Johnson, Product Manager"
+        "text": "Sarah Johnson, CEO at TechCorp"
       }
     },
     "card-4": {
@@ -889,9 +1027,9 @@
         "shadow": "{shadow.card}"
       },
       "children": [
+        "text-21",
         "avatar-1",
-        "text-18",
-        "text-19"
+        "text-22"
       ]
     },
     "screen-1": {
@@ -1073,38 +1211,46 @@
     "card-1": -20,
     "heading-3": -21,
     "text-8": -22,
-    "icon-4": -23,
-    "text-9": -24,
-    "list_item-4": -25,
-    "icon-5": -26,
-    "text-10": -27,
-    "list_item-5": -28,
-    "icon-6": -29,
-    "text-11": -30,
-    "list_item-6": -31,
-    "list-2": -32,
-    "text-12": -33,
-    "button-2": -34,
-    "card-2": -35,
-    "heading-4": -36,
-    "text-13": -37,
-    "icon-7": -38,
-    "text-14": -39,
-    "list_item-7": -40,
-    "icon-8": -41,
+    "text-9": -23,
+    "badge-1": -24,
+    "icon-4": -25,
+    "text-10": -26,
+    "list_item-4": -27,
+    "icon-5": -28,
+    "text-11": -29,
+    "list_item-5": -30,
+    "icon-6": -31,
+    "text-12": -32,
+    "list_item-6": -33,
+    "icon-7": -34,
+    "text-13": -35,
+    "list_item-7": -36,
+    "list-2": -37,
+    "text-14": -38,
+    "button-2": -39,
+    "card-2": -40,
+    "heading-4": -41,
     "text-15": -42,
-    "list_item-8": -43,
-    "icon-9": -44,
-    "text-16": -45,
-    "list_item-9": -46,
-    "list-3": -47,
-    "text-17": -48,
-    "button-3": -49,
-    "card-3": -50,
-    "avatar-1": -51,
-    "text-18": -52,
+    "icon-8": -43,
+    "text-16": -44,
+    "list_item-8": -45,
+    "icon-9": -46,
+    "text-17": -47,
+    "list_item-9": -48,
+    "icon-10": -49,
+    "text-18": -50,
+    "list_item-10": -51,
+    "icon-11": -52,
     "text-19": -53,
-    "card-4": -54,
-    "screen-1": -55
+    "list_item-11": -54,
+    "list-3": -55,
+    "text-20": -56,
+    "button-3": -57,
+    "card-3": -58,
+    "text-21": -59,
+    "avatar-1": -60,
+    "text-22": -61,
+    "card-4": -62,
+    "screen-1": -63
   }
 }

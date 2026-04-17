@@ -1,7 +1,7 @@
 {
   "__ok": true,
   "errors": [],
-  "rendered_root": "5782:42868",
+  "rendered_root": "5784:46797",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -20,7 +20,115 @@
       "type": "FRAME",
       "name": "list-1",
       "width": 396,
-      "height": 1202,
+      "height": 1600,
+      "effectCount": 0
+    },
+    "card-4": {
+      "type": "FRAME",
+      "name": "card-4",
+      "width": 372,
+      "height": 390,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#FFFFFF"
+        }
+      ],
+      "strokes": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 1
+    },
+    "button_group-4": {
+      "type": "FRAME",
+      "name": "button_group-4",
+      "width": 100,
+      "height": 80,
+      "effectCount": 0
+    },
+    "button-8": {
+      "type": "INSTANCE",
+      "name": "button-8",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "button-7": {
+      "type": "INSTANCE",
+      "name": "button-7",
+      "width": 40,
+      "height": 40,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-8": {
+      "type": "TEXT",
+      "name": "text-8",
+      "width": 340,
+      "height": 15,
+      "characters": "Scrolling at 3 AM be like",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "image-4": {
+      "type": "FRAME",
+      "name": "image-4",
+      "width": 340,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
+      "effectCount": 0
+    },
+    "text-7": {
+      "type": "TEXT",
+      "name": "text-7",
+      "width": 340,
+      "height": 15,
+      "characters": "comedy_gold",
+      "textAutoResize": "HEIGHT",
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#000000"
+        }
+      ],
+      "effectCount": 0
+    },
+    "avatar-4": {
+      "type": "FRAME",
+      "name": "avatar-4",
+      "width": 100,
+      "height": 100,
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#E2E8F0"
+        }
+      ],
       "effectCount": 0
     },
     "card-3": {
@@ -75,9 +183,9 @@
       ],
       "effectCount": 0
     },
-    "text-7": {
+    "text-6": {
       "type": "TEXT",
-      "name": "text-7",
+      "name": "text-6",
       "width": 340,
       "height": 15,
       "characters": "Me pretending to understand what's happening",
@@ -103,12 +211,12 @@
       ],
       "effectCount": 0
     },
-    "text-6": {
+    "text-5": {
       "type": "TEXT",
-      "name": "text-6",
+      "name": "text-5",
       "width": 340,
       "height": 15,
-      "characters": "cosmic_memes",
+      "characters": "dank_memes",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -183,12 +291,12 @@
       ],
       "effectCount": 0
     },
-    "text-5": {
+    "text-4": {
       "type": "TEXT",
-      "name": "text-5",
+      "name": "text-4",
       "width": 340,
       "height": 15,
-      "characters": "POV: You're the last slice of pizza",
+      "characters": "POV: You're about to make a terrible decision",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -211,12 +319,12 @@
       ],
       "effectCount": 0
     },
-    "text-4": {
+    "text-3": {
       "type": "TEXT",
-      "name": "text-4",
+      "name": "text-3",
       "width": 340,
       "height": 15,
-      "characters": "silly_kitten",
+      "characters": "meme_lord",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -291,9 +399,9 @@
       ],
       "effectCount": 0
     },
-    "text-3": {
+    "text-2": {
       "type": "TEXT",
-      "name": "text-3",
+      "name": "text-2",
       "width": 340,
       "height": 15,
       "characters": "When you finally understand the assignment",
@@ -319,12 +427,12 @@
       ],
       "effectCount": 0
     },
-    "text-2": {
+    "text-1": {
       "type": "TEXT",
-      "name": "text-2",
+      "name": "text-1",
       "width": 340,
       "height": 15,
-      "characters": "meme_lord_42",
+      "characters": "user_memes",
       "textAutoResize": "HEIGHT",
       "fills": [
         {
@@ -371,21 +479,6 @@
       "name": "icon_button-1",
       "width": 20,
       "height": 20,
-      "effectCount": 0
-    },
-    "text-1": {
-      "type": "TEXT",
-      "name": "text-1",
-      "width": 364,
-      "height": 15,
-      "characters": "Meme Feed",
-      "textAutoResize": "HEIGHT",
-      "fills": [
-        {
-          "type": "solid",
-          "color": "#000000"
-        }
-      ],
       "effectCount": 0
     }
   }

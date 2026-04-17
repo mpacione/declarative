@@ -57,7 +57,7 @@
               },
               {
                 "type": "text",
-                "props": {"text": "Up to 5 projects"}
+                "props": {"text": "Up to 10 projects"}
               }
             ]
           },
@@ -93,6 +93,10 @@
       {
         "type": "text",
         "props": {"text": "$29/month"}
+      },
+      {
+        "type": "badge",
+        "props": {"text": "Most Popular"}
       },
       {
         "type": "list",
@@ -133,6 +137,19 @@
               {
                 "type": "text",
                 "props": {"text": "Priority support"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
+                "props": {"text": "Team collaboration"}
               }
             ]
           }
@@ -194,6 +211,19 @@
               },
               {
                 "type": "text",
+                "props": {"text": "Custom integrations"}
+              }
+            ]
+          },
+          {
+            "type": "list_item",
+            "children": [
+              {
+                "type": "icon",
+                "component_key": "icon/check"
+              },
+              {
+                "type": "text",
                 "props": {"text": "24/7 phone support"}
               }
             ]
@@ -211,15 +241,15 @@
     "type": "card",
     "children": [
       {
-        "type": "avatar"
-      },
-      {
         "type": "text",
         "props": {"text": "\"This service transformed how we manage our workflow. Highly recommended!\""}
       },
       {
+        "type": "avatar"
+      },
+      {
         "type": "text",
-        "props": {"text": "— Sarah Johnson, Product Manager"}
+        "props": {"text": "Sarah Johnson, CEO at TechCorp"}
       }
     ]
   }

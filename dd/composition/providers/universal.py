@@ -482,7 +482,14 @@ def _badge_template(variant: str | None) -> PresentationTemplate:
 
 
 def _image_template(variant: str | None) -> PresentationTemplate:
-    """Placeholder frame with a neutral tint; real image content comes from props.src."""
+    """Placeholder frame with a neutral tint; real image content comes from props.src.
+
+    H7 attempted to add a stroke for a "picture frame" look — but the
+    extra paint pass reintroduced the paint-cascade timeout that R3
+    fixed (03-meme-feed back to 55 s with stroke on 4 images). Left
+    as fill-only; perceived-quality polish deferred to v0.2 when we
+    can address the paint-cascade root cause directly.
+    """
     return PresentationTemplate(
         catalog_type="image",
         variant=variant,

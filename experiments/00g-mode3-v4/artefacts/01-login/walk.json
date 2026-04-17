@@ -7,7 +7,7 @@
       "stack": "    at <anonymous> (<input>:269:15) | "
     }
   ],
-  "rendered_root": "5782:42727",
+  "rendered_root": "5784:46637",
   "eid_map": {
     "screen-1": {
       "type": "FRAME",
@@ -172,7 +172,7 @@
       "name": "text-1",
       "width": 364,
       "height": 15,
-      "characters": "Enter your credentials to sign in",
+      "characters": "Enter your credentials to continue",
       "textAutoResize": "HEIGHT",
       "fills": [
         {

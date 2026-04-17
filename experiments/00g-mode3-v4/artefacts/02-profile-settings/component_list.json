@@ -33,14 +33,14 @@
         "type": "text_input",
         "props": {
           "label": "Name",
-          "placeholder": "John Doe"
+          "placeholder": "Enter your name"
         }
       },
       {
         "type": "text_input",
         "props": {
           "label": "Email",
-          "placeholder": "john@example.com"
+          "placeholder": "Enter your email"
         }
       }
     ]
