@@ -246,7 +246,62 @@ class TestBuildProjectVocabulary:
 
     def test_excludes_low_count_templates(self, db):
         result = build_project_vocabulary(db, min_instances=100)
-        assert "card" not in result
+        # Templates section excludes card (10 instances). Don't assert
+        # "card not in result" because the CKR section may surface card-
+        # prefixed keys independently.
+        templates_block = result.split("Project component keys")[0]
+        assert "card" not in templates_block
+        assert "button/large/translucent" in result
+
+    @staticmethod
+    def _ensure_ckr_table(conn: sqlite3.Connection) -> None:
+        # CKR table is created lazily by build_component_key_registry;
+        # tests that exercise the CKR branch of build_project_vocabulary
+        # need to mirror that shape here.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+
+    def test_includes_ckr_component_keys(self, db):
+        """ADR-008 Tier 2: CKR entries surface to LLM for Mode-1 reuse."""
+        self._ensure_ckr_table(db)
+        db.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES ('k1', 'n1', 'icon/chevron-right', 16), "
+            "('k2', 'n2', 'button/primary', 42), "
+            "('k3', 'n3', 'logo/dank', 8)"
+        )
+        db.commit()
+        result = build_project_vocabulary(db)
+        assert "icon/chevron-right" in result
+        assert "button/primary" in result
+        assert "logo/dank" in result
+
+    def test_ckr_section_distinct_header(self, db):
+        """CKR keys appear under a distinct header so the LLM knows
+        they are Mode-1-reusable keys, not Mode-2 type variants."""
+        self._ensure_ckr_table(db)
+        db.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES ('k1', 'n1', 'icon/menu', 5)"
+        )
+        db.commit()
+        result = build_project_vocabulary(db)
+        assert "component_key" in result.lower() or "Project component keys" in result
+
+    def test_ckr_missing_table_is_gracefully_skipped(self, db):
+        """DBs without CKR (older schema) should not crash the
+        vocabulary builder — the CKR section is just absent."""
+        # Fixture `db` does NOT create the CKR table.
+        result = build_project_vocabulary(db)
+        assert isinstance(result, str)
+        # Templates section still renders; CKR section is absent.
         assert "button/large/translucent" in result
 
 
@@ -269,3 +324,15 @@ class TestSystemPrompt:
         assert '"type"' in prompt
         assert '"props"' in prompt
         assert '"children"' in prompt
+
+    def test_mentions_container_types(self):
+        """ADR-008 Tier 2: LLM must know which types are containers
+        so list/list_item/pagination/header/etc. get emitted with
+        children, not as empty leaves."""
+        prompt = SYSTEM_PROMPT.lower()
+        # The prompt should call out containers by name so the LLM
+        # stops emitting them as leaves with a single `text` prop.
+        assert "container" in prompt or "nested" in prompt
+        # Explicit namedrop of the highest-volume offender from the v3
+        # baseline failure taxonomy:
+        assert "list_item" in prompt
