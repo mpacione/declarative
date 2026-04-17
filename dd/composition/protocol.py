@@ -50,6 +50,12 @@ class PresentationTemplate:
     Lives in memory at resolution time; never persisted. The template's
     fields carry unresolved DTCG token refs (``{color.brand.primary}``)
     which the :class:`TokenCascade` resolves after registry lookup.
+
+    ``corpus_subtree`` is the v0.2 retrieval extension: when populated by
+    ``CorpusRetrievalProvider``, it carries a real IR subtree extracted
+    from the DB corpus. Compose splices the subtree in place of
+    synthesising from layout/style/slots. Shape:
+    ``{source_screen_id, source_node_id, root: eid, elements: {eid: {...}}}``.
     """
 
     catalog_type: str
@@ -59,6 +65,7 @@ class PresentationTemplate:
     slots: dict[str, SlotSpec] = field(default_factory=dict)
     style: dict[str, Any] = field(default_factory=dict)
     compound_variants: list[CompoundOverride] = field(default_factory=list)
+    corpus_subtree: dict[str, Any] | None = None
 
 
 @runtime_checkable

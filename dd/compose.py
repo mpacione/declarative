@@ -59,6 +59,7 @@ def _pick_best_template(
 def compose_screen(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]] | None = None,
+    registry: Any | None = None,
 ) -> dict[str, Any]:
     """Build a CompositionSpec from a list of component descriptions.
 
@@ -71,6 +72,11 @@ def compose_screen(
     provider registry and produces synthetic child IR elements (e.g. a
     ``button`` with ``props.text="Sign In"`` gets a text child carrying
     the label).
+
+    v0.2 retrieval: when ``registry`` is provided with a
+    :class:`CorpusRetrievalProvider` at higher priority, matching
+    component types have their real DB subtree spliced into the emitted
+    spec instead of synthesising from hand-authored templates.
     """
     type_counters: dict[str, int] = {}
     elements: dict[str, dict[str, Any]] = {}
@@ -79,7 +85,34 @@ def compose_screen(
         type_counters[comp_type] = type_counters.get(comp_type, 0) + 1
         return f"{comp_type}-{type_counters[comp_type]}"
 
+    def _try_corpus_splice(
+        comp: dict[str, Any],
+    ) -> str | None:
+        """Query the registry for a corpus_subtree; splice if present.
+
+        Returns the newly-allocated element id for the spliced root when
+        a subtree is spliced, or None otherwise. Non-None result tells
+        ``_build_element`` to skip the normal synthesis path.
+        """
+        if registry is None:
+            return None
+        comp_type = comp["type"]
+        variant = comp.get("variant")
+        template, _errors = registry.resolve(comp_type, variant, {})
+        if template is None or getattr(template, "corpus_subtree", None) is None:
+            return None
+        return _splice_subtree(
+            template.corpus_subtree,
+            llm_props=comp.get("props") or {},
+            elements=elements,
+            allocate_id=_allocate_id,
+        )
+
     def _build_element(comp: dict[str, Any]) -> str:
+        spliced_eid = _try_corpus_splice(comp)
+        if spliced_eid is not None:
+            return spliced_eid
+
         comp_type = comp["type"]
         eid = _allocate_id(comp_type)
 
@@ -224,6 +257,67 @@ def compose_screen(
 def _mode3_disabled() -> bool:
     """True when ``DD_DISABLE_MODE_3`` env var is set to a non-empty value."""
     return bool(os.environ.get("DD_DISABLE_MODE_3", "").strip())
+
+
+def _splice_subtree(
+    corpus_subtree: dict[str, Any],
+    *,
+    llm_props: dict[str, Any],
+    elements: dict[str, dict[str, Any]],
+    allocate_id,
+) -> str:
+    """Splice a retrieved corpus subtree into ``elements``.
+
+    The subtree's internal element ids are renumbered through
+    ``allocate_id`` so they don't collide with IDs the caller has
+    already allocated. LLM-supplied text props are substituted into the
+    subtree's text slots in tree order (first LLM text → first text
+    slot, etc.). Returns the spliced root's newly-allocated id.
+    """
+    subtree_elements = corpus_subtree["elements"]
+    subtree_root = corpus_subtree["root"]
+
+    # Pre-allocate new ids for every node in the subtree so child
+    # references can be rewritten in a single pass.
+    id_remap: dict[str, str] = {}
+    for old_eid, elem in subtree_elements.items():
+        id_remap[old_eid] = allocate_id(elem["type"])
+
+    # Gather LLM text values (in stable order) to distribute into slots.
+    llm_texts = _extract_llm_text_values(llm_props)
+    text_slot_idx = 0
+
+    # BFS the subtree in the stored order; copy into ``elements`` with
+    # child references rewritten to the new ids.
+    for old_eid, elem in subtree_elements.items():
+        new_eid = id_remap[old_eid]
+        new_elem = {k: v for k, v in elem.items() if k != "children"}
+
+        # Substitute text content for TEXT nodes in order.
+        if new_elem.get("type") == "text" and text_slot_idx < len(llm_texts):
+            new_elem.setdefault("props", {})["text"] = llm_texts[text_slot_idx]
+            text_slot_idx += 1
+
+        old_children = elem.get("children", [])
+        if old_children:
+            new_elem["children"] = [id_remap[c] for c in old_children]
+
+        elements[new_eid] = new_elem
+
+    return id_remap[subtree_root]
+
+
+def _extract_llm_text_values(props: dict[str, Any]) -> list[str]:
+    """Pull text-like string values from an LLM props dict, in a stable
+    order. Keys like 'text', 'title', 'subtitle', 'label', 'caption',
+    'body' are treated as text slots."""
+    text_keys = ("text", "title", "heading", "subtitle", "label", "caption", "body")
+    out: list[str] = []
+    for k in text_keys:
+        v = props.get(k)
+        if isinstance(v, str) and v:
+            out.append(v)
+    return out
 
 
 # Prop-name aliases we try when filling a text-typed slot. The LLM
