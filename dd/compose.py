@@ -90,11 +90,22 @@ def compose_screen(
     ) -> str | None:
         """Query the registry for a corpus_subtree; splice if present.
 
-        Returns the newly-allocated element id for the spliced root when
-        a subtree is spliced, or None otherwise. Non-None result tells
-        ``_build_element`` to skip the normal synthesis path.
+        Only fires full-subtree splice when the LLM provided no
+        ``children`` for this component — that's the signal we're
+        free to use the corpus's structural intent. When the LLM gave
+        children, the retrieval contribution reduces to applying the
+        root element's visual / layout onto the caller's element
+        (a subsequent step via ``_apply_retrieved_root_visual``), and
+        recursion into LLM children proceeds normally. This respects
+        LLM structural intent and prevents over-splicing large
+        corpus subtrees into prompts that asked for something small.
+
+        Returns the newly-allocated element id for the spliced root
+        when a full-subtree splice happens, or None otherwise.
         """
         if registry is None:
+            return None
+        if comp.get("children"):
             return None
         comp_type = comp["type"]
         variant = comp.get("variant")
@@ -107,6 +118,46 @@ def compose_screen(
             elements=elements,
             allocate_id=_allocate_id,
         )
+
+    def _apply_retrieved_root_visual(
+        comp: dict[str, Any],
+        element: dict[str, Any],
+    ) -> bool:
+        """When retrieval has a subtree for this type but we chose not
+        to full-splice (LLM gave children), copy the subtree ROOT's
+        visual + layout onto the caller's element. This gives us the
+        DB's real fills/strokes/effects/corner_radius on the parent
+        while preserving LLM-supplied children below.
+
+        Registry.resolve stops at the first matching provider, so when
+        corpus retrieval wins, UniversalCatalogProvider's token-based
+        layout defaults (gap/align/primary_axis) never fire. We pull
+        them explicitly here as a fallback layer so every element gets
+        a sensible auto-layout shape even when retrieval contributes
+        the paint.
+
+        Returns True if retrieval contributed, False otherwise.
+        """
+        if registry is None:
+            return False
+        comp_type = comp["type"]
+        variant = comp.get("variant")
+        template, _errors = registry.resolve(comp_type, variant, {})
+        if template is None or getattr(template, "corpus_subtree", None) is None:
+            return False
+        subtree = template.corpus_subtree
+        root_elem = subtree["elements"][subtree["root"]]
+        if root_elem.get("visual"):
+            element.setdefault("visual", {}).update(root_elem["visual"])
+            element["_corpus_source_node_id"] = root_elem.get(
+                "_corpus_source_node_id",
+            )
+        if root_elem.get("layout"):
+            layout = element.setdefault("layout", {})
+            for k, v in root_elem["layout"].items():
+                layout.setdefault(k, v)
+        _apply_universal_template_fallback(comp_type, variant, element)
+        return True
 
     def _build_element(comp: dict[str, Any]) -> str:
         spliced_eid = _try_corpus_splice(comp)
@@ -148,7 +199,11 @@ def compose_screen(
         # H1 this only happened inside _mode3_synthesise_children,
         # which is gated on "no LLM children" — so any LLM-supplied
         # parent silently lost its fill / stroke / radius / padding.
+        # v0.2: if corpus retrieval has a subtree for this type, copy
+        # the root's real DB visual + layout onto the element first;
+        # universal-catalog merge below only fills gaps.
         if not component_key:
+            _apply_retrieved_root_visual(comp, element)
             _apply_template_to_parent(comp_type, variant, element)
 
         children = comp.get("children", [])
@@ -515,6 +570,49 @@ def _build_default_mode3_registry(conn: sqlite3.Connection):
         CorpusRetrievalProvider(conn=conn),
         UniversalCatalogProvider(),
     ])
+
+
+def _apply_universal_template_fallback(
+    comp_type: str,
+    variant: str | None,
+    element: dict[str, Any],
+) -> None:
+    """Apply the UniversalCatalogProvider template's layout/style onto
+    the element without going through the priority cascade.
+
+    Used when corpus retrieval already contributed the element's
+    visual/layout at the root level but we still want the universal
+    catalog's token-based gap/align/sizing defaults to fill gaps.
+    Bypasses the registry because corpus-retrieval won the cascade.
+    """
+    if _mode3_disabled():
+        return
+    from dd.composition.providers.universal import UniversalCatalogProvider
+
+    tmpl = UniversalCatalogProvider().resolve(comp_type, variant, {})
+    if tmpl is None:
+        return
+    # Apply layout.
+    parent_layout = element.setdefault("layout", {})
+    for key, value in (tmpl.layout or {}).items():
+        if key == "sizing":
+            sizing = parent_layout.setdefault("sizing", {})
+            for sk, sv in (value or {}).items():
+                sizing.setdefault(sk, sv)
+        elif key == "padding":
+            existing = parent_layout.setdefault("padding", {})
+            if isinstance(value, dict):
+                x_val = value.get("x")
+                y_val = value.get("y")
+                for side, v in (("top", y_val), ("bottom", y_val),
+                                ("left", x_val), ("right", x_val)):
+                    if v is not None and side not in existing:
+                        existing[side] = v
+                for side in ("top", "right", "bottom", "left"):
+                    if side in value and side not in existing:
+                        existing[side] = value[side]
+        elif key not in parent_layout:
+            parent_layout[key] = value
 
 
 def _apply_template_to_parent(

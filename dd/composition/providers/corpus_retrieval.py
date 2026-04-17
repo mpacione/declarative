@@ -28,6 +28,43 @@ from typing import Any, ClassVar
 from dd.composition.protocol import PresentationTemplate
 
 
+# Per-type ceiling on retrieved-subtree descendant count. Leaf types
+# (text, icon, image, heading, link) must stay shallow — a "text"
+# slot filled with a 50-node decorative illustration is a
+# structural-intent violation. Containers (card, header, list) allow
+# more but still cap well below full-screen size to protect against
+# carousel-scale subtrees being spliced for a single-slot request.
+_MAX_DESCENDANTS_BY_TYPE: dict[str, int] = {
+    # Leaves — near-zero descendants expected
+    "text": 2,
+    "heading": 2,
+    "icon": 2,
+    "image": 3,
+    "link": 3,
+    "badge": 3,
+    "divider": 0,
+    # Atoms with small fixed internal structure
+    "button": 4,
+    "icon_button": 4,
+    "avatar": 3,
+    # Containers — meaningful internal structure
+    "card": 15,
+    "list_item": 10,
+    "text_input": 5,
+    "search_input": 5,
+    "select": 6,
+    "tabs": 10,
+    "header": 15,
+    "navigation_row": 15,
+    "drawer": 20,
+    "bottom_nav": 15,
+    "button_group": 10,
+    "pagination": 10,
+    "list": 40,
+}
+_DEFAULT_MAX_DESCENDANTS = 15
+
+
 @dataclass(frozen=True)
 class CorpusRetrievalProvider:
     """Provider that retrieves real IR subtrees from SCI.
@@ -67,22 +104,60 @@ class CorpusRetrievalProvider:
     ) -> PresentationTemplate | None:
         """Pick a representative SCI instance and materialise its subtree.
 
-        PoC selection strategy: deterministic pick by MIN(node_id) so
-        A/B comparisons are reproducible. v0.3 adds structural-match
-        ranking against the LLM plan's child-type set.
+        PoC selection strategy (v0.2):
+        1. Filter to mobile-sized app screens (300–500 px wide).
+        2. Bound the subtree size per catalog type — leaf types like
+           ``text`` / ``icon`` / ``image`` / ``link`` get pulled when
+           the node has ≤ 2 descendants; containers like ``card`` /
+           ``header`` allow more but still cap at 20 to avoid
+           pulling carousel-scale subtrees into a "card" slot.
+        3. Among qualifying candidates, prefer the smallest subtree
+           (fewer descendants = less risk of over-splicing), tie-break
+           by MIN(node_id) so A/B is deterministic.
+
+        v0.3 replaces this with structural-match ranking against the
+        LLM plan's child-type set.
         """
-        row = self.conn.execute(
-            "SELECT sci.screen_id, sci.node_id "
-            "FROM screen_component_instances sci "
-            "WHERE sci.canonical_type = ? "
-            "ORDER BY sci.node_id ASC LIMIT 1",
+        max_descendants = _MAX_DESCENDANTS_BY_TYPE.get(
+            catalog_type, _DEFAULT_MAX_DESCENDANTS,
+        )
+        # Candidate pool: SCI rows on mobile-sized app screens. We
+        # score each candidate by descendant count via a Python-side
+        # walk to avoid a correlated CTE-per-row SQL pattern (and to
+        # work against test fixtures without the ``nodes.path``
+        # materialised column).
+        candidates = self.conn.execute(
+            """
+            SELECT sci.screen_id, sci.node_id
+            FROM screen_component_instances sci
+            JOIN screens s ON s.id = sci.screen_id
+            WHERE sci.canonical_type = ?
+              AND s.screen_type = 'app_screen'
+              AND s.width BETWEEN 300 AND 500
+            ORDER BY sci.node_id ASC
+            LIMIT 200
+            """,
             (catalog_type,),
-        ).fetchone()
-        if row is None:
+        ).fetchall()
+        if not candidates:
             return None
 
-        screen_id = row[0] if not isinstance(row, sqlite3.Row) else row["screen_id"]
-        node_id = row[1] if not isinstance(row, sqlite3.Row) else row["node_id"]
+        best: tuple[int, int, int] | None = None  # (desc_count, screen_id, node_id)
+        for cand in candidates:
+            sid = cand[0] if not isinstance(cand, sqlite3.Row) else cand["screen_id"]
+            nid = cand[1] if not isinstance(cand, sqlite3.Row) else cand["node_id"]
+            desc = _count_descendants(self.conn, screen_id=sid, root_node_id=nid)
+            if desc > max_descendants:
+                continue
+            key = (desc, nid)
+            if best is None or key < (best[0], best[2]):
+                best = (desc, sid, nid)
+                # Smallest possible match (0 descendants) short-circuits
+                if desc == 0:
+                    break
+        if best is None:
+            return None
+        _, screen_id, node_id = best
 
         subtree = _extract_subtree(self.conn, screen_id=screen_id, root_node_id=node_id)
         if subtree is None:
@@ -145,6 +220,34 @@ def _extract_subtree(
         "root": root_eid,
         "elements": elements,
     }
+
+
+def _count_descendants(
+    conn: sqlite3.Connection,
+    *,
+    screen_id: int,
+    root_node_id: int,
+) -> int:
+    """Return the number of nodes strictly under ``root_node_id``.
+
+    Used as a size-fit score when ranking SCI candidates: smaller =
+    safer PoC splice. Works against fixtures that lack the
+    materialised ``nodes.path`` column.
+    """
+    cur = conn.execute(
+        """
+        WITH RECURSIVE sub(id) AS (
+            SELECT id FROM nodes WHERE parent_id = ?
+            UNION ALL
+            SELECT n.id FROM nodes n
+            JOIN sub s ON n.parent_id = s.id
+            WHERE n.screen_id = ?
+        )
+        SELECT COUNT(*) FROM sub
+        """,
+        (root_node_id, screen_id),
+    )
+    return int(cur.fetchone()[0])
 
 
 def _fetch_subtree_rows(
