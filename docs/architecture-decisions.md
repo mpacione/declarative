@@ -1377,3 +1377,86 @@ The composition-provider architecture preserves every ADR-001..007
 invariant, extends ADR-006's boundary contract to the egress side, and
 turns Mode 3 from a missing pipeline stage into a symmetric mirror of
 the ingest pipeline we already trust.
+
+---
+
+## ADR-008 Chapter epilogue (2026-04-17) — v0.1.5 Week 1 end-to-end
+
+Week 1 of the v0.1.5 sprint shipped A1 archetype-conditioned few-shot
+across 5 commits on top of the ADR-008 base. End-to-end results on the
+12 canonical prompts:
+
+| metric | 00f baseline | 00g (A1 live) | Δ |
+|---|---:|---:|---:|
+| VLM-ok | 4 / 12 | **6 / 12** | +2 (+50%) |
+| Mean structural nodes | 21.8 | 25.2 | +3.5 (≈ +1.02 σ) |
+| Round-trip parity | 204 / 204 | 204 / 204 | preserved |
+| Mode-1 createInstance() | 63 | 70+ | — |
+
+**Commit chain** (all on `main`, all with TDD coverage, all preserving parity):
+
+1. `a4ef55f` — β matrix (240 Haiku calls). Verdict: no SYSTEM_PROMPT
+   contract variant beats S0 by the §7 criterion. Kept T=0.3.
+2. `cfd753d` — 12 hand-authored archetype skeletons in
+   `dd/archetype_library/`. Provenance declared: Dank's
+   `screen_component_instances` is empty in the current snapshot, so
+   corpus-mining is deferred to v0.2.
+3. `0be0030` — `dd/composition/archetype_classifier.py` (keyword +
+   Haiku fallback) and `dd/composition/archetype_injection.py`.
+   `DD_DISABLE_ARCHETYPE_LIBRARY=1` flips the whole path to no-op.
+4. `22ce53c` — `RuleBasedScore` gains `total_node_count` +
+   `container_coverage`. Surfaced in `sanity_report.md`.
+5. `d23a743` + `897495b` — 00g experiment artefacts.
+
+**Plan §5 stopping criterion:** required ≥7 VLM-ok AND density ≥+1 σ.
+Got 6 / 12 VLM-ok (missed by 1) and +1.02 σ. Routed to A2 plan-then-fill
+per §Week 2.
+
+### Reinforced invariants
+
+All seven ADRs hold after v0.1.5 Week 1:
+
+- **ADR-001 capability-gated emission** — unchanged; archetype library
+  only adds few-shot inspiration, not capability grammar.
+- **ADR-002 null-safe Mode 1** — unchanged; classifier returns None
+  gracefully when it can't route.
+- **ADR-003 explicit state harness** — unchanged; driver writes per-
+  prompt `system_prompt.txt` + `classified_archetype.txt` so the
+  compose state is reproducible from artefacts.
+- **ADR-004 verification loop** — unchanged; gate still rule + VLM.
+- **ADR-005 null-safe prefetch** — unchanged.
+- **ADR-006 boundary contract** — unchanged; clarification-refusal
+  (`KIND_PROMPT_UNDERSPECIFIED` signal) continues to flow through the
+  structured failure channel. `classify_archetype` protects its
+  outputs on malformed / out-of-vocab responses.
+- **ADR-007 unified verification channel** — unchanged; `__errors`
+  payload on the Mode-3 run still structured per-eid.
+
+### Extensions landed
+
+- **Provider-chain reservation 75** (between `ProjectCKRProvider=100`
+  and `UniversalCatalogProvider=10`). Not yet realized as a registered
+  provider — archetype library injection happens at the prompt layer
+  in `prompt_to_figma`, not the provider chain. Architectural hook
+  remains available for when ingested-system and archetype mechanisms
+  need to compose deterministically (v0.2).
+- **Rollback fence**: `DD_DISABLE_ARCHETYPE_LIBRARY=1` is the single
+  env-var flip that rolls A1 back to v0.1 SYSTEM_PROMPT-only behaviour.
+  Tested; verified in the unit suite (`test_archetype_classifier.py::
+  test_feature_flag_disables_classifier` + `test_prompt_parser.py::
+  test_archetype_injection_disabled_by_flag`).
+
+### Follow-ons seeded for Week 2 / v0.2
+
+- **04-dashboard regression** (partial → broken): tables render as
+  text stacks because the row template has no vertical differentiation
+  between column headers and row cells. Render-template layer, not
+  archetype. A2 plan-then-fill will not fix it; separate work.
+- **VLM transient-flakiness handling**: the rule+VLM gate needs outer
+  rerun tolerance. Current retry (2× w/ exponential backoff) isn't
+  enough for batch runs at Gemini's Tier-1 rate.
+- **PROXY_EXECUTE parse-depth repeat bug**: 00f hit it, 00g hit it.
+  Both fixed post-hoc. Baked into `render_test/run.js` documentation
+  would prevent the next recurrence.
+- **A2 plan-then-fill** (`DD_ENABLE_PLAN_THEN_FILL`) is the
+  plan-routed next step to close the VLM-ok gap.
