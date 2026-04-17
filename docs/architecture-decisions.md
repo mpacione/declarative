@@ -1119,3 +1119,261 @@ matures.
 This closes the one known class of invisible failure that the
 204/204 parity claim allowed. Synthetic generation wouldn't have
 been usable without it.
+
+## ADR-008: Composition providers — Mode 3 synthesis from catalog, corpus, and ingested systems
+
+**Problem.** The round-trip renderer handles two modes cleanly:
+**Mode 1** (IR carries `component_key` → `getNodeByIdAsync().createInstance()`)
+and **Mode 2** (IR carries L0 visual properties copied from the DB →
+apply them to a `createFrame()`). Synthetic IR from the prompt pipeline
+has **neither** — no `component_key` (the LLM doesn't see the project's
+CKR) and no DB-sourced L0 properties (no node id to look up). Mode-2
+falls through to a bare `createFrame()` with `fills=[]` and no children.
+Result, measured on the 12 v3 prompts: 212 of 229 non-screen nodes
+render as empty 100×100 grey frames; the rule-based + Gemini VLM sanity
+gate reports 12/12 categorically broken (see
+`docs/research/synthetic-generation-deep-diagnosis.md`).
+
+The gap is not "missing component library." It is a missing pipeline
+stage. Given a catalog `type`, a `variant`, and the LLM's `props`, we
+have no path that produces a plausible Figma subtree. The renderer's
+`_emit_composition_children` fires only when a DB template carries a
+`_composition` field — which synthetic IR never has.
+
+**Decision.** Introduce **Mode 3 — Composition-provider synthesis** as a
+first-class pipeline stage. Mode 3 resolves `(type, variant, context)`
+to a `PresentationTemplate` through an ordered **provider registry**,
+resolves any `{token}` refs inside the template through a three-layer
+**DTCG token cascade**, recurses through slot-contract children, and
+splices the result into the IR as first-class synthetic children. The
+renderer is unchanged; Mode 3 operates entirely at the compose layer.
+
+Three interlocking components ship in a new `dd/composition/` package:
+
+- **`ComponentProvider` protocol** mirroring ADR-006's `IngestAdapter`:
+  `priority: int`, `backend: str`, `supports(type, variant) -> bool`,
+  `resolve(type, variant, context) -> PresentationTemplate`.
+- **Registry** (`dd/composition/registry.py`) — ordered walk in descending
+  priority; first `supports()`-true wins. Tie-break on `backend` name
+  alphabetically for determinism.
+- **Token cascade** (`dd/composition/cascade.py`) — resolves
+  `{color.brand.primary}` style refs through ordered layers
+  `project > ingested > universal`. First layer that defines the path
+  wins. Unresolved → `KIND_TOKEN_UNRESOLVED` with literal fallback so
+  render still proceeds.
+
+Four built-in providers in v0.1:
+
+| Provider | Priority | Source |
+|---|---|---|
+| `ProjectCKRProvider` | 100 | User's extracted corpus: `component_key_registry` + `variant_token_binding` |
+| `IngestedSystemProvider` | 50 | Ingested design systems via ADR-006's `IngestAdapter` (shadcn first) |
+| `UniversalCatalogProvider` | 10 | Hand-authored defaults for the 22-type universal backbone (structure from Stream A ontology + Exp I sizing; colour/radius/shadow values ported from shadcn) |
+| `TokenOnlyProvider` | 0 | Last-resort synthesis from DTCG atoms; neutral frame with resolved tokens |
+
+**Rationale.** This is the symmetric dual of ADR-006 on the egress
+side. The ingest contract says "every boundary that imports data emits
+an `IngestResult` with `StructuredError` on partial failure." The
+composition contract says "every boundary that resolves intent to
+structure emits a `PresentationTemplate` with `StructuredError` on
+partial match." Same shape, same error channel, same CI-visible
+per-node granularity.
+
+The fall-through ordering (project > ingested > universal > token-only)
+is the correct precedence for a tool whose value proposition is "your
+design system is authoritative." A project-native `button/primary`
+always beats shadcn's `button/primary`; shadcn's only wins when the
+corpus doesn't know the variant. No surveyed design system formalises
+this provider-coexistence problem — it is the differentiator Stream C's
+survey identified.
+
+### Naming: "variant", not "role"
+
+The Stream B induction research initially called its output "role
+bindings" — inherited from Material 3's "color roles" terminology. That
+word carries ARIA and semantic-category baggage across the frontend /
+design community and collides with `dd/catalog.py`'s existing
+(vestigial; see below) `semantic_role` field. Every major compositional
+system (cva/shadcn, Panda CSS, Stitches, Chakra, Material M3's
+`md.comp.*` layer) uses **variant** for exactly what we're storing:
+"per catalog type, per variant, per slot, which token?" The IR already
+names it the same. Committed name: `variant_token_binding` for the
+table, `cluster_variants.py` for the inducer, "variant labelling" for
+Stream B's VLM pass.
+
+### Data model
+
+**`PresentationTemplate`** (Python `@dataclass(frozen=True)` in memory
+at resolution time; not a persisted object):
+
+```python
+@dataclass(frozen=True)
+class PresentationTemplate:
+    catalog_type: str          # "button"
+    variant: str | None        # "primary" | None for default
+    provider: str              # "project:dank" | "ingested:shadcn" | "catalog:universal"
+    layout: LayoutSpec         # direction, sizing, padding, gap — token refs allowed
+    slots: dict[str, SlotSpec] # slot_name → {allowed_types, required, default_child?}
+    style: StyleSpec           # fills, strokes, radius, shadow — token refs allowed
+    compound_variants: list[CompoundOverride]  # cva-style compound matchers
+```
+
+**`variant_token_binding`** (new DB table introduced in PR #1):
+
+```sql
+CREATE TABLE variant_token_binding (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  catalog_type    TEXT NOT NULL,
+  variant         TEXT NOT NULL,    -- 'primary' | 'destructive' | 'custom_1' | ...
+  slot            TEXT NOT NULL,    -- 'bg' | 'fg' | 'border' | 'shadow' | 'radius' | ...
+  token_id        INTEGER REFERENCES tokens(id),
+  confidence      REAL NOT NULL,    -- 0.0..1.0 from the variant inducer
+  source          TEXT NOT NULL,    -- 'cluster' | 'vlm' | 'screen_context' | 'user'
+  created_at      TEXT NOT NULL,
+  UNIQUE(catalog_type, variant, slot)
+);
+```
+
+Populated by the **variant inducer** (`dd/cluster_variants.py`, new in
+PR #1). Algorithm for v0.1:
+
+1. For each catalog type with ≥5 classified instances: feature-vector
+   each instance (fills, strokes, radius, dimensions, icon-presence,
+   adjacency).
+2. K-means in OKLCH + normalised dimensions; silhouette score picks K.
+3. For each cluster, send ≤10 rendered thumbnails to Gemini 3.1 Pro
+   with a closed vocabulary `{primary, secondary, destructive, ghost,
+   link, disabled, unknown}`. Unknown-labelled clusters persist as
+   `custom_N` so the LLM generator retains them in vocabulary.
+4. Write `variant_token_binding` rows for each `(type, variant, slot)`
+   pair using the cluster's representative token values.
+
+**Vestigial field flagged, not removed.** `CatalogEntry.semantic_role`
+and the matching `component_type_catalog.semantic_role` column
+(introduced at T5 Phase 0 for "future a11y / React code export") are
+written at seed time but read nowhere in `compose.py`, `renderers/`,
+`classify*.py`, `verify*.py`, `ir.py`, or `extract*.py`. They remain
+in place for this ADR — a cleanup pass can remove them without
+affecting any pipeline stage. An inline comment in `dd/catalog.py`
+marks the field as deprecated and points here; picking it up belongs
+in a small dedicated PR, not bundled with Mode 3 work.
+
+### Failure vocabulary — new `KIND_*` constants on `dd/boundary.py`
+
+| Kind | Severity | When | Recovery |
+|---|---|---|---|
+| `KIND_NO_PROVIDER_MATCH` | terminal | Registry exhausted without `supports()`-true | placeholder emitted + error |
+| `KIND_VARIANT_NOT_FOUND` | informational | Type resolves, variant does not; walk continues | fall-through |
+| `KIND_TOKEN_UNRESOLVED` | informational | `{path}` ref absent from all cascade layers | literal fallback |
+| `KIND_SLOT_TYPE_MISMATCH` | informational | Slot expects type A, IR child is type B | splice anyway with warning |
+| `KIND_VARIANT_BINDING_MISSING` | informational | Inducer has no row for `(type, variant, slot)` | template default |
+
+All five feed ADR-007's existing per-node `__errors` channel. No new
+channel; new vocabulary only. The `RenderVerifier` attributes them
+per-eid. The eventual v0.3 render-critic-refine loop consumes them as
+training signal.
+
+### Provider ordering and tie-breaking
+
+1. **Priority wins.** Higher integer priority beats lower.
+2. **Alphabetical on `backend`** breaks ties (`ingested:carbon` beats
+   `ingested:shadcn` at equal priority because `c < s`). Deterministic;
+   reproducible across runs.
+3. **`supports()` gates resolution.** A provider that does not claim
+   `(type, variant)` is skipped. A provider returning `True` from
+   `supports` and `None` from `resolve` is a protocol violation.
+4. **Feature flag `DD_DISABLE_MODE_3=1`** short-circuits the entire
+   registry walk, restoring today's empty-frame behaviour as a
+   baseline. Per-provider disable via
+   `DD_DISABLE_PROVIDER=ingested:shadcn` for surgical kill.
+
+### Invariants
+
+- **Mode-1 and Mode-2 unchanged.** Mode-3 fires only when both fail.
+  The 204/204 round-trip parity claim holds unmodified.
+- **No L0 IR schema change in v0.1.** `PresentationTemplate` lives in
+  memory; synthesised subtrees splice as ordinary IR children with
+  existing field shape.
+- **Provenance in v0.2.** Optional `provider: str` field per node,
+  opt-in, backwards-compatible with existing IR consumers.
+- **Structured errors at every fall-through.** Every provider miss,
+  every unresolved token, every slot mismatch feeds the `__errors`
+  channel. Consumers (CI, training loop, RenderVerifier) switch on
+  `kind`, not free text.
+
+### Relationship to other ADRs
+
+- **ADR-001 (capability-gated emission).** Mode-3 templates reference
+  tokens and slot types; the capability registry gates whether a
+  resolved value can be emitted on a given backend. Symmetric reuse.
+- **ADR-006 (boundary contract).** `ComponentProvider` is the egress
+  twin of `IngestAdapter`. `PresentationTemplate + StructuredError` is
+  the return-shape twin of `IngestResult`.
+- **ADR-007 (unified verification channel).** All five new `KIND_*`
+  codes flow through the existing channel. The `RenderVerifier`
+  attributes them per-eid with no new machinery.
+
+### Phasing
+
+**PR #0 — Catalog ontology migration (precursor, isolated).**
+- Add 7 types to `dd/catalog.py`: `divider`, `progress`, `spinner`,
+  `kbd`, `number_input`, `otp_input`, `command`.
+- Demote 3 to aliases: `toggle_group → toggle{grouped=true}`,
+  `context_menu → menu{trigger=context}`; keep `file_upload` but split
+  via `variant: button | dropzone`.
+- Thicken slot grammar: `list_item` gains Material's six-slot shape
+  (`leading / overline / headline / supporting / trailing_supporting /
+  trailing`); `card.image → card.media`; `alert` gains `close`;
+  `text_input` gains `helper`.
+- Add variant-axis declarations: `state`, `tone`, `density`.
+- Add an inline deprecation comment on `semantic_role`; do **not**
+  drop it (tracked cleanup debt).
+- DB migration `011_catalog_ontology_v2.sql` (additive; idempotent;
+  back-compat aliases preserved).
+- **Gate: 204/204 round-trip parity must pass unchanged.**
+
+**PR #1 — Mode 3 composition (main, builds on PR #0).**
+- `dd/composition/` package: `protocol.py`, `registry.py`,
+  `cascade.py`, `providers/{universal,project_ckr,ingested}.py`.
+- `dd/cluster_variants.py` (variant inducer, Stream B v0.1).
+- `variant_token_binding` table + migration
+  `012_variant_token_bindings.sql`.
+- Five new `KIND_*` constants on `dd/boundary.py`.
+- Compose-layer integration at `compose._build_element`'s Mode-2
+  fall-through point.
+- Feature flag `DD_DISABLE_MODE_3` + `DD_DISABLE_PROVIDER=...`.
+- Re-run 12 v3 prompts; sanity gate must pass on ≥10/12.
+
+**v0.2 (post-v0.1 ship):**
+- Screen-context priors in the variant inducer (Stream B's
+  candidate C).
+- Optional `provider` + `variant_binding` IR provenance fields.
+- shadcn cold-start palette transplantation (Material-You HCT).
+- `RenderVerifier` provider-attribution.
+
+**v0.3 (speculative, gated on full RenderVerifier parity):**
+- Render-critic-refine loop à la GameUIAgent; consumes `KIND_*` as
+  training signal.
+
+### Cleanup debt (tracked, not blocking)
+
+- Remove `CatalogEntry.semantic_role` and
+  `component_type_catalog.semantic_role` column. Zero runtime callers.
+  Requires one catalog-only migration; trivial; schedule for a
+  dedicated cleanup PR after v0.1 ships.
+
+### What this does not attempt
+
+- **Animation / transitions.** Out of scope.
+- **Responsive breakpoints.** `PresentationTemplate.layout` is static
+  in v0.1; breakpoints are v0.4.
+- **A11y / ARIA export.** Orthogonal to Mode 3; solvable
+  deterministically if ever needed.
+- **Internationalisation.** Out of scope.
+- **Multi-project variant-binding transfer.** Per-project in v0.1;
+  transfer requires user opt-in and is a v0.2 measurement.
+
+The composition-provider architecture preserves every ADR-001..007
+invariant, extends ADR-006's boundary contract to the egress side, and
+turns Mode 3 from a missing pipeline stage into a symmetric mirror of
+the ingest pipeline we already trust.
