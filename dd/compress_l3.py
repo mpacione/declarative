@@ -346,12 +346,15 @@ def _compress_element(
     spec: dict,
     parent_sibling_counter: dict[str, int],
     used_eids: set[str],
+    comp_names: dict[str, str],
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
     `eid_key` is the element's spec key (e.g., `"screen-1"`, `"frame-3"`).
-    Returns None if the element has no usable type (shouldn't happen
-    in practice).
+    `comp_names` maps element-id → master component name (from CKR) for
+    Mode-1-eligible elements; an empty string signals "lookup failed,
+    fall back to inline frame".
+    Returns None if the element has no usable type.
     """
     element = spec["elements"].get(eid_key)
     if not element:
@@ -377,8 +380,16 @@ def _compress_element(
             eid = _auto_eid(type_str, parent_sibling_counter[type_str])
     used_eids.add(eid)
 
+    # Mode-1 eligible nodes with a resolved CKR master name emit as a
+    # CompRef (`-> slash/path`). Lookup miss → fall back to inline type.
     head_kind = "type"
     type_or_path = type_str
+    master_name = comp_names.get(eid_key, "")
+    if element.get("_mode1_eligible") and master_name:
+        slash = derive_comp_slash_path(master_name)
+        if slash:
+            head_kind = "comp-ref"
+            type_or_path = slash
 
     # Determine visibility
     visible = element.get("visible", True)
@@ -422,7 +433,7 @@ def _compress_element(
     child_nodes: list[Node] = []
     for child_id in child_ids:
         child_node = _compress_element(
-            child_id, spec, child_counter, used_eids,
+            child_id, spec, child_counter, used_eids, comp_names,
         )
         if child_node is not None:
             child_nodes.append(child_node)
@@ -439,6 +450,47 @@ def _compress_element(
 # ---------------------------------------------------------------------------
 
 
+def _build_comp_names_map(
+    spec: dict, conn: Optional[sqlite3.Connection],
+) -> dict[str, str]:
+    """Build an `element_id → master_component_name` map from the CKR.
+
+    Uses `spec["_node_id_map"]` (element-id → node-id) to look up each
+    Mode-1-eligible element's node_id, then joins to
+    `component_key_registry` to get the master name. Missing entries
+    are omitted — caller falls back to inline-frame emission.
+    """
+    if conn is None:
+        return {}
+    node_id_map = spec.get("_node_id_map") or {}
+    # Only fetch for Mode-1-eligible elements (skip frames / text / etc.)
+    eligible_eids = [
+        eid for eid, el in (spec.get("elements") or {}).items()
+        if el.get("_mode1_eligible")
+    ]
+    if not eligible_eids:
+        return {}
+    node_ids = [node_id_map[eid] for eid in eligible_eids if eid in node_id_map]
+    if not node_ids:
+        return {}
+    placeholders = ",".join("?" for _ in node_ids)
+    rows = conn.execute(
+        f"SELECT n.id, ckr.name "
+        f"FROM nodes n "
+        f"LEFT JOIN component_key_registry ckr "
+        f"  ON ckr.component_key = n.component_key "
+        f"WHERE n.id IN ({placeholders})",
+        node_ids,
+    ).fetchall()
+    node_id_to_name = {row[0]: row[1] for row in rows if row[1]}
+    out: dict[str, str] = {}
+    for eid in eligible_eids:
+        nid = node_id_map.get(eid)
+        if nid is not None and nid in node_id_to_name:
+            out[eid] = node_id_to_name[nid]
+    return out
+
+
 def compress_to_l3(
     spec: dict, conn: Optional[sqlite3.Connection] = None,
     *, screen_id: Optional[int] = None,
@@ -448,8 +500,9 @@ def compress_to_l3(
     `spec` is the `["spec"]` sub-dict returned by
     `dd.ir.generate_ir(..., semantic=True)` — NOT the full wrapper.
 
-    `conn` is optional for the MVP (no override-tree fetch yet); a
-    future slice will require it for `instance_overrides` queries.
+    `conn` is required to look up CompRef master names via the CKR;
+    may be omitted in tests that don't care about Mode-1 emission
+    (those elements then fall back to inline-frame output).
 
     `screen_id` is used to populate the node-level `(extracted src=...)`
     trailer when present; optional because the spec dict doesn't carry
@@ -461,7 +514,10 @@ def compress_to_l3(
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
-    root_node = _compress_element(root_key, spec, root_counter, used_eids)
+    comp_names = _build_comp_names_map(spec, conn)
+    root_node = _compress_element(
+        root_key, spec, root_counter, used_eids, comp_names,
+    )
     if root_node is None:
         return L3Document(namespace=None)
 

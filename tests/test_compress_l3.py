@@ -176,3 +176,74 @@ def test_eid_derived_from_original_name(db_conn: sqlite3.Connection) -> None:
         screen_id=181,
     )
     assert doc.top_level[0].head.eid == "iphone-13-pro-max-119"
+
+
+# ---------------------------------------------------------------------------
+# Slice C — CompRef emission via CKR lookup
+# ---------------------------------------------------------------------------
+
+
+def test_comp_refs_emitted_for_mode1_instances(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Mode-1-eligible INSTANCE nodes emit as `-> slash/path` CompRefs,
+    not inline `frame` nodes. The Dank corpus's dense component usage
+    means even a simple screen (181) should produce many CompRefs."""
+    doc = compress_to_l3(
+        generate_ir(db_conn, 181, semantic=True)["spec"],
+        db_conn,
+        screen_id=181,
+    )
+    emitted = emit_l3(doc)
+    # Screen 181 has ~57 Mode-1 instances in the DB. We should see the
+    # majority emit as CompRefs.
+    arrow_count = emitted.count("-> ")
+    assert arrow_count >= 50, (
+        f"expected ≥50 CompRefs on screen 181; got {arrow_count}"
+    )
+
+
+def test_compref_path_matches_ckr_master_name(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """CompRef slash-path derives from `component_key_registry.name`
+    (NOT from the instance layer name) per L0↔L3 §2.7.1."""
+    doc = compress_to_l3(
+        generate_ir(db_conn, 181, semantic=True)["spec"],
+        db_conn,
+        screen_id=181,
+    )
+    emitted = emit_l3(doc)
+    # Canonical Dank master names that appear in the CKR
+    assert "-> nav/top-nav" in emitted
+    assert "-> button/small/translucent" in emitted
+    assert "-> icon/back" in emitted
+
+
+def test_compref_without_conn_falls_back_to_frame(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """With `conn=None`, CKR lookup is skipped; Mode-1-eligible nodes
+    fall back to inline `frame` / type keyword."""
+    spec = generate_ir(db_conn, 181, semantic=True)["spec"]
+    doc = compress_to_l3(spec, conn=None, screen_id=181)
+    emitted = emit_l3(doc)
+    # No CompRefs should appear without the CKR lookup.
+    assert "-> " not in emitted, (
+        "expected no CompRefs when conn is None; fallback to inline"
+    )
+
+
+def test_compref_roundtrips_at_grammar_level(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """CompRef emission must satisfy the same Tier 1 round-trip
+    invariant as the rest of the compressor."""
+    doc = compress_to_l3(
+        generate_ir(db_conn, 222, semantic=True)["spec"],
+        db_conn,
+        screen_id=222,
+    )
+    emitted = emit_l3(doc)
+    doc2 = parse_l3(emitted)
+    assert doc == doc2
