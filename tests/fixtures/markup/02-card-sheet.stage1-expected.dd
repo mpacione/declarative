@@ -1,223 +1,90 @@
 screen #iphone-13-pro-max-87 width=428 height=926 (extracted src=222) {
-  frame #frame-1 width=428 height=926 fill=#F6F6F6 {
+  frame #iphone-13-pro-max-87 width=428 height=926 fill=#F6F6F6 {
     container #frame-359 x=17 y=231 width=hug height=hug layout=vertical crossAxis=center {
-      container #container-1 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
-        text #field-title width=hug height=hug fill=#000000
+      container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
+        text #field-title "Meme-00001" width=hug height=hug fill=#000000
         container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
-          -> icon/more #icon-more width=20 height=20 {
-            boolean-operation #union x=8.5 y=3 width=3 height=14 {
-              ellipse #ellipse-56 x=8.5 y=3 width=3 height=3 fill=#FF0000
-              ellipse #ellipse-57 x=8.5 y=8.5 width=3 height=3 fill=#FF0000
-              ellipse #ellipse-58 x=8.5 y=14 width=3 height=3 fill=#FF0000
-            }
-          }
-          text #text-1 width=hug height=hug fill=#000000
+          -> icon/more #icon-more width=20 height=20
+          text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
         }
       }
       frame #frame-350 width=395 height=395 fill=#FFFFFF {
         rectangle #image-320 x=119 y=135 width=157 height=172 fill=image(asset=5100e618ad172c0c2a7e2d8e3183bc55aa27cba6)
         frame #frame-338 x=18 y=39 width=hug height=hug layout=horizontal padding={left=4} align=center {
-          heading #it-is-i-do-not-be-afraid width=hug height=hug fill=#000000
+          heading #it-is-i-do-not-be-afraid "It is I... do not be afraid" width=hug height=hug fill=#000000
           rectangle #rectangle-22213 width=4 height=40
         }
         frame #shape x=26 y=204 width=126 height=126 {
           frame #boundingbox x=8 y=8 width=110 height=110
-          frame #frame-2 x=10 y=10 width=106 height=106 fill=#634AFF
+          frame #shape x=10 y=10 width=106 height=106 fill=#634AFF
           frame #control-topleft width=16 height=16 fill=#FFFFFF
-          frame #control-bottomleft y=110 width=16 height=16 fill=#FFFFFF
-          frame #control-topright x=110 width=16 height=16 fill=#FFFFFF
+          frame #control-bottomleft x=0 y=110 width=16 height=16 fill=#FFFFFF
+          frame #control-topright x=110 y=0 width=16 height=16 fill=#FFFFFF
           frame #control-bottomright x=110 y=110 width=16 height=16 fill=#FFFFFF
         }
       }
     }
     frame #overlay width=428 height=926 fill=gradient-linear(#00000000, #000000)
     button #button-toolbar x=126 y=794 width=hug height=hug layout=horizontal gap=12 padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 {
-      -> button/large/translucent #button-large-translucent width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/delete #icon-delete width=20 height=20 {
-          vector #vector-47 x=2 y=2 width=16 height=15.99991512298584
-        }
-        text #buy-trophy width=50 height=12 fill=#09090B visible=false
-        -> icon/delete #icon-1 width=20 height=20 visible=false {
-          vector #vector-1 x=2 y=2 width=16 height=15.99991512298584
-        }
-      }
-      -> button/large/translucent #button-1 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/close #icon-close width=20 height=20 {
-          vector #vector-41 x=-1 y=10 width=15.556350708007812 height=15.556349754333496
-        }
-        text #text-2 width=54 height=12 fill=#09090B visible=false
-        -> icon/delete #icon-2 width=20 height=20 visible=false {
-          vector #vector-2 x=2 y=2 width=16 height=15.99991512298584
-        }
-      }
-      -> button/large/translucent #button-2 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/check #icon-check width=20 height=20 visible=false {
-          vector #vector-3 x=3 y=4 width=14 height=12
-        }
-        text #text-3 width=54 height=12 fill=#09090B visible=false
-        -> icon/check #icon-3 width=20 height=20 {
-          vector #vector-4 x=3 y=4 width=14 height=12
-        }
-      }
+      -> button/large/translucent #button-large-translucent width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-2 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-3 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
     }
-    button #button-3 x=18 y=124 width=hug height=hug layout=horizontal padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 {
-      -> button/large/translucent #button-4 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/shape-square #icon-shape-square width=20 height=20 {
-          vector #rectangle-251 x=2 y=2 width=16 height=16
-        }
-        text #text-4 width=21 height=12 fill=#09090B visible=false
-        -> icon/chevron-down #icon-chevron-down width=20 height=20 visible=false {
-          vector #vector-39 x=16 y=8.000000953674316 width=5 height=12
-        }
-      }
-      -> button/large/translucent #button-5 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/back #icon-back width=20 height=20 visible=false {
-          vector #vector-46 x=2.5 y=4 width=14.5 height=12
-        }
-        text #text-5 width=94 height=12 fill=#09090B visible=false
-        -> icon/color-fill #icon-color-fill width=20 height=20 {
-          vector #rectangle-256 x=1 y=1 width=18 height=18 fill=#634AFF
-        }
-      }
-      -> button/large/translucent #button-6 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/back #icon-4 width=20 height=20 visible=false {
-          vector #vector-5 x=2.5 y=4 width=14.5 height=12
-        }
-        text #text-6 width=94 height=12 fill=#09090B visible=false
-        -> icon/color-stroke #icon-color-stroke width=20 height=20 {
-          vector #vector-6 x=1 y=1 width=18 height=18 fill=#FF1515
-        }
-      }
-      -> button/large/translucent #button-7 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 {
-        -> icon/stroke #icon-stroke width=20 height=20 {
-          vector #vector-7 x=4.000000476837158 y=2.999999761581421 width=14 height=0
-          vector #vector-42 x=8 y=3 width=5 height=0
-          vector #vector-45 x=8 y=12 width=5 height=0
-          vector #vector-43 x=12 y=3 width=2 height=0
-          vector #vector-8 x=12 y=9 width=2 height=0
-          vector #vector-9 x=12 y=15 width=2 height=0
-          vector #vector-44 x=16 y=3.000000238418579 width=0.5 height=0
-          vector #vector-48 x=16 y=7.500000476837158 width=0.5 height=0
-          vector #vector-49 x=16 y=12 width=0.5 height=0
-          vector #vector-50 x=16 y=16.5 width=0.5 height=0
-        }
-        text #text-7 width=35 height=12 fill=#09090B visible=false
-        -> icon/text-style #icon-text-style width=20 height=20 visible=false {
-          vector #rectangle-255 x=2 y=2 width=16 height=16
-        }
-      }
-      -> button/large/translucent #button-8 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/radius #icon-radius width=20 height=20 {
-          vector #vector-10 x=6 y=1 width=13 height=13
-          vector #rectangle-252 x=2 y=3 width=15.000502586364746 height=15.001002311706543
-        }
-        text #text-8 width=35 height=12 fill=#09090B visible=false
-        -> icon/text-style #icon-5 width=20 height=20 visible=false {
-          vector #vector-11 x=2 y=2 width=16 height=16
-        }
-      }
-      -> button/large/translucent #button-9 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/back #icon-6 width=20 height=20 visible=false {
-          vector #vector-12 x=2.5 y=4 width=14.5 height=12
-        }
-        text #text-9 width=94 height=12 fill=#09090B visible=false
-        -> icon/wand #icon-wand width=20 height=20 {
-          vector #vector-13 x=2 y=2 width=16.5 height=16.5
-        }
-      }
-      -> button/large/translucent #button-10 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/rotate #icon-rotate width=20 height=20 {
-          vector #rectangle-273 x=10 y=18 width=6 height=3.2727270126342773
-          vector #ellipse-59 x=2 y=3 width=16 height=12
-        }
-        text #text-10 width=50 height=12 fill=#09090B visible=false
-        -> icon/delete #icon-7 width=20 height=20 visible=false {
-          vector #vector-14 x=2 y=2 width=16 height=15.99991512298584
-        }
-      }
-      -> button/large/translucent #button-11 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center {
-        -> icon/send-forward #icon-send-forward width=20 height=20 {
-          vector #rectangle-272 x=17 y=14 width=9.899495124816895 height=9.899495124816895
-          vector #vector-15 x=17 y=10 width=9.899495124816895 height=9.899495124816895
-          vector #rectangle-274 x=17 y=6 width=9.899495124816895 height=9.899495124816895
-        }
-        text #text-11 width=50 height=12 fill=#09090B visible=false
-        -> icon/delete #icon-8 width=20 height=20 visible=false {
-          vector #vector-16 x=2 y=2 width=16 height=15.99991512298584
-        }
-      }
+    button #button-toolbar-2 x=18 y=124 width=hug height=hug layout=horizontal padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 {
+      -> button/large/translucent #button-large-translucent width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-2 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-3 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-4 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
+      -> button/large/translucent #button-large-translucent-5 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-6 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-7 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-8 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
     }
-    card #card-sheet-success y=516 width=hug height=hug layout=vertical gap=22 padding={top=22 right=24 bottom=60 left=24} crossAxis=center fill=#FFFFFF {
+    card #card-sheet-success x=0 y=516 width=hug height=hug layout=vertical gap=22 padding={top=22 right=24 bottom=60 left=24} crossAxis=center fill=#FFFFFF {
       container #frame-265 width=fill height=hug layout=horizontal gap=14 crossAxis=center {
-        heading #title width=fill height=hug fill=#000000
-        -> button/small/translucent #button-small-translucent width=hug height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 {
-          -> icon/back #icon-9 width=20 height=20 visible=false {
-            vector #vector-17 x=2.5 y=4 width=14.5 height=12
-          }
-          text #skip width=hug height=hug fill=#FFFFFF
-          -> icon/check #icon-10 width=20 height=20 {
-            vector #vector-18 x=3 y=4 width=14 height=12
-          }
-        }
+        heading #title "Border Size" width=fill height=hug fill=#000000
+        -> button/small/translucent #button-small-translucent width=hug height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
       }
       container #frame-397 width=380 height=hug layout=horizontal gap=12 {
-        text #message width=380 height=17 fill=#09090B
+        text #message "Presets" width=380 height=17 fill=#09090B
         frame #frame-290 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 {
           container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-1 #icon-stroke-1 width=30 height=30 {
-              rectangle #rectangle-22261 x=30 y=13.5 width=3 height=30 fill=#000000
-            }
+            -> icon/stroke-1 #icon-stroke-1 width=30 height=30
           }
-          text #text-12 width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false {
-            vector #rectangle-248 x=1 y=1 width=18 height=18
-          }
+          text #message "Tiny" width=fill height=hug fill=#09090B
+          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
         }
         frame #frame-291 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 {
-          container #container-2 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-2 #icon-stroke-2 width=30 height=30 {
-              rectangle #rectangle-1 x=30 y=12 width=6 height=30 fill=#000000
-            }
+          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+            -> icon/stroke-2 #icon-stroke-2 width=30 height=30
           }
-          text #text-13 width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-11 width=20 height=20 visible=false {
-            vector #vector-19 x=1 y=1 width=18 height=18
-          }
+          text #message "Small" width=fill height=hug fill=#09090B
+          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
         }
         frame #frame-292 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 {
-          container #container-3 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-3 #icon-stroke-3 width=30 height=30 {
-              rectangle #rectangle-2 x=30 y=9.000000953674316 width=12 height=30 fill=#000000
-            }
+          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+            -> icon/stroke-3 #icon-stroke-3 width=30 height=30
           }
-          text #text-14 width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-12 width=20 height=20 visible=false {
-            vector #vector-20 x=1 y=1 width=18 height=18
-          }
+          text #message "Medium" width=fill height=hug fill=#09090B
+          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
         }
         frame #frame-293 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 {
-          container #container-4 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-4 #icon-stroke-4 width=30 height=30 {
-              rectangle #rectangle-3 x=30 y=6.000000953674316 width=18 height=30 fill=#000000
-            }
+          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+            -> icon/stroke-4 #icon-stroke-4 width=30 height=30
           }
-          text #text-15 width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-13 width=20 height=20 visible=false {
-            vector #vector-21 x=1 y=1 width=18 height=18
-          }
+          text #message "Large" width=fill height=hug fill=#09090B
+          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
         }
       }
       container #frame-402 width=380 height=108 layout=vertical gap=10 {
-        text #text-16 width=380 height=17 fill=#09090B
+        text #message "Custom Size" width=380 height=17 fill=#09090B
         frame #frame-398 width=fill height=hug layout=vertical gap=6 padding={top=8 right=20 bottom=28 left=20} align=center fill=#000000 {
-          -> icon/checkbox-empty #icon-14 width=20 height=20 visible=false {
-            vector #vector-22 x=1 y=1 width=18 height=18
-          }
-          text #text-17 width=fill height=hug fill=#09090B
+          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+          text #message "32 px" width=fill height=hug fill=#09090B
           button #button-slider width=fill height=22 layout=vertical mainAxis=center {
             slider #slider width=fill height=22 {
-              rectangle #track y=8 width=340 height=6 fill=#000000
-              frame #adjust-auto-layout-spacing y=8 width=182 height=6 fill=gradient-linear(#D9FF40, #9EFF85) {
+              rectangle #track x=0 y=8 width=340 height=6 fill=#000000
+              frame #adjust-auto-layout-spacing x=0 y=8 width=182 height=6 fill=gradient-linear(#D9FF40, #9EFF85) {
                 rectangle #rectangle-240 x=154 y=-12 width=30 height=30 fill=#000000
               }
             }
@@ -225,187 +92,6 @@ screen #iphone-13-pro-max-87 width=428 height=926 (extracted src=222) {
         }
       }
     }
-    -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF {
-      frame #left y=47 width=130 height=64 layout=horizontal gap=8 padding={top=9 right=9 bottom=9 left=15} crossAxis=center {
-        -> button/small/translucent #button-12 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center visible=false {
-          -> icon/panel-left #icon-panel-left width=20 height=20 {
-            vector #vector-23 x=2 y=5 width=11 height=10
-            vector #vector-24 x=12.000001907348633 y=18 width=15.999999046325684 height=5.000002384185791
-          }
-          text #text-18 width=66 height=12 fill=#09090B visible=false
-          -> icon/new #icon-new width=20 height=20 visible=false {
-            vector #vector-40 x=3 y=3 width=14 height=14
-          }
-        }
-        -> logo/dank #logo-dank width=hug height=hug layout=horizontal crossAxis=center {
-          image #logo width=24 height=24 {
-            ellipse #ellipse-55 x=3 y=3 width=18 height=18
-          }
-          frame #wordmark width=80 height=13 visible=false {
-            vector #vector width=73 height=13 fill=#000000
-          }
-        }
-        -> button/small/translucent #button-13 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) visible=false {
-          -> icon/menu #icon-menu width=20 height=20 {
-            vector #vector-25 x=4 y=4 width=12 height=12
-          }
-          text #text-19 width=hug height=hug fill=#09090B
-          -> icon/close #icon-15 width=20 height=20 visible=false {
-            vector #vector-26 x=-1 y=10 width=15.556350708007812 height=15.556349754333496
-          }
-        }
-        -> button/small/translucent #button-14 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center visible=false {
-          -> icon/back #icon-16 width=20 height=20 visible=false {
-            vector #vector-27 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-20 width=66 height=12 fill=#09090B visible=false
-          -> icon/back #icon-17 width=20 height=20 {
-            vector #vector-28 x=2.5 y=4 width=14.5 height=12
-          }
-        }
-        heading #heading-1 width=75 height=22 fill=#000000 visible=false
-        -> button/small/translucent #button-15 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-          -> icon/back #icon-18 width=20 height=20 visible=false {
-            vector #vector-29 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-21 width=hug height=hug fill=#09090B
-          -> icon/chevron-down #icon-19 width=20 height=20 {
-            vector #vector-30 x=16 y=8.000000953674316 width=5 height=12
-          }
-        }
-      }
-      frame #center x=123.5 y=47 width=182 height=64 layout=horizontal gap=15 padding={top=12 right=10 bottom=12 left=10} align=center {
-        frame #titles width=hug height=hug layout=vertical gap=8 align=center visible=false {
-          heading #heading-2 width=hug height=hug fill=#000000
-          text #text-22 width=33 height=10 fill=#FFFFFF visible=false
-        }
-        -> button/small/translucent #button-16 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) visible=false {
-          -> icon/menu #icon-20 width=20 height=20 {
-            vector #vector-31 x=4 y=4 width=12 height=12
-          }
-          text #text-23 width=hug height=hug fill=#09090B
-          -> icon/close #icon-21 width=20 height=20 visible=false {
-            vector #vector-32 x=-1 y=10 width=15.556350708007812 height=15.556349754333496
-          }
-        }
-        -> logo/dank #image-1 width=hug height=hug layout=horizontal crossAxis=center visible=false {
-          image #image-2 width=24 height=24 {
-            ellipse #ellipse-1 x=3 y=3 width=18 height=18
-          }
-          frame #frame-3 width=80 height=13 {
-            vector #vector-33 width=73 height=13 fill=#000000
-          }
-        }
-        -> nav/tabs #nav-tabs width=hug height=hug layout=horizontal gap=4 crossAxis=center visible=false {
-          -> button/small/solid #button-small-solid width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-            -> icon/mint #icon-mint width=20 height=20 {
-              group #icon x=1 y=1 width=18 height=18 {
-                vector #vector-34 x=1 y=1 width=18 height=18
-              }
-              vector #vector-35 x=5 y=5 width=10 height=10
-            }
-            heading #heading-3 width=hug height=hug fill=#000000
-            -> icon/wallet #icon-wallet width=20 height=20 visible=false {
-              vector #vector-36 x=2 y=2 width=16 height=16
-            }
-          }
-          -> button/small/solid #button-17 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) {
-            -> icon/fill #icon-fill width=20 height=20 {
-              rectangle #rectangle-1609 x=3 y=2 width=13 height=4
-              vector #vector-37 x=8 y=4 width=10 height=14
-            }
-            heading #heading-4 width=hug height=hug fill=#000000
-            -> icon/wallet #icon-22 width=20 height=20 visible=false {
-              vector #vector-38 x=2 y=2 width=16 height=16
-            }
-          }
-          -> button/small/solid #button-18 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-            -> icon/folder #icon-folder width=20 height=20 {
-              vector #rectangle-259 x=1 y=2 width=18 height=16.999954223632812
-            }
-            heading #heading-5 width=hug height=hug fill=#000000
-            -> icon/wallet #icon-23 width=20 height=20 visible=false {
-              vector #vector-51 x=2 y=2 width=16 height=16
-            }
-          }
-          -> button/small/solid #button-19 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-            -> icon/power #icon-power width=20 height=20 {
-              rectangle #image-326 x=-1 width=20 height=20 fill=image(asset=0151ac64e481ded7129861c043b2720623f496bc) visible=false
-              vector #vector-52 x=15.999983787536621 y=19.000003814697266 width=11.000000953674316 height=17
-            }
-            heading #heading-6 width=hug height=hug fill=#000000
-            -> icon/wallet #icon-24 width=20 height=20 visible=false {
-              vector #vector-53 x=2 y=2 width=16 height=16
-            }
-          }
-        }
-      }
-      frame #right x=298 y=47 width=130 height=64 layout=horizontal gap=10 padding={top=9 right=16 bottom=9 left=9} mainAxis=max crossAxis=center {
-        -> icon/more #icon-25 width=24 height=24 visible=false {
-          vector #vector-54 x=13 y=4 width=16 height=1.9999991655349731 fill=#000000
-        }
-        -> button/small/translucent #button-20 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-          -> icon/back #icon-26 width=20 height=20 visible=false {
-            vector #vector-55 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-24 width=43 height=12 fill=#09090B visible=false
-          -> icon/undo #icon-undo width=20 height=20 {
-            vector #vector-56 x=15.00000286102295 y=4.000000476837158 width=12.5 height=11.000001907348633 visible=false
-            vector #vector-57 x=2.5 y=3 width=14.5 height=13 visible=false
-            vector #vector-58 x=3 y=3 width=15 height=14
-          }
-        }
-        -> button/small/translucent #button-21 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-          -> icon/back #icon-27 width=20 height=20 visible=false {
-            vector #vector-59 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-25 width=66 height=12 fill=#09090B visible=false
-          -> icon/redo #icon-redo width=20 height=20 {
-            vector #vector-60 x=5 y=4.000000476837158 width=12.5 height=11.000001907348633 visible=false
-            vector #vector-61 x=17.5 y=5 width=14.5 height=8.99998664855957 visible=false
-            vector #vector-62 x=17.5 y=3 width=14.5 height=13 visible=false
-            vector #vector-63 x=17 y=3 width=15 height=14
-          }
-        }
-        -> button/small/translucent #button-22 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center {
-          -> icon/edit #icon-edit width=20 height=20 visible=false {
-            vector #vector-64 x=1 y=1 width=18 height=17
-          }
-          text #text-26 width=58 height=12 fill=#09090B visible=false
-          -> icon/share #icon-share width=20 height=20 {
-            vector #ellipse-46 x=3 y=4 width=13 height=13 visible=false
-            vector #vector-65 x=6 y=1 width=12 height=8
-            vector #vector-66 x=17 y=9 width=13.999999046325684 height=9.000000953674316
-          }
-        }
-        -> button/small/translucent #button-23 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
-          -> icon/back #icon-28 width=20 height=20 visible=false {
-            vector #vector-67 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-27 width=66 height=12 fill=#09090B visible=false
-          -> icon/new #icon-29 width=20 height=20 {
-            vector #vector-68 x=3 y=3 width=14 height=14
-          }
-        }
-        -> button/small/translucent #button-24 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
-          -> icon/back #icon-30 width=20 height=20 visible=false {
-            vector #vector-69 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-28 width=66 height=12 fill=#09090B visible=false
-          -> icon/new #icon-31 width=20 height=20 {
-            vector #vector-70 x=3 y=3 width=14 height=14
-          }
-        }
-        -> button/small/translucent #button-25 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
-          -> icon/back #icon-32 width=20 height=20 visible=false {
-            vector #vector-71 x=2.5 y=4 width=14.5 height=12
-          }
-          text #text-29 width=66 height=12 fill=#09090B visible=false
-          -> icon/new #icon-33 width=20 height=20 {
-            vector #vector-72 x=3 y=3 width=14 height=14
-          }
-        }
-      }
-    }
+    -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF
   }
 }

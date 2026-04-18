@@ -107,20 +107,11 @@ def derive_comp_slash_path(component_name: str) -> str:
 # Type keyword mapping
 # ---------------------------------------------------------------------------
 
-# Primitive Figma types → dd-markup keywords (fallback when L1 is absent).
-_NODE_TYPE_TO_KEYWORD = {
-    "FRAME": "frame",
-    "TEXT": "text",
-    "RECTANGLE": "rectangle",
-    "VECTOR": "vector",
-    "ELLIPSE": "ellipse",
-    "GROUP": "group",
-    "BOOLEAN_OPERATION": "boolean-operation",
-    "LINE": "line",
-    "STAR": "star",
-    "POLYGON": "polygon",
-    "INSTANCE": "frame",                 # fallback when no component key resolves
-}
+# Note: the `build_composition_spec` upstream already lowercases and
+# normalizes `node_type` values into the `element["type"]` field, so
+# the compressor applies an underscore→hyphen transform and passes the
+# string through directly (see `_compress_element`). A raw mapping
+# table is unused.
 
 
 # ---------------------------------------------------------------------------
@@ -180,13 +171,23 @@ def _fill_to_value(fill: dict) -> Optional[Value]:
 
 
 def _num_literal(n: float | int) -> Literal_:
-    """Wrap a number in a canonical-form Literal_."""
-    # Prefer int when lossless for canonical short emission
+    """Wrap a number in a canonical-form Literal_.
+
+    Round-then-snap: first round to 4 decimal places (sub-pixel
+    precision), then snap to int if the rounded value is a whole
+    number. This cleans Figma IEEE-754 coordinate residuals like
+    `6.000001430511475` → `6` and `15.556350708007812` → `15.5564`
+    while preserving meaningful sub-pixel values.
+    """
     if isinstance(n, bool):
         raw = "true" if n else "false"
         return Literal_(lit_kind="bool", raw=raw, py=n)
-    if isinstance(n, float) and n.is_integer() and abs(n) < 1e16:
-        n = int(n)
+    if isinstance(n, float) and abs(n) < 1e16:
+        rounded = round(n, 4)
+        if rounded.is_integer():
+            n = int(rounded)
+        else:
+            n = rounded
     raw = str(n)
     return Literal_(lit_kind="number", raw=raw, py=n)
 
@@ -224,17 +225,20 @@ def _spatial_props(layout: dict) -> list[PropAssign]:
     """Derive Spatial-axis PropAssigns from a CompositionSpec element's
     `layout` sub-dict. Omits zero/default values per §2.5."""
     props: list[PropAssign] = []
-    # Position — only non-zero for absolute children
+    # Position — emit both x AND y whenever EITHER is non-zero, so we
+    # don't silently drop y=0 in an `(x=0, y!=0)` pair or vice versa.
+    # (Previously the elif branch was dead code and `y=0` when `x!=0`
+    # was silently dropped.)
     position = layout.get("position") or {}
     if isinstance(position, dict):
         x = position.get("x")
         y = position.get("y")
-        if x is not None and x != 0:
-            props.append(PropAssign(key="x", value=_num_literal(x)))
-        if y is not None and y != 0:
-            props.append(PropAssign(key="y", value=_num_literal(y)))
-        elif x is not None and x == 0 and position.get("y", 0) != 0:
-            props.append(PropAssign(key="x", value=_num_literal(0)))
+        both_zero = (x in (None, 0)) and (y in (None, 0))
+        if not both_zero:
+            if x is not None:
+                props.append(PropAssign(key="x", value=_num_literal(x)))
+            if y is not None:
+                props.append(PropAssign(key="y", value=_num_literal(y)))
 
     # Sizing
     sizing = layout.get("sizing") or {}
@@ -324,14 +328,6 @@ def _visual_props(visual: dict) -> list[PropAssign]:
     return props
 
 
-def _content_props(element: dict) -> list[PropAssign]:
-    """Text-bearing nodes carry positional content via the type-specific
-    `text` / `characters` field. In the CompositionSpec this appears as
-    `"text": "..."` when `type == text`; emitted as the node's
-    `positional` content by the caller, not as a PropAssign."""
-    return []
-
-
 # ---------------------------------------------------------------------------
 # Element → Node
 # ---------------------------------------------------------------------------
@@ -366,15 +362,25 @@ def _compress_element(
     raw_type = element.get("type", "frame")
     type_str = raw_type.replace("_", "-") if isinstance(raw_type, str) else "frame"
 
-    # EID: prefer sanitized original name, fall back to auto-id
+    # EID — prefer sanitized original name. Per L0↔L3 §2.3.1 collision
+    # handling: when the name-derived candidate collides, append `-N`
+    # (smallest int ≥ 2) rather than falling through to the auto-id.
+    # Only fall through to auto-id when the original name has no
+    # sanitized IDENT form (digit-start, empty, etc.).
     original_name = element.get("_original_name", "")
     eid_candidate = normalize_to_eid(original_name) if original_name else ""
-    if eid_candidate and eid_candidate not in used_eids:
+    eid: str
+    if eid_candidate:
         eid = eid_candidate
+        n = 2
+        while eid in used_eids:
+            eid = f"{eid_candidate}-{n}"
+            n += 1
     else:
-        parent_sibling_counter[type_str] = parent_sibling_counter.get(type_str, 0) + 1
+        parent_sibling_counter[type_str] = (
+            parent_sibling_counter.get(type_str, 0) + 1
+        )
         eid = _auto_eid(type_str, parent_sibling_counter[type_str])
-        # Ensure auto-id doesn't collide either
         while eid in used_eids:
             parent_sibling_counter[type_str] += 1
             eid = _auto_eid(type_str, parent_sibling_counter[type_str])
@@ -406,10 +412,14 @@ def _compress_element(
     props.extend(_visual_props(element.get("visual") or {}))
     props.extend(visible_prop)
 
-    # Positional content for text nodes
+    # Positional content for text-bearing nodes. Text content lives
+    # under `element["props"]["text"]` in the CompositionSpec —
+    # `element["text"]` is a sibling of `props` and is NOT populated by
+    # `build_composition_spec`. Reading the wrong key silently drops
+    # the entire Content axis.
     positional: Optional[Value] = None
-    if type_str == "text":
-        txt = element.get("text") or element.get("characters")
+    if type_str in ("text", "heading"):
+        txt = (element.get("props") or {}).get("text")
         if isinstance(txt, str) and txt:
             positional = Literal_(
                 lit_kind="string", raw=f'"{txt}"', py=txt,
@@ -427,16 +437,20 @@ def _compress_element(
         trailer=None,
     )
 
-    # Children
-    child_ids = element.get("children") or []
-    child_counter: dict[str, int] = {}
+    # Children. CompRefs emit WITHOUT a child block — the master
+    # component provides the subtree at render time (L0↔L3 §2.7). Only
+    # inline nodes carry their own children.
     child_nodes: list[Node] = []
-    for child_id in child_ids:
-        child_node = _compress_element(
-            child_id, spec, child_counter, used_eids, comp_names,
-        )
-        if child_node is not None:
-            child_nodes.append(child_node)
+    if head_kind != "comp-ref":
+        child_ids = element.get("children") or []
+        child_counter: dict[str, int] = {}
+        child_used_eids: set[str] = set()     # per-Block scope
+        for child_id in child_ids:
+            child_node = _compress_element(
+                child_id, spec, child_counter, child_used_eids, comp_names,
+            )
+            if child_node is not None:
+                child_nodes.append(child_node)
 
     block: Optional[Block] = None
     if child_nodes:
@@ -508,8 +522,14 @@ def compress_to_l3(
     trailer when present; optional because the spec dict doesn't carry
     it explicitly.
     """
+    # Defensive guards — bad input shouldn't crash with AttributeError.
+    if not isinstance(spec, dict):
+        return L3Document(namespace=None)
+    elements = spec.get("elements")
+    if elements is None:
+        return L3Document(namespace=None)
     root_key = spec.get("root")
-    if not root_key:
+    if not root_key or root_key not in elements:
         return L3Document(namespace=None)
 
     used_eids: set[str] = set()
