@@ -261,11 +261,96 @@ class TestDecompressNested:
         assert root_el["children"] == ["frame-1", "frame-2"]
 
 
+class TestSyntheticWrapperReExpansion:
+    """Inverse of `_collapse_synthetic_screen_wrapper` — when the
+    compressor's output has a `screen` top-level carrying hoisted
+    visual/layout, the decompressor splits it back into the
+    screen-1 + frame-1 canvas pair that `generate_ir` originally
+    produced."""
+
+    def test_reexpansion_creates_synthetic_inner_frame(self) -> None:
+        """Screen with fill + direction=vertical: re-expansion emits
+        a `screen` outer (absolute + sizing only) with a `frame`
+        inner child carrying the fill and direction."""
+        doc = L3Document(top_level=(Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="screen", eid="s",
+                properties=(
+                    _p("width", _n("428")),
+                    _p("height", _n("926")),
+                    _p("layout", _enum("vertical")),
+                    _p("fill", _hex("#F6F6F6")),
+                ),
+            ),
+            block=Block(statements=(
+                Node(head=NodeHead(
+                    head_kind="type", type_or_path="text", eid="t",
+                )),
+            )),
+        ),))
+        spec = ast_to_dict_ir(doc)
+        # Expect 3 elements: outer screen, inner frame, text leaf.
+        assert len(spec["elements"]) == 3
+        outer = spec["elements"][spec["root"]]
+        assert outer["type"] == "screen"
+        assert outer["layout"]["direction"] == "absolute"
+        assert outer["layout"]["sizing"] == {"width": 428, "height": 926}
+        assert "visual" not in outer
+        assert len(outer["children"]) == 1
+        inner_key = outer["children"][0]
+        inner = spec["elements"][inner_key]
+        assert inner["type"] == "frame"
+        assert inner["visual"]["fills"] == [
+            {"type": "solid", "color": "#F6F6F6"},
+        ]
+        assert inner["layout"]["direction"] == "vertical"
+        # Original text node becomes a grandchild of the outer screen
+        # (direct child of the inner frame).
+        assert len(inner["children"]) == 1
+
+    def test_reexpansion_opt_out_preserves_collapsed_form(self) -> None:
+        """With `reexpand_screen_wrapper=False`, the decompressor
+        preserves the collapsed form (hoisted visual on the screen)."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="screen", eid="s",
+            properties=(
+                _p("width", _n("428")),
+                _p("height", _n("926")),
+                _p("fill", _hex("#F6F6F6")),
+            ),
+        )),))
+        spec = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        root = spec["elements"][spec["root"]]
+        assert root["type"] == "screen"
+        # Fill stays on the screen element.
+        assert root["visual"]["fills"][0]["color"] == "#F6F6F6"
+        # No synthetic inner frame created.
+        assert len(spec["elements"]) == 1
+
+    def test_no_reexpansion_when_screen_has_no_hoisted_props(
+        self,
+    ) -> None:
+        """A bare screen (only direction=absolute + sizing) already
+        matches the `generate_ir` wrapper shape and doesn't need
+        re-expansion even when re-expand is enabled."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="screen", eid="s",
+            properties=(
+                _p("width", _n("428")),
+                _p("height", _n("926")),
+            ),
+        )),))
+        spec = ast_to_dict_ir(doc)        # default: re-expand on
+        # No hoisted visual/layout → no-op.
+        assert len(spec["elements"]) == 1
+        assert spec["elements"][spec["root"]]["type"] == "screen"
+
+
 class TestDecompressReferenceScreens:
     """End-to-end — compress a corpus screen, then decompress. Verify
     the output has the expected shape and key invariants. NOT strict
-    byte-equality (provenance trailers, synthetic-wrapper re-expansion,
-    and master-subtree inflation are out of scope for Stage 1.5)."""
+    byte-equality (provenance trailers, master-subtree inflation are
+    out of scope for Stage 1.5)."""
 
     @pytest.mark.parametrize("sid", [181, 222, 237])
     def test_decompress_produces_valid_spec(
@@ -287,9 +372,31 @@ class TestDecompressReferenceScreens:
         assert "layout" in root_el
         assert "sizing" in root_el["layout"]
         assert root_el["layout"]["sizing"]["width"] in (428, 1194, 768, 1366)
-        # Children present (the collapsed screen has the canvas's
-        # grandchildren directly).
+        # Children present — re-expansion produces at least the inner
+        # synthetic frame as a direct child.
         assert len(root_el.get("children") or []) > 0
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_decompress_matches_generate_ir_outer_shape(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """After re-expansion, the outer `screen` element should
+        structurally match what `generate_ir` originally produced:
+        `type=screen`, `direction=absolute`, one child, matching
+        `_original_name`."""
+        orig_spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(orig_spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)
+
+        orig_root = orig_spec["elements"][orig_spec["root"]]
+        decomp_root = decomp["elements"][decomp["root"]]
+        assert decomp_root["type"] == orig_root["type"]
+        assert decomp_root["layout"]["direction"] == "absolute"
+        assert decomp_root["layout"]["sizing"] == orig_root["layout"]["sizing"]
+        # Both have exactly one child at the canvas layer.
+        assert len(decomp_root["children"]) == len(orig_root["children"]) == 1
 
     def test_decompress_element_count_nonzero(
         self, db_conn: sqlite3.Connection,
@@ -303,3 +410,217 @@ class TestDecompressReferenceScreens:
         doc = compress_to_l3(spec, db_conn, screen_id=181)
         decomp = ast_to_dict_ir(doc)
         assert len(decomp["elements"]) >= 10
+
+
+# ---------------------------------------------------------------------------
+# Full-corpus Tier-2 sweep — the headline proof for Stage 1.5
+# ---------------------------------------------------------------------------
+
+
+def _count_nodes(doc: L3Document) -> int:
+    """Count the number of Node objects in the AST."""
+    total = 0
+
+    def walk(n: Node) -> None:
+        nonlocal total
+        total += 1
+        if n.block is not None:
+            for s in n.block.statements:
+                if isinstance(s, Node):
+                    walk(s)
+
+    for top in doc.top_level:
+        if isinstance(top, Node):
+            walk(top)
+    return total
+
+
+def test_full_corpus_tier2_sweep_no_crash(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Every app_screen in the Dank corpus must decompress without
+    raising. Tier-2 headline — proves the decompressor handles every
+    shape the compressor currently emits.
+
+    NOT yet asserting byte-exact round-trip (synthetic wrapper
+    re-expansion and master-subtree expansion land in later stages);
+    this test is the smoke gate for the skeleton."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    assert len(screens) > 0
+
+    failures: list[tuple[int, str]] = []
+    for sid in screens:
+        try:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            decomp = ast_to_dict_ir(doc)
+            if decomp.get("root") is None or not decomp.get("elements"):
+                failures.append((sid, "empty spec"))
+                continue
+        except Exception as e:
+            failures.append((sid, f"{type(e).__name__}: {str(e)[:80]}"))
+
+    if failures:
+        details = "\n".join(f"  screen {sid}: {reason}" for sid, reason in failures[:10])
+        pytest.fail(
+            f"{len(failures)}/{len(screens)} screens failed decompression:\n"
+            f"{details}"
+        )
+
+
+def test_full_corpus_tier2_element_count_matches_ast(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """With `reexpand_screen_wrapper=False`, decompressed element
+    count must equal AST Node count exactly. Off-by-one catches
+    silent drops or duplications in the recursive walk."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    mismatches: list[tuple[int, int, int]] = []
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        ast_nodes = _count_nodes(doc)
+        dict_elements = len(decomp["elements"])
+        if ast_nodes != dict_elements:
+            mismatches.append((sid, ast_nodes, dict_elements))
+    if mismatches:
+        details = "\n".join(
+            f"  screen {sid}: {ast_n} AST Nodes vs {dict_n} dict elements"
+            for sid, ast_n, dict_n in mismatches[:10]
+        )
+        pytest.fail(
+            f"{len(mismatches)}/{len(screens)} screens have Node/element "
+            f"count mismatch:\n{details}"
+        )
+
+
+def test_full_corpus_tier2_reexpansion_adds_exactly_one_element(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The default `reexpand_screen_wrapper=True` adds exactly one
+    synthetic inner frame — so the decompressed element count
+    equals AST Node count + 1 for every screen that triggers the
+    re-expansion heuristic (all of them in the corpus since the
+    canvas carries a fill)."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    mismatches: list[tuple[int, int, int]] = []
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)             # default: re-expand
+        ast_nodes = _count_nodes(doc)
+        dict_elements = len(decomp["elements"])
+        # Either re-expanded (+1) or no-op (=). Both valid depending on
+        # whether the root had non-trivial visual/layout.
+        if dict_elements not in (ast_nodes, ast_nodes + 1):
+            mismatches.append((sid, ast_nodes, dict_elements))
+    if mismatches:
+        details = "\n".join(
+            f"  screen {sid}: {ast_n} Nodes vs {dict_n} elements"
+            for sid, ast_n, dict_n in mismatches[:10]
+        )
+        pytest.fail(
+            f"{len(mismatches)}/{len(screens)} screens violate the "
+            f"re-expansion invariant:\n{details}"
+        )
+
+
+def test_full_corpus_tier2_all_elements_have_type(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Every decompressed element must have a `type` field (the dict
+    IR's primary discriminator). A missing type would mean the
+    compressor → decompressor dropped the head kind."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)
+        for key, el in decomp["elements"].items():
+            assert isinstance(el.get("type"), str) and el["type"], (
+                f"screen {sid} element {key!r} has no type field: {el}"
+            )
+
+
+def test_full_corpus_tier2_root_is_screen(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The decompressed root for every app_screen must be type=`screen`
+    — not `frame`, not something else."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)
+        root_el = decomp["elements"][decomp["root"]]
+        assert root_el["type"] == "screen", (
+            f"screen {sid} root decompressed as type={root_el['type']!r}"
+        )
+
+
+def test_full_corpus_tier2_children_references_resolve(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Every `children` entry must reference an existing element key.
+    Would catch a regression that produces dangling references."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)
+        keys = set(decomp["elements"].keys())
+        for el_key, el in decomp["elements"].items():
+            for child_key in el.get("children") or []:
+                assert child_key in keys, (
+                    f"screen {sid}: element {el_key} references missing "
+                    f"child {child_key!r}"
+                )

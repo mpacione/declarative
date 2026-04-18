@@ -372,7 +372,95 @@ def _decode_node(
 # ---------------------------------------------------------------------------
 
 
-def ast_to_dict_ir(doc: L3Document) -> dict:
+def _reexpand_synthetic_wrapper(spec: dict) -> dict:
+    """Inverse of the compressor's `_collapse_synthetic_screen_wrapper`.
+
+    When the compressor emits a `screen` top-level with hoisted visual
+    properties (fill, etc.) and direct canvas-level children, this
+    function splits the single element back into the pair
+    `generate_ir` originally produced:
+
+        screen-1 (type=screen, direction=absolute, sizing only)
+          └── frame-1 (type=frame, visual + layout + children)
+
+    Keeps the synthetic `_original_name` on both elements so the shape
+    matches `generate_ir` exactly.
+
+    Heuristic for triggering: root.type == "screen" AND root has a
+    `visual` dict OR root.layout contains more than just direction +
+    sizing. Without hoisted properties the screen is already in the
+    "bare wrapper" form and doesn't need re-expansion.
+    """
+    root_key = spec.get("root")
+    elements = spec.get("elements")
+    if not isinstance(root_key, str) or not isinstance(elements, dict):
+        return spec
+    root = elements.get(root_key)
+    if not isinstance(root, dict) or root.get("type") != "screen":
+        return spec
+
+    has_visual = bool(root.get("visual"))
+    root_layout = root.get("layout") or {}
+    has_non_trivial_layout = any(
+        k for k in root_layout.keys()
+        if k not in ("direction", "sizing")
+    ) or root_layout.get("direction") not in (None, "absolute")
+    if not (has_visual or has_non_trivial_layout):
+        return spec
+
+    # Build the inner frame carrying everything except the screen's
+    # authoritative sizing.
+    inner_key = "frame-1"
+    # Avoid collision with existing keys.
+    n = 1
+    while inner_key in elements:
+        n += 1
+        inner_key = f"frame-{n}"
+
+    # The inner frame carries the REAL layout (direction, padding,
+    # alignment, gap). The outer screen only gets a placeholder
+    # `direction=absolute` + sizing. Keep sizing on the inner too —
+    # the canvas frame carries the same dimensions.
+    inner_layout = dict(root_layout)
+    inner: dict = {
+        "type": "frame",
+        "_mode1_eligible": False,
+        "layout": inner_layout,
+    }
+    if root.get("visual"):
+        inner["visual"] = root["visual"]
+    if "_original_name" in root:
+        inner["_original_name"] = root["_original_name"]
+    # Inner child's position is 0,0 by definition.
+    inner_layout.setdefault("position", {"x": 0, "y": 0})
+    # Original children of the collapsed root become children of the
+    # inner frame.
+    if root.get("children"):
+        inner["children"] = list(root["children"])
+
+    # Rewrite the outer screen: strip visual, keep direction=absolute,
+    # keep sizing, its only child is the inner frame.
+    outer: dict = {
+        "type": "screen",
+        "layout": {
+            "direction": "absolute",
+            "sizing": dict(root_layout.get("sizing") or {}),
+        },
+        "children": [inner_key],
+    }
+    if "_original_name" in root:
+        outer["_original_name"] = root["_original_name"]
+
+    new_elements = dict(elements)
+    new_elements[root_key] = outer
+    new_elements[inner_key] = inner
+
+    return {**spec, "elements": new_elements}
+
+
+def ast_to_dict_ir(
+    doc: L3Document, *, reexpand_screen_wrapper: bool = True,
+) -> dict:
     """Decompress an `L3Document` AST into a CompositionSpec dict IR.
 
     Output shape matches `dd.ir.generate_ir(..., semantic=True)["spec"]`:
@@ -385,6 +473,12 @@ def ast_to_dict_ir(doc: L3Document) -> dict:
                 ...
             },
         }
+
+    When `reexpand_screen_wrapper=True` (default), re-expands the
+    synthetic screen→canvas-FRAME pair the compressor collapses — so
+    the output structurally mirrors what `generate_ir` produced
+    before compression. Pass `False` for the flat form (screen with
+    hoisted visual + direct canvas grandchildren).
 
     Stage 1.5 MVP — handles the shapes the compressor can currently
     produce. Round-trip is semantic, not byte-exact: provenance
@@ -404,8 +498,11 @@ def ast_to_dict_ir(doc: L3Document) -> dict:
     if root_key is None:
         return empty_spec
 
-    return {
+    spec = {
         "version": "1.0",
         "root": root_key,
         "elements": ctx.elements,
     }
+    if reexpand_screen_wrapper:
+        spec = _reexpand_synthetic_wrapper(spec)
+    return spec
