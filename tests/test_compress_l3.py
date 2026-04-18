@@ -455,6 +455,53 @@ class TestRegressionFromReview:
         emitted = emit_l3(doc)
         assert emitted.count("radius=") >= 5
 
+    def test_circular_reference_does_not_recurse_infinitely(self) -> None:
+        """A spec with cyclic `children` references should gracefully
+        drop the cycle — not raise RecursionError."""
+        fake_spec = {
+            "version": "1.0",
+            "root": "a",
+            "elements": {
+                "a": {
+                    "type": "frame",
+                    "layout": {"sizing": {"width": 100, "height": 100}},
+                    "children": ["b"],
+                },
+                "b": {
+                    "type": "frame",
+                    "layout": {"sizing": {"width": 50, "height": 50}},
+                    "children": ["a"],    # cycle: a → b → a
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {},
+        }
+        # Should return a valid document, with `a` having `b` as a
+        # child whose OWN `a`-child recursion was short-circuited.
+        doc = compress_to_l3(fake_spec, conn=None)
+        assert isinstance(doc, L3Document)
+        assert len(doc.top_level) == 1
+
+    def test_instance_swap_self_override_changes_slash_path(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """A `:self` INSTANCE_SWAP override replaces the CompRef's
+        target component. Screen 325 has 46 such swaps; after Slice B
+        the emitted output should show varied slash-paths reflecting
+        the swap targets."""
+        doc = compress_to_l3(
+            generate_ir(db_conn, 325, semantic=True)["spec"],
+            db_conn,
+            screen_id=325,
+        )
+        emitted = emit_l3(doc)
+        # Count unique comp-ref paths in the output
+        import re
+        paths = set(re.findall(r"-> ([a-z0-9_./-]+)", emitted))
+        assert len(paths) >= 3, (
+            f"expected ≥3 distinct CompRef paths on screen 325; got {paths}"
+        )
+
     def test_bounded_sizing_emitted(
         self, db_conn: sqlite3.Connection,
     ) -> None:

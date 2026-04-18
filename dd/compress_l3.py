@@ -483,6 +483,8 @@ def _compress_element(
     self_overrides: dict[str, list[PropAssign]],
     radius_map: dict[str, object],
     bounds_map: dict[str, dict[str, float]],
+    swap_paths: dict[str, str],
+    visiting: frozenset[str] = frozenset(),
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -490,8 +492,14 @@ def _compress_element(
     `comp_names` maps element-id → master component name (from CKR) for
     Mode-1-eligible elements; an empty string signals "lookup failed,
     fall back to inline frame".
-    Returns None if the element has no usable type.
+    `visiting` is a frozenset of element-ids currently on the recursion
+    stack — a cycle in `children` edges returns None instead of
+    blowing the stack.
+    Returns None if the element has no usable type or is already on
+    the recursion stack.
     """
+    if eid_key in visiting:
+        return None                          # circular-reference guard
     element = spec["elements"].get(eid_key)
     if not element:
         return None
@@ -528,9 +536,12 @@ def _compress_element(
 
     # Mode-1 eligible nodes with a resolved CKR master name emit as a
     # CompRef (`-> slash/path`). Lookup miss → fall back to inline type.
+    # An INSTANCE_SWAP `:self` override overrides the master name: the
+    # swap's replacement slash-path takes precedence per L0↔L3 §2.7.2
+    # step 3 (root form — the WHOLE CompRef changes).
     head_kind = "type"
     type_or_path = type_str
-    master_name = comp_names.get(eid_key, "")
+    master_name = swap_paths.get(eid_key) or comp_names.get(eid_key, "")
     if element.get("_mode1_eligible") and master_name:
         slash = derive_comp_slash_path(master_name)
         if slash:
@@ -639,10 +650,12 @@ def _compress_element(
         child_ids = element.get("children") or []
         child_counter: dict[str, int] = {}
         child_used_eids: set[str] = set()     # per-Block scope
+        next_visiting = visiting | {eid_key}
         for child_id in child_ids:
             child_node = _compress_element(
                 child_id, spec, child_counter, child_used_eids,
                 comp_names, self_overrides, radius_map, bounds_map,
+                swap_paths, visiting=next_visiting,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -825,18 +838,25 @@ def _fetch_self_overrides(
     conn: Optional[sqlite3.Connection],
     node_id_map: dict[str, int],
     eligible_eids: list[str],
-) -> dict[str, list[PropAssign]]:
+) -> tuple[dict[str, list[PropAssign]], dict[str, str]]:
     """Fetch `:self:*` instance overrides for every element-id that
-    emitted as a CompRef. Returns `{eid: [PropAssign, ...]}`.
+    emitted as a CompRef.
+
+    Returns:
+    - `props_by_eid`: `{eid: [PropAssign, ...]}` — scalar override
+      properties to merge onto the CompRef head.
+    - `swap_by_eid`: `{eid: replacement_component_key}` — root
+      INSTANCE_SWAP overrides (the CompRef's slash-path itself
+      changes). Caller resolves replacement_component_key via CKR.
 
     Skips child-path (`;figmaId:...`) rows — those require master-
     subtree walking (Stage 1.7 scope).
     """
     if conn is None or not eligible_eids:
-        return {}
+        return {}, {}
     node_ids = [node_id_map[eid] for eid in eligible_eids if eid in node_id_map]
     if not node_ids:
-        return {}
+        return {}, {}
     placeholders = ",".join("?" for _ in node_ids)
     rows = conn.execute(
         f"SELECT io.node_id, io.property_type, io.property_name, "
@@ -853,13 +873,20 @@ def _fetch_self_overrides(
         if eid in eligible_eids:
             node_id_to_eid[nid] = eid
 
-    out: dict[str, list[PropAssign]] = {}
+    props_by_eid: dict[str, list[PropAssign]] = {}
+    swap_by_eid: dict[str, str] = {}
     for row in rows:
         nid, ptype, pname, pval = row[0], row[1], row[2], row[3]
         eid = node_id_to_eid.get(nid)
         if eid is None or pval is None:
             continue
-        props = out.setdefault(eid, [])
+        # Root INSTANCE_SWAP — `property_name == ':self'`, override_value
+        # is the replacement `component_key`. The CompRef slash-path
+        # will be re-resolved against the CKR.
+        if ptype == "INSTANCE_SWAP" and pname == ":self":
+            swap_by_eid[eid] = pval
+            continue
+        props = props_by_eid.setdefault(eid, [])
         # Scalar map handles the common cases in one dict
         key_fn = _SELF_OVERRIDE_SCALAR_MAP.get((ptype, pname))
         if key_fn is not None:
@@ -881,7 +908,24 @@ def _fetch_self_overrides(
                     key="width",
                     value=SizingValue(size_kind=dd_val),  # type: ignore[arg-type]
                 ))
-    return out
+    return props_by_eid, swap_by_eid
+
+
+def _resolve_swap_component_name(
+    conn: Optional[sqlite3.Connection],
+    component_keys: list[str],
+) -> dict[str, str]:
+    """Look up replacement-component names for INSTANCE_SWAP overrides.
+    Uses the same CKR join as `_build_comp_names_map`."""
+    if conn is None or not component_keys:
+        return {}
+    placeholders = ",".join("?" for _ in component_keys)
+    rows = conn.execute(
+        f"SELECT component_key, name FROM component_key_registry "
+        f"WHERE component_key IN ({placeholders})",
+        component_keys,
+    ).fetchall()
+    return {row[0]: row[1] for row in rows if row[1]}
 
 
 def _build_comp_names_map(
@@ -959,14 +1003,25 @@ def compress_to_l3(
     # Eligible EIDs for override lookup = those that will emit as
     # CompRefs (Mode-1 + CKR resolved).
     eligible_eids = list(comp_names.keys())
-    self_overrides = _fetch_self_overrides(conn, node_id_map, eligible_eids)
+    self_overrides, swap_keys = _fetch_self_overrides(
+        conn, node_id_map, eligible_eids,
+    )
+    # Resolve INSTANCE_SWAP replacement component_keys → names via CKR.
+    swap_names = _resolve_swap_component_name(
+        conn, list(set(swap_keys.values())),
+    )
+    swap_paths = {
+        eid: swap_names[ck]
+        for eid, ck in swap_keys.items()
+        if ck in swap_names
+    }
     # cornerRadius + min/max bounds live in the nodes table — neither
     # is copied into the CompositionSpec. Both require a batched query.
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
     bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
-        comp_names, self_overrides, radius_map, bounds_map,
+        comp_names, self_overrides, radius_map, bounds_map, swap_paths,
     )
     if root_node is None:
         return L3Document(namespace=None)
