@@ -428,6 +428,66 @@ class TestSelfOverrideCorpusCoverage:
     """Sanity-check that the new `:self` handlers actually fire on the
     Dank corpus (i.e. we're not just testing dead code)."""
 
+    def test_shadow_all_hidden_diagnostic_roundtrips(self) -> None:
+        """`$ext.shadow_all_hidden=true` must tokenize/parse/re-emit
+        as a plain bool-valued ext-prop. Exercises the emitter and
+        parser's ext-prop path — important because the 204-screen
+        corpus only hits this shape via CompRef overrides (all-hidden
+        :self:effects), and a regression in the parser's ext-prop
+        handling would otherwise pass the corpus sweep."""
+        from dd.markup_l3 import (
+            Block, L3Document, Literal_, Node, NodeHead,
+            PropAssign, emit_l3, parse_l3,
+        )
+        doc = L3Document(
+            top_level=(Node(head=NodeHead(
+                head_kind="type",
+                type_or_path="frame",
+                eid="f",
+                properties=(PropAssign(
+                    key="$ext.shadow_all_hidden",
+                    value=Literal_(lit_kind="bool", raw="true", py=True),
+                ),),
+            )),),
+        )
+        emitted = emit_l3(doc)
+        assert "$ext.shadow_all_hidden=true" in emitted
+        parsed = parse_l3(emitted)
+        assert parsed == doc
+
+    def test_shadow_all_hidden_suppresses_inherited_shadow_corpus(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """For corpus CompRefs where `:self:effects` is all-hidden, the
+        emitted output must NOT also carry a spec-path `shadow=...`
+        PropAssign — the suppress-set handshake would be toothless
+        otherwise, and the renderer would still apply the master's
+        shadow despite the designer's intent to hide it."""
+        from dd.compress_l3 import compress_to_l3
+        from dd.ir import generate_ir
+        from dd.markup_l3 import emit_l3
+
+        row = db_conn.execute(
+            "SELECT DISTINCT n.screen_id FROM instance_overrides io "
+            "JOIN nodes n ON n.id = io.node_id "
+            "WHERE io.property_name = ':self:effects' LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        spec = generate_ir(
+            db_conn, row[0], semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=row[0])
+        emitted = emit_l3(doc)
+
+        # Any line carrying the diagnostic must NOT also carry a
+        # `shadow=shadow(...)` PropAssign on the same head.
+        for ln in emitted.splitlines():
+            if "$ext.shadow_all_hidden" in ln:
+                assert "shadow=shadow(" not in ln, (
+                    f"shadow suppression regression — line still has "
+                    f"inherited shadow alongside diagnostic: {ln!r}"
+                )
+
     def test_self_effects_surfaces_diagnostic_from_fetch(
         self, db_conn: sqlite3.Connection,
     ) -> None:
@@ -454,7 +514,7 @@ class TestSelfOverrideCorpusCoverage:
             db_conn, row[0], semantic=True, filter_chrome=False,
         )["spec"]
         node_id_map = spec.get("_node_id_map") or {}
-        props_by_eid, _ = _fetch_self_overrides(
+        props_by_eid, _, _ = _fetch_self_overrides(
             db_conn, node_id_map, list(node_id_map.keys()),
         )
         found = False
@@ -499,7 +559,7 @@ class TestSelfOverrideCorpusCoverage:
             db_conn, row[0], semantic=True, filter_chrome=False,
         )["spec"]
         node_id_map = spec.get("_node_id_map") or {}
-        props_by_eid, _ = _fetch_self_overrides(
+        props_by_eid, _, _ = _fetch_self_overrides(
             db_conn, node_id_map, list(node_id_map.keys()),
         )
         # At least one eid on this screen must have a `padding=`
@@ -594,6 +654,100 @@ class TestOverrideMergeSemantics:
         merged = _merge_override_prop([], override)
         assert merged == [override]
 
+    def test_radius_propgroup_merge_per_corner(self) -> None:
+        """Spec §7.6 radius PropGroup: override patches one corner,
+        other three corners preserved in canonical order
+        top-left, top-right, bottom-right, bottom-left."""
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign, PropGroup
+
+        def n(raw: str) -> Literal_:
+            return Literal_(lit_kind="number", raw=raw, py=int(raw))
+
+        spec_radius = PropAssign(
+            key="radius",
+            value=PropGroup(entries=(
+                PropAssign(key="top-left", value=n("8")),
+                PropAssign(key="top-right", value=n("8")),
+                PropAssign(key="bottom-right", value=n("8")),
+                PropAssign(key="bottom-left", value=n("8")),
+            )),
+        )
+        override_radius = PropAssign(
+            key="radius",
+            value=PropGroup(entries=(
+                PropAssign(key="top-left", value=n("20")),
+            )),
+        )
+        merged = _merge_override_prop([spec_radius], override_radius)
+        assert len(merged) == 1
+        keys = [e.key for e in merged[0].value.entries]
+        assert keys == [
+            "top-left", "top-right", "bottom-right", "bottom-left",
+        ]
+        values = [e.value.py for e in merged[0].value.entries]
+        assert values == [20, 8, 8, 8]
+
+    def test_scalar_radius_existing_with_propgroup_override_replaces(
+        self,
+    ) -> None:
+        """When the spec emits `radius=N` (scalar Literal_) and the
+        override arrives as `radius=PropGroup(...)`, the merge falls
+        through to wholesale replace (no per-entry merge possible —
+        existing has no entries). Per Figma semantics, a per-corner
+        override on a uniform-radius instance replaces uniformly."""
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign, PropGroup
+
+        def n(raw: str) -> Literal_:
+            return Literal_(lit_kind="number", raw=raw, py=int(raw))
+
+        spec = PropAssign(key="radius", value=n("10"))
+        override = PropAssign(
+            key="radius",
+            value=PropGroup(entries=(
+                PropAssign(key="top-left", value=n("20")),
+            )),
+        )
+        merged = _merge_override_prop([spec], override)
+        assert len(merged) == 1
+        assert merged[0] is override      # wholesale replaced
+
+    def test_padding_override_preserves_left_right_when_patching_top_bottom(
+        self,
+    ) -> None:
+        """Partial side combo: override patches only top+bottom while
+        spec had all four sides. Left/right from spec must survive
+        and canonical order is unaffected."""
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign, PropGroup
+
+        def n(raw: str) -> Literal_:
+            return Literal_(lit_kind="number", raw=raw, py=int(raw))
+
+        spec_padding = PropAssign(
+            key="padding",
+            value=PropGroup(entries=(
+                PropAssign(key="top", value=n("10")),
+                PropAssign(key="right", value=n("12")),
+                PropAssign(key="bottom", value=n("10")),
+                PropAssign(key="left", value=n("12")),
+            )),
+        )
+        override_padding = PropAssign(
+            key="padding",
+            value=PropGroup(entries=(
+                PropAssign(key="top", value=n("24")),
+                PropAssign(key="bottom", value=n("24")),
+            )),
+        )
+        merged = _merge_override_prop([spec_padding], override_padding)
+        entries = merged[0].value.entries
+        assert [e.key for e in entries] == [
+            "top", "right", "bottom", "left",
+        ]
+        assert [e.value.py for e in entries] == [24, 12, 24, 12]
+
 
 class TestMainAxisEnumNormalization:
     """Grammar §7.4 — `mainAxis` values are
@@ -621,6 +775,23 @@ class TestMainAxisEnumNormalization:
             assert "mainAxis=max" not in out
             assert "mainAxis=space_between" not in out  # underscore variant
 
+    def test_primary_align_space_around_and_space_evenly_map_correctly(
+        self,
+    ) -> None:
+        """`SPACE_AROUND`/`SPACE_EVENLY` are in `_PRIMARY_AXIS_MAP` but
+        may have no corpus coverage. Assert the map itself contains the
+        grammar-§7.4-legal forms. (Directly tests the map because the
+        corpus won't exercise these otherwise.)"""
+        from dd.compress_l3 import _PRIMARY_AXIS_MAP
+        assert _PRIMARY_AXIS_MAP["SPACE_AROUND"] == "space-around"
+        assert _PRIMARY_AXIS_MAP["SPACE_EVENLY"] == "space-evenly"
+        # All 6 §7.4 legal values covered.
+        legal = {
+            "start", "end", "center",
+            "space-between", "space-around", "space-evenly",
+        }
+        assert set(_PRIMARY_AXIS_MAP.values()) == legal
+
     def test_primary_align_self_override_emits_grammar_enum(
         self, db_conn: sqlite3.Connection,
     ) -> None:
@@ -644,7 +815,7 @@ class TestMainAxisEnumNormalization:
             db_conn, row[0], semantic=True, filter_chrome=False,
         )["spec"]
         node_id_map = spec.get("_node_id_map") or {}
-        props_by_eid, _ = _fetch_self_overrides(
+        props_by_eid, _, _ = _fetch_self_overrides(
             db_conn, node_id_map, list(node_id_map.keys()),
         )
         legal_values = {

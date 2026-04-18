@@ -648,6 +648,7 @@ def _compress_element(
     radius_map: dict[str, object],
     bounds_map: dict[str, dict[str, float]],
     swap_paths: dict[str, str],
+    suppress_keys: dict[str, set[str]],
     visiting: frozenset[str] = frozenset(),
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
@@ -763,9 +764,17 @@ def _compress_element(
     # Slice B MVP: flatten `:self` instance overrides onto CompRef heads.
     # Only runs for Mode-1-eligible nodes that successfully resolved to
     # a CompRef; inline-frame fallbacks skip this step.
-    if head_kind == "comp-ref" and eid_key in self_overrides:
-        for override_prop in self_overrides[eid_key]:
-            props = _merge_override_prop(props, override_prop)
+    if head_kind == "comp-ref":
+        # First drop any spec-path PropAssigns the override layer asked
+        # to suppress (e.g. inherited `shadow=` when an override's
+        # :self:effects is all-hidden). Must happen BEFORE the merge so
+        # the override's ext-prop diagnostic isn't overwritten.
+        keys_to_drop = suppress_keys.get(eid_key)
+        if keys_to_drop:
+            props = [p for p in props if p.key not in keys_to_drop]
+        if eid_key in self_overrides:
+            for override_prop in self_overrides[eid_key]:
+                props = _merge_override_prop(props, override_prop)
 
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
@@ -812,7 +821,7 @@ def _compress_element(
             child_node = _compress_element(
                 child_id, spec, child_counter, child_used_eids,
                 comp_names, self_overrides, radius_map, bounds_map,
-                swap_paths, visiting=next_visiting,
+                swap_paths, suppress_keys, visiting=next_visiting,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -1017,14 +1026,8 @@ _MAIN_AXIS_SPEC_TO_GRAMMAR = {
     "center": "center",
     "max": "end",
     "space_between": "space-between",
-    "space-between": "space-between",
     "space_around": "space-around",
-    "space-around": "space-around",
     "space_evenly": "space-evenly",
-    "space-evenly": "space-evenly",
-    # Pre-normalized Figma values also accepted:
-    "start": "start",
-    "end": "end",
 }
 
 _CROSS_AXIS_SPEC_TO_GRAMMAR = {
@@ -1033,9 +1036,6 @@ _CROSS_AXIS_SPEC_TO_GRAMMAR = {
     "max": "end",
     "stretch": "stretch",
     "baseline": "baseline",
-    # Pre-normalized values:
-    "start": "start",
-    "end": "end",
 }
 
 
@@ -1051,7 +1051,11 @@ def _fetch_self_overrides(
     conn: Optional[sqlite3.Connection],
     node_id_map: dict[str, int],
     eligible_eids: list[str],
-) -> tuple[dict[str, list[PropAssign]], dict[str, str]]:
+) -> tuple[
+    dict[str, list[PropAssign]],
+    dict[str, str],
+    dict[str, set[str]],
+]:
     """Fetch `:self:*` instance overrides for every element-id that
     emitted as a CompRef.
 
@@ -1061,15 +1065,23 @@ def _fetch_self_overrides(
     - `swap_by_eid`: `{eid: replacement_component_key}` — root
       INSTANCE_SWAP overrides (the CompRef's slash-path itself
       changes). Caller resolves replacement_component_key via CKR.
+    - `suppress_by_eid`: `{eid: {key, ...}}` — spec-path PropAssigns
+      the override path wants the caller to REMOVE before applying
+      `props_by_eid`. Used when an override semantically means
+      "disable the master's value" (e.g. `:self:effects` consisting
+      entirely of hidden drop-shadows) but the grammar lacks a
+      `foo=none` form; the override then emits an `$ext.*` diagnostic
+      AND asks the caller to drop the master-inherited `shadow=` so
+      the diagnostic is the only remaining signal.
 
     Skips child-path (`;figmaId:...`) rows — those require master-
     subtree walking (Stage 1.7 scope).
     """
     if conn is None or not eligible_eids:
-        return {}, {}
+        return {}, {}, {}
     node_ids = [node_id_map[eid] for eid in eligible_eids if eid in node_id_map]
     if not node_ids:
-        return {}, {}
+        return {}, {}, {}
     placeholders = ",".join("?" for _ in node_ids)
     rows = conn.execute(
         f"SELECT io.node_id, io.property_type, io.property_name, "
@@ -1088,6 +1100,7 @@ def _fetch_self_overrides(
 
     props_by_eid: dict[str, list[PropAssign]] = {}
     swap_by_eid: dict[str, str] = {}
+    suppress_by_eid: dict[str, set[str]] = {}
     # Per-side padding is coalesced into a single `padding={...}`
     # PropGroup per eid so that `:self:paddingLeft` + `:self:paddingRight`
     # produce `padding={right=N left=N}` rather than two scattered
@@ -1144,10 +1157,14 @@ def _fetch_self_overrides(
         # same `$ext.shadow_extra_count` diagnostic used in `_visual_props`.
         # An override that consists entirely of hidden drops (Figma's
         # way of saying "turn off the master's shadow") emits
-        # `$ext.shadow_all_hidden=true` — the grammar lacks a
-        # `shadow=none` form, so without this diagnostic the override
-        # is indistinguishable from "inherit master's shadow" at
-        # round-trip (60% of corpus :self:effects rows are all-hidden).
+        # `$ext.shadow_all_hidden=true` AND adds `shadow` to the
+        # suppress set so `_compress_element` drops the inherited
+        # spec-path `shadow=`. The grammar lacks a `shadow=none` form,
+        # so without the suppress-set the override is toothless — at
+        # render time the master's shadow would still apply.
+        # 100% of Dank corpus :self:effects rows (391/391) are
+        # all-hidden — this is the only EFFECTS override shape we see
+        # in the wild today.
         if ptype == "EFFECTS" and pname == ":self:effects":
             try:
                 effects = json.loads(pval)
@@ -1173,6 +1190,11 @@ def _fetch_self_overrides(
                                 lit_kind="bool", raw="true", py=True,
                             ),
                         ))
+                        # Ask caller to drop any spec-derived `shadow=`
+                        # PropAssign — otherwise the master's shadow
+                        # keeps applying at render time and the
+                        # diagnostic is toothless.
+                        suppress_by_eid.setdefault(eid, set()).add("shadow")
                 extra = _count_extra_shadows(effects)
                 if extra > 0:
                     props.append(PropAssign(
@@ -1215,7 +1237,7 @@ def _fetch_self_overrides(
                 key="padding", value=PropGroup(entries=tuple(entries)),
             ))
 
-    return props_by_eid, swap_by_eid
+    return props_by_eid, swap_by_eid, suppress_by_eid
 
 
 def _raw_paint_json_to_value(raw_json: str) -> Optional[Value]:
@@ -1430,7 +1452,7 @@ def compress_to_l3(
     # Eligible EIDs for override lookup = those that will emit as
     # CompRefs (Mode-1 + CKR resolved).
     eligible_eids = list(comp_names.keys())
-    self_overrides, swap_keys = _fetch_self_overrides(
+    self_overrides, swap_keys, suppress_keys = _fetch_self_overrides(
         conn, node_id_map, eligible_eids,
     )
     # Resolve INSTANCE_SWAP replacement figma_node_ids → names via CKR.
@@ -1461,6 +1483,7 @@ def compress_to_l3(
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
         comp_names, self_overrides, radius_map, bounds_map, swap_paths,
+        suppress_keys,
     )
     if root_node is None:
         return L3Document(namespace=None)
