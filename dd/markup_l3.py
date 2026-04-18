@@ -368,6 +368,7 @@ TokenType = Literal[
     "VALUE_TRAILER_OPEN",                             # `#[` (compound)
     "AT", "ARROW",                                    # `->`
     "AMP", "DOLLAR",
+    "STAR", "DSTAR",                                  # `*` / `**` (edit-only)
     "EOL", "EOF",
     # Keywords get IDENT type; parser dispatches by value.
 ]
@@ -443,15 +444,29 @@ def tokenize(source: str) -> list[Token]:
             col = 1
             continue
 
-        # Comments
-        if ch == "/" and i + 1 < n and source[i + 1] == "/":
-            # Line comment — skip to EOL but don't consume EOL itself
+        # Comments — only recognized at a token-separating position.
+        # A `/*` inside a slash-path (e.g., `grid/*/buy-button` where
+        # `*` is a wildcard) must NOT be mis-lexed as a comment-open.
+        # Check: the preceding character must be whitespace / EOL /
+        # start-of-file. This mirrors how most config languages handle
+        # comment lookahead.
+        at_token_boundary = (i == 0) or source[i - 1] in " \t\r\n"
+        if (
+            at_token_boundary
+            and ch == "/"
+            and i + 1 < n
+            and source[i + 1] == "/"
+        ):
             while i < n and source[i] != "\n":
                 i += 1
                 col += 1
             continue
-        if ch == "/" and i + 1 < n and source[i + 1] == "*":
-            # Block comment — skip to `*/`
+        if (
+            at_token_boundary
+            and ch == "/"
+            and i + 1 < n
+            and source[i + 1] == "*"
+        ):
             start_line, start_col = line, col
             i += 2
             col += 2
@@ -585,6 +600,20 @@ def tokenize(source: str) -> list[Token]:
             toks.append(Token("DOLLAR", "$", line, col))
             i += 1
             col += 1
+            continue
+
+        # Wildcards `*` and `**` — edit-only per §5.2; lex here so the
+        # parser can detect them in construction context and raise
+        # KIND_WILDCARD_IN_CONSTRUCT with a proper parse error.
+        if ch == "*":
+            if i + 1 < n and source[i + 1] == "*":
+                toks.append(Token("DSTAR", "**", line, col))
+                i += 2
+                col += 2
+            else:
+                toks.append(Token("STAR", "*", line, col))
+                i += 1
+                col += 1
             continue
 
         # String literals — triple or single
@@ -1615,13 +1644,20 @@ def _parse_edit_node(c: _Cursor) -> Node:
         if nxt.type == "IDENT":
             parts.append(nxt.value)
             c.advance()
-        else:
-            # Wildcard or other — only IDENT allowed at construction.
+        elif nxt.type in ("STAR", "DSTAR"):
+            # Wildcards are edit-only per §5.2.
             raise DDMarkupParseError(
-                "wildcards are not allowed in construction `@eid` paths "
-                "(edit-verb context only)",
+                f"wildcard `{nxt.value}` is not allowed in a construction "
+                f"`@eid` path (edit-verb context only)",
                 kind="KIND_WILDCARD_IN_CONSTRUCT",
                 line=at_tok.line, col=at_tok.col,
+            )
+        else:
+            raise DDMarkupParseError(
+                f"expected IDENT after `{sep_tok.value}`, got "
+                f"{nxt.type} `{nxt.value}`",
+                kind="KIND_BAD_PATH",
+                line=nxt.line, col=nxt.col,
             )
     # Synthesize a Node with head_kind=type and the path as the type_or_path.
     # The edit-context semantic is preserved by the leading `@` — the
@@ -1744,16 +1780,19 @@ def _parse_param(c: _Cursor) -> Param:
 def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
     """Parse a dd markup source file and return its L3Document.
 
-    Stage 1.2 scope (slices A–I):
-    - Full preamble (namespace + use + tokens)
-    - Top-level nodes and defines with nested blocks
-    - All value forms (literal, token-ref, prop-group, sizing, function-call,
-      comp-ref-value, pattern-ref-value)
-    - Node + value trailers
-    - Pattern refs, slot fills, slot placeholders, path overrides
-    - `$ext.*` extension metadata
-    - Edit-context `@eid` in construction (parses; wildcard detection
-      fires `KIND_WILDCARD_IN_CONSTRUCT`)
+    Stage 1.2 scope (slices A–I + semantic):
+    - Full grammar (preamble, top-level nodes/defines, all value forms,
+      trailers, pattern refs, slot fills/placeholders, path overrides,
+      `$ext.*`, edit-context `@eid`)
+    - Semantic passes enforcing the KIND catalog in §9.5:
+      * KIND_DUPLICATE_EID (per-scope eid collision)
+      * KIND_UNKNOWN_FUNCTION (closed function-name set)
+      * KIND_AMBIGUOUS_PARAM (scalar-arg name clashes with internal eid
+        inside the same define body)
+      * KIND_SLOT_MISSING (pattern-ref call omits a required slot)
+      * KIND_CIRCULAR_DEFINE (three-color DFS on the define graph)
+      * KIND_CIRCULAR_TOKEN (topo sort on tokens block references)
+      * KIND_UNRESOLVED_REF (token / param lookup miss)
     """
     toks = tokenize(source)
     c = _Cursor(toks)
@@ -1772,7 +1811,37 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
             top_level.append(_parse_node(c))
         c.skip_eols()
 
-    # Semantic pass: collect `KIND_UNUSED_IMPORT` warnings.
+    # -----------------------------------------------------------------------
+    # Semantic passes — hard-errors are raised inline, warnings are
+    # collected. Ordering matters: pass earlier checks before later ones
+    # that depend on a valid AST (e.g., cycle detection before slot
+    # expansion).
+    # -----------------------------------------------------------------------
+
+    # 1. Per-node eid uniqueness (scope = direct-parent Block)
+    _check_duplicate_eids(top_level)
+
+    # 2. Closed function-name set
+    _check_function_names(top_level, tokens_tuple)
+
+    # 3. Cycle detection in `define` graph
+    _check_define_cycles(top_level)
+
+    # 4. Cycle detection in `tokens { }` self-references
+    _check_token_cycles(tokens_tuple)
+
+    # 5. Define-time ambiguous-param check — produces warnings rather
+    # than hard errors (hard-error only fires at call site when the
+    # disambiguation actually fails).
+    warnings.extend(_check_ambiguous_params(top_level))
+
+    # 6. Call-site slot-missing check
+    _check_slot_missing(top_level)
+
+    # 7. Token-ref resolution
+    _check_unresolved_refs(top_level, tokens_tuple, uses)
+
+    # 8. `KIND_UNUSED_IMPORT` warnings (non-fatal)
     used_aliases: set[str] = set()
     _collect_scope_aliases(top_level, used_aliases)
     for ta in tokens_tuple:
@@ -1793,6 +1862,477 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
         warnings=tuple(warnings),
         source_path=source_path,
     )
+
+
+# ---------------------------------------------------------------------------
+# Semantic passes
+# ---------------------------------------------------------------------------
+
+
+# Closed set per grammar §4.3.
+_KNOWN_FUNCTIONS = frozenset((
+    "gradient-linear", "gradient-radial", "image", "rgba", "shadow",
+))
+
+
+def _iter_nodes(items: object):
+    """Recursively yield every Node found in the AST."""
+    if items is None:
+        return
+    if isinstance(items, (list, tuple)):
+        for it in items:
+            yield from _iter_nodes(it)
+        return
+    if isinstance(items, Node):
+        yield items
+        if items.block is not None:
+            yield from _iter_nodes(items.block.statements)
+        return
+    if isinstance(items, Define):
+        for p in items.params:
+            yield from _iter_nodes(p.default)
+        if items.body is not None:
+            yield from _iter_nodes(items.body.statements)
+        return
+    if isinstance(items, SlotFill):
+        yield from _iter_nodes(items.node)
+        return
+    # Values that can contain nodes
+    if isinstance(items, (ComponentRefValue, PatternRefValue)):
+        return
+
+
+def _iter_function_calls(v: Value):
+    """Recursively yield every FunctionCall inside a value tree."""
+    if v is None:
+        return
+    if isinstance(v, FunctionCall):
+        yield v
+        for a in v.args:
+            yield from _iter_function_calls(a.value)
+        return
+    if isinstance(v, PropGroup):
+        for e in v.entries:
+            yield from _iter_function_calls(e.value)
+        return
+    if isinstance(v, Node):
+        # Node as a slot-default value — walk its properties too
+        for p in v.head.properties:
+            if isinstance(p, PropAssign):
+                yield from _iter_function_calls(p.value)
+        return
+
+
+def _check_duplicate_eids(top_level: list[object]) -> None:
+    """Grammar §5.1 — duplicate `#eid` within a scope is KIND_DUPLICATE_EID.
+
+    Scope is the enclosing Block (or the document root). The check walks
+    every Block and validates that no two sibling Nodes share the same eid.
+    """
+    def check_block(block: Optional[Block]) -> None:
+        if block is None:
+            return
+        seen: dict[str, Node] = {}
+        for stmt in block.statements:
+            if isinstance(stmt, Node) and stmt.head.eid:
+                if stmt.head.eid in seen:
+                    raise DDMarkupParseError(
+                        f"duplicate `#{stmt.head.eid}` in this scope",
+                        kind="KIND_DUPLICATE_EID",
+                        eid=stmt.head.eid,
+                    )
+                seen[stmt.head.eid] = stmt
+            # Recurse into child blocks
+            if isinstance(stmt, Node):
+                check_block(stmt.block)
+            elif isinstance(stmt, SlotFill):
+                check_block(stmt.node.block)
+
+    # Document-root scope
+    root_seen: dict[str, Node] = {}
+    for item in top_level:
+        if isinstance(item, Node) and item.head.eid:
+            if item.head.eid in root_seen:
+                raise DDMarkupParseError(
+                    f"duplicate `#{item.head.eid}` at document root",
+                    kind="KIND_DUPLICATE_EID",
+                    eid=item.head.eid,
+                )
+            root_seen[item.head.eid] = item
+        if isinstance(item, Node):
+            check_block(item.block)
+        elif isinstance(item, Define) and item.body is not None:
+            check_block(item.body)
+
+
+def _check_function_names(
+    top_level: list[object],
+    tokens: tuple[TokenAssign, ...],
+) -> None:
+    """Grammar §4.3 — FunctionCall with unknown name is KIND_UNKNOWN_FUNCTION."""
+    def scan_value(v: Value) -> None:
+        for fc in _iter_function_calls(v):
+            if fc.name not in _KNOWN_FUNCTIONS:
+                raise DDMarkupParseError(
+                    f"unknown function `{fc.name}`; "
+                    f"valid: {sorted(_KNOWN_FUNCTIONS)}",
+                    kind="KIND_UNKNOWN_FUNCTION",
+                )
+
+    for ta in tokens:
+        scan_value(ta.value)
+    for node in _iter_nodes(top_level):
+        for p in node.head.properties:
+            if isinstance(p, PropAssign):
+                scan_value(p.value)
+            elif isinstance(p, PathOverride):
+                scan_value(p.value)
+        if node.head.positional is not None:
+            scan_value(node.head.positional)
+        if node.block is not None:
+            for stmt in node.block.statements:
+                if isinstance(stmt, PropAssign):
+                    scan_value(stmt.value)
+
+
+def _check_define_cycles(top_level: list[object]) -> None:
+    """Grammar §6.3 — three-color DFS on the define reference graph."""
+    defines: dict[str, Define] = {
+        d.name: d for d in top_level if isinstance(d, Define)
+    }
+
+    def refs_in_define(d: Define) -> list[str]:
+        """Return every `& name` target inside `d`'s body or slot defaults."""
+        refs: list[str] = []
+        for p in d.params:
+            if p.param_kind == "slot" and p.default is not None:
+                _collect_pattern_refs(p.default, refs)
+        if d.body is not None:
+            for stmt in d.body.statements:
+                _collect_pattern_refs(stmt, refs)
+        return refs
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {name: WHITE for name in defines}
+
+    def dfs(name: str) -> None:
+        color[name] = GRAY
+        for target in refs_in_define(defines[name]):
+            if target not in defines:
+                continue                         # external ref (via alias)
+            if color[target] == GRAY:
+                raise DDMarkupParseError(
+                    f"circular define reference involving `{name}` → `{target}`",
+                    kind="KIND_CIRCULAR_DEFINE",
+                )
+            if color[target] == WHITE:
+                dfs(target)
+        color[name] = BLACK
+
+    for name in defines:
+        if color[name] == WHITE:
+            dfs(name)
+
+
+def _collect_pattern_refs(item: object, out: list[str]) -> None:
+    if item is None:
+        return
+    if isinstance(item, PatternRefValue):
+        out.append(item.path)
+    if isinstance(item, Node):
+        if item.head.head_kind == "pattern-ref":
+            out.append(item.head.type_or_path)
+        if item.block is not None:
+            for s in item.block.statements:
+                _collect_pattern_refs(s, out)
+    if isinstance(item, SlotFill):
+        _collect_pattern_refs(item.node, out)
+
+
+def _check_token_cycles(tokens: tuple[TokenAssign, ...]) -> None:
+    """L0↔L3 §2.10 — tokens block self-reference cycle detection."""
+    graph: dict[str, list[str]] = {}
+    for ta in tokens:
+        graph[ta.path] = _token_value_refs(ta.value)
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {k: WHITE for k in graph}
+
+    def dfs(node: str) -> None:
+        color[node] = GRAY
+        for ref in graph.get(node, ()):
+            if ref not in graph:
+                continue                          # external / universal
+            if color[ref] == GRAY:
+                raise DDMarkupParseError(
+                    f"circular token reference: `{node}` → `{ref}`",
+                    kind="KIND_CIRCULAR_TOKEN",
+                )
+            if color[ref] == WHITE:
+                dfs(ref)
+        color[node] = BLACK
+
+    for k in graph:
+        if color[k] == WHITE:
+            dfs(k)
+
+
+def _token_value_refs(v: Value) -> list[str]:
+    refs: list[str] = []
+    if isinstance(v, TokenRef):
+        # Only same-document refs (no scope alias)
+        if v.scope_alias is None:
+            refs.append(v.path)
+    elif isinstance(v, FunctionCall):
+        for a in v.args:
+            refs.extend(_token_value_refs(a.value))
+    elif isinstance(v, PropGroup):
+        for e in v.entries:
+            refs.extend(_token_value_refs(e.value))
+    return refs
+
+
+def _check_ambiguous_params(top_level: list[object]) -> list[Warning]:
+    """Grammar Q3 — scalar-arg name collision with internal eid inside
+    the same define body produces KIND_AMBIGUOUS_PARAM.
+
+    Implementation note: the strict check would fire at call site when
+    `name=X` could bind either to the scalar-arg OR to a path-override
+    targeting the internal eid. Since bare `name=X` (no dot) is always
+    a scalar-arg fill (§3.2 disambiguation), the AMBIGUITY only arises
+    if a call site uses path-addressing syntax. That's a RUNTIME
+    disambiguation, not a parse-time one — defer to Stage 4 pattern
+    expansion.
+
+    At parse time we emit a non-fatal warning so authors who introduce
+    this collision see it surfaced, without blocking the fixture
+    authoring patterns (fixture 01's `option-row(title: text, ... #title)`
+    is a legitimate convention).
+    """
+    warnings: list[Warning] = []
+    for item in top_level:
+        if not isinstance(item, Define):
+            continue
+        scalar_names = {
+            p.name for p in item.params if p.param_kind == "scalar"
+        }
+        internal_eids: set[str] = set()
+        if item.body is not None:
+            _collect_eids(item.body.statements, internal_eids)
+        for p in item.params:
+            if p.default is not None:
+                _collect_eids((p.default,), internal_eids)
+        collision = scalar_names & internal_eids
+        for name in sorted(collision):
+            warnings.append(Warning(
+                kind="KIND_AMBIGUOUS_PARAM",
+                message=(
+                    f"in define `{item.name}`, scalar param `{name}` "
+                    f"collides with internal `#{name}` eid; at call site "
+                    f"use `{name}=X` for scalar fill, `{name}.prop=X` "
+                    f"for path override"
+                ),
+            ))
+    return warnings
+
+
+def _collect_eids(items: object, out: set[str]) -> None:
+    if items is None:
+        return
+    if isinstance(items, (list, tuple)):
+        for it in items:
+            _collect_eids(it, out)
+        return
+    if isinstance(items, Node):
+        if items.head.eid:
+            out.add(items.head.eid)
+        if items.block is not None:
+            _collect_eids(items.block.statements, out)
+    elif isinstance(items, SlotFill):
+        _collect_eids(items.node, out)
+
+
+def _check_slot_missing(top_level: list[object]) -> None:
+    """Grammar §6.1 — pattern-ref call must fill every required slot.
+
+    Only same-file pattern refs are checked (cross-file `alias::name`
+    are deferred — the resolver phase handles external lookups).
+    """
+    defines: dict[str, Define] = {
+        d.name: d for d in top_level if isinstance(d, Define)
+    }
+
+    def check(node: object) -> None:
+        if not isinstance(node, Node):
+            return
+        if node.head.head_kind == "pattern-ref" and not node.head.scope_alias:
+            target = defines.get(node.head.type_or_path)
+            if target:
+                required_slots = {
+                    p.name for p in target.params
+                    if p.param_kind == "slot" and p.default is None
+                }
+                filled = _slot_fills(node)
+                missing = required_slots - filled
+                if missing:
+                    name = sorted(missing)[0]
+                    raise DDMarkupParseError(
+                        f"pattern-ref `& {target.name}` is missing "
+                        f"required slot `{name}`",
+                        kind="KIND_SLOT_MISSING",
+                    )
+        if node.block is not None:
+            for s in node.block.statements:
+                check(s)
+
+    for item in top_level:
+        check(item)
+        if isinstance(item, Define) and item.body is not None:
+            for s in item.body.statements:
+                check(s)
+
+
+def _slot_fills(pattern_ref_node: Node) -> set[str]:
+    """Return the set of slot names filled at a pattern-ref call site."""
+    filled: set[str] = set()
+    # Scalar args passed via property-assign on the ref head are NOT slot
+    # fills — they're arg substitutions. Only SlotFill statements count.
+    if pattern_ref_node.block is not None:
+        for s in pattern_ref_node.block.statements:
+            if isinstance(s, SlotFill):
+                filled.add(s.slot_name)
+    return filled
+
+
+def _check_unresolved_refs(
+    top_level: list[object],
+    tokens: tuple[TokenAssign, ...],
+    uses: tuple[UseDecl, ...],
+) -> None:
+    """Grammar §4.2 — `{path}` must resolve via the scope chain.
+
+    Resolution order:
+    1. Enclosing-define param scope (for scalar args)
+    2. Top-level `tokens { }` block
+    3. Imported tokens (via `use` alias) — deferred: can't load other
+       files at parse time, so alias-qualified refs are accepted as
+       "external" and deferred to expansion phase (Stage 4+)
+    4. Universal catalog (shadcn defaults) — heuristic match
+    5. Unresolved → KIND_UNRESOLVED_REF
+
+    This pass does a CONSERVATIVE check: it errors only when a same-file
+    `{path}` ref has no match in any of (1)–(4). Cross-alias refs are
+    not checked here.
+    """
+    local_tokens = {ta.path for ta in tokens}
+    alias_set = {u.alias for u in uses}
+
+    def scan(v: Value, scalar_params: set[str]) -> None:
+        if isinstance(v, TokenRef):
+            if v.scope_alias is not None:
+                # Cross-alias ref — defer to expansion phase
+                return
+            # Try: scalar-param scope → local tokens → universal prefix
+            first_seg = v.path.split(".", 1)[0]
+            if first_seg in scalar_params:
+                return                       # resolves to a param
+            if v.path in local_tokens:
+                return
+            if _matches_universal_prefix(v.path):
+                return                       # universal-catalog default
+            raise DDMarkupParseError(
+                f"unresolved token reference `{{{v.path}}}`",
+                kind="KIND_UNRESOLVED_REF",
+            )
+        if isinstance(v, FunctionCall):
+            for a in v.args:
+                scan(a.value, scalar_params)
+        elif isinstance(v, PropGroup):
+            for e in v.entries:
+                scan(e.value, scalar_params)
+        elif isinstance(v, Node):
+            scan_node(v, scalar_params)
+        # Literals and other value forms need no resolution
+
+    def scan_node(node: Node, scalar_params: set[str]) -> None:
+        if node.head.positional is not None:
+            scan(node.head.positional, scalar_params)
+        for p in node.head.properties:
+            if isinstance(p, PropAssign):
+                scan(p.value, scalar_params)
+                if p.trailer:
+                    for _, tv in p.trailer.attrs:
+                        scan(tv, scalar_params)
+            elif isinstance(p, PathOverride):
+                scan(p.value, scalar_params)
+        if node.head.trailer is not None:
+            for _, tv in node.head.trailer.attrs:
+                scan(tv, scalar_params)
+        for a in node.head.override_args:
+            scan(a.value, scalar_params)
+        if node.block is not None:
+            for s in node.block.statements:
+                if isinstance(s, Node):
+                    scan_node(s, scalar_params)
+                elif isinstance(s, PropAssign):
+                    scan(s.value, scalar_params)
+                elif isinstance(s, PathOverride):
+                    scan(s.value, scalar_params)
+                elif isinstance(s, SlotFill):
+                    scan_node(s.node, scalar_params)
+
+    # Token-block values resolve against themselves + universal fallback
+    for ta in tokens:
+        scan(ta.value, scalar_params=set())
+
+    # Walk nodes / defines
+    for item in top_level:
+        if isinstance(item, Define):
+            param_names = {p.name for p in item.params}
+            for p in item.params:
+                if p.default is not None:
+                    if isinstance(p.default, Node):
+                        scan_node(p.default, param_names)
+                    else:
+                        scan(p.default, param_names)
+            if item.body is not None:
+                for s in item.body.statements:
+                    if isinstance(s, Node):
+                        scan_node(s, param_names)
+        elif isinstance(item, Node):
+            scan_node(item, scalar_params=set())
+
+
+def _load_universal_tokens() -> frozenset[str]:
+    """Load the keys of `_UNIVERSAL_MODE3_TOKENS` from `dd/compose.py`
+    as the source of truth for step-4 of the resolution order (§4.2).
+
+    Loaded lazily + cached so parse-time imports stay cheap. On import
+    failure (e.g., compose.py not available), returns an empty set,
+    which means every un-tokened ref raises KIND_UNRESOLVED_REF. That's
+    the correct fail-closed behavior for a self-contained document.
+    """
+    try:
+        from dd.compose import _UNIVERSAL_MODE3_TOKENS   # type: ignore
+        return frozenset(_UNIVERSAL_MODE3_TOKENS.keys())
+    except Exception:
+        return frozenset()
+
+
+_UNIVERSAL_CATALOG_KEYS: Optional[frozenset[str]] = None
+
+
+def _matches_universal_prefix(path: str) -> bool:
+    """Exact match against the universal catalog's token paths.
+
+    Renamed for historical reasons; the check is now exact-path-match,
+    not prefix-match, so that misspellings or paths with the right
+    prefix but no matching entry do fire KIND_UNRESOLVED_REF.
+    """
+    global _UNIVERSAL_CATALOG_KEYS
+    if _UNIVERSAL_CATALOG_KEYS is None:
+        _UNIVERSAL_CATALOG_KEYS = _load_universal_tokens()
+    return path in _UNIVERSAL_CATALOG_KEYS
 
 
 def _collect_scope_aliases(items: object, out: set[str]) -> None:
