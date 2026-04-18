@@ -247,3 +247,45 @@ def test_compref_roundtrips_at_grammar_level(
     emitted = emit_l3(doc)
     doc2 = parse_l3(emitted)
     assert doc == doc2
+
+
+# ---------------------------------------------------------------------------
+# Full-corpus Tier 1 sweep — the headline proof for Stage 1.3/1.4
+# ---------------------------------------------------------------------------
+
+
+def test_full_corpus_tier1_round_trip(db_conn: sqlite3.Connection) -> None:
+    """Every app_screen in the Dank corpus round-trips through
+    compress → emit → parse with structural equality. Tier 1 per
+    L0↔L3 §4.1.
+
+    This is the headline invariant for Stage 1.3/1.4. Runs in under
+    10s on the 204-screen corpus.
+    """
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    assert len(screens) > 0, "no app_screens in DB"
+
+    failures: list[tuple[int, str]] = []
+    for sid in screens:
+        try:
+            spec = generate_ir(db_conn, sid, semantic=True)["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            emitted = emit_l3(doc)
+            doc2 = parse_l3(emitted)
+            if doc != doc2:
+                failures.append((sid, "structural-equality mismatch"))
+        except Exception as e:
+            failures.append((sid, f"{type(e).__name__}: {str(e)[:100]}"))
+
+    if failures:
+        # Report first 10 failures
+        details = "\n".join(f"  screen {sid}: {reason}" for sid, reason in failures[:10])
+        pytest.fail(
+            f"{len(failures)}/{len(screens)} screens failed Tier 1 round-trip:\n{details}"
+        )
