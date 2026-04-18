@@ -9,6 +9,18 @@ __pycache__/
 # SQLite databases (generated, not source)
 *.declarative.db
 backups/
+.db-backups/
+
+# Archived experiments (preserved locally, not tracked)
+experiments/archive/
+
+# Old / one-off render batch variants (if they reappear)
+render_batch_v*/
+
+# Render-test debug scratch (experimental, not load-bearing)
+render_test/screen_*.js
+render_test/simple.js
+render_test/throw_test.js
 
 # macOS
 .DS_Store

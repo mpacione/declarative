@@ -1,1 +1,0 @@
-a login screen with email, password, and a sign-in button

@@ -1,9 +1,0 @@
-[
-  {"type": "header", "props": {"text": "Discover"}},
-  {"type": "card", "children": [
-    {"type": "image", "props": {"label": "Hero"}},
-    {"type": "heading", "props": {"text": "Something cool"}},
-    {"type": "text", "props": {"text": "A fresh way to explore."}},
-    {"type": "button", "props": {"text": "Start exploring"}}
-  ]}
-]

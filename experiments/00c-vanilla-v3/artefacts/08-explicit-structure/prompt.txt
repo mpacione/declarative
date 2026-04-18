@@ -1,1 +1,0 @@
-header with back button, title, share button. Then a card with a heading, 3 lines of body text, and a primary button. Then a secondary button below.

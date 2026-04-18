@@ -1,8 +1,0 @@
-I don't have a reference image or description of "iPhone 13 Pro Max - 109" to rebuild from scratch. Could you please provide:
-
-1. A screenshot or visual description of the screen
-2. The layout structure (what components are visible)
-3. The content/text that should appear
-4. Any interactive elements or states
-
-Once you share those details, I'll generate the JSON component array for you.
