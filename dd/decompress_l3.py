@@ -185,13 +185,19 @@ def _decode_layout(
     """Populate `element["layout"]` from head-level PropAssigns."""
     layout: dict = element.setdefault("layout", {})
 
-    # Direction (layout=<direction>)
+    # Direction (layout=<direction>). The compressor drops `stacked`
+    # (the spec's "no auto-layout; absolute positioning" sentinel)
+    # because it's the default when no `layout=` prop is present.
+    # Restore it here so the spec shape round-trips.
     if "layout" in props:
         v = props["layout"].value
         if isinstance(v, Literal_) and v.lit_kind == "enum":
             direction = _LAYOUT_DIRECTION.get(str(v.py))
             if direction is not None:
                 layout["direction"] = direction
+    else:
+        # Absence of `layout=` means the spec had `direction="stacked"`.
+        layout["direction"] = "stacked"
 
     # Sizing (width, height)
     sizing: dict = {}
@@ -333,10 +339,26 @@ def _decode_node(
         element["_mode1_eligible"] = True
         element["_master_slash_path"] = head.type_or_path
     if head.eid:
-        element["_original_name_eid"] = head.eid
+        # Approximate `_original_name` from the AST EID. Lossy (EID
+        # is the sanitized, lowercased IDENT form — not the raw Figma
+        # name) but reads back through `normalize_to_eid` identically,
+        # so downstream key-preservation works.
+        element["_original_name"] = head.eid
 
     _decode_layout(props, element)
     _decode_visual(props, element)
+
+    # Ext-props (`$ext.*` diagnostic PropAssigns emitted by the
+    # compressor's override handlers — e.g. `$ext.shadow_all_hidden`,
+    # `$ext.shadow_extra_count`). Preserve as a sub-dict on the
+    # element so downstream tooling can read them; the sub-dict key
+    # strips the `$ext.` prefix.
+    ext_props: dict = {}
+    for key_, pa in props.items():
+        if key_.startswith("$ext."):
+            ext_props[key_[len("$ext."):]] = _literal_py(pa.value)
+    if ext_props:
+        element["$ext"] = ext_props
 
     # Visibility
     if "visible" in props:
@@ -401,10 +423,15 @@ def _reexpand_synthetic_wrapper(spec: dict) -> dict:
 
     has_visual = bool(root.get("visual"))
     root_layout = root.get("layout") or {}
+    # "Non-trivial layout" = any layout key beyond direction+sizing,
+    # OR a direction that's neither the "no auto-layout" default
+    # (`absolute` / `stacked`) nor absent. The bare-wrapper shape
+    # `generate_ir` produces has direction=absolute and nothing else,
+    # so none of those trigger re-expansion.
     has_non_trivial_layout = any(
         k for k in root_layout.keys()
         if k not in ("direction", "sizing")
-    ) or root_layout.get("direction") not in (None, "absolute")
+    ) or root_layout.get("direction") not in (None, "absolute", "stacked")
     if not (has_visual or has_non_trivial_layout):
         return spec
 

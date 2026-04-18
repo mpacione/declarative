@@ -206,6 +206,99 @@ class TestDecompressSimpleNode:
         el = ast_to_dict_ir(doc)["elements"]["frame-1"]
         assert el["layout"]["sizing"] == {"width": "fill", "height": "hug"}
 
+    def test_mainaxis_space_around_and_space_evenly_decode(self) -> None:
+        """§7.4 mainAxis values space-around / space-evenly must
+        decode to the spec-underscore form."""
+        for grammar_val, spec_val in [
+            ("space-around", "space_around"),
+            ("space-evenly", "space_evenly"),
+        ]:
+            doc = L3Document(top_level=(Node(head=NodeHead(
+                head_kind="type", type_or_path="frame", eid="f",
+                properties=(_p("mainAxis", _enum(grammar_val)),),
+            )),))
+            el = ast_to_dict_ir(
+                doc, reexpand_screen_wrapper=False,
+            )["elements"]["frame-1"]
+            assert el["layout"]["mainAxisAlignment"] == spec_val
+
+    def test_crossaxis_stretch_and_baseline_decode(self) -> None:
+        for val in ["stretch", "baseline"]:
+            doc = L3Document(top_level=(Node(head=NodeHead(
+                head_kind="type", type_or_path="frame", eid="f",
+                properties=(_p("crossAxis", _enum(val)),),
+            )),))
+            el = ast_to_dict_ir(
+                doc, reexpand_screen_wrapper=False,
+            )["elements"]["frame-1"]
+            assert el["layout"]["crossAxisAlignment"] == val
+
+    def test_gradient_linear_fill_decodes(self) -> None:
+        """`fill=gradient-linear(#RED, #GREEN)` → spec gradient-linear
+        with two stops."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(_p("fill", FunctionCall(
+                name="gradient-linear",
+                args=(
+                    FuncArg(name=None, value=_hex("#FF0000")),
+                    FuncArg(name=None, value=_hex("#00FF00")),
+                ),
+            )),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert el["visual"]["fills"] == [{
+            "type": "gradient-linear",
+            "stops": [{"color": "#FF0000"}, {"color": "#00FF00"}],
+        }]
+
+    def test_image_fill_decodes(self) -> None:
+        """`fill=image(asset=<sha>)` → spec image with asset_hash."""
+        asset = "a" * 40
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="rectangle", eid="r",
+            properties=(_p("fill", FunctionCall(
+                name="image",
+                args=(FuncArg(name="asset", value=Literal_(
+                    lit_kind="asset-hash", raw=asset, py=asset,
+                )),),
+            )),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["rectangle-1"]
+        assert el["visual"]["fills"] == [
+            {"type": "image", "asset_hash": asset},
+        ]
+
+    def test_padding_partial_sides(self) -> None:
+        """Padding PropGroup with only some sides must yield a dict
+        containing only those sides."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(_p("padding", PropGroup(entries=(
+                _p("left", _n("12")),
+            ))),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert el["layout"]["padding"] == {"left": 12}
+
+    def test_stroke_without_weight_preserves_color(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(_p("stroke", _hex("#000000")),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert el["visual"]["strokes"] == [
+            {"type": "solid", "color": "#000000"},
+        ]
+
     def test_visible_false_emitted(self) -> None:
         doc = L3Document(top_level=(Node(head=NodeHead(
             head_kind="type",
@@ -215,6 +308,74 @@ class TestDecompressSimpleNode:
         )),))
         el = ast_to_dict_ir(doc)["elements"]["frame-1"]
         assert el["visible"] is False
+
+
+class TestDefaultDirectionStacked:
+    """`direction="stacked"` is the spec IR's "no auto-layout;
+    absolute positioning" sentinel. The compressor drops it
+    (absence of `layout=` means stacked). The decompressor must
+    restore it when no `layout=` prop is present."""
+
+    def test_stacked_direction_defaults_when_no_layout_prop(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(_p("width", _n("100")), _p("height", _n("100"))),
+        )),))
+        el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
+        assert el["layout"]["direction"] == "stacked"
+
+    def test_layout_vertical_prop_beats_stacked_default(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(
+                _p("width", _n("100")),
+                _p("layout", _enum("vertical")),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
+        assert el["layout"]["direction"] == "vertical"
+
+
+class TestExtPropPreservation:
+    """`$ext.*` PropAssigns (compressor diagnostics) must round-trip
+    via the decompressor's `element["$ext"]` sub-dict. Silently
+    dropping them would lose the `shadow_all_hidden` / `shadow_extra_count`
+    semantics the compressor emits."""
+
+    def test_ext_shadow_all_hidden_preserved(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(
+                _p("$ext.shadow_all_hidden", _bool(True)),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
+        assert el.get("$ext") == {"shadow_all_hidden": True}
+
+    def test_ext_shadow_extra_count_preserved(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(
+                _p("$ext.shadow_extra_count", _n("2")),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
+        assert el.get("$ext") == {"shadow_extra_count": 2}
+
+
+class TestOriginalNamePreservation:
+    """The Node head's `eid` is an approximation of the spec's
+    `_original_name` (sanitized, lowercase, hyphen-separated). The
+    decompressor writes it back as `_original_name` so downstream
+    key-preservation works — `normalize_to_eid(_original_name)` is
+    idempotent on EID-derived values."""
+
+    def test_eid_populates_original_name(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="safari-bottom",
+        )),))
+        el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
+        assert el["_original_name"] == "safari-bottom"
 
 
 class TestDecompressCompRef:
