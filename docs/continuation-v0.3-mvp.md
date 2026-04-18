@@ -1,5 +1,17 @@
 # v0.3 — Minimum Viable First Implementation
 
+> ### ⚠ FRAMING SUPERSEDED 2026-04-18
+>
+> The current plan is **`docs/plan-v0.3.md`**. The MVP scope below was written against an earlier framing of the markup (mechanical dict-IR serialization); the current v0.3 plan treats dd markup as axis-polymorphic L3 with definitions, per `docs/requirements.md` §4 and `docs/requirements-v0.3.md`.
+>
+> **What's still useful:** the day-by-day sprint structure, the TDD sequencing discipline, and the "no regressions / pure additive / 204/204 preserved" invariants all remain valid. The stretch goals are still reasonable targets.
+>
+> **What's changed:** the MVP is not "round-trip one screen mechanically" — it's "compress L0+L1+L2 to L3 via dd markup, then expand back, preserving pixel parity." See `docs/plan-v0.3.md` §Plan B Stage 1 for the current breakdown.
+>
+> Non-destructive banner; original content preserved below for reference.
+
+---
+
 The smallest code change that proves the v0.3 architecture works end-to-end. Referenced from `docs/architecture-v0.3.md` §8 Stage 1.
 
 > **⚠ Prerequisites before this MVP can begin.** Three architectural critiques from the v0.3 review round flagged MVP-blocking questions (underscore fields representation, grammar modes for raw-vs-tokenized, RenderReport schema). These must be investigated and resolved on paper before Day 1 of this MVP. See `docs/continuation-v0.3-next-session.md` §Investigation priorities. Do NOT start without that resolution — the MVP probability drops below useful if executed against unresolved architectural questions.

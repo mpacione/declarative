@@ -1,5 +1,20 @@
 # v0.3 — Next Session Continuation
 
+> ### ⚠ SUPERSEDED 2026-04-18 (late session)
+>
+> The investigation priorities listed below were **all resolved** (then partially reframed after premature CRAG work was reverted). The current canonical plan is **`docs/plan-v0.3.md`**, which supersedes this doc for "what to do next."
+>
+> **What's still useful:** §1 (where we were at session start) and §2 (what happened in the mid-session) remain accurate historical record.
+>
+> **What's changed:** Priorities 0/1A/1B/1C/2/3/4 are closed (some reframed). The new top-of-stack docs are:
+>   1. `docs/requirements.md` (Tier 0 — overall requirements)
+>   2. `docs/requirements-v0.3.md` (Tier 1 — v0.3 phase)
+>   3. `docs/plan-v0.3.md` (the current plan)
+>
+> Non-destructive banner; original content preserved below for historical context.
+
+---
+
 Comprehensive historical context for whoever picks this up next. Written at the close of the 2026-04-17 / 2026-04-18 session that produced the v0.3 architecture. Read this first.
 
 ---
