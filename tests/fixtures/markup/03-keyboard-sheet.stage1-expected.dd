@@ -104,6 +104,10 @@ screen #iphone-13-pro-max-79 width=428 height=926 (extracted src=237) {
         }
       }
     }
+    -> ios/alpha-keyboard #ios-alpha-keyboard x=0 y=636 width=428 height=290 fill=#D1D3D9 visible=false
+    -> safari-bottom #safari-bottom x=0 y=870 width=428 height=56
+    -> ios/homeindicator #ios-homeindicator x=0 y=892 width=428 height=34
     -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF
+    -> ios/statusbar #ios-statusbar width=428 height=47
   }
 }

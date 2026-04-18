@@ -58,6 +58,7 @@ from dd.markup_l3 import (
     SizingValue,
     TokenRef,
     Value,
+    Warning,
     parse_l3,
 )
 
@@ -359,11 +360,19 @@ def _visual_props(visual: dict) -> list[PropAssign]:
     # Effects — DROP_SHADOW becomes `shadow=shadow(dx, dy, blur, color)`;
     # blur effects (BACKGROUND_BLUR / LAYER_BLUR) are deferred (no
     # matching grammar function yet — §4.3 only has `shadow`).
+    # Nodes with multi-shadow stacks emit only the first; an `$ext`
+    # counter surfaces the truncation so tooling can identify them.
     effects = visual.get("effects") or []
     if isinstance(effects, list):
         shadow_value = _effects_to_shadow(effects)
         if shadow_value is not None:
             props.append(PropAssign(key="shadow", value=shadow_value))
+        extra = _count_extra_shadows(effects)
+        if extra > 0:
+            props.append(PropAssign(
+                key="$ext.shadow_extra_count",
+                value=_num_literal(extra),
+            ))
 
     # Radius (uniform only in MVP)
     cr = visual.get("cornerRadius")
@@ -378,12 +387,32 @@ def _visual_props(visual: dict) -> list[PropAssign]:
     return props
 
 
+def _count_extra_shadows(effects: list) -> int:
+    """Count visible DROP_SHADOW entries beyond the first. Used to emit
+    a `$ext.shadow_extra_count=N` diagnostic so tooling can identify
+    nodes whose multi-shadow stack was truncated (8,574 corpus nodes
+    have 2+ shadows; grammar §4.3 lacks a multi-shadow form)."""
+    if not isinstance(effects, list):
+        return 0
+    count = 0
+    for eff in effects:
+        if not isinstance(eff, dict):
+            continue
+        if eff.get("type") not in ("drop-shadow", "DROP_SHADOW"):
+            continue
+        if eff.get("visible") is False:
+            continue
+        count += 1
+    return max(0, count - 1)
+
+
 def _effects_to_shadow(effects: list) -> Optional[Value]:
     """Convert the first DROP_SHADOW effect into a `shadow(...)` FunctionCall.
 
     Grammar §4.3 defines `shadow(x=<px>, y=<px>, blur=<px>, color=<color>)`.
     Ignores BACKGROUND_BLUR, LAYER_BLUR, INNER_SHADOW, and any drops after
-    the first one (multi-shadow arrays aren't in the grammar yet).
+    the first one (multi-shadow arrays aren't in the grammar yet — see
+    `_count_extra_shadows` for a diagnostic).
     """
     for eff in effects:
         if not isinstance(eff, dict):
@@ -773,7 +802,10 @@ def _fetch_corner_radius_map(
             # Fall through: try as float scalar
             try:
                 fv = float(raw)
-                if fv != 0:
+                # Guard against NaN / Infinity — both pass `float()`
+                # but would produce unparseable Literal_ nodes.
+                import math
+                if math.isfinite(fv) and fv != 0:
                     by_node_id[row[0]] = fv
             except (ValueError, TypeError):
                 pass
@@ -913,17 +945,24 @@ def _fetch_self_overrides(
 
 def _resolve_swap_component_name(
     conn: Optional[sqlite3.Connection],
-    component_keys: list[str],
+    figma_node_ids: list[str],
 ) -> dict[str, str]:
     """Look up replacement-component names for INSTANCE_SWAP overrides.
-    Uses the same CKR join as `_build_comp_names_map`."""
-    if conn is None or not component_keys:
+
+    `instance_overrides.override_value` for INSTANCE_SWAP rows stores a
+    Figma node id (format `"5749:82213"`), NOT a component_key SHA-1.
+    The join is against `component_key_registry.figma_node_id`, not
+    `component_key_registry.component_key`. Regressions here are
+    silent (empty dict means no swaps fire), so agent review caught
+    this inversion with a direct SQL probe.
+    """
+    if conn is None or not figma_node_ids:
         return {}
-    placeholders = ",".join("?" for _ in component_keys)
+    placeholders = ",".join("?" for _ in figma_node_ids)
     rows = conn.execute(
-        f"SELECT component_key, name FROM component_key_registry "
-        f"WHERE component_key IN ({placeholders})",
-        component_keys,
+        f"SELECT figma_node_id, name FROM component_key_registry "
+        f"WHERE figma_node_id IN ({placeholders})",
+        figma_node_ids,
     ).fetchall()
     return {row[0]: row[1] for row in rows if row[1]}
 
@@ -1006,15 +1045,27 @@ def compress_to_l3(
     self_overrides, swap_keys = _fetch_self_overrides(
         conn, node_id_map, eligible_eids,
     )
-    # Resolve INSTANCE_SWAP replacement component_keys → names via CKR.
+    # Resolve INSTANCE_SWAP replacement figma_node_ids → names via CKR.
+    # Unresolved swaps (replacement node absent from CKR) surface as
+    # `KIND_SWAP_UNRESOLVED` warnings so downstream tooling can
+    # distinguish "swap resolved" from "swap silently dropped".
     swap_names = _resolve_swap_component_name(
         conn, list(set(swap_keys.values())),
     )
-    swap_paths = {
-        eid: swap_names[ck]
-        for eid, ck in swap_keys.items()
-        if ck in swap_names
-    }
+    swap_paths: dict[str, str] = {}
+    swap_warnings: list[Warning] = []
+    for eid, ck in swap_keys.items():
+        if ck in swap_names:
+            swap_paths[eid] = swap_names[ck]
+        else:
+            swap_warnings.append(Warning(
+                kind="KIND_SWAP_UNRESOLVED",
+                message=(
+                    f"INSTANCE_SWAP on `#{eid}` references figma_node_id "
+                    f"`{ck}` which is not in component_key_registry; "
+                    f"keeping original master"
+                ),
+            ))
     # cornerRadius + min/max bounds live in the nodes table — neither
     # is copied into the CompositionSpec. Both require a batched query.
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
@@ -1049,6 +1100,6 @@ def compress_to_l3(
         uses=(),
         tokens=(),
         top_level=(root_node,),
-        warnings=(),
+        warnings=tuple(swap_warnings),
         source_path=None,
     )

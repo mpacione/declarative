@@ -1,7 +1,10 @@
 screen #iphone-13-pro-max-119 width=428 height=926 (extracted src=181) {
   frame #iphone-13-pro-max-119 width=428 height=926 fill=#F6F6F6 {
     rectangle #image-319 x=-331 y=-61 width=1012 height=1012 fill=image(asset=79b6dbeb4ccba396c2fc87649fce708791aeab02) visible=false
+    -> safari-bottom #safari-bottom x=0 y=782 width=428 height=144
+    -> ios/homeindicator #ios-homeindicator x=0 y=892 width=428 height=34
     -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF
+    -> ios/statusbar #ios-statusbar width=428 height=47
     container #frame-354 x=15 y=381 width=hug height=hug layout=vertical gap=12 {
       container #frame-357 width=393 height=hug layout=horizontal gap=8 crossAxis=center {
         -> icon/undo #icon-undo width=20 height=20

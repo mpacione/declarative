@@ -14,6 +14,7 @@ guard, so clean checkouts don't fail).
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -104,7 +105,7 @@ def test_compress_produces_valid_l3_document(
 ) -> None:
     """The compressor produces a well-formed L3Document for each
     reference screen."""
-    ir = generate_ir(db_conn, screen_id, semantic=True)
+    ir = generate_ir(db_conn, screen_id, semantic=True, filter_chrome=False)
     spec = ir["spec"]
     assert len(spec["elements"]) > 0, (
         f"screen {screen_id} has no elements — DB extraction issue"
@@ -126,7 +127,7 @@ def test_compress_emits_valid_markup(
     db_conn: sqlite3.Connection, screen_id: int, slug: str,
 ) -> None:
     """The compressor's output emits cleanly via `emit_l3`."""
-    spec = generate_ir(db_conn, screen_id, semantic=True)["spec"]
+    spec = generate_ir(db_conn, screen_id, semantic=True, filter_chrome=False)["spec"]
     doc = compress_to_l3(spec, db_conn, screen_id=screen_id)
 
     emitted = emit_l3(doc)
@@ -141,7 +142,7 @@ def test_compress_output_round_trips(
 ) -> None:
     """`parse_l3(emit_l3(compress(ir))) == compress(ir)` — the Tier 1
     grammar-level round-trip invariant."""
-    spec = generate_ir(db_conn, screen_id, semantic=True)["spec"]
+    spec = generate_ir(db_conn, screen_id, semantic=True, filter_chrome=False)["spec"]
     doc = compress_to_l3(spec, db_conn, screen_id=screen_id)
 
     emitted = emit_l3(doc)
@@ -154,7 +155,7 @@ def test_compress_output_round_trips(
 def test_provenance_trailer_on_root(db_conn: sqlite3.Connection) -> None:
     """The compressor attaches `(extracted src=N)` to the screen root."""
     doc = compress_to_l3(
-        generate_ir(db_conn, 181, semantic=True)["spec"],
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
         db_conn,
         screen_id=181,
     )
@@ -171,7 +172,7 @@ def test_eid_derived_from_original_name(db_conn: sqlite3.Connection) -> None:
     """Screen 181's root name `"iPhone 13 Pro Max - 119"` sanitizes
     to `#iphone-13-pro-max-119` per L0↔L3 §2.3.1."""
     doc = compress_to_l3(
-        generate_ir(db_conn, 181, semantic=True)["spec"],
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
         db_conn,
         screen_id=181,
     )
@@ -197,7 +198,7 @@ def test_comp_refs_emitted_for_mode1_instances(
     surfaces individual icons. That's the correct count — not 56.
     """
     doc = compress_to_l3(
-        generate_ir(db_conn, 181, semantic=True)["spec"],
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
         db_conn,
         screen_id=181,
     )
@@ -215,7 +216,7 @@ def test_compref_path_matches_ckr_master_name(
     """CompRef slash-path derives from `component_key_registry.name`
     (NOT from the instance layer name) per L0↔L3 §2.7.1."""
     doc = compress_to_l3(
-        generate_ir(db_conn, 181, semantic=True)["spec"],
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
         db_conn,
         screen_id=181,
     )
@@ -231,7 +232,7 @@ def test_compref_without_conn_falls_back_to_frame(
 ) -> None:
     """With `conn=None`, CKR lookup is skipped; Mode-1-eligible nodes
     fall back to inline `frame` / type keyword."""
-    spec = generate_ir(db_conn, 181, semantic=True)["spec"]
+    spec = generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"]
     doc = compress_to_l3(spec, conn=None, screen_id=181)
     emitted = emit_l3(doc)
     # No CompRefs should appear without the CKR lookup.
@@ -246,7 +247,7 @@ def test_compref_roundtrips_at_grammar_level(
     """CompRef emission must satisfy the same Tier 1 round-trip
     invariant as the rest of the compressor."""
     doc = compress_to_l3(
-        generate_ir(db_conn, 222, semantic=True)["spec"],
+        generate_ir(db_conn, 222, semantic=True, filter_chrome=False)["spec"],
         db_conn,
         screen_id=222,
     )
@@ -280,11 +281,13 @@ def test_full_corpus_tier1_round_trip(db_conn: sqlite3.Connection) -> None:
     failures: list[tuple[int, str]] = []
     for sid in screens:
         try:
-            spec = generate_ir(db_conn, sid, semantic=True)["spec"]
+            spec = generate_ir(db_conn, sid, semantic=True, filter_chrome=False)["spec"]
             doc = compress_to_l3(spec, db_conn, screen_id=sid)
             emitted = emit_l3(doc)
             doc2 = parse_l3(emitted)
-            if doc != doc2:
+            # Warnings are compile-time diagnostics, not round-tripped markup.
+            doc_stripped = replace(doc, warnings=())
+            if doc_stripped != doc2:
                 failures.append((sid, "structural-equality mismatch"))
         except Exception as e:
             failures.append((sid, f"{type(e).__name__}: {str(e)[:100]}"))
@@ -333,7 +336,7 @@ class TestRegressionFromReview:
         path. Regression: assert that known-present strings appear in
         the emitted output for screen 181."""
         doc = compress_to_l3(
-            generate_ir(db_conn, 181, semantic=True)["spec"],
+            generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=181,
         )
@@ -352,7 +355,7 @@ class TestRegressionFromReview:
         the subtree at render time. Regression: assert CompRef output
         lines don't end with `{`."""
         doc = compress_to_l3(
-            generate_ir(db_conn, 181, semantic=True)["spec"],
+            generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=181,
         )
@@ -448,7 +451,7 @@ class TestRegressionFromReview:
         (Safari chrome, home indicator, button corners) — should see
         ≥5 `radius=` occurrences."""
         doc = compress_to_l3(
-            generate_ir(db_conn, 181, semantic=True)["spec"],
+            generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=181,
         )
@@ -490,7 +493,7 @@ class TestRegressionFromReview:
         the emitted output should show varied slash-paths reflecting
         the swap targets."""
         doc = compress_to_l3(
-            generate_ir(db_conn, 325, semantic=True)["spec"],
+            generate_ir(db_conn, 325, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=325,
         )
@@ -509,7 +512,7 @@ class TestRegressionFromReview:
         `max_height` bounds emit as `width=fill(min=N, max=N)` per
         grammar §4.4. Screen 334 has 29 bounded nodes in the DB."""
         doc = compress_to_l3(
-            generate_ir(db_conn, 334, semantic=True)["spec"],
+            generate_ir(db_conn, 334, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=334,
         )
@@ -532,7 +535,7 @@ class TestRegressionFromReview:
         # Screen 222's meme-editor has card/sheet/success with per-
         # corner radii.
         doc = compress_to_l3(
-            generate_ir(db_conn, 222, semantic=True)["spec"],
+            generate_ir(db_conn, 222, semantic=True, filter_chrome=False)["spec"],
             db_conn,
             screen_id=222,
         )
@@ -612,7 +615,7 @@ def test_stage1_expected_snapshot(
     — see L0↔L3 §2.11 for the two-track oracle model.
     """
     import os
-    spec = generate_ir(db_conn, screen_id, semantic=True)["spec"]
+    spec = generate_ir(db_conn, screen_id, semantic=True, filter_chrome=False)["spec"]
     doc = compress_to_l3(spec, db_conn, screen_id=screen_id)
     emitted = emit_l3(doc)
     path = _snapshot_path(slug)

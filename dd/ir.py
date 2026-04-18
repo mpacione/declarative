@@ -1394,13 +1394,25 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def generate_ir(
-    conn: sqlite3.Connection, screen_id: int, semantic: bool = False,
+    conn: sqlite3.Connection,
+    screen_id: int,
+    semantic: bool = False,
+    *,
+    filter_chrome: bool = True,
 ) -> dict[str, Any]:
     """Generate CompositionSpec IR for a single screen.
 
     When semantic=True, collapses the flat element tree into a semantic
     tree with named slots, filters system chrome, and produces ~15-25
     elements instead of ~100+.
+
+    `filter_chrome=False` (semantic-only) keeps system-chrome nodes in
+    the spec — use this when you WANT the keyboard / safari bar / home
+    indicator / status bar as design content (per
+    `feedback_system_chrome_is_design.md`: system chrome is design,
+    not platform artifact). Synthetic-node filtering (Figma internal
+    spacers) is still applied unconditionally upstream via
+    `build_composition_spec`.
 
     Returns dict with 'spec' (the CompositionSpec dict) and 'json' (serialized).
     """
@@ -1431,7 +1443,8 @@ def generate_ir(
                     "name": row[0],
                 }
 
-        spec = filter_system_chrome(spec, node_names)
+        if filter_chrome:
+            spec = filter_system_chrome(spec, node_names)
 
         slot_defs = query_slot_definitions(conn)
         spec = build_semantic_tree(spec, slot_defs, node_positions)
