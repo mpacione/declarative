@@ -1,0 +1,159 @@
+// -----------------------------------------------------------------------------
+// 01-login-welcome.dd — Dank reference screen 181 ("iPhone 13 Pro Max - 119")
+//
+// Status:  hand-authored Plan A.4 fixture. Normative for grammar spec.
+// Profile: simple · 207 L0 nodes · 96 L1 classified · 8 canonical types
+// Source:  Dank-EXP-02.declarative.db screens.id = 181
+// See:     01-login-welcome.l0-summary.md (frozen L0+L1+L2 reference)
+//
+// Features exercised:
+//   - Document preamble (namespace declaration, `use` import with alias)
+//   - System-axis block (top-level `tokens { ... }`)
+//   - Screen root with node-level provenance trailer
+//   - Component reference form: `-> path/to/component`
+//   - Inline structural frames: `frame [#eid] [props] { children }`
+//   - Pattern definition: `define name(args) { body }` with three
+//     parametrization primitives (scalar arg, named slot, path override)
+//   - Pattern reference: `& name #eid [overrides]`
+//   - Token references: `{color.surface.default}`, `{radius.button}`, ...
+//   - Raw literal fallbacks for brand-specific values
+//   - Value-level provenance trailer: `#[kind=...]`
+//   - Absolute vs auto-layout positioning
+//   - Explicit visibility override
+// -----------------------------------------------------------------------------
+
+namespace dank.reference.screen-181
+
+// `use` imports a remote library under a local alias. The alias is
+// referenced as a scope prefix in values and component paths via `::`.
+// Example (not exercised in this fixture — Dank is single-library — but
+// documented for the grammar): `-> studio::some/icon`. This fixture
+// treats all `-> path/to/component` refs as resolving against the
+// single Dank component-key registry.
+use "universal/tokens" as ut
+
+
+// System-axis block. Composes with the default universal token cascade
+// at render time. Only values needing local shadow or synthesis live
+// inside `tokens { ... }`.
+tokens {
+  // Dank brand-accent gradient. The universal-catalog shadcn palette has
+  // no close match; Stage 3 clustering will group these two stops into
+  // a single `color.brand.accent` synthetic token and the fixture will
+  // be re-derivable. Stage 1 (this fixture) keeps the raw literals —
+  // Tier 0 §3.3 waiver per docs/requirements-v0.3.md §2.5.
+  color.brand.accent.start = #D9FF40
+  color.brand.accent.end   = #9EFF85
+  color.brand.accent       = gradient-linear(
+                               {color.brand.accent.start},
+                               {color.brand.accent.end}
+                             )
+}
+
+
+// Reusable row pattern. Screen 181 repeats this three times; the
+// hand-authored extract would emit it inline (Rule of Three). We promote
+// here because the pattern IS the semantic unit.
+//
+// Three parametrization primitives on display:
+//   1. Typed scalar arg with default:  title: text = "Section"
+//   2. Named slot with default:        slot cta = -> button/small/solid(...)
+//   3. Path-addressed override at call site: & option-row container.gap=8
+define option-row(
+  title: text = "Section",
+  cta_label: text = "More",
+  slot cta = -> button/small/solid(label={cta_label}),
+) {
+  frame #container width=440 height=134 layout=vertical gap=12 {
+
+    // Header strip: undo icon + title + CTA
+    // `{title}` resolves against the define's param scope, then the token
+    // registry. Here it's a scalar-arg substitution. `{cta}` on the next
+    // line resolves the slot — same unified form: `{name}`.
+    frame #header width=393 height=22 layout=horizontal gap=10 align=center {
+      -> icon/undo #undo
+      text #title {title}
+          font={typography.heading.fontFamily}
+          size={typography.heading.fontSize}
+          weight={typography.heading.fontWeight}
+          color={color.text.heading}
+      {cta}
+    }
+
+    // Image strip: three placeholder tiles
+    frame #strip width=440 height=100 layout=horizontal gap=10 {
+      frame #tile-1 width=140 height=100
+            fill={color.surface.image_placeholder}
+            radius={radius.image}
+      frame #tile-2 width=140 height=100
+            fill={color.surface.image_placeholder}
+            radius={radius.image}
+      frame #tile-3 width=140 height=100
+            fill={color.surface.image_placeholder}
+            radius={radius.image}
+    }
+  }
+}
+
+
+// The screen itself. `(extracted src=181)` establishes default provenance;
+// all descendants inherit `kind=extracted` unless a child overrides.
+screen #01-login-welcome (extracted src=181) {
+  width=428 height=926 fill={color.surface.default}
+
+  // ---------- System chrome (design content, per feedback_system_chrome_is_design)
+  -> safari/bottom     #safari       x=0 y=782
+  -> ios/home-indicator #home        x=0 y=892
+  -> nav/top-nav       #top-nav      x=0 y=0
+  -> ios/status-bar    #status-bar   x=0 y=0
+
+  // ---------- Hidden decorative background image
+  // visible=false is an explicit design intent, preserved through serde.
+  rectangle #bg-image
+      x=-331 y=-61 width=1012 height=1012
+      fill=image(asset=79b6dbeb4ccba396c2fc87649fce708791aeab02)
+      visible=false
+
+  // ---------- Three stacked option rows via pattern reference
+  // Semantic intent: three gallery sections each with a 3-tile strip.
+  //   - row 1: "Recent Images" / "More"
+  //   - row 2: "Favorites" / "Browse" + per-instance gap tightening
+  //   - row 3: "Drafts" / "Sort by"
+  & option-row #row-recent     x=15 y=381
+      title="Recent Images" cta_label="More"
+
+  & option-row #row-favorites  x=15 y=544
+      title="Favorites" cta_label="Browse"
+      container.gap=8              // path-override at call site
+
+  & option-row #row-drafts     x=15 y=707
+      title="Drafts" cta_label="Sort by"
+
+  // ---------- Primary CTA. Raw brand gradient, synthetic-token for everything
+  // else. Demonstrates mixing literal-fallback and tokenized values in one node.
+  button #cta-generate
+      x=15 y=300 width=397 height=52
+      layout=horizontal gap=10 align=center
+      padding={left=14 right=14}
+      fill={color.brand.accent}
+      radius={radius.button} {
+
+    -> icon/mint #mint
+
+    text "Generate a new image/meme"
+        color={color.text.default}
+        font={typography.button.fontFamily}
+        size={typography.button.fontSize}
+        weight={typography.button.fontWeight}
+
+    -> icon/forward #forward visible=false    // design-intent: arrow hidden
+  }
+
+  // ---------- Decorative group of unknown provenance. Kept to preserve
+  // extraction fidelity (ground-truth, no auto-dedup per Tier 0 §3.2).
+  // Node-level trailer annotates the whole subtree with a substantive note
+  // (value-level `#[...]` would attach to a specific value; this one belongs
+  // to the node).
+  group #decorative (extracted note="legacy decorative group, role unclear")
+      x=145 y=140 width=168 height=141
+}

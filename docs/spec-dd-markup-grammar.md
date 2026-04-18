@@ -1,222 +1,991 @@
 # dd markup — Grammar Specification
 
-**Status:** ⚠ PLACEHOLDER. To be authored during Plan A.5, concurrent with Plan A.4 (hand-authored fixtures). See `docs/plan-v0.3.md`.
-**Target format:** formal BNF/EBNF suitable for parser implementation AND for constrained-decoding grammar files (XGrammar / Outlines / llguidance).
-**Authored:** 2026-04-18 (scaffold only).
+**Status:** Canonical (Plan A.5 output). Every construct parses against the
+fixtures in `tests/fixtures/markup/`. Every open question is closed by
+a decision recorded below.
+**Target format:** formal EBNF suitable for a recursive-descent parser
+AND for constrained-decoding grammar files (XGrammar / Outlines / llguidance).
+**Authored:** 2026-04-18.
 
-This is the canonical grammar specification for dd markup — the L3 authoring surface of the multi-level IR. It will be the single source of truth that both the parser implementation (`dd/markup.py`) and the LLM grammar mask consume.
-
-When this doc is complete, it fully specifies:
-- What a valid `.dd` document looks like at the byte level
-- What every sigil, prefix, and keyword means
-- How the LLM grammar mask constrains emission
-- How the parser disambiguates every syntactic form
+This is the canonical grammar specification for dd markup — the L3
+authoring surface of the multi-level IR. It is the single source of
+truth that both the parser implementation (`dd/markup.py`, to be rebuilt
+against this spec per Plan B Stage 1.2) and the LLM grammar mask
+consume.
 
 ---
 
 ## Relationship to `docs/requirements.md` and `docs/requirements-v0.3.md`
 
-This spec is the concrete realization of the design principles stated in Tier 0 §4:
+This spec is the concrete realization of the design principles stated in
+Tier 0 §4 (axis-polymorphic specification, one grammar many speakers,
+definitions as first-class, provenance, multi-granularity editing).
 
-- Axis-polymorphic specification (§4.1) → the grammar accepts any subset of axes on any node
-- One grammar, many speakers (§4.2) → construction and edits parse identically
-- Definitions as first-class (§4.3) → `define` + `&` are first-class productions
-- Provenance (§4.4) → annotations and value trailers are grammar-level, not sugar
-- Multi-granularity editing (§4.5) → seven verbs + property-set sugar, same parser
-
-If this doc conflicts with Tier 0 §4, Tier 0 wins — update this spec to match.
-
----
-
-## Table of contents (to be filled in during Plan A.5)
-
-### 1. Introduction and scope
-- What this grammar expresses (L3, the semantic tree level)
-- What it does NOT express (L0/L1/L2 are DB-resident)
-- Relationship to KDL v2 substrate
-- Grammar audience (LLM + technical human)
-
-### 2. Lexical grammar
-- Character set (UTF-8)
-- Whitespace and line terminators
-- Comments (`//` single-line, `/* */` block)
-- Identifiers (start char, continuation chars, reserved words)
-- String literals (escape sequences, multiline)
-- Numeric literals (integers, floats, scientific notation, signed)
-- Keywords (`define`, `use`, `namespace`, `as`, `slot`, the seven edit verbs, `true`, `false`, `null`)
-- Sigils and their roles (`#`, `@`, `->`, `&`, `{`, `}`, `::` or alternative)
-
-### 3. Syntactic grammar (BNF/EBNF)
-- Document structure (`namespace` + `use` + top-level nodes)
-- Node declarations
-- Property assignments
-- Children blocks
-- Slot declarations and fills
-- Edit verbs
-
-### 4. Value grammar
-- Value forms, one slot:
-  - Raw literal — `#hex`, number, `"string"`, `true`/`false`/`null`, path
-  - Token reference — `{color.brand.primary}` (DTCG brace-syntax)
-  - Component reference — `-> button/primary/lg` (external instance)
-  - Pattern reference — `& pattern.product-card` (local definition)
-- Value-form disambiguation rules (parser) and constraint rules (constrained decoding)
-- Special value forms for layout (fill / hug / fixed + min/max bounds)
-
-### 5. Node identity
-- `#eid` declares a new node's id (must be unique within scope)
-- `@eid` references an existing node
-- Auto-generated ids (`scope@N` by sibling count when no explicit `#` or `as` alias)
-- Explicit aliases at call site (`pattern.product-card as featured`)
-- Hierarchical paths for addressing (slash-separated: `grid/featured/buy-button`)
-- Wildcards for bulk edits (`*` same-level, `**` any-descendant)
-
-### 6. Definitions and references
-- `namespace <name>` (required at top of file)
-- `use "path/to/lib" as <alias>` (mandatory alias)
-- `define <name>(<params>) { <body> }` — with three parametrization primitives:
-  - Typed scalar args: `title: text = "default"`
-  - Named slots with defaults: `slot action = button/primary(...)`
-  - Path-addressed property overrides at call site: `& pattern card.fill=black`
-- Reference expansion semantics
-- Cycle detection (three-color DFS, hard-error at parse time)
-- Scope resolution and shadowing rules
-- Dot-paths for namespace (`pattern.product-card`) vs slash-paths for addressing (`grid/featured/buy`) — do not collide
-
-### 7. Axis population
-- What each axis contains at the grammar level:
-  - **Structure** — type, children, slot declarations
-  - **Content** — text, labels, props
-  - **Spatial** — sizing (fill/hug/fixed), position, padding, gap, arrangement
-  - **Visual** — fills, strokes, effects, typography (per-node)
-  - **System** — top-level tokens block, palette, type scale, spacing scale
-- All axes optional on any node (Tier 0 §4.1)
-- How the parser validates partial specifications
-
-### 8. Edit grammar (same grammar, addressed at existing nodes)
-- Seven closed-set verbs: `set`, `append`, `insert`, `delete`, `move`, `swap`, `replace`
-- `set` implicit on property assignment: `@card-1 radius={radius.lg}`
-- Keyword args (`to=`, `from=`, `into=`, `after=`, `before=`, `position=`)
-- Stable eid addressing, never positional
-- Construction inside an edit block: `append to=@card-1 { button label="New" }`
-
-### 9. Provenance annotations
-- Provenance kinds (the six from Tier 0 §4.4): extracted / retrieved / substituted / synthesized / user-edited / catalog-default
-- Node-level trailer: `card (retrieved src="donor:142" conf=0.91)` — inherits to descendants
-- Value-level trailer: `fill=#F8F8F8 #[user-edited]` — only when richer than value syntax self-describes
-- Queryable semantics (how the DB / verifier / UI filter by provenance)
-
-### 10. Grammar-constrained decoding notes
-- How this grammar maps to XGrammar / Outlines / llguidance formats
-- Token vocabulary exposure (what goes into the system prompt vs what's enforced by the mask)
-- Per-backend capability grammar derived from ADR-001 table
-- Handling of unknown / extension properties (fail-open vs fail-closed)
-
-### 11. Reserved for future
-- Provenance metadata beyond the six kinds (if ever needed)
-- Multi-target catalog extension syntax (Stage 6)
-
-### 12. Canonical example documents
-- (From `tests/fixtures/markup/` — referenced here once authored)
+If this doc conflicts with Tier 0 §4, Tier 0 wins — update this spec to
+match. If a fixture under `tests/fixtures/markup/` disagrees with this
+spec, the **fixture is normative** (Plan A.5 "fixtures are normative"
+principle) and this spec is wrong — update the spec.
 
 ---
 
-## Open questions (to be resolved before this spec is complete)
+## 1. Introduction and scope
 
-Listed in priority order. Each must have a decision recorded in this spec by the end of Plan A.5.
+### 1.1 What this grammar expresses
 
-### Q1. Token-ref syntax — confirm `{path}` vs alternatives
+dd markup expresses the **L3 semantic tree** of the multi-level IR: a
+compact, referential tree of elements where every styling / spacing /
+typography value is a reference (to a token, a pattern, a component, or
+a universal-catalog default) and the structural axis may be populated
+at any density.
 
-`{color.brand.primary}` is the DTCG standard and appears in the largest volume of LLM training data (Style Dictionary docs, CSS-var patterns). Alternative `::path` (Rust-like) or `$path` (YAML-like) considered and rejected in prior session chats.
+One grammar, many speakers — the same grammar expresses:
+- Extractor output (what `compress(L0+L1+L2)` produces; see
+  `docs/spec-l0-l3-relationship.md`)
+- User authoring (what a designer/engineer types)
+- LLM synthesis output (what the generator model emits)
+- Edits (construction + addressing existing `@eid`; same grammar)
+- Verifier feedback (critic emits edit-grammar patches)
 
-**Proposed:** `{color.brand.primary}` as first-class value form.
-**Needs:** explicit BNF production; confirmation that LLM constrained-decoding libraries handle brace-tokens cleanly.
+Any distinction between these speakers lives in semantics (validation
+mode), not syntax.
 
-### Q2. Provenance trailer syntax — `#[kind args]` or alternative
+### 1.2 What this grammar does NOT express
 
-LLM emission reliability is the deciding factor. Trailer should:
-- Only appear when richer than value syntax self-describes (Scenario A has zero trailers)
-- Be easy to skip in the parser (so absent-trailer is the fast path)
-- Be unambiguous next to value forms
+- **L0 scene graph** — the DB `nodes` table with every Figma property. L0
+  is the ground-truth source for extraction and round-trip verification;
+  dd markup is derived FROM L0 (see `docs/spec-l0-l3-relationship.md`).
+- **L1 classification annotations** as first-class — canonical types
+  appear as **type keywords** in dd markup (`button`, `card`, etc.),
+  but the per-node classification confidence and classification-source
+  (formal/heuristic/LLM/vision) don't surface. They're available via the
+  L2 provenance channel if needed.
+- **L2 token bindings as a raw table** — dd markup references tokens by
+  path (`{color.action.primary.bg}`); the binding table is an
+  extraction-side artifact, not a user-facing construct.
 
-**Candidate:** `#[kind args]` value trailer; `(kind args)` node-level trailer on the node's head line.
+### 1.3 Relationship to KDL v2 substrate
 
-### Q3. Slot syntax
+dd markup borrows from **KDL v2** (Kaylee's Document Language) at the
+lexical layer:
+- `{ }` block bounding
+- Line-terminated statements (newline is significant)
+- Identifier chars include dashes
+- Triple-quoted multiline strings
 
-Three primitives (scalar args / named slots / path overrides) don't unify. Exact syntax for each:
+At the syntactic layer, dd markup **diverges from KDL**:
+- Type names come first (KDL calls them "names") — dd names them as
+  keywords from a fixed list
+- dd introduces four non-KDL sigils: `{name}` for refs, `->` for
+  component refs, `&` for pattern refs, `#eid` for identity
+- dd has formal `define` blocks with typed parameters + slots; KDL has
+  no analog
 
-**Candidate:**
-- Scalar arg: `title: text = "Product"` (typed with default)
-- Named slot: `slot action = button/primary(label="Go")` (default is a call)
-- Path override at call site: `& pattern.product-card card.fill={color.surface.muted}`
+The dialect is intentionally restrictive compared to bare KDL: the
+grammar is designed to be LLM-constrained-decodable, not to be a
+general-purpose document language.
 
-**Needs:** explicit grammar production for each; resolution order for collisions between scalar arg and path override with same name.
+### 1.4 Audience
 
-### Q4. Hierarchical ID semantics
-
-When is `#eid` optional vs required? What does the parser generate for auto-ids?
-
-**Candidate:**
-- `#eid` optional except when a node needs to be addressable by edits / other references
-- Auto-id is `{type}@{sibling-count}` when no `#eid` and no `as` alias
-- `as name` at call site is the friendly-alias escape hatch
-
-**Needs:** precise rule for when ids collide (error, warning, or auto-rename).
-
-### Q5. Wildcards and path semantics
-
-`@grid/*/buy-button label="Click"` applies the edit to every `buy-button` child of any direct child of `grid`. What about `@**/button`? Recursion depth?
-
-**Candidate:** `*` one level, `**` any depth (including zero). Parser checks against symbol table at edit-apply time.
-
-### Q6. Whitespace and block boundaries
-
-KDL allows both `{ ... }` blocks and bare statements. Our grammar must decide: mandatory block braces on definitions? Optional where unambiguous?
-
-**Candidate:** mandatory braces on `define` and edit block forms; inline-property single-statement nodes don't need braces.
-
-### Q7. Comments
-
-`//` line and `/* */` block per KDL v2. KDL also has `/-` slash-dash for "delete this node" — do we adopt for edits, or use explicit `delete @eid`?
-
-**Candidate:** use explicit `delete @eid` for edits. Reserve `/-` for author-commented-out blocks (not semantically meaningful).
-
-### Q8. Number formats
-
-Integers, floats, scientific notation, signed. What's the canonical emission form (matters for round-trip byte-equality across serde)?
-
-**Candidate:** emit the most-compact lossless form. Parser accepts all forms. Round-trip is at IR-equality, not byte-equality.
-
-### Q9. String escapes
-
-`\n \t \r \" \\ \0` plus unicode escapes. How to handle newlines inside strings (forbidden vs multiline quotes)?
-
-**Candidate:** standard escape set; newlines inside single-line strings are forbidden (hard-error at parse); multiline strings use triple-quote or similar.
-
-### Q10. Extension mechanism
-
-DTCG's `$extensions` pattern — tool-specific metadata that spec-compliant parsers preserve through round-trip. Do we want this?
-
-**Candidate:** support as a `$ext` property-key namespace. Unknown `$ext.*` properties preserved literally through serde; validator ignores; tools can embed private metadata.
+**LLM emission + technical-reader human-readable** (engineer,
+design-systems lead). NOT designer-facing in v0.3. Grammar-complexity
+tradeoffs favor constrained-decoding reliability and precise parse
+semantics over visual accessibility for non-technical users.
 
 ---
 
-## Plan A.5 deliverables
+## 2. Lexical grammar
 
-When this doc is complete, the following must be true:
+### 2.1 Character set
 
-1. All 10 open questions above have decisions recorded in the spec.
-2. Every `.dd` fixture file in `tests/fixtures/markup/` parses successfully against this grammar.
-3. At least three invalid variations on each fixture are listed as expected-rejected inputs (for the parser-implementation test suite).
-4. A smoke test using constrained decoding (Haiku + XGrammar or llguidance) produces valid `.dd` output for a small prompt (e.g., "a 3-card grid"). This is a coarse existence proof that the grammar is decodable, not a full validation.
-5. The spec has a one-page "cheat sheet" summary section suitable for prompting an LLM.
+UTF-8. Source files MUST be valid UTF-8 byte sequences. Implementations
+MAY reject BOMs (the parser does not skip them; they are invalid input).
+
+### 2.2 Whitespace and line terminators
+
+- `' '` (space), `'\t'` (tab), and line terminators are whitespace
+- Line terminators: `'\n'` (LF) and `'\r\n'` (CRLF). Bare `'\r'` is a
+  lexical error
+- **Newline is mostly non-significant inside a node head**: a NodeHead
+  may span multiple lines so long as each continuation line is
+  positioned where a new property / path-override / node-trailer is
+  expected. The head ends when one of the following appears:
+  - `{` — opens a Block
+  - `}` — closes an enclosing Block
+  - A blank line (one or more EOL with nothing else between them)
+  - A new line starting with a **statement-starter token**:
+    - Any TypeKeyword (§2.7)
+    - `->` (CompRef)
+    - `&` (PatternRef)
+    - `@` (edit ref)
+    - `define` / `namespace` / `use` / `tokens`
+    - An edit verb (`set`, `append`, `insert`, `delete`, `move`, `swap`,
+      `replace`)
+    - `$ext.` (extension metadata)
+- Whitespace between tokens on the same line is ignored except where it
+  separates adjacent identifiers that would otherwise fuse
+- **Between top-level statements and inside a Block**, a blank line is
+  a statement separator and is advisory only (does not change parse
+  semantics beyond terminating a multi-line NodeHead)
+
+### 2.3 Comments
+
+- `// ...` line comment, runs to the next line terminator
+- `/* ... */` block comment, does not nest
+- Both are whitespace-equivalent to the parser (produce no tokens)
+
+### 2.4 Identifiers
+
+```
+IDENT ::= (letter | '_') (letter | digit | '_' | '-')*
+```
+
+- `letter` matches ASCII `[A-Za-z]`
+- Dashes `-` are valid continuation characters (matches KDL; matches
+  Figma component-name convention like `nav/top-nav` on the per-segment
+  basis)
+- Identifiers are case-sensitive
+- Reserved words (listed in §2.7) MUST NOT be used as bare identifiers
+  where they would parse ambiguously; they MAY be used as property keys
+  or within string literals
+
+### 2.5 String literals
+
+```
+StringLit     ::= SingleLine | MultiLine
+SingleLine    ::= '"' (Char | EscapeSeq)* '"'
+MultiLine     ::= '"""' LineBreak (Char | EscapeSeq | LineBreak)*? LineBreak '"""'
+EscapeSeq     ::= '\\' ( '"' | '\\' | 'n' | 't' | 'r' | '0' | 'u' '{' HexDigit+ '}' )
+```
+
+- Single-line strings: no raw line terminators (hard-error); use
+  escape `\n` or switch to multiline
+- Multi-line strings: leading indentation is stripped (the indentation
+  level of the closing `"""` determines the common prefix to strip,
+  Python-style)
+- Unicode escapes: `\u{NNNN}` where `NNNN` is 1–6 hex digits
+- No single-quoted strings; no backticks
+
+### 2.6 Numeric literals
+
+```
+NumberLit     ::= SignedInt | SignedFloat
+SignedInt     ::= '-'? DecDigit+
+SignedFloat   ::= '-'? DecDigit+ '.' DecDigit+ Exponent?
+                | '-'? DecDigit+ Exponent
+Exponent      ::= ('e' | 'E') ('+' | '-')? DecDigit+
+```
+
+- All numbers represent dimensional pixels unless the property's schema
+  dictates otherwise (e.g., `opacity` is unitless 0..1; `rotation` is
+  radians for round-trip, renderer converts)
+- Percentages and alternative units (`rem`, `em`, `%`) are NOT part of
+  v0.3 — reserved for post-v0.3
+- Hex color literals are NOT numbers; see §2.8
+
+### 2.7 Keywords (reserved)
+
+Three reserved-word categories. Each is context-free (no multi-context
+disambiguation needed):
+
+**Document-structure keywords:**
+`namespace`, `use`, `as`, `tokens`, `define`, `slot`
+
+**Node type keywords** (canonical types from the catalog):
+`screen`, `frame`, `text`, `rectangle`, `vector`, `group`, `ellipse`,
+`button`, `card`, `header`, `container`, `icon`, `image`, `slider`,
+`heading`, `tabs`, `overlay`, `list`, `input`, `toggle`, `checkbox`,
+`radio`, `avatar`, `badge`, `dialog`, `drawer`, `menu`, `popover`,
+`tooltip`, `chart`, `divider`, `boolean-operation`, `line`, `star`,
+`polygon`, `nav`
+
+The type keyword list extends over time as the canonical-type catalog
+grows; the parser MUST accept any identifier matching
+`TypeKeyword` from a registry loaded at parse initialization. Parsers
+SHOULD warn on unknown type keywords but MUST NOT hard-fail (fail-open
+per `feedback_fail_open_not_closed.md`).
+
+**Edit-verb keywords:**
+`set`, `append`, `insert`, `delete`, `move`, `swap`, `replace`
+
+**Value keywords:**
+`true`, `false`, `null`, `hug`, `fill`, `fixed`
+
+### 2.8 Sigils
+
+| Sigil | Role | Precedence |
+|-------|------|-----------|
+| `#`   | eid prefix (`#form-card`) | Attaches to immediately-following IDENT |
+| `@`   | eid reference (`@form-card`, `@card-1.title`) | Used only in edit context |
+| `->`  | Component reference (`-> nav/top-nav`) | Node-starter alternative to type keyword |
+| `&`   | Pattern reference (`& option-row`) | Node-starter alternative to type keyword |
+| `{`   | Open block OR open value-ref OR open property-group | Disambiguated by context (§3.4) |
+| `}`   | Close of a `{`-opened region | — |
+| `::`  | Scope resolution (`sheet22::card-section`) | Inside CompPath / PatternPath |
+| `=`   | Property / slot assignment | Always binary |
+| `.`   | Dotted-path separator (inside refs and path overrides) | |
+| `/`   | Slash-path separator (inside component keys) | |
+| `#[`  | Open value-level provenance trailer | Followed by trailer content |
+| `]`   | Close of a `#[`-opened trailer | — |
+| `(`   | Open function-call argument list OR node-level trailer | Context |
+| `)`   | Close of a `(`-opened region | — |
+| `$`   | Extension-metadata prefix (`$ext.foo`) | Only in property-key position |
 
 ---
 
-## Implementation hook
+## 3. Syntactic grammar (EBNF)
 
-Once this spec is stable, `dd/markup.py` gets rebuilt against it. The existing `dd/markup.py` (~786 LOC on `v0.3-integration`) is a mechanical dict-IR serializer and is NOT the parser for this grammar. Some infrastructure (tokenizer primitives, error classes, test harness) is reusable; the value-form parsing, definition expansion, and edit-verb handling must all be rebuilt to match this spec.
+Below is the complete EBNF. All productions use the following
+conventions:
+- `X*` — zero or more
+- `X+` — one or more
+- `X?` — optional
+- `(X | Y)` — alternation
+- `EOL` — end-of-line terminator, one or more consecutive line breaks
+  treated as a single EOL
+
+```ebnf
+Document         ::= Preamble TopLevelItem* EOF
+
+Preamble         ::= NamespaceDecl? UseDecl* TokensBlock?
+
+NamespaceDecl    ::= 'namespace' DottedPath EOL
+UseDecl          ::= 'use' StringLit 'as' IDENT EOL
+TokensBlock      ::= 'tokens' Block
+
+TopLevelItem     ::= DefineDecl | Node
+
+DefineDecl       ::= 'define' IDENT ParamList Block
+ParamList        ::= '(' (Param (',' Param)* ','?)? ')'
+Param            ::= ScalarParam | SlotParam | OverrideParam
+ScalarParam      ::= IDENT ':' TypeHint ('=' ValueExpr)?
+SlotParam        ::= 'slot' IDENT ('=' NodeExpr)?
+OverrideParam    ::= DottedPath '=' ValueExpr         // declared at define level
+                                                      // for documentation; actual
+                                                      // override happens at call
+                                                      // site (see PathOverride)
+
+TypeHint         ::= 'text' | 'number' | 'bool' | 'color' | 'dimension'
+                   | 'node' | 'slot'       // structural params typed as node/slot
+                   | IDENT                  // user-defined type-name (future)
+
+Node             ::= NodeHead Block?
+NodeHead         ::= (TypeKeyword | CompRef | PatternRef)
+                     EID?
+                     NodeProperty*
+                     NodeTrailer?
+NodeProperty     ::= PropAssign | PathOverride
+
+CompRef          ::= '->' CompPath
+PatternRef       ::= '&' PatternPath
+
+CompPath         ::= (IDENT '::')? SlashPath
+PatternPath      ::= (IDENT '::')? DottedPath
+
+SlashPath        ::= IDENT ('/' IDENT)+
+DottedPath       ::= IDENT ('.' IDENT)*
+
+EID              ::= '#' IDENT
+ERef             ::= '@' IDENT ('.' IDENT)*            // edit addressing
+                   | '@' SlashPath
+                   | '@' IDENT? ('/' ('*' | '**' | IDENT))+  // wildcards (edit-only)
+
+PropAssign       ::= PropKey '=' ValueExpr
+PropKey          ::= DottedPath | ExtKey
+ExtKey           ::= '$' 'ext' '.' IDENT ('.' IDENT)*
+
+PathOverride     ::= DottedPath '=' ValueExpr          // at pattern-ref call site
+
+ValueExpr        ::= Literal
+                   | TokenRef
+                   | CompRef
+                   | PatternRef
+                   | FunctionCall
+                   | PropGroup
+                   | NodeExpr                          // only as slot value
+
+NodeExpr         ::= Node                              // exactly one top-level node
+
+Literal          ::= StringLit | NumberLit | HexColorLit | BoolLit | NullLit
+HexColorLit      ::= '#' HexDigit{6,8}                 // 6 or 8 hex digits
+BoolLit          ::= 'true' | 'false'
+NullLit          ::= 'null'
+
+TokenRef         ::= '{' DottedPath '}'                // also resolves param refs
+
+FunctionCall     ::= IDENT '(' FuncArgs? ')'
+FuncArgs         ::= FuncArg (',' FuncArg)*
+FuncArg          ::= ValueExpr | IDENT '=' ValueExpr   // positional or keyword
+
+PropGroup        ::= '{' (PropAssign (',' | EOL)*)* '}'   // e.g. padding={top=8 ...}
+
+Block            ::= '{' EOL?
+                       (Node | SlotPlaceholder | PropAssign | PathOverride
+                        | SlotFill | ValueTrailer)*
+                     '}'
+SlotFill         ::= IDENT '=' NodeExpr                // inside a pattern-ref body
+SlotPlaceholder  ::= '{' IDENT '}'                     // expands slot/arg at
+                                                       // semantic analysis; same
+                                                       // lexical form as TokenRef,
+                                                       // disambiguated by position
+                                                       // (block vs value)
+
+NodeTrailer      ::= '(' IDENT PropAssign* ')'         // node-level provenance
+ValueTrailer     ::= '#[' IDENT PropAssign* ']'        // value-level provenance
+```
+
+### 3.1 Disambiguating `{` contexts
+
+`{` opens one of four syntactic regions, distinguished by what precedes
+and what follows:
+
+| Context | Recognition | Example |
+|---------|-------------|---------|
+| **Block** | After a node head (or `tokens`, `define`, or a slot-fill RHS node-expression) | `frame #x { ... }` |
+| **TokenRef / ParamRef** (value position) | After `=` or inside a function-call arg list — single identifier-path inside | `fill={color.surface.card}` |
+| **SlotPlaceholder** (block position) | Standalone statement in a Block, single IDENT inside braces | `{cta}` on its own line |
+| **PropGroup** | After `=` — `key=value` pairs inside | `padding={top=8 bottom=12}` |
+
+Parser state determines context:
+- **In a Block**, `{IDENT}` as a standalone statement is a
+  SlotPlaceholder — at semantic analysis, it expands to the slot's
+  NodeExpr (or, in the general `{param}` case, to the param's default).
+- **In value position** (after `=` or inside a function-call arg list):
+  - If the next non-whitespace token after `{` is an IDENT followed by
+    `.` or `}`, it's a TokenRef / ParamRef (resolves to a scalar).
+  - If the next non-whitespace token is an IDENT followed by `=`, it's
+    a PropGroup (nested key-value properties).
+
+### 3.2 Disambiguating slot-fill vs property-assign
+
+Inside a pattern-reference Block, an assignment statement `key = X`
+can be either:
+- A **property assignment** if `X` is a ValueExpr starting with a literal,
+  token ref, function call, or prop group
+- A **slot fill** if `X` is a NodeExpr (starts with a type keyword, `->`,
+  or `&`)
+
+The parser tracks per-pattern slot declarations from the referenced
+`define`; at the assignment site, it disambiguates by the first token of
+the RHS. Type-keyword start → slot fill. Everything else → property.
+
+### 3.3 Disambiguating function call vs IDENT reference
+
+Inside a ValueExpr, `IDENT` alone is a bare identifier (reserved for
+future use, currently an error). `IDENT(...)` is a function call.
+`{IDENT...}` is a TokenRef (braces disambiguate).
+
+### 3.4 Auto-generated EIDs
+
+When an explicit `#eid` is absent AND no `as name` alias is used, the
+parser synthesizes an id at semantic-analysis time:
+
+```
+auto_eid := <TypeKeyword> '-' <1-based-sibling-index-within-parent-of-same-type>
+```
+
+Example: three `frame` children of a container with no `#eid` become
+`frame-1`, `frame-2`, `frame-3`. This matches the dict IR convention
+from `dd/ir.py::build_composition_spec` (see screen-1 → frame-1 →
+container-1 pattern).
+
+Auto-ids are NOT stable across tree edits (inserting a new frame at
+position 1 renumbers everyone). Code that edits a document MUST NOT
+address auto-id'd nodes by their synthesized id — promote to explicit
+`#eid` first.
 
 ---
 
-*Plan A.5 authors this doc. Plan B Stage 1 implements against it. No code is written against dd markup before this doc is stable.*
+## 4. Value grammar
+
+### 4.1 Value forms
+
+Five ValueExpr forms, one slot per property. The parser disambiguates
+on the first character of the RHS.
+
+| Form | Starts with | Example |
+|------|-------------|---------|
+| Literal | digit, `-`, `#`, `"`, `true`, `false`, `null` | `42`, `"Skip"`, `#F6F6F6` |
+| TokenRef / ParamRef | `{` followed by IDENT + `.` or `}` | `{color.surface.card}` |
+| ComponentRef | `->` | `-> nav/top-nav` |
+| PatternRef | `&` | `& option-row` |
+| FunctionCall | IDENT followed by `(` | `gradient-linear(...)` |
+| PropGroup | `{` followed by IDENT + `=` | `{top=8 bottom=12}` |
+| NodeExpr (slot-fill only) | a type keyword, `->`, or `&` | inside `{ body = frame ... }` |
+
+### 4.2 Resolution order for `{name}` references
+
+When a `{DottedPath}` is encountered during semantic analysis,
+resolution proceeds in this order:
+
+1. **Enclosing-define param scope.** If the path's first segment matches
+   a scalar param, slot param, or override param of the innermost
+   enclosing `define`, substitute the value.
+2. **Top-level `tokens` block** of the current document.
+3. **Imported tokens.** For each `use` declaration in reverse order
+   (most-recent wins on collision), look up the path.
+4. **Universal catalog.** The shadcn-flavored default set
+   (`_UNIVERSAL_MODE3_TOKENS` in `dd/compose.py`) is the last resort.
+5. **Unresolved.** Hard-error at parse/semantic time with
+   `KIND_UNRESOLVED_REF` (per ADR-006 boundary contract).
+
+### 4.3 Function values
+
+Function values are dimension-rich composed values that one-line literals
+can't express cleanly:
+
+| Function | Purpose | Example |
+|----------|---------|---------|
+| `gradient-linear(stop1, stop2, ...)` | Linear gradient fill | `gradient-linear(#D9FF40, #9EFF85)` |
+| `gradient-radial(...)` | Radial gradient fill | `gradient-radial(#FFF, #000)` |
+| `image(asset=<hash>, mode=<scale>)` | Image fill from asset registry | `image(asset=79b6..., mode=fill)` |
+| `rgba(r, g, b, a)` | Raw RGBA (rare; prefer hex) | `rgba(0, 0, 0, 0.3)` |
+| `shadow(x, y, blur, color, ...)` | Per-shadow specification | `shadow(0, 2, 8, #0000001A)` |
+
+Function names are a closed set defined by this spec. Unknown function
+names are hard-errors (strict — shadowing a typo with a silent pass-through
+corrupts extraction fidelity).
+
+### 4.4 Special sizing values
+
+```
+Sizing := 'fill' | 'hug' | 'fixed' | NumberLit | FillBounded | HugBounded
+FillBounded := 'fill' '(' ('min' '=' NumberLit)? (',' 'max' '=' NumberLit)? ')'
+HugBounded  := 'hug'  '(' ('min' '=' NumberLit)? (',' 'max' '=' NumberLit)? ')'
+```
+
+Bare number is implicit `fixed`: `width=397` == `width=fixed(397)`.
+
+---
+
+## 5. Node identity
+
+### 5.1 EID rules
+
+- `#eid` is OPTIONAL. Auto-id is generated when absent (see §3.4).
+- `#eid` MUST be present when:
+  - The node is targeted by a `@eid` reference elsewhere in the document
+  - The node is overriden via path-override at any call site
+  - The node is a slot-fill target
+- Duplicate `#eid` within the same scope is a **hard-error at parse time**
+  with `KIND_DUPLICATE_EID`. No auto-rename.
+- EID scope is the enclosing Block. `#foo` inside a child block is
+  distinct from `#foo` in the parent.
+
+### 5.2 `@eid` addressing (edit context)
+
+- `@eid` dereferences a previously-defined node. Only valid in edit
+  context (construction uses `#eid` to define, `@eid` to refer to an
+  already-constructed node in the same document or an imported one).
+- Path-style addressing: `@card-1.title` descends into the named subtree;
+  `@root/header/logo` uses slash-path traversal.
+- Wildcards `*` (one level) and `**` (any depth, including zero) are
+  valid ONLY in edit addressing: `@grid/*/buy-button`.
+
+### 5.3 `as <name>` aliases
+
+Alternative to `#eid` at pattern-reference call sites. Sugar:
+
+```
+& option-row as featured   title="Featured"
+```
+
+is equivalent to:
+
+```
+& option-row #featured     title="Featured"
+```
+
+`as` reads more naturally at LLM-emission time when the caller wants to
+name the output; `#eid` reads more naturally when the author is
+pre-planning.
+
+---
+
+## 6. Definitions and references
+
+### 6.1 `define` semantics
+
+A `define NAME(params) { body }` declaration introduces a named subtree
+template. The body is a Block; the params are typed and may have
+defaults.
+
+**Three parametrization primitives, non-overlapping:**
+
+| Primitive | Syntax | What it customizes |
+|-----------|--------|-------------------|
+| Scalar param | `name: type = default` | Content or scalar property values |
+| Slot param | `slot name = default-expr` | Structural subtree fills |
+| Path override | `path.inside.pattern = value` (at call site) | Deep property overrides |
+
+At call site:
+
+```
+& pattern.product-card
+    title="Product"                     # scalar-arg fill
+    card.fill={color.action.primary.bg} # path override (if `card` is a slot-or-node id inside)
+{
+    action = button label="Buy"          # slot fill (if `action` is a slot)
+}
+```
+
+### 6.2 `use` and namespacing
+
+```
+use "path/to/library" as alias
+```
+
+- Path is a string literal; relative paths resolve from the importing
+  file's directory. Bare library names (no `/`) resolve against a
+  configured search path (future).
+- Alias is mandatory. No un-aliased imports.
+- Inside the document, cross-library refs use `alias::path`:
+  `-> studio::nav/top-nav`, `& sheet22::card-section`
+- Same-library refs use unqualified paths: `& option-row`,
+  `-> nav/top-nav`
+
+### 6.3 Cycle detection
+
+Definition references form a directed graph. Cycles are hard-errors at
+parse time (three-color DFS, `KIND_CIRCULAR_DEFINE`). No transitive
+limits; single-level self-recursion is also a cycle.
+
+### 6.4 Scope resolution and shadowing
+
+- Inside a `define`, the param scope shadows outer token refs at
+  resolution step 1.
+- Nested blocks do NOT introduce new scopes for `{name}` resolution —
+  resolution only scopes at the `define` boundary. This keeps scoping
+  simple and predictable.
+- Imported definitions are flat-namespaced under their alias (`alias::name`);
+  there's no nested namespace within an alias.
+
+### 6.5 Dotted-paths vs slash-paths
+
+Two path flavors, **never colliding**:
+
+| Flavor | Used for | Where |
+|--------|----------|-------|
+| Dotted `a.b.c` | Pattern names, token paths, override paths | Inside `&`, `{}`, and PathOverride |
+| Slash `a/b/c` | Component keys | Inside `->` only |
+
+A single ref never mixes: `& a.b.c` is pattern path; `-> a/b/c` is
+component path; `a.b/c` is a lex error.
+
+### 6.6 Pattern body cannot contain document preamble
+
+A `define` body is a sequence of nodes / properties / slots / overrides.
+It cannot contain `namespace`, `use`, or `tokens` declarations — those
+are document-level only.
+
+---
+
+## 7. Axis population
+
+Tier 0 §4.1 defines five specification axes. Each axis maps to a set of
+properties in dd markup:
+
+| Axis | Properties | On which node types |
+|------|------------|---------------------|
+| **Structure** | children, type, slot declarations | All |
+| **Content** | text content (positional or `text=`), `label=`, data bindings | Text-bearing types (text, button, heading, ...) |
+| **Spatial** | `x`, `y`, `width`, `height`, `layout`, `gap`, `padding`, `align`, `mainAxis`, `constraints`, `min-width`, `max-width`, `min-height`, `max-height` | All with a visual surface |
+| **Visual** | `fill`, `fills`, `stroke`, `strokes`, `effects`, `shadow`, `radius`, `opacity`, `visible`, `blend` | All with a visual surface |
+| **System** | Top-level `tokens { }` block declaring palette, type scale, spacing scale, shadow scale | Document-level only |
+
+### 7.1 Any axis subset is valid on any node
+
+Wireframe-density content (Structure + Spatial only) is as valid as
+full-density content (all five axes). Fixture 03 demonstrates both
+wireframe-only and style-only nodes within a single document.
+
+### 7.2 Defaults fill unpopulated axes
+
+When a node specifies a subset, the renderer fills missing axes from:
+1. The component or pattern template default (if the node is a ref)
+2. The canonical-type catalog default
+3. The universal catalog default
+
+Explicit `null` removes a default; absence is "use the default."
+
+### 7.3 Property schema validation
+
+Per-property capability gating (ADR-001) is enforced at **semantic
+analysis** time, not parse time. The parser accepts any `IDENT=value`
+assignment; the validator (see §10) checks against the per-backend
+capability table.
+
+---
+
+## 8. Edit grammar (same grammar, addressed at existing nodes)
+
+Construction and editing parse through identical productions. The
+difference is whether a node is being *created* (Node with `#eid`) or
+*addressed* (Node starting with an `ERef` `@eid`).
+
+### 8.1 Seven verbs (closed set)
+
+| Verb | Role | Example |
+|------|------|---------|
+| `set` | Mutate properties on an existing node | `set @card-1 radius={radius.lg}` — often sugared |
+| `append` | Add a new node as last child of `to=` | `append to=@form { button label="New" }` |
+| `insert` | Add at an explicit position | `insert into=@grid after=@card-3 { ... }` |
+| `delete` | Remove a node and its subtree | `delete @card-2` |
+| `move` | Relocate a node under a new parent | `move @card-1 to=@grid position=first` |
+| `swap` | Replace a node with a different one | `swap @button-1 with=-> button/primary/lg` |
+| `replace` | Replace subtree in-place with new subtree | `replace @header { frame ... }` |
+
+### 8.2 `set` is implicit on property assignment
+
+When a statement starts with `@eid` followed by `PropAssign`, it's an
+implicit `set`:
+
+```
+@card-1 radius={radius.lg}
+```
+
+is equivalent to:
+
+```
+set @card-1 radius={radius.lg}
+```
+
+### 8.3 Keyword args for destination
+
+Verbs that take a position use keyword args, not positional:
+- `to=@eid` — parent for append
+- `into=@eid after=@eid` — position-relative insert
+- `with=NodeExpr` — replacement for swap
+
+This avoids "which arg is the source vs target" puzzles that punctuation-
+based syntaxes run into.
+
+### 8.4 Construction inside an edit block
+
+The body of an edit verb IS construction using the normal grammar:
+
+```
+append to=@form {
+  button #submit label="Save"
+  text "Required fields marked *"
+}
+```
+
+### 8.5 Edit addressing — NOT shipping in v0.3 Stage 1 body
+
+Stage 1 ships the parser + emitter for construction. Edit grammar
+**parses** in Stage 1 (same grammar, no extra code) but is **not
+evaluated** until Stage 4 (Priority 1). Fixture 03 shows the edit form
+inside a comment block to illustrate without activating Stage 4 scope.
+
+---
+
+## 9. Provenance annotations
+
+Six kinds per Tier 0 §4.4:
+- `extracted` — from the source Figma file
+- `retrieved` — from a corpus donor during composition
+- `substituted` — from an LLM intervention
+- `synthesized` — from a catalog template or universal default
+- `user-edited` — from a human author
+- `catalog-default` — fallback when no other provenance applies
+
+### 9.1 Node-level trailer
+
+Syntax: `(kind key=value ...)` on the node's head line, before the block:
+
+```
+screen #main (extracted src=181) {
+  ...
+}
+
+card (retrieved src="donor:142" conf=0.91) {
+  ...
+}
+```
+
+Inheritance: a node's trailer sets the default provenance for ALL
+descendants. Descendants override by declaring their own trailer.
+
+### 9.2 Value-level trailer
+
+Syntax: `#[kind key=value ...]` after the value, on the same logical
+line:
+
+```
+fill=#F8F8F8 #[user-edited reason="approved brand review"]
+padding={top=8} #[synthesized conf=0.72]
+```
+
+Inheritance: none — value trailers are per-value and only apply to that
+property.
+
+### 9.3 When to emit a trailer
+
+**Rule of parsimony.** Emit a trailer only when the provenance is
+RICHER than what the value's syntax self-describes. A `#F8F8F8` literal
+is self-evidently raw (post-Stage-3 this becomes extract-degraded); no
+trailer needed unless the origin is non-obvious. A `{color.surface.card}`
+token ref is self-evidently a token; no trailer unless the token was
+synthesized mid-generation.
+
+### 9.4 Queryable semantics
+
+Provenance trailers are PRESERVED through serde — the parser produces
+them as part of the IR, the emitter re-emits them verbatim. The verifier
+uses provenance to target low-confidence `synthesized` values first.
+UIs filter views by kind.
+
+### 9.5 Proxy structured-error channel
+
+If parse encounters any structured error (`KIND_*`), the error's `eid`,
+`kind`, and message are preserved on the parser output (not in the IR
+itself — the IR remains clean). This mirrors ADR-006 (boundary contract)
+and ADR-007 (unified verification channel).
+
+---
+
+## 10. Grammar-constrained decoding
+
+### 10.1 Supported decoders
+
+XGrammar (ICML 2025), Outlines, llguidance. All three accept EBNF or a
+nearly-equivalent BNF with per-production priorities. The EBNF in §3 is
+written in a subset acceptable to all three (no unbounded lookahead, no
+left-recursion, no greedy quantifiers mixed with alternation).
+
+### 10.2 Token-vocabulary exposure vs grammar mask
+
+Two separate LLM-side mechanisms, both depending on the same capability
+table (ADR-001):
+
+| Mechanism | What it does | Failure mode if missing |
+|-----------|--------------|-------------------------|
+| **System-prompt exposure** | Informs LLM of available tokens / components / patterns / catalog types | Generates references to non-existent tokens (hallucinates) |
+| **Grammar mask** | Enforces at decode time that only valid paths emit | Blocks valid but unadvertised paths (empty output) |
+
+Both are required. Exposure without masking → hallucinations under
+distribution shift. Masking without exposure → empty / repetitive
+output.
+
+### 10.3 Per-backend capability grammar
+
+The ADR-001 capability table is keyed by `(property, backend, node_type)`.
+For a given backend, the grammar is specialized: `card` nodes on the
+Figma backend accept `radius=` but SwiftUI may not accept per-corner
+radius. The per-backend specialization is generated from the capability
+table at decode-start time.
+
+### 10.4 Unknown / extension properties
+
+- `$ext.*` property keys are ALWAYS accepted by the grammar (opaque
+  preserved). Never constrained.
+- Unknown IDENT property keys on known type keywords are warned but
+  parsed (fail-open per
+  `feedback_fail_open_not_closed.md`).
+- Unknown TypeKeyword on a node head is warned but parsed.
+
+---
+
+## 11. Reserved / extension
+
+These are placeholders for post-v0.3 extensions. The parser MUST accept
+them as opaque now so forward-compatibility holds:
+
+- `$ext.*` — tool-specific metadata (§4.1, §10.4)
+- Alternative units (`rem`, `em`, `%`) — reserved for post-v0.3 spatial
+  axis
+- `@alias::eid` cross-library edit addressing — reserved; single-library
+  edits only in v0.3
+- `pattern` as a document root type (like `screen` and `component`) —
+  reserved for library files
+
+---
+
+## 12. Canonical example documents
+
+The three fixtures under `tests/fixtures/markup/` are the canonical,
+normative examples. Every construct in this spec parses against at
+least one fixture:
+
+| Fixture | Exercises |
+|---------|-----------|
+| [`01-login-welcome.dd`](../tests/fixtures/markup/01-login-welcome.dd) | Preamble, `tokens` block, `define` with all 3 param primitives, `& pattern-ref`, `-> component-ref`, raw-literal fallbacks, node-level + value-level provenance |
+| [`02-card-sheet.dd`](../tests/fixtures/markup/02-card-sheet.dd) | Inline `card` type, slot fill with node-expression RHS, path overrides, per-corner `radius`, nested pattern-refs |
+| [`03-keyboard-sheet.dd`](../tests/fixtures/markup/03-keyboard-sheet.dd) | Mixed-axis density (wireframe / style-only / full), cross-file `use` alias, multiline string, `$ext.*`, edit-grammar preview in comment |
+
+Per Plan A.5 deliverable (4), three invalid variations per fixture are
+documented in the companion `*.invalid-*.dd` files (one commit group;
+see Plan B Stage 1.1 tests).
+
+---
+
+## 13. Open questions — CLOSED
+
+All ten open questions are resolved. Decisions below; the spec above
+implements each.
+
+### Q1. Token-ref syntax — CLOSED: `{dotted.path}`
+
+**Decision.** `{dotted.path}` is the canonical token-ref form, unified
+with param-substitution. Resolution order per §4.2. Rejected
+alternatives: `::path` (Rust-like — LLMs confuse with scope operator),
+`$path` (YAML-like — conflicts with `$ext`).
+
+### Q2. Provenance trailer syntax — CLOSED: dual `(...)` and `#[...]`
+
+**Decision.**
+- Node-level trailer: `(kind key=value ...)` on the head line before
+  the block. Inherits to descendants.
+- Value-level trailer: `#[kind key=value ...]` after the value.
+  Per-value only.
+
+Rationale: visual distinction helps LLM emission reliability. Node-level
+has natural home on the head line (no ambiguity with children block);
+value-level uses `#[` so it doesn't collide with the `#eid` sigil or
+with a standalone `#rgba` color literal.
+
+### Q3. Parametrization primitives — CLOSED: three non-overlapping forms
+
+**Decision.**
+- Scalar: `name: type = default-value`
+- Slot: `slot name = default-node-expr`
+- Path override (at call site): `path.inside = value` — declared at call
+  site, not as a param of the define
+
+Collision between a scalar-arg name and a path-override name: at call
+site, the parser resolves `name=X` as scalar-arg if `name` matches a
+defined scalar; as path-override if `name` matches an internal eid. If
+both, it's a hard-error `KIND_AMBIGUOUS_PARAM`; force disambiguation via
+`#name=` vs `name=`.
+
+### Q4. Hierarchical ID semantics — CLOSED: optional + auto + hard-collide
+
+**Decision.**
+- `#eid` is optional. Auto-id is `{TypeKeyword}-{sibling-index}` (§3.4).
+- `#eid` required when the node is referenced from elsewhere.
+- Duplicate `#eid` within a scope: hard-error (`KIND_DUPLICATE_EID`).
+
+### Q5. Wildcards — CLOSED: `*` one level, `**` any depth, edit-only
+
+**Decision.** `*` matches exactly one path segment; `**` matches
+any-depth zero-or-more. Wildcards are valid ONLY in edit addressing
+(`@eid` paths), never in construction. Resolution is against the
+symbol table at edit-apply time.
+
+### Q6. Whitespace and block boundaries — CLOSED: explicit braces
+
+**Decision.** Mandatory `{ ... }` for:
+- Block on a node with children
+- `define` body
+- `tokens` body
+
+Empty `{}` is forbidden — represent "no children" by absence.
+
+Inline properties can appear on the head line OR on continuation lines
+(any whitespace after the head is valid until the next non-whitespace
+token that ends a statement).
+
+### Q7. Comments — CLOSED: `//` and `/* */`, no `/-`
+
+**Decision.** `//` line comments and `/* */` block comments. `/-` (KDL
+slash-dash) is NOT adopted — using `delete @eid` in edit context is
+more explicit and LLM-reliable. `/-` may be recognized in future as
+author-commented-out nodes but it's not in v0.3 scope.
+
+### Q8. Number formats — CLOSED: full IEEE 754 input, canonical emission
+
+**Decision.** Accept: integers, decimals, signed, scientific. Emit:
+shortest lossless representation. `8` not `8.0`. Percentages as `0.5`
+not `50%`. Pixels are the implicit unit; alternative units reserved.
+
+### Q9. String escapes — CLOSED: standard + unicode, no single quotes
+
+**Decision.** `\n \t \r \" \\ \0` and `\u{NNNN}`. Double-quoted only.
+Triple-quoted `"""..."""` for multiline with Python-like dedent.
+Newlines inside single-line strings are hard-errors.
+
+### Q10. Extension mechanism — CLOSED: `$ext.*` opaque pass-through
+
+**Decision.** `$ext.*` property keys are always accepted. The grammar
+preserves them through parse + emit verbatim. Validator ignores.
+External tooling can embed arbitrary metadata at any node level.
+
+---
+
+## 14. One-page cheat sheet (for LLM prompting)
+
+```
+// preamble
+namespace <dotted.path>
+use "<path>" as <alias>
+tokens { <key> = <value> ... }
+
+// pattern definition
+define <name>(
+    <arg>: <type> = <default>,
+    slot <slot> = <default-node>,
+) {
+    <body>
+}
+
+// screen root
+screen #<eid> (<provenance>) {
+    <width=N> <height=N> <fill=...>
+    <children ...>
+}
+
+// node forms (any of these)
+frame      #<eid> <prop=val...> { children }
+text       "content" <prop=val...>
+rectangle  #<eid> <prop=val...>
+-> <path/to/component> #<eid> <prop=val...>
+& <pattern-name> #<eid> <prop=val...>
+
+// values
+literal:       42  "text"  #F6F6F6  true  false  null
+token-ref:     {color.surface.card}
+function:      gradient-linear({color.a}, {color.b})
+prop-group:    {top=8 right=12 bottom=8 left=12}
+
+// provenance
+node-level:    (<kind> <key>=<val>)
+value-level:   <value> #[<kind> <key>=<val>]
+
+// sizing
+width=fill                 // expand to parent
+width=hug                  // shrink to content
+width=397                  // fixed pixels (implicit)
+width=fill(min=320,max=480)// bounded fill
+
+// layout
+layout=horizontal gap=8 padding={top=12 left=16 bottom=12 right=16} align=center
+layout=vertical gap=12
+layout=absolute  // default; children use x=/y=
+
+// comments
+// line comment
+/* block comment */
+```
+
+---
+
+## 15. Implementation hook
+
+Once this spec is stable, `dd/markup.py` is rebuilt against it during
+Plan B Stage 1.2. The existing ~786 LOC of mechanical dict-IR serde
+shares these pieces with the new parser:
+
+- Tokenizer primitives (keyword table, string-escape table, number
+  parsing)
+- `DDMarkupParseError` / `DDMarkupSerializeError` error classes with
+  line/col tracking
+- The Tier 2 test harness (`tests/test_script_parity.py`)
+
+Everything else — value-form parsing, definition expansion, edit-verb
+handling, pattern / token resolution, grammar-mask generation — is new
+code against this spec.
+
+---
+
+*This doc is load-bearing. Update this file BEFORE touching
+`dd/markup.py` or any consumer.*
