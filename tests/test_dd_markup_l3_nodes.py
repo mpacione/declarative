@@ -34,6 +34,7 @@ from dd.markup_l3 import (
     SlotPlaceholder,
     TokenRef,
     ValueTrailer,
+    emit_l3,
     parse_l3,
 )
 
@@ -386,3 +387,62 @@ def test_unused_import_emits_warning() -> None:
     )
     kinds = [w.kind for w in doc.warnings]
     assert "KIND_UNUSED_IMPORT" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Round-trip: parse(emit(parse(src))) == parse(src) — the §3.5 contract
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("slug", [
+    "01-login-welcome", "02-card-sheet", "03-keyboard-sheet",
+])
+def test_fixture_round_trip(slug: str) -> None:
+    """`parse_l3(emit_l3(doc)) == doc` per grammar §3.5. Requires
+    canonical ordering on both the parser (normalize) and emitter
+    (deterministic), per §7.5/§7.6."""
+    source = (Path(__file__).parent / "fixtures" / "markup" / f"{slug}.dd").read_text()
+    doc1 = parse_l3(source)
+    emitted = emit_l3(doc1)
+    doc2 = parse_l3(emitted)
+    assert doc1 == doc2, (
+        f"{slug}: parse(emit(parse(src))) != parse(src) — "
+        f"round-trip invariant broken"
+    )
+
+
+def test_emit_is_idempotent_after_reparse() -> None:
+    """`emit_l3(parse_l3(emit_l3(parse_l3(src))))` == `emit_l3(parse_l3(src))`.
+
+    Emitter fixed-point: once emit produces a canonical form, further
+    emits are byte-identical. This is a stricter test than equality on
+    the AST — it also guarantees text stability.
+    """
+    src = (
+        'namespace x\n'
+        'tokens { color.a = #FFFFFF color.b = #000000 }\n'
+        'screen #s (extracted src=1) {\n'
+        '  width=428 height=926 fill={color.a}\n'
+        '  text "hello"\n'
+        '}\n'
+    )
+    e1 = emit_l3(parse_l3(src))
+    e2 = emit_l3(parse_l3(e1))
+    assert e1 == e2, "emitter not fixed-point after reparse"
+
+
+def test_emit_produces_parseable_output() -> None:
+    """Even for adversarial inputs, emit→parse succeeds."""
+    srcs = [
+        'namespace x\nscreen #s { width=428 height=926 }',
+        'screen #s { frame #a padding={top=8 right=12 bottom=8 left=12} }',
+        'screen #s { frame #a radius={top-left=8 top-right=8 '
+        'bottom-right=8 bottom-left=8} }',
+        'screen #s { frame #a fill=gradient-linear(#AAAAAA, #BBBBBB) }',
+        'screen #s { text """hello\nworld""" }',
+    ]
+    for src in srcs:
+        doc = parse_l3(src)
+        emitted = emit_l3(doc)
+        # Must re-parse without errors
+        parse_l3(emitted)

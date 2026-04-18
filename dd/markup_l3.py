@@ -934,12 +934,45 @@ def _parse_brace_value(c: _Cursor) -> Value:
             entries.append(PropAssign(key=key_path, value=v))
             _skip_propgroup_sep(c)
         c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
+        # Normalize entry order per grammar §7.6 for round-trip equality.
+        entries = _normalize_propgroup_entries(entries)
         return PropGroup(entries=tuple(entries))
     raise DDMarkupParseError(
         f"expected `.`, `}}`, or `=` inside brace value; got {c.peek().type} `{c.peek().value}`",
         kind="KIND_BAD_SYNTAX",
         line=c.peek().line, col=c.peek().col,
     )
+
+
+_PROPGROUP_SIDE_ORDER_PARSE = {
+    # mirrors emit-side _PROPGROUP_SIDE_ORDER; factored out so parse
+    # normalization uses the same source-of-truth.
+    frozenset(("top", "right", "bottom", "left")):
+        ("top", "right", "bottom", "left"),
+    frozenset(("top-left", "top-right", "bottom-left", "bottom-right")):
+        ("top-left", "top-right", "bottom-right", "bottom-left"),
+    frozenset(("horizontal", "vertical")):
+        ("horizontal", "vertical"),
+}
+
+
+def _normalize_propgroup_entries(
+    entries: list[PropAssign],
+) -> list[PropAssign]:
+    """Sort PropGroup entries in canonical order per grammar §7.6."""
+    keys = frozenset(e.key for e in entries)
+    for key_set, order in _PROPGROUP_SIDE_ORDER_PARSE.items():
+        if keys.issubset(key_set):
+            pos = {k: i for i, k in enumerate(order)}
+            return sorted(entries, key=lambda e: pos.get(e.key, 999))
+    # Partial match — still try to apply the order if entries are a
+    # subset of a known group (e.g., padding with only top/left).
+    for key_set, order in _PROPGROUP_SIDE_ORDER_PARSE.items():
+        if keys and keys.issubset(key_set):
+            pos = {k: i for i, k in enumerate(order)}
+            return sorted(entries, key=lambda e: pos.get(e.key, 999))
+    # Otherwise, lex-sort.
+    return sorted(entries, key=lambda e: e.key)
 
 
 def _skip_propgroup_sep(c: _Cursor) -> None:
@@ -1174,7 +1207,11 @@ def _parse_preamble(c: _Cursor) -> tuple[
         c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
         c.skip_eols()
 
-    return ns, tuple(uses), tuple(tokens)
+    # Normalize to canonical ordering per grammar §7.5 / §7.6.
+    # Required for `parse(emit(doc)) == doc` round-trip (§3.5).
+    uses_sorted = tuple(sorted(uses, key=lambda u: (u.alias, u.path)))
+    tokens_sorted = tuple(sorted(tokens, key=lambda t: t.path))
+    return ns, uses_sorted, tokens_sorted
 
 
 # ---------------------------------------------------------------------------
@@ -1436,6 +1473,14 @@ def _parse_node(c: _Cursor) -> Node:
     ):
         block = _parse_block(c)
 
+    # Normalize property order per grammar §7.5 so that
+    # `parse(emit(doc)) == doc` regardless of source ordering.
+    properties_sorted = sorted(
+        properties,
+        key=lambda p: _prop_rank(
+            p.key if isinstance(p, PropAssign) else p.path
+        ),
+    )
     head = NodeHead(
         head_kind=head_kind,
         type_or_path=type_or_path,
@@ -1444,7 +1489,7 @@ def _parse_node(c: _Cursor) -> Node:
         alias=alias,
         override_args=override_args,
         positional=positional,
-        properties=tuple(properties),
+        properties=tuple(properties_sorted),
         trailer=trailer,
     )
     return Node(head=head, block=block)
@@ -1780,12 +1825,421 @@ def _collect_scope_aliases(items: object, out: set[str]) -> None:
 def emit_l3(doc: L3Document) -> str:
     """Emit dd markup text for an L3Document.
 
-    Stub. Plan B Stage 1.3 + 1.4 fill this in against the canonical
-    ordering rules in grammar spec §7.5 / §7.6.
+    Deterministic: same input produces byte-identical output across
+    runs. Idempotent through reparse: `parse_l3(emit_l3(doc)) == doc`.
+
+    Canonical ordering:
+    - Preamble: `namespace` (if present), then `use` in alias-lex
+      order, then `tokens` block with token-path-lex ordering.
+    - Top-level: items in source order (defines + nodes).
+    - Node properties: structural → content → spatial → visual →
+      extension → override → trailer ordering per grammar §7.5.
+    - PropGroup entries: well-known groups (padding, radius, etc.)
+      use their canonical side order per §7.6; unknown keys lex-sorted.
     """
-    raise NotImplementedError(
-        "emit_l3 stubbed — lands in Plan B Stage 1.3/1.4"
+    out = _Emitter()
+    return out.emit_document(doc)
+
+
+# ---------------------------------------------------------------------------
+# Emitter — grammar §7.5 / §7.6 canonical ordering
+# ---------------------------------------------------------------------------
+
+
+# Grammar §7.5 — property-key ordering within a node. Lower index = earlier
+# in the emission. Unknown keys fall back to lex order AFTER the enumerated.
+_PROP_ORDER_STRUCTURAL = (
+    "variant", "role", "as",
+)
+_PROP_ORDER_CONTENT = (
+    "text", "label", "placeholder", "content", "value", "min", "max",
+)
+_PROP_ORDER_SPATIAL = (
+    "x", "y", "width", "height",
+    "min-width", "max-width", "min-height", "max-height",
+    "layout", "gap", "padding",
+    "mainAxis", "crossAxis", "align", "constraints",
+)
+_PROP_ORDER_VISUAL = (
+    "fill", "fills", "stroke", "strokes", "stroke-weight",
+    "effects", "shadow", "radius", "opacity", "blend", "visible",
+    "font", "size", "weight", "color",
+    "line-height", "letter-spacing",
+)
+
+
+def _prop_rank(key: str) -> tuple[int, str]:
+    """Return a (block, key) sort tuple for canonical emission order."""
+    # Strip $ext prefix for ordering decision
+    if key.startswith("$ext."):
+        return (4, key)                         # extension metadata last
+    if "." in key:
+        return (5, key)                         # path-overrides after ext
+    for idx, bucket in enumerate((
+        _PROP_ORDER_STRUCTURAL, _PROP_ORDER_CONTENT,
+        _PROP_ORDER_SPATIAL, _PROP_ORDER_VISUAL,
+    )):
+        if key in bucket:
+            return (idx, f"{bucket.index(key):04d}")
+    # Unknown: after the recognized bucket but before ext/overrides
+    return (3, "~" + key)
+
+
+_PROPGROUP_SIDE_ORDER = {
+    "padding":      ("top", "right", "bottom", "left"),
+    "radius":       ("top-left", "top-right", "bottom-right", "bottom-left"),
+    "constraints":  ("horizontal", "vertical"),
+    "sizing":       ("width", "height",
+                     "min-width", "max-width",
+                     "min-height", "max-height"),
+}
+
+
+class _Emitter:
+    INDENT = "  "
+
+    def __init__(self) -> None:
+        self.out: list[str] = []
+
+    def emit_document(self, doc: L3Document) -> str:
+        if doc.namespace:
+            self.out.append(f"namespace {doc.namespace}\n")
+            self.out.append("\n")
+        if doc.uses:
+            for u in sorted(doc.uses, key=lambda u: (u.alias, u.path)):
+                self.out.append(f'use "{u.path}" as {u.alias}\n')
+            self.out.append("\n")
+        if doc.tokens:
+            self.out.append("tokens {\n")
+            for ta in sorted(doc.tokens, key=lambda t: t.path):
+                self.out.append(
+                    self.INDENT + f"{ta.path} = {self.emit_value(ta.value)}\n"
+                )
+            self.out.append("}\n")
+            self.out.append("\n")
+
+        for i, item in enumerate(doc.top_level):
+            if i > 0:
+                self.out.append("\n")
+            if isinstance(item, Define):
+                self.emit_define(item, depth=0)
+            elif isinstance(item, Node):
+                self.emit_node(item, depth=0)
+            else:
+                raise DDMarkupSerializeError(
+                    f"unknown top-level item type: {type(item).__name__}",
+                    path="top_level",
+                )
+        return "".join(self.out)
+
+    def emit_define(self, d: Define, *, depth: int) -> None:
+        ind = self.INDENT * depth
+        params_str = self._emit_params(d.params)
+        if params_str:
+            self.out.append(f"{ind}define {d.name}({params_str}) ")
+        else:
+            self.out.append(f"{ind}define {d.name}() ")
+        if d.body is not None:
+            self.emit_block(d.body, depth=depth)
+        else:
+            self.out.append("{}\n")
+
+    def _emit_params(self, params: tuple[Param, ...]) -> str:
+        if not params:
+            return ""
+        multi = len(params) > 2 or any(
+            isinstance(p.default, Node) for p in params
+        )
+        sep = ",\n  " if multi else ", "
+        inner: list[str] = []
+        for p in params:
+            if p.param_kind == "slot":
+                s = f"slot {p.name}"
+                if p.default is not None:
+                    if isinstance(p.default, Node):
+                        # Inline slot-default-as-node: CompRef form
+                        s += " = " + self._emit_node_inline(p.default)
+                    else:
+                        s += f" = {self.emit_value(p.default)}"
+                inner.append(s)
+            else:
+                s = f"{p.name}: {p.type_hint or 'text'}"
+                if p.default is not None:
+                    s += f" = {self.emit_value(p.default)}"
+                inner.append(s)
+        if multi:
+            return "\n  " + sep.join(inner) + ",\n"
+        return sep.join(inner)
+
+    def emit_node(self, node: Node, *, depth: int) -> None:
+        ind = self.INDENT * depth
+        head_text = self._emit_node_head(node.head)
+        self.out.append(ind + head_text)
+        if node.block is not None:
+            self.out.append(" ")
+            self.emit_block(node.block, depth=depth)
+        else:
+            self.out.append("\n")
+
+    def _emit_node_head(self, h: NodeHead) -> str:
+        parts: list[str] = []
+        # Head prefix
+        if h.head_kind == "type":
+            parts.append(h.type_or_path)
+        elif h.head_kind == "comp-ref":
+            scope = f"{h.scope_alias}::" if h.scope_alias else ""
+            parts.append(f"-> {scope}{h.type_or_path}")
+            if h.override_args:
+                args_text = ", ".join(
+                    f"{a.key}={self.emit_value(a.value)}"
+                    for a in h.override_args
+                )
+                parts[-1] += f"({args_text})"
+        elif h.head_kind == "pattern-ref":
+            scope = f"{h.scope_alias}::" if h.scope_alias else ""
+            parts.append(f"& {scope}{h.type_or_path}")
+
+        # EID + alias
+        if h.eid:
+            parts.append(f"#{h.eid}")
+        if h.alias:
+            parts.append(f"as {h.alias}")
+
+        # Positional content (text-bearing nodes)
+        if h.positional is not None:
+            parts.append(self.emit_value(h.positional))
+
+        # Properties in canonical order
+        props_sorted = sorted(
+            h.properties,
+            key=lambda p: _prop_rank(
+                p.key if isinstance(p, PropAssign) else p.path
+            ),
+        )
+        for p in props_sorted:
+            if isinstance(p, PropAssign):
+                v = self.emit_value(p.value)
+                t = ""
+                if p.trailer:
+                    t = " " + self._emit_value_trailer(p.trailer)
+                parts.append(f"{p.key}={v}{t}")
+            elif isinstance(p, PathOverride):
+                parts.append(f"{p.path}={self.emit_value(p.value)}")
+
+        # Node trailer
+        if h.trailer is not None:
+            parts.append(self._emit_node_trailer(h.trailer))
+
+        return " ".join(parts)
+
+    def _emit_node_inline(self, node: Node) -> str:
+        """Single-line form of a Node, used in slot-default / OverrideArgs
+        value position. No nested block supported inline — a node with a
+        body emits with its block on the same line."""
+        head = self._emit_node_head(node.head)
+        if node.block is not None:
+            # Emit block inline (single-line)
+            stmts = [self._emit_block_stmt_inline(s) for s in node.block.statements]
+            return head + " { " + " ".join(stmts) + " }"
+        return head
+
+    def _emit_block_stmt_inline(self, s: object) -> str:
+        if isinstance(s, Node):
+            return self._emit_node_inline(s)
+        if isinstance(s, SlotPlaceholder):
+            return f"{{{s.name}}}"
+        if isinstance(s, PropAssign):
+            v = self.emit_value(s.value)
+            t = ""
+            if s.trailer:
+                t = " " + self._emit_value_trailer(s.trailer)
+            return f"{s.key}={v}{t}"
+        if isinstance(s, PathOverride):
+            return f"{s.path}={self.emit_value(s.value)}"
+        if isinstance(s, SlotFill):
+            return f"{s.slot_name} = {self._emit_node_inline(s.node)}"
+        raise DDMarkupSerializeError(
+            f"cannot emit inline block statement of type {type(s).__name__}",
+            path="block",
+        )
+
+    def emit_block(self, block: Block, *, depth: int) -> None:
+        self.out.append("{\n")
+        inner_ind = self.INDENT * (depth + 1)
+        for stmt in block.statements:
+            if isinstance(stmt, Node):
+                self.emit_node(stmt, depth=depth + 1)
+            elif isinstance(stmt, SlotPlaceholder):
+                self.out.append(f"{inner_ind}{{{stmt.name}}}\n")
+            elif isinstance(stmt, PropAssign):
+                v = self.emit_value(stmt.value)
+                t = ""
+                if stmt.trailer:
+                    t = " " + self._emit_value_trailer(stmt.trailer)
+                self.out.append(f"{inner_ind}{stmt.key}={v}{t}\n")
+            elif isinstance(stmt, PathOverride):
+                self.out.append(
+                    f"{inner_ind}{stmt.path}={self.emit_value(stmt.value)}\n"
+                )
+            elif isinstance(stmt, SlotFill):
+                self.out.append(f"{inner_ind}{stmt.slot_name} = ")
+                # Emit the slot-fill node inline when it has no block,
+                # or with a block when it does.
+                n = stmt.node
+                head = self._emit_node_head(n.head)
+                self.out.append(head)
+                if n.block is not None:
+                    self.out.append(" ")
+                    self.emit_block(n.block, depth=depth + 1)
+                else:
+                    self.out.append("\n")
+            else:
+                raise DDMarkupSerializeError(
+                    f"unknown block statement type: {type(stmt).__name__}",
+                    path="block",
+                )
+        self.out.append(self.INDENT * depth + "}\n")
+
+    # -----------------------------------------------------------------------
+    # Values
+    # -----------------------------------------------------------------------
+
+    def emit_value(self, v: Value) -> str:
+        if isinstance(v, Literal_):
+            return self._emit_literal(v)
+        if isinstance(v, TokenRef):
+            scope = f"{v.scope_alias}::" if v.scope_alias else ""
+            return "{" + scope + v.path + "}"
+        if isinstance(v, ComponentRefValue):
+            scope = f"{v.scope_alias}::" if v.scope_alias else ""
+            out = f"-> {scope}{v.path}"
+            if v.override_args:
+                args_text = ", ".join(
+                    f"{a.key}={self.emit_value(a.value)}"
+                    for a in v.override_args
+                )
+                out += f"({args_text})"
+            return out
+        if isinstance(v, PatternRefValue):
+            scope = f"{v.scope_alias}::" if v.scope_alias else ""
+            return f"& {scope}{v.path}"
+        if isinstance(v, FunctionCall):
+            args = ", ".join(self._emit_func_arg(a) for a in v.args)
+            return f"{v.name}({args})"
+        if isinstance(v, PropGroup):
+            return self._emit_propgroup(v)
+        if isinstance(v, SizingValue):
+            if v.min is None and v.max is None:
+                return v.size_kind
+            pieces: list[str] = []
+            if v.min is not None:
+                pieces.append(f"min={_fmt_number(v.min)}")
+            if v.max is not None:
+                pieces.append(f"max={_fmt_number(v.max)}")
+            return f"{v.size_kind}({', '.join(pieces)})"
+        if isinstance(v, Node):
+            return self._emit_node_inline(v)
+        raise DDMarkupSerializeError(
+            f"cannot emit value of type {type(v).__name__}",
+            path="value",
+        )
+
+    def _emit_literal(self, lit: Literal_) -> str:
+        if lit.lit_kind == "string":
+            # Use the raw form if it round-trips cleanly; otherwise escape
+            # from the py value.
+            return lit.raw if lit.raw.startswith('"') else _quote_string(lit.py)
+        if lit.lit_kind == "number":
+            return _fmt_number(lit.py)
+        if lit.lit_kind == "hex-color":
+            return lit.raw
+        if lit.lit_kind == "asset-hash":
+            return lit.raw
+        if lit.lit_kind == "bool":
+            return "true" if lit.py else "false"
+        if lit.lit_kind == "null":
+            return "null"
+        if lit.lit_kind == "enum":
+            return lit.py if isinstance(lit.py, str) else str(lit.raw)
+        raise DDMarkupSerializeError(
+            f"unknown literal kind {lit.lit_kind}", path="literal",
+        )
+
+    def _emit_func_arg(self, a: FuncArg) -> str:
+        if a.name is not None:
+            return f"{a.name}={self.emit_value(a.value)}"
+        return self.emit_value(a.value)
+
+    def _emit_propgroup(self, pg: PropGroup) -> str:
+        entries = list(pg.entries)
+        # Canonical side order for well-known groups
+        ordered: list[PropAssign] = []
+        for e in entries:
+            # Canonical ordering depends on context; we don't know the
+            # parent property key here, so fall back to lex order with
+            # the assumption that well-known entries like top/right/... fit
+            # the §7.6 order naturally when sorted by insertion order.
+            ordered.append(e)
+        # Lex-sort unless entries match a known side-order pattern.
+        keys = [e.key for e in entries]
+        for group_name, order in _PROPGROUP_SIDE_ORDER.items():
+            if set(keys).issubset(set(order)):
+                # Sort per the group's canonical order
+                pos = {k: i for i, k in enumerate(order)}
+                ordered = sorted(entries, key=lambda e: pos.get(e.key, 999))
+                break
+        else:
+            ordered = sorted(entries, key=lambda e: e.key)
+        inner = " ".join(
+            f"{e.key}={self.emit_value(e.value)}" for e in ordered
+        )
+        return "{" + inner + "}"
+
+    def _emit_node_trailer(self, t: NodeTrailer) -> str:
+        inner = " ".join(
+            f"{k}={self.emit_value(v)}" for k, v in t.attrs
+        )
+        return f"({t.kind}" + (f" {inner}" if inner else "") + ")"
+
+    def _emit_value_trailer(self, t: ValueTrailer) -> str:
+        inner = " ".join(
+            f"{k}={self.emit_value(v)}" for k, v in t.attrs
+        )
+        return f"#[{t.kind}" + (f" {inner}" if inner else "") + "]"
+
+
+def _quote_string(s: object) -> str:
+    """Emit a Python str as a dd StringLit. Chooses single-line or triple
+    based on content."""
+    if not isinstance(s, str):
+        s = "" if s is None else str(s)
+    if "\n" in s:
+        # Triple-quoted multiline — preserve newlines literally
+        return '"""' + s + '"""'
+    # Single-line — escape
+    escaped = (
+        s.replace("\\", "\\\\")
+         .replace('"', '\\"')
+         .replace("\t", "\\t")
+         .replace("\r", "\\r")
     )
+    return '"' + escaped + '"'
+
+
+def _fmt_number(n: object) -> str:
+    """Canonical shortest-lossless number form."""
+    if isinstance(n, bool):                 # bool is subclass of int; guard
+        return "true" if n else "false"
+    if isinstance(n, int):
+        return str(n)
+    if isinstance(n, float):
+        # Avoid `8.0` when `8` is lossless
+        if n.is_integer() and abs(n) < 1e16:
+            return str(int(n))
+        # Prefer short representation; Python's `repr(float)` is shortest-
+        # unique since 3.1
+        return repr(n)
+    return str(n)
 
 
 def validate(doc: L3Document, *, mode: str = "E") -> list[Warning]:

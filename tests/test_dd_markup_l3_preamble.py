@@ -189,16 +189,19 @@ class TestPreamble:
         assert doc.uses[0].is_relative is False
 
     def test_multiple_uses(self) -> None:
+        """Uses are normalized to canonical order (by alias lex) per §6.2."""
         src = '''
         use "universal/tokens" as ut
         use "./02-card-sheet" as sheet22
         '''
         doc = parse_l3(src)
         assert len(doc.uses) == 2
-        assert doc.uses[0].alias == "ut"
-        assert doc.uses[1].alias == "sheet22"
+        # Canonical order: sorted by (alias, path). `sheet22` < `ut`.
+        assert doc.uses[0].alias == "sheet22"
+        assert doc.uses[1].alias == "ut"
 
     def test_tokens_block_hex_colors(self) -> None:
+        """Tokens are normalized to canonical lex-sorted order per §2.8/§7.6."""
         src = '''
         tokens {
           color.brand.accent.start = #D9FF40
@@ -208,12 +211,21 @@ class TestPreamble:
         '''
         doc = parse_l3(src)
         assert len(doc.tokens) == 3
-        assert doc.tokens[0].value.lit_kind == "hex-color"
-        assert doc.tokens[0].value.raw == "#D9FF40"
-        assert doc.tokens[1].value.raw == "#9EFF85"
-        assert doc.tokens[2].value.raw == "#0000004D"   # 8-digit alpha
+        # Lex-sorted: `color.brand.accent.end` < `color.brand.accent.start`
+        #             < `color.overlay`
+        paths = [t.path for t in doc.tokens]
+        assert paths == [
+            "color.brand.accent.end",
+            "color.brand.accent.start",
+            "color.overlay",
+        ]
+        by_path = {t.path: t.value for t in doc.tokens}
+        assert by_path["color.brand.accent.start"].raw == "#D9FF40"
+        assert by_path["color.brand.accent.end"].raw == "#9EFF85"
+        assert by_path["color.overlay"].raw == "#0000004D"
 
     def test_tokens_block_mixed_values(self) -> None:
+        """Mixed value forms all parse; tokens surfaced in lex order."""
         src = '''
         tokens {
           space.card.padding_x     = 16
@@ -228,17 +240,18 @@ class TestPreamble:
         '''
         doc = parse_l3(src)
         assert len(doc.tokens) == 8
-        assert doc.tokens[0].value.lit_kind == "number"
-        assert doc.tokens[0].value.py == 16
-        assert doc.tokens[3].value.lit_kind == "bool"
-        assert doc.tokens[3].value.py is True
-        assert doc.tokens[4].value.py is False
-        assert doc.tokens[5].value.lit_kind == "null"
-        assert doc.tokens[5].value.py is None
-        assert doc.tokens[6].value.lit_kind == "string"
-        assert doc.tokens[6].value.py == "hello"
-        assert doc.tokens[7].value.kind == "token-ref"
-        assert doc.tokens[7].value.path == "color.surface.default"
+        by_path = {t.path: t.value for t in doc.tokens}
+        assert by_path["space.card.padding_x"].lit_kind == "number"
+        assert by_path["space.card.padding_x"].py == 16
+        assert by_path["config.debug"].lit_kind == "bool"
+        assert by_path["config.debug"].py is True
+        assert by_path["config.prod"].py is False
+        assert by_path["config.default"].lit_kind == "null"
+        assert by_path["config.default"].py is None
+        assert by_path["config.label"].lit_kind == "string"
+        assert by_path["config.label"].py == "hello"
+        assert by_path["color.ref"].kind == "token-ref"
+        assert by_path["color.ref"].path == "color.surface.default"
 
     def test_full_preamble(self) -> None:
         """The full preamble shape from fixture 03's header."""
