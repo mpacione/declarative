@@ -333,6 +333,41 @@ def _visual_props(visual: dict) -> list[PropAssign]:
 # ---------------------------------------------------------------------------
 
 
+# Canonical property ordering per grammar §7.5. Mirrors the emitter's
+# `_prop_rank` in `dd/markup_l3.py` so the AST the compressor produces
+# matches what the parser produces after round-trip.
+_PROP_RANK_STRUCTURAL = ("variant", "role", "as")
+_PROP_RANK_CONTENT = (
+    "text", "label", "placeholder", "content", "value", "min", "max",
+)
+_PROP_RANK_SPATIAL = (
+    "x", "y", "width", "height",
+    "min-width", "max-width", "min-height", "max-height",
+    "layout", "gap", "padding",
+    "mainAxis", "crossAxis", "align", "constraints",
+)
+_PROP_RANK_VISUAL = (
+    "fill", "fills", "stroke", "strokes", "stroke-weight",
+    "effects", "shadow", "radius", "opacity", "blend", "visible",
+    "font", "size", "weight", "color",
+    "line-height", "letter-spacing",
+)
+
+
+def _compress_prop_rank(key: str) -> tuple[int, str]:
+    if key.startswith("$ext."):
+        return (4, key)
+    if "." in key:
+        return (5, key)
+    for idx, bucket in enumerate((
+        _PROP_RANK_STRUCTURAL, _PROP_RANK_CONTENT,
+        _PROP_RANK_SPATIAL, _PROP_RANK_VISUAL,
+    )):
+        if key in bucket:
+            return (idx, f"{bucket.index(key):04d}")
+    return (3, "~" + key)
+
+
 def _auto_eid(type_kw: str, sibling_index: int) -> str:
     return f"{type_kw}-{sibling_index}"
 
@@ -343,6 +378,7 @@ def _compress_element(
     parent_sibling_counter: dict[str, int],
     used_eids: set[str],
     comp_names: dict[str, str],
+    self_overrides: dict[str, list[PropAssign]],
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -412,6 +448,27 @@ def _compress_element(
     props.extend(_visual_props(element.get("visual") or {}))
     props.extend(visible_prop)
 
+    # Slice B MVP: flatten `:self` instance overrides onto CompRef heads.
+    # Only runs for Mode-1-eligible nodes that successfully resolved to
+    # a CompRef; inline-frame fallbacks skip this step.
+    if head_kind == "comp-ref" and eid_key in self_overrides:
+        # Merge override props, de-duplicating by key (override wins
+        # over the compressor's default derivation — per §2.7.2 the
+        # override IS the authoritative value).
+        existing_keys = {p.key for p in props}
+        for override_prop in self_overrides[eid_key]:
+            if override_prop.key in existing_keys:
+                # Replace the existing prop with the override version
+                props = [p for p in props if p.key != override_prop.key]
+            props.append(override_prop)
+
+    # Sort properties into canonical order (grammar §7.5) so the
+    # AST matches what the parser would produce after round-trip.
+    # Without this, the unsorted compressor output fails
+    # `parse(emit(doc)) == doc` equality because the parser sorts but
+    # the compressor didn't.
+    props.sort(key=lambda p: _compress_prop_rank(p.key))
+
     # Positional content for text-bearing nodes. Text content lives
     # under `element["props"]["text"]` in the CompositionSpec —
     # `element["text"]` is a sibling of `props` and is NOT populated by
@@ -447,7 +504,8 @@ def _compress_element(
         child_used_eids: set[str] = set()     # per-Block scope
         for child_id in child_ids:
             child_node = _compress_element(
-                child_id, spec, child_counter, child_used_eids, comp_names,
+                child_id, spec, child_counter, child_used_eids,
+                comp_names, self_overrides,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -462,6 +520,119 @@ def _compress_element(
 # ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Slice B MVP — `:self` instance overrides per L0↔L3 §2.7.2 step 1
+# ---------------------------------------------------------------------------
+#
+# Flattens a subset of the `instance_overrides` DB table onto CompRef
+# heads as PropAssigns. Covers only `:self:*` rows (no child-path walk
+# required) and only the scalar forms (no JSON parsing of fills/
+# effects/strokes). Covers the high-frequency cases:
+#
+#   BOOLEAN :self:visible            → visible=<bool>
+#   WIDTH   :self:width              → width=<number>
+#   HEIGHT  :self:height             → height=<number>
+#   CORNER_RADIUS :self:cornerRadius → radius=<number>
+#   OPACITY :self:opacity            → opacity=<float>
+#   ITEM_SPACING :self:itemSpacing   → gap=<number>
+#   LAYOUT_SIZING_H :self:layoutSizingH → width=fixed/fill/hug
+#   STROKE_WEIGHT :self:strokeWeight → stroke-weight=<number>
+#
+# Complex types (FILLS, EFFECTS, STROKES, INSTANCE_SWAP, PADDING_*,
+# PRIMARY_ALIGN, STROKE_ALIGN) and all child-path overrides are
+# DEFERRED — either requiring JSON parsing or master-subtree walking
+# that isn't in scope for Slice B MVP.
+
+
+_SELF_OVERRIDE_SCALAR_MAP = {
+    # (property_type, property_name) → (dd-markup key, conversion fn)
+    ("BOOLEAN", ":self:visible"):
+        ("visible", lambda v: Literal_(lit_kind="bool", raw=v, py=(v == "true"))),
+    ("WIDTH", ":self:width"):
+        ("width", lambda v: _num_literal(float(v))),
+    ("HEIGHT", ":self:height"):
+        ("height", lambda v: _num_literal(float(v))),
+    ("CORNER_RADIUS", ":self:cornerRadius"):
+        ("radius", lambda v: _num_literal(float(v))),
+    ("OPACITY", ":self:opacity"):
+        ("opacity", lambda v: _num_literal(float(v))),
+    ("ITEM_SPACING", ":self:itemSpacing"):
+        ("gap", lambda v: _num_literal(float(v))),
+    ("STROKE_WEIGHT", ":self:strokeWeight"):
+        ("stroke-weight", lambda v: _num_literal(float(v))),
+}
+
+
+_LAYOUT_SIZING_MAP = {
+    "FIXED": "fixed",
+    "FILL": "fill",
+    "HUG": "hug",
+}
+
+
+def _fetch_self_overrides(
+    conn: Optional[sqlite3.Connection],
+    node_id_map: dict[str, int],
+    eligible_eids: list[str],
+) -> dict[str, list[PropAssign]]:
+    """Fetch `:self:*` instance overrides for every element-id that
+    emitted as a CompRef. Returns `{eid: [PropAssign, ...]}`.
+
+    Skips child-path (`;figmaId:...`) rows — those require master-
+    subtree walking (Stage 1.7 scope).
+    """
+    if conn is None or not eligible_eids:
+        return {}
+    node_ids = [node_id_map[eid] for eid in eligible_eids if eid in node_id_map]
+    if not node_ids:
+        return {}
+    placeholders = ",".join("?" for _ in node_ids)
+    rows = conn.execute(
+        f"SELECT io.node_id, io.property_type, io.property_name, "
+        f"       io.override_value "
+        f"FROM instance_overrides io "
+        f"WHERE io.node_id IN ({placeholders}) "
+        f"  AND io.property_name LIKE ':self%'",
+        node_ids,
+    ).fetchall()
+
+    # Build node_id → eid inverse map
+    node_id_to_eid: dict[int, str] = {}
+    for eid, nid in node_id_map.items():
+        if eid in eligible_eids:
+            node_id_to_eid[nid] = eid
+
+    out: dict[str, list[PropAssign]] = {}
+    for row in rows:
+        nid, ptype, pname, pval = row[0], row[1], row[2], row[3]
+        eid = node_id_to_eid.get(nid)
+        if eid is None or pval is None:
+            continue
+        props = out.setdefault(eid, [])
+        # Scalar map handles the common cases in one dict
+        key_fn = _SELF_OVERRIDE_SCALAR_MAP.get((ptype, pname))
+        if key_fn is not None:
+            key, conv = key_fn
+            try:
+                props.append(PropAssign(key=key, value=conv(pval)))
+            except (ValueError, KeyError):
+                pass
+            continue
+        # LAYOUT_SIZING_H: emit as width=<enum>
+        if ptype == "LAYOUT_SIZING_H" and pname == ":self:layoutSizingH":
+            dd_val = _LAYOUT_SIZING_MAP.get(pval)
+            if dd_val is not None:
+                if dd_val == "fixed":
+                    # `fixed` has no bare keyword; map would require a
+                    # pixel value that's not in the override row. Skip.
+                    continue
+                props.append(PropAssign(
+                    key="width",
+                    value=SizingValue(size_kind=dd_val),  # type: ignore[arg-type]
+                ))
+    return out
 
 
 def _build_comp_names_map(
@@ -535,8 +706,14 @@ def compress_to_l3(
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
     comp_names = _build_comp_names_map(spec, conn)
+    # Eligible EIDs for override lookup = those that will emit as
+    # CompRefs (Mode-1 + CKR resolved).
+    eligible_eids = list(comp_names.keys())
+    self_overrides = _fetch_self_overrides(
+        conn, spec.get("_node_id_map") or {}, eligible_eids,
+    )
     root_node = _compress_element(
-        root_key, spec, root_counter, used_eids, comp_names,
+        root_key, spec, root_counter, used_eids, comp_names, self_overrides,
     )
     if root_node is None:
         return L3Document(namespace=None)

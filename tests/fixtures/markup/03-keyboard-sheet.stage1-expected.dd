@@ -4,7 +4,7 @@ screen #iphone-13-pro-max-79 width=428 height=926 (extracted src=237) {
       container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
         text #field-title "Meme-00001" width=hug height=hug fill=#000000
         container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
-          -> icon/more #icon-more width=20 height=20
+          -> icon/more #icon-more width=20 height=20 opacity=0.2
           text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
         }
       }
@@ -24,26 +24,26 @@ screen #iphone-13-pro-max-79 width=428 height=926 (extracted src=237) {
       }
     }
     button #button-toolbar x=126 y=562 width=hug height=hug layout=horizontal gap=12 padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 {
-      -> button/large/translucent #button-large-translucent width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
-      -> button/large/translucent #button-large-translucent-2 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
-      -> button/large/translucent #button-large-translucent-3 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
     }
     frame #overlay width=428 height=926 fill=gradient-linear(#00000000, #000000)
     button #button-toolbar-2 x=9 y=124 width=hug height=hug layout=horizontal padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 {
-      -> button/large/translucent #button-large-translucent width=hug height=52 layout=horizontal gap=10 padding={right=10 left=10} align=center
-      -> button/large/translucent #button-large-translucent-2 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
-      -> button/large/translucent #button-large-translucent-3 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
-      -> button/large/translucent #button-large-translucent-4 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
-      -> button/large/translucent #button-large-translucent-5 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
-      -> button/large/translucent #button-large-translucent-6 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
-      -> button/large/translucent #button-large-translucent-7 width=hug height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent width=114 height=52 layout=horizontal gap=10 padding={right=10 left=10} align=center
+      -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
+      -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-4 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-5 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
+      -> button/large/translucent #button-large-translucent-6 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
+      -> button/large/translucent #button-large-translucent-7 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center
     }
     card #card-sheet-success x=0 y=538 width=hug height=362 layout=vertical gap=22 padding={top=22 right=24 bottom=60 left=24} crossAxis=center fill=#FFFFFF {
       container #frame-265 width=fill height=hug layout=horizontal gap=14 crossAxis=center {
         heading #title "Color" width=fill height=hug fill=#000000
-        -> button/small/translucent #button-small-translucent width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center
-        -> button/small/translucent #button-small-translucent-2 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center
-        -> button/small/translucent #button-small-translucent-3 width=hug height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
+        -> button/small/translucent #button-small-translucent width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center
+        -> button/small/translucent #button-small-translucent-2 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center
+        -> button/small/translucent #button-small-translucent-3 width=99 height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000
       }
       container #frame-397 width=380 height=hug layout=horizontal gap=12 {
         container #frame-410 width=380 height=hug layout=horizontal mainAxis=space_between visible=false {

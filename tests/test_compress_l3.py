@@ -316,6 +316,163 @@ def _snapshot_path(slug: str) -> Path:
     return SNAPSHOT_DIR / f"{slug}.stage1-expected.dd"
 
 
+# ---------------------------------------------------------------------------
+# Regression tests — review-agent findings (lock in the BLOCKER fixes)
+# ---------------------------------------------------------------------------
+
+
+class TestRegressionFromReview:
+    """Tests that would have caught the agent-found bugs. Lock in the
+    fixes from the a29ac50 commit so future edits don't regress."""
+
+    def test_text_content_is_emitted_on_text_nodes(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Agent-2 Finding #2 / agent-3 Finding #5: text content was
+        silently dropped because the compressor read the wrong field
+        path. Regression: assert that known-present strings appear in
+        the emitted output for screen 181."""
+        doc = compress_to_l3(
+            generate_ir(db_conn, 181, semantic=True)["spec"],
+            db_conn,
+            screen_id=181,
+        )
+        emitted = emit_l3(doc)
+        # Screen 181 has these text strings on heading/text nodes per
+        # the L0 summary.
+        assert '"Recent Images"' in emitted
+        assert '"More"' in emitted
+
+    def test_compref_has_no_child_block(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Agent-2 Finding #6: CompRefs used to emit a full child-block
+        expansion (180-line nav-bar trees). Correct behavior per L0↔L3
+        §2.7: CompRefs emit WITHOUT a child block — the master provides
+        the subtree at render time. Regression: assert CompRef output
+        lines don't end with `{`."""
+        doc = compress_to_l3(
+            generate_ir(db_conn, 181, semantic=True)["spec"],
+            db_conn,
+            screen_id=181,
+        )
+        emitted = emit_l3(doc)
+        for line in emitted.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("-> "):
+                assert not stripped.endswith("{"), (
+                    f"CompRef has a child block — should not: {stripped!r}"
+                )
+
+    def test_y_zero_not_dropped_when_x_nonzero(self) -> None:
+        """Agent-1 Finding #5 / agent-3 Finding #4: `x=5, y=0` used to
+        silently drop `y=0`. Regression: the position logic should
+        emit BOTH coordinates when either is non-zero."""
+        # Construct a minimal spec directly rather than pulling from DB
+        fake_spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"sizing": {"width": 100, "height": 100}},
+                    "children": ["frame-1"],
+                },
+                "frame-1": {
+                    "type": "frame",
+                    "layout": {
+                        "position": {"x": 5, "y": 0},
+                        "sizing": {"width": 50, "height": 50},
+                    },
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {},
+        }
+        doc = compress_to_l3(fake_spec, conn=None)
+        emitted = emit_l3(doc)
+        # Both x and y should appear since x is non-zero
+        assert "x=5" in emitted
+        assert "y=0" in emitted
+
+    def test_float_imprecision_is_rounded(self) -> None:
+        """Agent-2 Finding #3: Figma coordinate residuals like
+        `6.000001430511475` should round to clean integers; values with
+        real sub-pixel precision should preserve it."""
+        fake_spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {
+                        "sizing": {
+                            "width": 6.000001430511475,     # → 6
+                            "height": 15.556350708007812,   # → 15.5564
+                        },
+                    },
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {},
+        }
+        doc = compress_to_l3(fake_spec, conn=None)
+        emitted = emit_l3(doc)
+        # Residual snapped to integer
+        assert "width=6" in emitted
+        assert "6.0" not in emitted  # no trailing .0
+        # Sub-pixel value preserved (4 decimal places)
+        assert "height=15.5564" in emitted
+
+    def test_bad_input_does_not_crash(self) -> None:
+        """Agent-3 Finding #7: `spec["elements"] is None` used to crash
+        with AttributeError. Regression: guard against bad input
+        shapes; return an empty L3Document instead of raising."""
+        bad_inputs = [
+            {"elements": None, "root": "x"},
+            {"elements": {}, "root": None},
+            {"elements": {}, "root": "ghost"},
+            {},                                 # missing both keys
+            "not-a-dict",                       # type error
+        ]
+        for bad in bad_inputs:
+            doc = compress_to_l3(bad, conn=None)  # type: ignore[arg-type]
+            assert isinstance(doc, L3Document)
+            assert len(doc.top_level) == 0
+
+    def test_eid_collision_appends_dash_n_suffix(self) -> None:
+        """Agent-1 Finding #1: two siblings with the same sanitized
+        name should produce `#nav-top-nav` and `#nav-top-nav-2`, NOT
+        `#nav-top-nav` and `#frame-2`."""
+        fake_spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "screen",
+                    "layout": {"sizing": {"width": 100, "height": 100}},
+                    "children": ["frame-1", "frame-2"],
+                },
+                "frame-1": {
+                    "type": "frame",
+                    "_original_name": "Shared Name",
+                    "layout": {"sizing": {"width": 50, "height": 50}},
+                },
+                "frame-2": {
+                    "type": "frame",
+                    "_original_name": "Shared Name",
+                    "layout": {"sizing": {"width": 50, "height": 50}},
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {},
+        }
+        doc = compress_to_l3(fake_spec, conn=None)
+        emitted = emit_l3(doc)
+        assert "#shared-name " in emitted
+        assert "#shared-name-2 " in emitted
+
+
 @pytest.mark.parametrize("screen_id,slug", REFERENCE_SCREENS)
 def test_stage1_expected_snapshot(
     db_conn: sqlite3.Connection, screen_id: int, slug: str,
