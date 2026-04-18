@@ -362,7 +362,7 @@ class L3Document:
 
 TokenType = Literal[
     "IDENT", "STRING", "NUMBER", "HEX_COLOR", "ASSET_HASH",
-    "LBRACE", "RBRACE", "LPAREN", "RPAREN", "LBRACK", "RBRACK",
+    "LBRACE", "RBRACE", "LPAREN", "RPAREN", "RBRACK",
     "EQ", "COMMA", "DOT", "SLASH", "COLON", "SCOPE",  # `::`
     "HASH",                                           # `#` (IDENT prefix)
     "VALUE_TRAILER_OPEN",                             # `#[` (compound)
@@ -371,6 +371,8 @@ TokenType = Literal[
     "STAR", "DSTAR",                                  # `*` / `**` (edit-only)
     "EOL", "EOF",
     # Keywords get IDENT type; parser dispatches by value.
+    # Note: `LBRACK` is intentionally absent — bare `[` is not a token;
+    # `#[` is a compound VALUE_TRAILER_OPEN (the only context `[` can appear).
 ]
 
 
@@ -662,11 +664,13 @@ def tokenize(source: str) -> list[Token]:
                            start_line, start_col)
             continue
 
-        # Asset hash literal: 40 hex digits (lower/mixed case). Must be
-        # checked BEFORE the number path because asset hashes can start
-        # with a digit (SHA-1 output is hex-encoded, uniform distribution).
-        # Terminator must not be IDENT-continuation to avoid matching a
-        # prefix of some longer identifier.
+        # Asset hash literal: exactly 40 hex chars, requiring at least
+        # one decimal digit to disambiguate from legitimate 40-char all-
+        # hex-letter identifiers (e.g. `abcdefabcdef...abcd`). For real
+        # SHA-1 outputs, the probability of zero digits in 40 random hex
+        # chars is (6/16)^40 ≈ 1.5×10⁻¹⁷ — effectively never. Terminator
+        # must not be IDENT-continuation so we don't slice a longer
+        # identifier.
         if ch in "0123456789abcdefABCDEF":
             j = i
             while j < n and source[j] in "0123456789abcdefABCDEF":
@@ -675,26 +679,13 @@ def tokenize(source: str) -> list[Token]:
             if hex_run_len == 40 and (
                 j >= n or not _is_ident_continue(source[j])
             ):
-                raw = source[i:j]
-                toks.append(Token("ASSET_HASH", raw, line, col))
-                col += (j - i)
-                i = j
-                continue
+                raw_hex = source[i:j]
+                if any(c in "0123456789" for c in raw_hex):
+                    toks.append(Token("ASSET_HASH", raw_hex, line, col))
+                    col += (j - i)
+                    i = j
+                    continue
             # else: not an asset hash; fall through to NUMBER/IDENT paths
-
-        # Hex color literal: `#` + 6 or 8 hex digits
-        # NOTE: the `#` is already handled above as HASH; hex-color
-        # recognition is done at parse time by looking at HASH + IDENT-like
-        # run. This keeps the lexer simple.
-        # However we want `#F6F6F6` to tokenize as HEX_COLOR, not HASH+IDENT,
-        # because the IDENT run would include 6+ hex digits starting with a
-        # letter/digit. Let's do the hex-color check here — after emitting
-        # HASH we peek, but simpler: before single-char `#` check above, do
-        # the hex-color lookahead. Rewrite order: we already handled HASH,
-        # so move this block ABOVE the `if ch == "#"` clause.
-        #
-        # (See the reorder below — left as a breadcrumb. The actual hex
-        # scanning is done in a follow-up lex pass.)
 
         # Number literal: optional `-`, digits, optional `.` digits, opt exp
         if ch == "-" or ch.isdigit():
@@ -731,20 +722,19 @@ def tokenize(source: str) -> list[Token]:
             i = j
             continue
 
-        # Identifier or keyword
+        # Identifier or keyword. Asset-hash promotion lives on the
+        # digit-start path above (asset hashes are content-addressed hex,
+        # randomly distributed — they start with a digit ~6/16 of the
+        # time). Letter-start runs always produce IDENT, so a 40-char
+        # all-hex-letter IDENT like `abcdefabcdef...` (legitimate
+        # identifier) is NOT mis-promoted to ASSET_HASH.
         if _is_ident_start(ch):
             start_line, start_col = line, col
             j = i + 1
             while j < n and _is_ident_continue(source[j]):
                 j += 1
             raw = source[i:j]
-            # Asset-hash literal: bare 40 hex digits (SHA-1 content
-            # address). Promotes to ASSET_HASH at lex time so the
-            # parser doesn't have to re-check §4.1.
-            if len(raw) == 40 and _looks_like_hex(raw):
-                toks.append(Token("ASSET_HASH", raw, start_line, start_col))
-            else:
-                toks.append(Token("IDENT", raw, start_line, start_col))
+            toks.append(Token("IDENT", raw, start_line, start_col))
             col += (j - i)
             i = j
             continue
@@ -842,7 +832,14 @@ def _parse_value(c: _Cursor) -> Value:
         return Literal_(lit_kind="string", raw=t.value, py=_unquote(t.value))
     if t.type == "NUMBER":
         c.advance()
-        return Literal_(lit_kind="number", raw=t.value, py=_parse_number(t.value))
+        py = _parse_number(t.value)
+        # Normalize raw to the canonical `_fmt_number(py)` form so that
+        # parse/emit round-trip is symmetric. Example: `1e2` parses to
+        # `py=100.0`; without this normalization, `raw="1e2"` but
+        # emitter writes "100", breaking the `parse(emit(doc)) == doc`
+        # invariant on the Literal_ frozen-equality check.
+        canonical_raw = _fmt_number(py)
+        return Literal_(lit_kind="number", raw=canonical_raw, py=py)
     if t.type == "HEX_COLOR":
         c.advance()
         return Literal_(lit_kind="hex-color", raw=t.value, py=t.value)
@@ -894,7 +891,14 @@ def _parse_value(c: _Cursor) -> Value:
 def _parse_sizing(c: _Cursor) -> SizingValue:
     """SizingKeyword | SizingBounded (grammar §3 + §4.4)."""
     kw = c.advance()
-    assert kw.value in _SIZING_KW
+    if kw.value not in _SIZING_KW:
+        # Defensive: shouldn't reach here (caller gates on _SIZING_KW),
+        # but raise a structured error rather than using `assert` so the
+        # check survives `python -O`.
+        raise DDMarkupParseError(
+            f"expected sizing keyword (fill/hug/fixed), got `{kw.value}`",
+            kind="KIND_BAD_SYNTAX", line=kw.line, col=kw.col,
+        )
     if c.peek().type != "LPAREN":
         return SizingValue(size_kind=kw.value)  # type: ignore[arg-type]
     # Bounded: fill(min=N, max=N)
@@ -1152,9 +1156,18 @@ def _parse_override_args(c: _Cursor) -> tuple[PropAssign, ...]:
 
 
 def _unquote(raw: str) -> str:
-    """Strip quotes and apply escape sequences."""
+    """Strip quotes and apply escape sequences per grammar §2.5.
+
+    Uses a single-pass decoder so that chained substitutions can't
+    corrupt each other — `"\\\\n"` (backslash + `n`) must decode as
+    `\\n`, not `\n`. Handles all spec'd escapes: `\\n \\t \\r \\" \\\\
+    \\0` and `\\u{HHHH}` (unicode).
+    """
     if raw.startswith('"""'):
-        # Triple-quoted — strip quotes, apply Python-like dedent
+        # Triple-quoted — strip quotes, apply Python-like dedent.
+        # Escape sequences inside triple-quoted strings are NOT
+        # processed (matches Python raw-string conventions for
+        # multi-line literals).
         body = raw[3:-3]
         body = body.lstrip("\n")
         lines = body.splitlines()
@@ -1169,15 +1182,56 @@ def _unquote(raw: str) -> str:
         dedented = "\n".join(line[common:] if len(line) >= common else line
                               for line in lines)
         return dedented
-    # Single-line
+
+    # Single-line — decode escape sequences in one pass
     body = raw[1:-1]
-    return (
-        body.replace("\\n", "\n")
-            .replace("\\t", "\t")
-            .replace("\\r", "\r")
-            .replace('\\"', '"')
-            .replace("\\\\", "\\")
-    )
+    out: list[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch != "\\":
+            out.append(ch)
+            i += 1
+            continue
+        if i + 1 >= n:
+            # Trailing backslash — treat as literal (lexer would have
+            # caught a malformed string literal already)
+            out.append("\\")
+            i += 1
+            continue
+        nxt = body[i + 1]
+        if nxt == "n":
+            out.append("\n"); i += 2
+        elif nxt == "t":
+            out.append("\t"); i += 2
+        elif nxt == "r":
+            out.append("\r"); i += 2
+        elif nxt == '"':
+            out.append('"'); i += 2
+        elif nxt == "\\":
+            out.append("\\"); i += 2
+        elif nxt == "0":
+            out.append("\0"); i += 2
+        elif nxt == "u":
+            # \u{HHHH} — 1..6 hex digits inside braces
+            if i + 2 < n and body[i + 2] == "{":
+                end = body.find("}", i + 3)
+                if end > i + 3:
+                    hex_digits = body[i + 3:end]
+                    if all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+                        try:
+                            out.append(chr(int(hex_digits, 16)))
+                            i = end + 1
+                            continue
+                        except (ValueError, OverflowError):
+                            pass
+            # Malformed \u — treat as literal `\u` (parser didn't flag it)
+            out.append("\\u"); i += 2
+        else:
+            # Unknown escape — keep the backslash + char as-is (permissive)
+            out.append("\\"); out.append(nxt); i += 2
+    return "".join(out)
 
 
 def _parse_number(raw: str) -> Union[int, float]:
@@ -1572,10 +1626,24 @@ def _parse_block_statement(c: _Cursor) -> object:
         tt = c.peek(1).type
         if tt == "EQ":
             rhs = c.peek(2)
+            # SlotFill requires a NodeExpr on the RHS (type keyword / ->
+            # / &). A TypeKeyword followed by LPAREN is a FunctionCall
+            # (value), NOT a node head — `fill=image(asset=...)` where
+            # `image` is both TypeKeyword and function name would
+            # otherwise mis-dispatch as SlotFill.
+            rhs_lookahead = c.peek(3)
+            is_function_call_rhs = (
+                rhs.type == "IDENT"
+                and rhs.value in _TYPE_KEYWORDS
+                and rhs_lookahead.type == "LPAREN"
+            )
             is_node_rhs = (
-                (rhs.type == "IDENT" and rhs.value in _TYPE_KEYWORDS)
-                or rhs.type == "ARROW"
-                or rhs.type == "AMP"
+                not is_function_call_rhs
+                and (
+                    (rhs.type == "IDENT" and rhs.value in _TYPE_KEYWORDS)
+                    or rhs.type == "ARROW"
+                    or rhs.type == "AMP"
+                )
             )
             if is_node_rhs:
                 slot_name = c.advance().value
@@ -1730,10 +1798,14 @@ def _parse_param_list(c: _Cursor) -> list[Param]:
 
 
 def _parse_param(c: _Cursor) -> Param:
-    """ScalarParam | SlotParam per grammar §3.
+    """ScalarParam | SlotParam | OverrideParam per grammar §3 + §6.1.
 
-    SlotParam defaults are NodeExpr (full node), not generic Value —
-    per grammar §6.1 a slot fills a structural subtree position.
+    - ScalarParam: `name: type [= default]`
+    - SlotParam:   `slot name [= NodeExpr]`
+    - OverrideParam: `dotted.path = value` — declares a path-addressed
+      override with a default; at call site the caller can override with
+      `name.path = value`. The first dotted-path IDENT is the param's
+      alias; the full path addresses an internal eid + property.
     """
     t = c.peek()
     if t.type == "IDENT" and t.value == "slot":
@@ -1755,8 +1827,32 @@ def _parse_param(c: _Cursor) -> Param:
             else:
                 default = _parse_value(c)
         return Param(param_kind="slot", name=name, type_hint=None, default=default)
+
+    # Could be ScalarParam (`name: type`) or OverrideParam (`a.b.c = val`).
+    # Distinguish on what follows the first IDENT:
+    #   - `:` → ScalarParam
+    #   - `.` → OverrideParam (dotted path)
+    #   - `=` → OverrideParam (single-segment path, rare)
+    first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    if c.peek().type == "DOT" or (
+        c.peek().type == "EQ" and c.peek(1).type != "COLON"
+    ):
+        # OverrideParam — accumulate the full dotted path
+        path_parts = [first.value]
+        while c.peek().type == "DOT":
+            c.advance()
+            seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+            path_parts.append(seg.value)
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        default_val: Optional[Value] = _parse_value(c)
+        return Param(
+            param_kind="override",
+            name=".".join(path_parts),
+            type_hint=None,
+            default=default_val,
+        )
+
     # ScalarParam — `name: type [= default]`
-    name = c.expect("IDENT", kind="KIND_BAD_SYNTAX").value
     c.expect("COLON", kind="KIND_BAD_SYNTAX")
     type_hint_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
     type_hint = type_hint_tok.value
@@ -1766,7 +1862,7 @@ def _parse_param(c: _Cursor) -> Param:
         default2 = _parse_value(c)
     return Param(
         param_kind="scalar",
-        name=name,
+        name=first.value,
         type_hint=type_hint,
         default=default2,
     )
@@ -2232,10 +2328,18 @@ def _check_unresolved_refs(
             if v.scope_alias is not None:
                 # Cross-alias ref — defer to expansion phase
                 return
-            # Try: scalar-param scope → local tokens → universal prefix
+            # Try: scalar-param scope → local tokens → universal prefix.
+            # Scalar-param matching handles three cases:
+            #   1. Exact path match: `{title}` resolves to scalar param `title`
+            #   2. Dotted-prefix match: `{card.fill}` resolves to override
+            #      param `card.fill` (full path as its name)
+            #   3. First-segment match: `{title.text}` where `title` is a
+            #      scalar-arg param whose value is itself a struct
             first_seg = v.path.split(".", 1)[0]
+            if v.path in scalar_params:
+                return                       # exact-match override param
             if first_seg in scalar_params:
-                return                       # resolves to a param
+                return                       # scalar param or sub-path
             if v.path in local_tokens:
                 return
             if _matches_universal_prefix(v.path):
@@ -2690,6 +2794,10 @@ class _Emitter:
             # from the py value.
             return lit.raw if lit.raw.startswith('"') else _quote_string(lit.py)
         if lit.lit_kind == "number":
+            # Emit canonical form derived from `py`. This normalizes
+            # `1e2` → `100` and `-0` → `0` at emit time. The parse-side
+            # normalization rewrites `Literal_.raw` to match so round-
+            # trip equality holds (see `_parse_value`).
             return _fmt_number(lit.py)
         if lit.lit_kind == "hex-color":
             return lit.raw
@@ -2750,20 +2858,36 @@ class _Emitter:
 
 def _quote_string(s: object) -> str:
     """Emit a Python str as a dd StringLit. Chooses single-line or triple
-    based on content."""
+    based on content.
+
+    Escape sequences match `_unquote`'s decoder. Single-pass escape
+    encoding: backslash FIRST so subsequent `\\"` → `\\\\"` chain
+    substitutions can't double-escape. Order matters.
+    """
     if not isinstance(s, str):
         s = "" if s is None else str(s)
     if "\n" in s:
-        # Triple-quoted multiline — preserve newlines literally
+        # Triple-quoted multiline — preserve newlines literally.
+        # (No escape processing inside triple-quoted strings.)
         return '"""' + s + '"""'
-    # Single-line — escape
-    escaped = (
-        s.replace("\\", "\\\\")
-         .replace('"', '\\"')
-         .replace("\t", "\\t")
-         .replace("\r", "\\r")
-    )
-    return '"' + escaped + '"'
+    # Single-line — single-pass escape
+    out: list[str] = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\0":
+            out.append("\\0")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
 
 def _fmt_number(n: object) -> str:

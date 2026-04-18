@@ -446,3 +446,150 @@ def test_emit_produces_parseable_output() -> None:
         emitted = emit_l3(doc)
         # Must re-parse without errors
         parse_l3(emitted)
+
+
+# ---------------------------------------------------------------------------
+# Round-trip regression tests — agent-2-identified adversarial inputs
+# ---------------------------------------------------------------------------
+
+
+class TestRoundTripAdversarial:
+    """BLOCKER cases surfaced by the Stage-1.2 review audit."""
+
+    @pytest.mark.parametrize("src", [
+        "screen #s { x=1e2 }",
+        "screen #s { x=1E2 }",
+        "screen #s { x=1e0 }",
+        "screen #s { x=-1e2 }",
+        "screen #s { x=1.5e-3 }",
+    ])
+    def test_scientific_notation_round_trip(self, src: str) -> None:
+        """`1e2` and friends round-trip via canonical `_fmt_number`."""
+        doc1 = parse_l3(src)
+        doc2 = parse_l3(emit_l3(doc1))
+        assert doc1 == doc2
+
+    @pytest.mark.parametrize("src", [
+        "screen #s { x=-0 }",
+        "screen #s { x=0 }",
+        "screen #s { x=-0.0 }",
+    ])
+    def test_negative_zero_round_trip(self, src: str) -> None:
+        """`-0` normalizes to canonical emission via `_fmt_number`."""
+        doc1 = parse_l3(src)
+        doc2 = parse_l3(emit_l3(doc1))
+        assert doc1 == doc2
+
+    def test_40_char_all_hex_letter_ident(self) -> None:
+        """An IDENT of exactly 40 chars composed of only `[a-fA-F]` must
+        NOT be mis-tokenized as ASSET_HASH. Letter-start identifiers
+        always emit IDENT."""
+        key_name = "abcdefabcdefabcdefabcdefabcdefabcdefabcd"  # 40 chars
+        assert len(key_name) == 40
+        src = f"screen #s {{ {key_name}=1 }}"
+        doc = parse_l3(src)
+        screen = doc.top_level[0]
+        stmts = [s for s in screen.block.statements
+                 if isinstance(s, PropAssign)]
+        assert len(stmts) == 1
+        assert stmts[0].key == key_name
+
+    def test_40_char_digit_start_is_asset_hash(self) -> None:
+        """A digit-start 40-hex-char run IS an asset hash, valid only in
+        value position inside function calls."""
+        src = (
+            'screen #s { '
+            'fill=image(asset=1234567890abcdef1234567890abcdef12345678) '
+            '}'
+        )
+        doc = parse_l3(src)
+        screen = doc.top_level[0]
+        fill = [s for s in screen.block.statements
+                if isinstance(s, PropAssign) and s.key == "fill"][0]
+        assert fill.value.kind == "function-call"
+        assert fill.value.args[0].value.lit_kind == "asset-hash"
+
+
+class TestEscapeSequences:
+    """Spec §2.5 escape sequences — `\\n \\t \\r \\" \\\\ \\0` and
+    `\\u{HHHH}`. The round-trip test proves both decoder and encoder
+    handle each correctly."""
+
+    @pytest.mark.parametrize("py_string", [
+        "plain",
+        "line\nbreak",
+        "tab\there",
+        "carriage\rreturn",
+        'quote"inside',
+        "back\\slash",
+        "null\0byte",
+        "emoji \U0001F600",             # 4-byte BMP char
+        "mixed\n\t\"\\combo",
+    ])
+    def test_string_literal_round_trip(self, py_string: str) -> None:
+        """Every string round-trips via the decoder/encoder pair."""
+        from dd.markup_l3 import _quote_string, _unquote
+        quoted = _quote_string(py_string)
+        decoded = _unquote(quoted)
+        assert decoded == py_string
+
+    def test_backslash_n_is_newline(self) -> None:
+        """`\\n` (2 chars in source) decodes to `\\n` (1 char newline)."""
+        from dd.markup_l3 import _unquote
+        assert _unquote('"hello\\nworld"') == "hello\nworld"
+
+    def test_double_backslash_then_n_preserves_both(self) -> None:
+        """`\\\\n` in source decodes to backslash + `n`, NOT a newline.
+
+        Regression for the chain-replace bug where sequential
+        `.replace()` calls corrupted this case: the first replace
+        converted `\\\\n` to `\\<NL>`, then the second `\\\\` → `\\` ran
+        on the already-consumed-ish input.
+        """
+        from dd.markup_l3 import _unquote
+        source_literal = r'"\\n"'    # raw string: " \ \ n "
+        result = _unquote(source_literal)
+        assert result == "\\n"       # backslash + 'n', 2 chars
+        assert len(result) == 2
+        assert "\n" not in result
+
+    def test_unicode_escape_bmp(self) -> None:
+        """`\\u{HHHH}` decodes to the corresponding Unicode char."""
+        from dd.markup_l3 import _unquote
+        assert _unquote(r'"\u{1F600}"') == "\U0001F600"   # grinning face
+        assert _unquote(r'"\u{0041}"') == "A"
+        assert _unquote(r'"A\u{0042}C"') == "ABC"
+
+    def test_null_escape(self) -> None:
+        """`\\0` decodes to the null byte."""
+        from dd.markup_l3 import _unquote
+        assert _unquote(r'"a\0b"') == "a\0b"
+
+
+class TestOverrideParam:
+    """Grammar §6.1 third parametrization primitive: path-override
+    declared as a param with a dotted-path name and a default."""
+
+    def test_override_param_declared(self) -> None:
+        src = """
+        define card(card.fill=#FFFFFF, card.radius=8) {
+          frame #card fill={card.fill} radius={card.radius}
+        }
+        """.strip()
+        doc = parse_l3(src)
+        define = doc.top_level[0]
+        param_kinds = [p.param_kind for p in define.params]
+        assert param_kinds == ["override", "override"]
+        assert define.params[0].name == "card.fill"
+        assert define.params[1].name == "card.radius"
+
+    def test_override_param_mixed_with_scalar(self) -> None:
+        src = """
+        define card(title: text = "x", card.fill=#FFFFFF) {
+          frame #card { text {title} fill={card.fill} }
+        }
+        """.strip()
+        doc = parse_l3(src)
+        define = doc.top_level[0]
+        kinds = [p.param_kind for p in define.params]
+        assert kinds == ["scalar", "override"]
