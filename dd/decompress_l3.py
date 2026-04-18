@@ -336,11 +336,25 @@ class _DecompressCtx:
         self.elements: dict[str, dict] = {}
         self.type_counter: dict[str, int] = {}
         self.conn = conn
+        # slash_path → master root node_id, populated lazily on first
+        # CompRef lookup. Avoids O(CKR × CompRefs) rescans across the
+        # corpus sweep (129 CKR rows × ~100 CompRefs per screen × 204
+        # screens = ~2.6M Python string ops without the cache).
+        self._master_root_cache: Optional[dict[str, Optional[int]]] = None
 
     def next_key(self, type_kw: str) -> str:
         n = self.type_counter.get(type_kw, 0) + 1
         self.type_counter[type_kw] = n
         return f"{type_kw}-{n}"
+
+    def resolve_master_root(self, slash_path: str) -> Optional[int]:
+        """Cached lookup from slash-path to master root node_id.
+        Builds the full CKR → slash-path map on first call."""
+        if self.conn is None:
+            return None
+        if self._master_root_cache is None:
+            self._master_root_cache = _build_master_root_cache(self.conn)
+        return self._master_root_cache.get(slash_path)
 
 
 # ---------------------------------------------------------------------------
@@ -380,28 +394,52 @@ _LAYOUT_MODE_TO_SPEC_DIRECTION = {
 }
 
 
-def _resolve_master_root_node_id(
-    conn: sqlite3.Connection, slash_path: str,
-) -> Optional[int]:
-    """Map a CompRef slash-path back to the master's root node_id.
+def _build_master_root_cache(
+    conn: sqlite3.Connection,
+) -> dict[str, Optional[int]]:
+    """Build a `{slash_path: master_root_node_id}` map for every
+    resolvable CompRef. One CKR scan + one batched nodes lookup.
 
-    The CKR name field stores `"nav/top-nav"`, `"Safari - Bottom"`,
-    etc. `derive_comp_slash_path` was applied to this name during
-    compression; for round-trip we compare post-sanitization.
+    Behavior:
+    - CKR rows with NULL `figma_node_id` are skipped (10 such rows
+      in the corpus — no master node in the DB; falling back to
+      them silently hid CompRef inflation when they happened to
+      match the slash-path first).
+    - Slash-path collisions (10 real collisions in the corpus,
+      including two rows collapsing to empty string `""`) aren't
+      auto-resolved; we keep the FIRST figma_node_id encountered
+      per path. Downstream that uses the cached map gets
+      deterministic resolution instead of relying on SQLite's
+      per-call row order.
     """
     from dd.compress_l3 import derive_comp_slash_path
     rows = conn.execute(
-        "SELECT figma_node_id, name FROM component_key_registry"
+        "SELECT figma_node_id, name FROM component_key_registry "
+        "WHERE figma_node_id IS NOT NULL"
     ).fetchall()
+    slash_to_fnid: dict[str, str] = {}
     for fnid, name in rows:
-        if name and derive_comp_slash_path(name) == slash_path:
-            row = conn.execute(
-                "SELECT id FROM nodes WHERE figma_node_id = ? LIMIT 1",
-                (fnid,),
-            ).fetchone()
-            if row is not None:
-                return int(row[0])
-    return None
+        if not name:
+            continue
+        slash = derive_comp_slash_path(name)
+        if not slash or slash in slash_to_fnid:
+            continue
+        slash_to_fnid[slash] = fnid
+    if not slash_to_fnid:
+        return {}
+    # Resolve figma_node_ids to node_ids in ONE query.
+    fnids = list(slash_to_fnid.values())
+    placeholders = ",".join("?" for _ in fnids)
+    node_rows = conn.execute(
+        f"SELECT figma_node_id, id FROM nodes WHERE "
+        f"figma_node_id IN ({placeholders})",
+        fnids,
+    ).fetchall()
+    fnid_to_nid: dict[str, int] = {fnid: int(nid) for fnid, nid in node_rows}
+    return {
+        slash: fnid_to_nid.get(fnid)
+        for slash, fnid in slash_to_fnid.items()
+    }
 
 
 def _raw_db_fills_to_visual_fills(raw_json: Optional[str]) -> list:
@@ -471,21 +509,29 @@ def _color_dict_to_hex_local(color: dict) -> str:
     return f"{base}{int(round(a * 255)):02X}"
 
 
+# Node types that are visual "leaves" — they don't carry a layout
+# direction in the orig spec shape (only frames/components do).
+_LEAF_NODE_TYPES = frozenset({
+    "text", "rectangle", "ellipse", "line", "vector", "regular_polygon",
+    "star", "boolean_operation",
+})
+
+
 def _db_row_to_element(
     row: dict, parent_row: Optional[dict],
 ) -> dict[str, Any]:
     """Translate a `nodes` table row into a spec-element dict."""
-    element: dict[str, Any] = {
-        "type": (row.get("node_type") or "frame").lower(),
-    }
+    raw_type = (row.get("node_type") or "frame").lower()
+    element: dict[str, Any] = {"type": raw_type}
     name = row.get("name")
     if name:
         element["_original_name"] = name
 
-    # Layout: direction, sizing, position.
+    # Layout: direction (only for container-like types), sizing, position.
     layout: dict[str, Any] = {}
-    lm = row.get("layout_mode")
-    layout["direction"] = _LAYOUT_MODE_TO_SPEC_DIRECTION.get(lm, "stacked")
+    if raw_type not in _LEAF_NODE_TYPES:
+        lm = row.get("layout_mode")
+        layout["direction"] = _LAYOUT_MODE_TO_SPEC_DIRECTION.get(lm, "stacked")
     w = row.get("width")
     h = row.get("height")
     sizing: dict[str, Any] = {}
@@ -507,7 +553,7 @@ def _db_row_to_element(
     if layout:
         element["layout"] = layout
 
-    # Visual: fills, strokes, radius, opacity.
+    # Visual: fills, strokes, effects, radius, opacity.
     visual: dict[str, Any] = {}
     fills = _raw_db_fills_to_visual_fills(row.get("fills"))
     if fills:
@@ -515,14 +561,23 @@ def _db_row_to_element(
     strokes = _raw_db_fills_to_visual_fills(row.get("strokes"))
     if strokes:
         # Mirror `dd/ir.py:143-156` — stroke dicts carry a `width`
-        # field pulled from `stroke_weight`.
-        stroke_weight = row.get("stroke_weight")
-        if isinstance(stroke_weight, (int, float)) and stroke_weight > 0:
+        # field pulled from `stroke_weight` (defaulting to 1 when
+        # the stroke exists but has no weight, matching generate_ir).
+        stroke_weight = row.get("stroke_weight") or 1
+        for s in strokes:
+            s["width"] = int(stroke_weight)
+        # stroke_align was missing — orig spec emits `align` on the
+        # stroke dict via `dd/ir.py:155-157`.
+        stroke_align = row.get("stroke_align")
+        if isinstance(stroke_align, str):
             for s in strokes:
-                s["width"] = int(stroke_weight)
+                s["align"] = stroke_align.lower()
         visual["strokes"] = strokes
-    cr = row.get("corner_radius")
-    if isinstance(cr, (int, float)) and cr > 0:
+    effects = _raw_db_effects_to_visual_effects(row.get("effects"))
+    if effects:
+        visual["effects"] = effects
+    cr = _normalize_corner_radius(row.get("corner_radius"))
+    if cr is not None:
         visual["cornerRadius"] = cr
     op = row.get("opacity")
     if isinstance(op, (int, float)) and op < 1.0:
@@ -542,63 +597,139 @@ def _db_row_to_element(
     return element
 
 
+def _raw_db_effects_to_visual_effects(raw_json: Optional[str]) -> list:
+    """Convert nodes.effects JSON into the spec-normalized effect array.
+    Mirrors `dd/ir.py:163-215`'s `normalize_effects` minus the binding
+    resolution (overrides aren't applied during master-subtree walk).
+    """
+    if not raw_json:
+        return []
+    try:
+        effects = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(effects, list):
+        return []
+    out: list = []
+    for effect in effects:
+        if not isinstance(effect, dict):
+            continue
+        if effect.get("visible") is False:
+            continue
+        etype = effect.get("type", "")
+        if etype in ("DROP_SHADOW", "INNER_SHADOW"):
+            color = effect.get("color", {})
+            offset = effect.get("offset", {})
+            out.append({
+                "type": (
+                    "drop-shadow" if etype == "DROP_SHADOW"
+                    else "inner-shadow"
+                ),
+                "color": (
+                    _color_dict_to_hex_local(color)
+                    if isinstance(color, dict) else "#000000"
+                ),
+                "offset": {
+                    "x": offset.get("x", 0) if isinstance(offset, dict) else 0,
+                    "y": offset.get("y", 0) if isinstance(offset, dict) else 0,
+                },
+                "blur": effect.get("radius", 0),
+                "spread": effect.get("spread", 0),
+            })
+        elif etype in ("LAYER_BLUR", "BACKGROUND_BLUR"):
+            out.append({
+                "type": (
+                    "layer-blur" if etype == "LAYER_BLUR"
+                    else "background-blur"
+                ),
+                "radius": effect.get("radius", 0),
+            })
+    return out
+
+
+def _normalize_corner_radius(cr: Any) -> Any:
+    """Handle both scalar (uniform) and dict (per-corner) corner
+    radius. The nodes.corner_radius column can be a number OR a JSON
+    string encoding `{"tl": N, "tr": N, "bl": N, "br": N}`."""
+    if isinstance(cr, (int, float)) and cr > 0:
+        return cr
+    if isinstance(cr, str):
+        try:
+            parsed = json.loads(cr)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(parsed, dict) and parsed:
+            return parsed
+        if isinstance(parsed, (int, float)) and parsed > 0:
+            return parsed
+    return None
+
+
+_MASTER_COLS = (
+    "id", "parent_id", "name", "node_type", "x", "y", "width", "height",
+    "layout_mode", "fills", "strokes", "effects", "corner_radius",
+    "opacity", "stroke_weight", "stroke_align", "text_content", "visible",
+    "sort_order",
+)
+
+
 def _expand_master_subtree(
     slash_path: str, ctx: _DecompressCtx,
 ) -> list[str]:
     """Inflate the master component's subtree into `ctx.elements` and
     return the child element keys. Returns [] if the master cannot
-    be resolved (CKR miss or no conn).
+    be resolved (CKR miss, slash-path not found, or no conn).
     """
-    if ctx.conn is None:
-        return []
-    master_root_id = _resolve_master_root_node_id(ctx.conn, slash_path)
+    master_root_id = ctx.resolve_master_root(slash_path)
     if master_root_id is None:
         return []
 
-    # Fetch all descendants of master_root_id in one pass.
-    rows = ctx.conn.execute(
-        "SELECT id, parent_id, name, node_type, x, y, width, height, "
-        "layout_mode, fills, strokes, corner_radius, opacity, "
-        "stroke_weight, text_content, visible "
-        "FROM nodes WHERE id = ? OR parent_id IN ("
-        "  WITH RECURSIVE sub(id) AS ("
-        "    SELECT ? UNION ALL "
-        "    SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
-        "  ) SELECT id FROM sub"
-        ") ORDER BY id",
-        (master_root_id, master_root_id),
+    conn = ctx.conn
+    assert conn is not None, "resolve_master_root returns None without conn"
+    # Fetch master root + all descendants in ONE recursive CTE pass.
+    # Sort by parent_id + sort_order so sibling order matches what
+    # Figma / the screen extract saw. Previously used `id` which is
+    # insertion order and can drift from sibling order.
+    cols = ", ".join(_MASTER_COLS)
+    rows = conn.execute(
+        f"WITH RECURSIVE sub(id) AS ("
+        f"  SELECT ? UNION ALL "
+        f"  SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
+        f") "
+        f"SELECT {cols} FROM nodes WHERE id IN (SELECT id FROM sub) "
+        f"ORDER BY parent_id, sort_order, id",
+        (master_root_id,),
     ).fetchall()
     if not rows:
         return []
 
-    cols = [d[0] for d in ctx.conn.execute(
-        "SELECT id, parent_id, name, node_type, x, y, width, height, "
-        "layout_mode, fills, strokes, corner_radius, opacity, "
-        "stroke_weight, text_content, visible FROM nodes WHERE 0"
-    ).description]
     by_id: dict[int, dict] = {
-        row[cols.index("id")]: dict(zip(cols, row)) for row in rows
+        row[0]: dict(zip(_MASTER_COLS, row)) for row in rows
     }
-    parent_of_root = by_id.get(master_root_id)
-    if parent_of_root is None:
+    master_row = by_id.get(master_root_id)
+    if master_row is None:
         return []
 
-    # Collect master root's direct children — that's what the CompRef
-    # carries as its `children` array.
-    direct_child_rows = [
-        by_id[r] for r in sorted(by_id.keys())
-        if by_id[r].get("parent_id") == master_root_id
-    ]
+    # Index children by parent (preserving the ORDER BY sort order).
+    children_by_parent: dict[int, list[dict]] = {}
+    for row in rows:
+        pid = row[1]
+        if pid is not None and pid in by_id:
+            children_by_parent.setdefault(pid, []).append(
+                dict(zip(_MASTER_COLS, row))
+            )
 
     def walk(row: dict, parent_row: Optional[dict]) -> str:
         element = _db_row_to_element(row, parent_row)
+        # Propagate `_mode1_eligible` for nested INSTANCE nodes inside
+        # a master subtree — matches how `dd.ir.generate_ir` marks
+        # every instance element. Full recursive re-inflation of inner
+        # masters is out of scope for Stage 1.7 (deferred).
+        if (row.get("node_type") or "").upper() == "INSTANCE":
+            element["_mode1_eligible"] = True
         key = ctx.next_key(element["type"])
         child_keys: list[str] = []
-        child_rows = [
-            by_id[r] for r in sorted(by_id.keys())
-            if by_id[r].get("parent_id") == row["id"]
-        ]
-        for crow in child_rows:
+        for crow in children_by_parent.get(row["id"], []):
             child_keys.append(walk(crow, row))
         if child_keys:
             element["children"] = child_keys
@@ -606,8 +737,8 @@ def _expand_master_subtree(
         return key
 
     result_keys: list[str] = []
-    for row in direct_child_rows:
-        result_keys.append(walk(row, parent_of_root))
+    for crow in children_by_parent.get(master_root_id, []):
+        result_keys.append(walk(crow, master_row))
     return result_keys
 
 
@@ -618,6 +749,7 @@ def _props_by_key(props: tuple[PropAssign, ...]) -> dict[str, PropAssign]:
 def _decode_layout(
     props: dict[str, PropAssign], element: dict,
     *, is_screen_root: bool = False, is_compref: bool = False,
+    type_kw: str = "",
 ) -> None:
     """Populate `element["layout"]` from head-level PropAssigns.
 
@@ -628,8 +760,10 @@ def _decode_layout(
     - If absent on a CompRef: omit direction entirely (master owns
       the layout axis in the spec IR; CompRefs typically carry no
       direction of their own).
-    - If absent on any other inline node: default to `"stacked"` (the
-      spec sentinel for "no auto-layout").
+    - If absent on a leaf type (text/rectangle/vector/etc.): omit
+      direction entirely (leaves have no auto-layout axis).
+    - If absent on any other inline frame-like node: default to
+      `"stacked"` (the spec sentinel for "no auto-layout").
     """
     layout: dict = element.setdefault("layout", {})
 
@@ -642,9 +776,10 @@ def _decode_layout(
     else:
         if is_screen_root:
             layout["direction"] = "absolute"
-        elif not is_compref:
+        elif is_compref or type_kw in _LEAF_NODE_TYPES:
+            pass                              # no direction (master-owned or leaf)
+        else:
             layout["direction"] = "stacked"
-        # CompRefs: skip direction entirely (master-owned).
 
     # Sizing (width, height)
     sizing: dict = {}
@@ -829,6 +964,7 @@ def _decode_node(
         props, element,
         is_screen_root=(type_kw == "screen"),
         is_compref=is_compref,
+        type_kw=type_kw,
     )
     _decode_visual(props, element)
 

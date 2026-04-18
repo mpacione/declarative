@@ -861,6 +861,117 @@ class TestStage17MasterSubtreeExpansion:
                 + "\n".join(f"  screen {sid}: {r:.2f}" for sid, r in low_ratio[:10])
             )
 
+    def test_unresolvable_master_path_returns_empty_children(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """CompRef pointing at a slash-path not in CKR must leave the
+        element as a leaf (no children) — not crash."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="does/not/exist/anywhere",
+            eid="ghost",
+        )),))
+        el = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert not el.get("children")
+        assert el["_master_slash_path"] == "does/not/exist/anywhere"
+
+    def test_null_figma_node_id_ckr_rows_skipped(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """CKR rows with NULL figma_node_id (10 in corpus) must not
+        resolve — otherwise the first such row silently shadows
+        a later row with a valid figma_node_id for the same name.
+        Hard to test by construction; smoke-test via the cache
+        builder directly."""
+        from dd.decompress_l3 import _build_master_root_cache
+        cache = _build_master_root_cache(db_conn)
+        # Every entry that resolved must have a real node_id (int).
+        for slash, nid in cache.items():
+            if nid is not None:
+                assert isinstance(nid, int)
+        # At least some paths must resolve (corpus isn't empty).
+        resolved = sum(1 for v in cache.values() if v is not None)
+        assert resolved > 0
+
+    def test_effects_recovered_from_master_subtree(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """`visual.effects` must be populated on inflated elements.
+        Before the fix, `_db_row_to_element` didn't read the
+        `effects` column and every master-inflated shadow was lost."""
+        screens = [
+            r[0] for r in db_conn.execute(
+                "SELECT id FROM screens WHERE screen_type='app_screen' "
+                "ORDER BY id LIMIT 20"
+            ).fetchall()
+        ]
+        effects_found = 0
+        for sid in screens:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            decomp = ast_to_dict_ir(
+                doc, db_conn, reexpand_screen_wrapper=False,
+            )
+            for el in decomp["elements"].values():
+                if (el.get("visual") or {}).get("effects"):
+                    effects_found += 1
+        assert effects_found > 0, (
+            "no inflated elements carry visual.effects — effects-column "
+            "reader regression"
+        )
+
+    def test_leaf_types_have_no_layout_direction(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """TEXT/RECTANGLE/VECTOR etc. are "leaf" node types — they
+        don't carry a `layout.direction` in the orig spec shape.
+        `_db_row_to_element` used to emit `direction=stacked` on every
+        inflated element; fix suppresses it for leaf types."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )
+        # Every leaf-type element must not have a direction key.
+        leaf_types = {"text", "rectangle", "vector", "ellipse", "line"}
+        for k, el in decomp["elements"].items():
+            if el.get("type") in leaf_types:
+                direction = (el.get("layout") or {}).get("direction")
+                assert direction is None, (
+                    f"leaf element {k} (type={el['type']}) has "
+                    f"spurious direction={direction!r}"
+                )
+
+    def test_mode1_eligible_propagates_to_inflated_instance_children(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """A master subtree containing nested INSTANCE rows must
+        propagate `_mode1_eligible=True` onto those inflated elements.
+        Before the fix, only the outer CompRef carried the marker."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )
+        mode1_count = sum(
+            1 for el in decomp["elements"].values()
+            if el.get("_mode1_eligible")
+        )
+        # Screen 181 has ~60 Mode-1-eligible elements in orig spec;
+        # with propagation the decomp should recover the vast majority.
+        assert mode1_count >= 40, (
+            f"only {mode1_count} mode1-eligible elements in decomp "
+            f"(expected ≥40 — regression in propagation logic)"
+        )
+
     def test_inflation_does_not_mutate_spec_when_conn_absent(
         self, db_conn: sqlite3.Connection,
     ) -> None:
@@ -1129,6 +1240,40 @@ def test_full_corpus_tier2_root_is_screen(
         root_el = decomp["elements"][decomp["root"]]
         assert root_el["type"] == "screen", (
             f"screen {sid} root decompressed as type={root_el['type']!r}"
+        )
+
+
+def test_full_corpus_tier2_inflated_output_is_json_serializable(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """With master-subtree inflation enabled (`conn` passed), every
+    decompressed corpus spec must still serialize cleanly. Catches
+    raw-DB-JSON blobs leaking into the output or non-JSON Value
+    kinds surfacing from the inflation path (separate gate from the
+    no-conn sweep below)."""
+    import json
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc, db_conn)
+        try:
+            out = json.dumps(decomp)
+        except (TypeError, ValueError) as e:
+            pytest.fail(
+                f"screen {sid}: inflated decomp not JSON-serializable: {e}"
+            )
+        assert "_unhandled" not in out, (
+            f"screen {sid}: inflated decomp contains _unhandled "
+            f"Value kind"
         )
 
 
