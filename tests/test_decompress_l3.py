@@ -764,6 +764,121 @@ class TestSyntheticWrapperReExpansion:
         assert spec["elements"][spec["root"]]["type"] == "screen"
 
 
+class TestStage17MasterSubtreeExpansion:
+    """Stage 1.7 — when a DB conn is provided, CompRef elements
+    inflate the master component's subtree as their children.
+    Without conn, CompRefs remain leaves (Stage 1.5/1.6 behavior)."""
+
+    def test_compref_without_conn_has_no_children(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Without `conn`, CompRefs are leaves (Stage 1.5 shape)."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        # At least one CompRef should exist; verify none has children.
+        compref_count = 0
+        for el in decomp["elements"].values():
+            if el.get("_mode1_eligible"):
+                compref_count += 1
+                assert not el.get("children"), (
+                    f"CompRef {el} has children without conn"
+                )
+        assert compref_count > 0, "no CompRefs on screen 181"
+
+    def test_compref_with_conn_inflates_master_children(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """With `conn`, CompRefs inflate. Safari-bottom master has
+        known subtree size > 0."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )
+        # Find a CompRef and assert it has children now.
+        inflated = [
+            el for el in decomp["elements"].values()
+            if el.get("_mode1_eligible") and el.get("children")
+        ]
+        assert len(inflated) > 0, (
+            "expected at least one inflated CompRef with children"
+        )
+
+    def test_inflation_multiplies_element_count(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """With conn, total element count is multiples of the no-conn
+        count (masters contribute many subtree elements)."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        no_conn = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        with_conn = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )
+        assert len(with_conn["elements"]) > 2 * len(no_conn["elements"])
+
+    def test_full_corpus_tier2_with_inflation_recovers_most_elements(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Full-corpus sweep: with inflation, decompressed element
+        count should reach 80-100% of orig spec count. Regression
+        bound at 70% catches a master-subtree walker that drops
+        large subtrees silently."""
+        screens = [
+            r[0] for r in db_conn.execute(
+                "SELECT id FROM screens "
+                "WHERE screen_type='app_screen' "
+                "ORDER BY id"
+            ).fetchall()
+        ]
+        low_ratio: list[tuple[int, float]] = []
+        for sid in screens:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            decomp = ast_to_dict_ir(
+                doc, db_conn, reexpand_screen_wrapper=False,
+            )
+            orig_n = len(spec["elements"])
+            dec_n = len(decomp["elements"])
+            if orig_n == 0:
+                continue
+            ratio = dec_n / orig_n
+            if ratio < 0.70:
+                low_ratio.append((sid, ratio))
+        if low_ratio:
+            pytest.fail(
+                f"{len(low_ratio)}/{len(screens)} screens recover "
+                f"<70% of orig element count:\n"
+                + "\n".join(f"  screen {sid}: {r:.2f}" for sid, r in low_ratio[:10])
+            )
+
+    def test_inflation_does_not_mutate_spec_when_conn_absent(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """A doc with no conn and a doc with conn produce different
+        element counts but both decompress cleanly (no exceptions,
+        valid structure)."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        a = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        b = ast_to_dict_ir(doc, db_conn, reexpand_screen_wrapper=False)
+        # Both valid; b has more elements.
+        assert a["root"] is not None
+        assert b["root"] is not None
+        assert len(b["elements"]) > len(a["elements"])
+
+
 class TestDecompressReferenceScreens:
     """End-to-end — compress a corpus screen, then decompress. Verify
     the output has the expected shape and key invariants. NOT strict

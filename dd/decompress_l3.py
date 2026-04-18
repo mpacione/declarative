@@ -34,6 +34,8 @@ DEFERRED (follow-up slices):
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from typing import Any, Optional
 
 from dd.markup_l3 import (
@@ -330,14 +332,283 @@ class _DecompressCtx:
     sibling-counter element keys (`frame-1`, `frame-2`, ...) and
     accumulates the elements dict."""
 
-    def __init__(self) -> None:
+    def __init__(self, conn: Optional[sqlite3.Connection] = None) -> None:
         self.elements: dict[str, dict] = {}
         self.type_counter: dict[str, int] = {}
+        self.conn = conn
 
     def next_key(self, type_kw: str) -> str:
         n = self.type_counter.get(type_kw, 0) + 1
         self.type_counter[type_kw] = n
         return f"{type_kw}-{n}"
+
+
+# ---------------------------------------------------------------------------
+# Master-subtree expansion — Stage 1.7
+# ---------------------------------------------------------------------------
+#
+# When a CompRef is encountered, look up the master component's node-id
+# via `component_key_registry.name == slash_path` and inflate the
+# master's subtree as the CompRef element's children. This matches the
+# shape `dd.ir.generate_ir` originally produced before compression
+# dropped the master-subtree children.
+#
+# Scope for Stage 1.7 MVP:
+# - Resolve master by slash-path name match (CKR.name).
+# - Walk descendants via `nodes.parent_id` (depth-first, sort_order).
+# - Emit lightweight element dicts (type, layout.position + sizing,
+#   visual.fills/strokes/radius/opacity, text content).
+# - Use the same `_DecompressCtx.next_key` counter scheme.
+# - Nested CompRef inside master (i.e., a master that contains
+#   instances of other components) recurses via the same pathway.
+#
+# Explicit non-goals (deferred):
+# - Applying `:self:*` overrides onto the inflated root (the overrides
+#   stay in `_self_overrides`; renderers choose which takes precedence).
+# - Applying child-path overrides (`;figmaId:...`) to specific
+#   descendant nodes.
+# - Synthetic-node filtering / semantic-tree collapses.
+# ---------------------------------------------------------------------------
+
+
+_LAYOUT_MODE_TO_SPEC_DIRECTION = {
+    "HORIZONTAL": "horizontal",
+    "VERTICAL": "vertical",
+    # NULL / NONE in DB → "stacked" (no auto-layout)
+    None: "stacked",
+    "NONE": "stacked",
+}
+
+
+def _resolve_master_root_node_id(
+    conn: sqlite3.Connection, slash_path: str,
+) -> Optional[int]:
+    """Map a CompRef slash-path back to the master's root node_id.
+
+    The CKR name field stores `"nav/top-nav"`, `"Safari - Bottom"`,
+    etc. `derive_comp_slash_path` was applied to this name during
+    compression; for round-trip we compare post-sanitization.
+    """
+    from dd.compress_l3 import derive_comp_slash_path
+    rows = conn.execute(
+        "SELECT figma_node_id, name FROM component_key_registry"
+    ).fetchall()
+    for fnid, name in rows:
+        if name and derive_comp_slash_path(name) == slash_path:
+            row = conn.execute(
+                "SELECT id FROM nodes WHERE figma_node_id = ? LIMIT 1",
+                (fnid,),
+            ).fetchone()
+            if row is not None:
+                return int(row[0])
+    return None
+
+
+def _raw_db_fills_to_visual_fills(raw_json: Optional[str]) -> list:
+    """Convert nodes.fills JSON (raw Figma paint array) into the
+    spec-normalized fill array. Drops hidden paints; first visible
+    wins (matching `_visual_props` semantics)."""
+    if not raw_json:
+        return []
+    try:
+        paints = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(paints, list):
+        return []
+    out: list = []
+    for p in paints:
+        norm = _normalize_raw_paint_for_master(p)
+        if norm is not None:
+            out.append(norm)
+    return out
+
+
+def _normalize_raw_paint_for_master(raw: dict) -> Optional[dict]:
+    """Localized copy of the compressor's `_normalize_raw_paint` so the
+    decompressor doesn't depend on compressor-internal imports. Keeps
+    the two modules decoupled."""
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("visible") is False:
+        return None
+    typ = raw.get("type", "")
+    if typ in ("SOLID", "solid"):
+        color = raw.get("color")
+        if not isinstance(color, dict):
+            return None
+        op = raw.get("opacity")
+        merged = dict(color)
+        if isinstance(op, (int, float)) and op < 1.0:
+            base_a = float(color.get("a", 1.0))
+            merged["a"] = base_a * op
+        return {"type": "solid", "color": _color_dict_to_hex_local(merged)}
+    if typ == "GRADIENT_LINEAR":
+        stops = []
+        for s in raw.get("gradientStops") or []:
+            c = s.get("color") if isinstance(s, dict) else None
+            if isinstance(c, dict):
+                stops.append({"color": _color_dict_to_hex_local(c)})
+        return {"type": "gradient-linear", "stops": stops}
+    if typ == "IMAGE":
+        h = raw.get("imageHash")
+        if isinstance(h, str):
+            return {"type": "image", "asset_hash": h}
+    return None
+
+
+def _color_dict_to_hex_local(color: dict) -> str:
+    try:
+        r = int(round(float(color.get("r", 0)) * 255))
+        g = int(round(float(color.get("g", 0)) * 255))
+        b = int(round(float(color.get("b", 0)) * 255))
+        a = float(color.get("a", 1.0))
+    except (TypeError, ValueError):
+        return "#000000"
+    base = f"#{r:02X}{g:02X}{b:02X}"
+    if a >= 0.999:
+        return base
+    return f"{base}{int(round(a * 255)):02X}"
+
+
+def _db_row_to_element(
+    row: dict, parent_row: Optional[dict],
+) -> dict[str, Any]:
+    """Translate a `nodes` table row into a spec-element dict."""
+    element: dict[str, Any] = {
+        "type": (row.get("node_type") or "frame").lower(),
+    }
+    name = row.get("name")
+    if name:
+        element["_original_name"] = name
+
+    # Layout: direction, sizing, position.
+    layout: dict[str, Any] = {}
+    lm = row.get("layout_mode")
+    layout["direction"] = _LAYOUT_MODE_TO_SPEC_DIRECTION.get(lm, "stacked")
+    w = row.get("width")
+    h = row.get("height")
+    sizing: dict[str, Any] = {}
+    if w is not None:
+        sizing["width"] = w
+    if h is not None:
+        sizing["height"] = h
+    if sizing:
+        layout["sizing"] = sizing
+    # Position relative to parent.
+    if parent_row is not None:
+        px = (row.get("x") or 0) - (parent_row.get("x") or 0)
+        py = (row.get("y") or 0) - (parent_row.get("y") or 0)
+    else:
+        px = row.get("x") or 0
+        py = row.get("y") or 0
+    if px != 0 or py != 0:
+        layout["position"] = {"x": px, "y": py}
+    if layout:
+        element["layout"] = layout
+
+    # Visual: fills, strokes, radius, opacity.
+    visual: dict[str, Any] = {}
+    fills = _raw_db_fills_to_visual_fills(row.get("fills"))
+    if fills:
+        visual["fills"] = fills
+    strokes = _raw_db_fills_to_visual_fills(row.get("strokes"))
+    if strokes:
+        # Mirror `dd/ir.py:143-156` — stroke dicts carry a `width`
+        # field pulled from `stroke_weight`.
+        stroke_weight = row.get("stroke_weight")
+        if isinstance(stroke_weight, (int, float)) and stroke_weight > 0:
+            for s in strokes:
+                s["width"] = int(stroke_weight)
+        visual["strokes"] = strokes
+    cr = row.get("corner_radius")
+    if isinstance(cr, (int, float)) and cr > 0:
+        visual["cornerRadius"] = cr
+    op = row.get("opacity")
+    if isinstance(op, (int, float)) and op < 1.0:
+        visual["opacity"] = op
+    if visual:
+        element["visual"] = visual
+
+    # Text content.
+    text = row.get("text_content")
+    if isinstance(text, str) and text:
+        element.setdefault("props", {})["text"] = text
+
+    # Visibility (only when false).
+    if row.get("visible") == 0:
+        element["visible"] = False
+
+    return element
+
+
+def _expand_master_subtree(
+    slash_path: str, ctx: _DecompressCtx,
+) -> list[str]:
+    """Inflate the master component's subtree into `ctx.elements` and
+    return the child element keys. Returns [] if the master cannot
+    be resolved (CKR miss or no conn).
+    """
+    if ctx.conn is None:
+        return []
+    master_root_id = _resolve_master_root_node_id(ctx.conn, slash_path)
+    if master_root_id is None:
+        return []
+
+    # Fetch all descendants of master_root_id in one pass.
+    rows = ctx.conn.execute(
+        "SELECT id, parent_id, name, node_type, x, y, width, height, "
+        "layout_mode, fills, strokes, corner_radius, opacity, "
+        "stroke_weight, text_content, visible "
+        "FROM nodes WHERE id = ? OR parent_id IN ("
+        "  WITH RECURSIVE sub(id) AS ("
+        "    SELECT ? UNION ALL "
+        "    SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
+        "  ) SELECT id FROM sub"
+        ") ORDER BY id",
+        (master_root_id, master_root_id),
+    ).fetchall()
+    if not rows:
+        return []
+
+    cols = [d[0] for d in ctx.conn.execute(
+        "SELECT id, parent_id, name, node_type, x, y, width, height, "
+        "layout_mode, fills, strokes, corner_radius, opacity, "
+        "stroke_weight, text_content, visible FROM nodes WHERE 0"
+    ).description]
+    by_id: dict[int, dict] = {
+        row[cols.index("id")]: dict(zip(cols, row)) for row in rows
+    }
+    parent_of_root = by_id.get(master_root_id)
+    if parent_of_root is None:
+        return []
+
+    # Collect master root's direct children — that's what the CompRef
+    # carries as its `children` array.
+    direct_child_rows = [
+        by_id[r] for r in sorted(by_id.keys())
+        if by_id[r].get("parent_id") == master_root_id
+    ]
+
+    def walk(row: dict, parent_row: Optional[dict]) -> str:
+        element = _db_row_to_element(row, parent_row)
+        key = ctx.next_key(element["type"])
+        child_keys: list[str] = []
+        child_rows = [
+            by_id[r] for r in sorted(by_id.keys())
+            if by_id[r].get("parent_id") == row["id"]
+        ]
+        for crow in child_rows:
+            child_keys.append(walk(crow, row))
+        if child_keys:
+            element["children"] = child_keys
+        ctx.elements[key] = element
+        return key
+
+    result_keys: list[str] = []
+    for row in direct_child_rows:
+        result_keys.append(walk(row, parent_of_root))
+    return result_keys
 
 
 def _props_by_key(props: tuple[PropAssign, ...]) -> dict[str, PropAssign]:
@@ -588,15 +859,23 @@ def _decode_node(
             element.setdefault("props", {})["text"] = head.positional.py
 
     # Children
+    child_keys: list[str] = []
     if node.block is not None:
-        child_keys: list[str] = []
         for stmt in node.block.statements:
             if isinstance(stmt, Node):
                 child_key = _decode_node(stmt, ctx)
                 if child_key is not None:
                     child_keys.append(child_key)
-        if child_keys:
-            element["children"] = child_keys
+
+    # Stage 1.7 — CompRef master-subtree expansion. When a DB conn is
+    # available, inflate the master component's direct children as
+    # children of this CompRef element. Matches `dd.ir.generate_ir`'s
+    # output shape where Mode-1 instances carry their full subtree.
+    if is_compref and not child_keys and ctx.conn is not None:
+        child_keys = _expand_master_subtree(head.type_or_path, ctx)
+
+    if child_keys:
+        element["children"] = child_keys
 
     ctx.elements[key] = element
     return key
@@ -699,7 +978,10 @@ def _reexpand_synthetic_wrapper(spec: dict) -> dict:
 
 
 def ast_to_dict_ir(
-    doc: L3Document, *, reexpand_screen_wrapper: bool = True,
+    doc: L3Document,
+    conn: Optional[sqlite3.Connection] = None,
+    *,
+    reexpand_screen_wrapper: bool = True,
 ) -> dict:
     """Decompress an `L3Document` AST into a CompositionSpec dict IR.
 
@@ -714,16 +996,21 @@ def ast_to_dict_ir(
             },
         }
 
+    When `conn` is provided, CompRef elements inflate their master
+    component's subtree as children (Stage 1.7) — matching the shape
+    `dd.ir.generate_ir` produced before compression dropped those
+    children. Without `conn`, CompRefs remain leaves (Stage 1.5/1.6
+    behavior).
+
     When `reexpand_screen_wrapper=True` (default), re-expands the
     synthetic screen→canvas-FRAME pair the compressor collapses — so
     the output structurally mirrors what `generate_ir` produced
     before compression. Pass `False` for the flat form (screen with
     hoisted visual + direct canvas grandchildren).
 
-    Stage 1.5 MVP — handles the shapes the compressor can currently
-    produce. Round-trip is semantic, not byte-exact: provenance
-    trailers, auto-generated element keys, and compile-time warnings
-    are compiler concerns that don't materialize in the dict IR.
+    Round-trip is semantic, not byte-exact: provenance trailers,
+    auto-generated element keys, and compile-time warnings are
+    compiler concerns that don't materialize in the dict IR.
     """
     empty_spec = {"version": "1.0", "root": None, "elements": {}}
     if not isinstance(doc, L3Document) or not doc.top_level:
@@ -733,7 +1020,7 @@ def ast_to_dict_ir(
     if not isinstance(root_node, Node):
         return empty_spec
 
-    ctx = _DecompressCtx()
+    ctx = _DecompressCtx(conn=conn)
     root_key = _decode_node(root_node, ctx)
     if root_key is None:
         return empty_spec
