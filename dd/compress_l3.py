@@ -221,9 +221,17 @@ def _sizing_value(s: Any) -> Optional[Value]:
 # ---------------------------------------------------------------------------
 
 
-def _spatial_props(layout: dict) -> list[PropAssign]:
+def _spatial_props(
+    layout: dict, bounds: Optional[dict[str, float]] = None,
+) -> list[PropAssign]:
     """Derive Spatial-axis PropAssigns from a CompositionSpec element's
-    `layout` sub-dict. Omits zero/default values per §2.5."""
+    `layout` sub-dict. Omits zero/default values per §2.5.
+
+    `bounds` is an optional `{min_width?, max_width?, min_height?,
+    max_height?}` dict queried from the nodes table; when present AND
+    the corresponding axis is `fill`, emits the bounded form
+    `width=fill(min=N, max=N)` per grammar §4.4.
+    """
     props: list[PropAssign] = []
     # Position — emit both x AND y whenever EITHER is non-zero, so we
     # don't silently drop y=0 in an `(x=0, y!=0)` pair or vice versa.
@@ -240,13 +248,34 @@ def _spatial_props(layout: dict) -> list[PropAssign]:
             if y is not None:
                 props.append(PropAssign(key="y", value=_num_literal(y)))
 
-    # Sizing
+    # Sizing — bounded form when the axis is `fill` and the node
+    # carries min/max bounds.
     sizing = layout.get("sizing") or {}
     if isinstance(sizing, dict):
         w = sizing.get("width")
         h = sizing.get("height")
         wv = _sizing_value(w) if w is not None else None
         hv = _sizing_value(h) if h is not None else None
+        # Promote bare `fill` / `hug` to bounded form when bounds exist
+        if bounds:
+            if isinstance(wv, SizingValue) and wv.size_kind in ("fill", "hug"):
+                min_w = bounds.get("min_width")
+                max_w = bounds.get("max_width")
+                if min_w is not None or max_w is not None:
+                    wv = SizingValue(
+                        size_kind=wv.size_kind,
+                        min=min_w,
+                        max=max_w,
+                    )
+            if isinstance(hv, SizingValue) and hv.size_kind in ("fill", "hug"):
+                min_h = bounds.get("min_height")
+                max_h = bounds.get("max_height")
+                if min_h is not None or max_h is not None:
+                    hv = SizingValue(
+                        size_kind=hv.size_kind,
+                        min=min_h,
+                        max=max_h,
+                    )
         if wv is not None:
             props.append(PropAssign(key="width", value=wv))
         if hv is not None:
@@ -452,7 +481,8 @@ def _compress_element(
     used_eids: set[str],
     comp_names: dict[str, str],
     self_overrides: dict[str, list[PropAssign]],
-    radius_map: dict[str, float],
+    radius_map: dict[str, object],
+    bounds_map: dict[str, dict[str, float]],
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -518,7 +548,10 @@ def _compress_element(
 
     # Build property list — canonical order handled by emitter
     props: list[PropAssign] = []
-    props.extend(_spatial_props(element.get("layout") or {}))
+    props.extend(_spatial_props(
+        element.get("layout") or {},
+        bounds=bounds_map.get(eid_key),
+    ))
     props.extend(_visual_props(element.get("visual") or {}))
     # cornerRadius isn't in the CompositionSpec; pull from our batched
     # DB lookup. Value is either a scalar float (uniform) or a dict
@@ -609,7 +642,7 @@ def _compress_element(
         for child_id in child_ids:
             child_node = _compress_element(
                 child_id, spec, child_counter, child_used_eids,
-                comp_names, self_overrides, radius_map,
+                comp_names, self_overrides, radius_map, bounds_map,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -632,6 +665,52 @@ def _compress_element(
 # query `nodes.corner_radius` directly for every element that has a
 # node-id mapping. This is a low-cost batched lookup per screen.
 # ---------------------------------------------------------------------------
+
+
+def _fetch_sizing_bounds_map(
+    conn: Optional[sqlite3.Connection],
+    node_id_map: dict[str, int],
+) -> dict[str, dict[str, float]]:
+    """Batched query: `element_id → {min_w?, max_w?, min_h?, max_h?}`
+    for every node with at least one non-null bound. Used by the
+    spatial-axis emitter to produce `width=fill(min=N, max=N)` and
+    `height=fill(...)` bounded forms per grammar §4.4.
+
+    The CompositionSpec doesn't include these fields (matches
+    `corner_radius`); we query `nodes` directly.
+    """
+    if conn is None or not node_id_map:
+        return {}
+    node_ids = list(node_id_map.values())
+    if not node_ids:
+        return {}
+    placeholders = ",".join("?" for _ in node_ids)
+    rows = conn.execute(
+        f"SELECT id, min_width, max_width, min_height, max_height "
+        f"FROM nodes WHERE id IN ({placeholders}) "
+        f"  AND (min_width IS NOT NULL OR max_width IS NOT NULL "
+        f"       OR min_height IS NOT NULL OR max_height IS NOT NULL)",
+        node_ids,
+    ).fetchall()
+    by_node_id: dict[int, dict[str, float]] = {}
+    for row in rows:
+        nid, minw, maxw, minh, maxh = row[0], row[1], row[2], row[3], row[4]
+        bounds: dict[str, float] = {}
+        if minw is not None:
+            bounds["min_width"] = float(minw)
+        if maxw is not None:
+            bounds["max_width"] = float(maxw)
+        if minh is not None:
+            bounds["min_height"] = float(minh)
+        if maxh is not None:
+            bounds["max_height"] = float(maxh)
+        if bounds:
+            by_node_id[nid] = bounds
+    out: dict[str, dict[str, float]] = {}
+    for eid, nid in node_id_map.items():
+        if nid in by_node_id:
+            out[eid] = by_node_id[nid]
+    return out
 
 
 def _fetch_corner_radius_map(
@@ -881,11 +960,13 @@ def compress_to_l3(
     # CompRefs (Mode-1 + CKR resolved).
     eligible_eids = list(comp_names.keys())
     self_overrides = _fetch_self_overrides(conn, node_id_map, eligible_eids)
-    # cornerRadius lives in the nodes table, NOT in the CompositionSpec.
+    # cornerRadius + min/max bounds live in the nodes table — neither
+    # is copied into the CompositionSpec. Both require a batched query.
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
+    bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
-        comp_names, self_overrides, radius_map,
+        comp_names, self_overrides, radius_map, bounds_map,
     )
     if root_node is None:
         return L3Document(namespace=None)

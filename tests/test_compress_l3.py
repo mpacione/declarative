@@ -455,6 +455,27 @@ class TestRegressionFromReview:
         emitted = emit_l3(doc)
         assert emitted.count("radius=") >= 5
 
+    def test_bounded_sizing_emitted(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Nodes with `min_width` / `max_width` / `min_height` /
+        `max_height` bounds emit as `width=fill(min=N, max=N)` per
+        grammar §4.4. Screen 334 has 29 bounded nodes in the DB."""
+        doc = compress_to_l3(
+            generate_ir(db_conn, 334, semantic=True)["spec"],
+            db_conn,
+            screen_id=334,
+        )
+        emitted = emit_l3(doc)
+        # At least 10 bounded sizing occurrences on this screen.
+        bounded_count = (
+            emitted.count("fill(min=") + emitted.count("fill(max=")
+            + emitted.count("hug(min=") + emitted.count("hug(max=")
+        )
+        assert bounded_count >= 10, (
+            f"expected ≥10 bounded sizings on screen 334; got {bounded_count}"
+        )
+
     def test_radius_per_corner_emitted_as_propgroup(
         self, db_conn: sqlite3.Connection,
     ) -> None:
