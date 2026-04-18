@@ -28,10 +28,13 @@ The test contract (see grammar spec §3.5 for the full AST schema):
 * Round-trip: `parse_l3(emit_l3(doc)) == doc` and
   `emit_l3(parse_l3(src))` is reparse-idempotent
 
-Test helper convention: `get_prop(node, key) -> Property | None` is
-assumed available on `NodeHead` (either as a method or a `@property`
-returning a dict-view). The impl chooses the shape; tests use the
-conceptual API.
+Imports target `dd.markup_l3` — the new axis-polymorphic module that
+coexists with the legacy `dd.markup` mechanical serde during the
+Stage 1.2 migration. Once 1.2 is complete, the legacy module retires.
+
+Helper convention: `_find_prop(node, key) -> PropAssign | None` uses
+the `get_prop` method or `props_by_key` dict-view exposed by
+`NodeHead`.
 """
 
 from __future__ import annotations
@@ -43,14 +46,19 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Module-level skip until Plan B Stage 1.2 ships the new parser.
-# Remove this gate once `dd.markup.parse_l3` exists.
+# Module-level skip until Plan B Stage 1.2 full parser ships. The
+# preamble-only tests that the current `dd.markup_l3` can satisfy live
+# in `tests/test_dd_markup_l3_preamble.py` and run unconditionally.
+# Remove this skip when the full node / define / pattern-ref surface
+# lands in `dd.markup_l3`.
 # ---------------------------------------------------------------------------
 pytestmark = pytest.mark.skip(
     reason=(
-        "Plan B Stage 1.2: `dd.markup.parse_l3` is not yet implemented. "
-        "These tests become the TDD red phase when the new parser lands. "
-        "See docs/plan-v0.3.md and docs/spec-dd-markup-grammar.md §15."
+        "Plan B Stage 1.2: full node/define/pattern-ref parsing not yet "
+        "shipped in `dd.markup_l3`. Preamble tests live in "
+        "`test_dd_markup_l3_preamble.py` and run. These tests become the "
+        "TDD red phase for the remaining slices. See "
+        "docs/plan-v0.3.md and docs/spec-dd-markup-grammar.md §15."
     ),
 )
 
@@ -94,7 +102,7 @@ INVALID_VARIATIONS: list[tuple[str, str]] = [
 )
 def test_fixture_parses(fixture_slug: str, fixture_desc: str) -> None:
     """Every `.dd` fixture under tests/fixtures/markup/ parses cleanly."""
-    from dd.markup import parse_l3  # noqa: F401  (deferred until 1.2)
+    from dd.markup_l3 import parse_l3  # noqa: F401  (deferred until 1.2)
 
     source = (FIXTURE_DIR / f"{fixture_slug}.dd").read_text()
     doc = parse_l3(source)
@@ -111,7 +119,7 @@ def test_fixture_parses(fixture_slug: str, fixture_desc: str) -> None:
 )
 def test_fixture_roundtrips(fixture_slug: str, fixture_desc: str) -> None:
     """parse(emit(parse(source))) == parse(source) — idempotent serde."""
-    from dd.markup import emit_l3, parse_l3
+    from dd.markup_l3 import emit_l3, parse_l3
 
     source = (FIXTURE_DIR / f"{fixture_slug}.dd").read_text()
     doc1 = parse_l3(source)
@@ -144,7 +152,7 @@ def test_invalid_variation_rejected(
     variation_slug: str, expected_kind: str
 ) -> None:
     """Each invalid variation raises DDMarkupParseError with the expected KIND_*."""
-    from dd.markup import DDMarkupParseError, parse_l3
+    from dd.markup_l3 import DDMarkupParseError, parse_l3
 
     variations = _load_invalid_variations()
     source = variations.get(variation_slug)
@@ -179,7 +187,7 @@ def _find_prop(node, key: str):
 
 def test_token_ref_value_position() -> None:
     """`{dotted.path}` in value position resolves as TokenRef."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = "screen #s { width=428 height=926 fill={color.surface.default} }"
     doc = parse_l3(source)
@@ -191,7 +199,7 @@ def test_token_ref_value_position() -> None:
 
 def test_slot_placeholder_block_position() -> None:
     """`{name}` on its own in a Block resolves as SlotPlaceholder."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = """
     define row(slot cta) {
@@ -205,7 +213,7 @@ def test_slot_placeholder_block_position() -> None:
 
 def test_component_ref_slash_path() -> None:
     """`-> a/b/c` parses as a ComponentRef (slash path, not dotted)."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = "screen #s { -> nav/top-nav #top x=0 y=0 }"
     doc = parse_l3(source)
@@ -217,7 +225,7 @@ def test_component_ref_slash_path() -> None:
 
 def test_pattern_ref_dotted_path() -> None:
     """`& a.b.c` parses as a PatternRef (dotted path, not slash)."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = """
     define pattern.section() { frame #body }
@@ -232,7 +240,7 @@ def test_pattern_ref_dotted_path() -> None:
 
 def test_provenance_trailer_node_level() -> None:
     """`(extracted src=181)` on a head line is a NodeTrailer."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = "screen #s (extracted src=181) { width=428 height=926 }"
     doc = parse_l3(source)
@@ -244,7 +252,7 @@ def test_provenance_trailer_node_level() -> None:
 
 def test_provenance_trailer_value_level() -> None:
     """`fill=... #[user-edited]` is a ValueTrailer on the fill value."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = 'screen #s { fill=#F8F8F8 #[user-edited reason="brand review"] }'
     doc = parse_l3(source)
@@ -257,7 +265,7 @@ def test_provenance_trailer_value_level() -> None:
 
 def test_ext_metadata_preserved() -> None:
     """`$ext.*` keys are opaque to the grammar and preserved."""
-    from dd.markup import emit_l3, parse_l3
+    from dd.markup_l3 import emit_l3, parse_l3
 
     source = 'screen #s { $ext.figma_page = "Home" $ext.custom.key = 42 }'
     doc = parse_l3(source)
@@ -268,7 +276,7 @@ def test_ext_metadata_preserved() -> None:
 
 def test_edit_grammar_construction_and_edit_parse_identically() -> None:
     """Per Tier 0 §4.2: `set @eid prop=val` and `#eid prop=val` share grammar."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     construct = "screen #s { frame #card-1 fill=#F00 }"
     edit      = "screen #s { @card-1 fill=#F00 }"
@@ -279,7 +287,7 @@ def test_edit_grammar_construction_and_edit_parse_identically() -> None:
 
 def test_sizing_keywords() -> None:
     """`width=fill`, `width=hug`, `width=fixed(N)`, `width=fill(min=, max=)`."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = """
     screen #s {
@@ -294,7 +302,7 @@ def test_sizing_keywords() -> None:
 
 def test_multi_fill_array() -> None:
     """`fills=[...]` array form (Dank screen roots carry 3 fills)."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = """
     screen #s {
@@ -308,7 +316,7 @@ def test_multi_fill_array() -> None:
 
 def test_rgba_function() -> None:
     """`rgba(r, g, b, a)` parses as FunctionCall."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = "screen #s { fill=rgba(0, 0, 0, 0.3) }"
     doc = parse_l3(source)
@@ -320,7 +328,7 @@ def test_rgba_function() -> None:
 
 def test_shadow_function() -> None:
     """`shadow(x, y, blur, color)` parses as FunctionCall."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = 'screen #s { shadow=shadow(0, 2, 8, #0000001A) }'
     doc = parse_l3(source)
@@ -329,7 +337,7 @@ def test_shadow_function() -> None:
 
 def test_null_literal() -> None:
     """`null` explicitly removes a default per §7.2."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = "screen #s { fill=null }"
     doc = parse_l3(source)
@@ -342,7 +350,7 @@ def test_null_literal() -> None:
 
 def test_as_alias_at_call_site() -> None:
     """`& pattern as name` is sugar for `& pattern #name` per §5.3."""
-    from dd.markup import parse_l3
+    from dd.markup_l3 import parse_l3
 
     source = """
     define row() { frame #body }
