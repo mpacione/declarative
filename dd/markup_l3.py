@@ -283,7 +283,7 @@ class Block:
 
 @dataclass(frozen=True)
 class NodeHead:
-    head_kind: Literal["type", "comp-ref", "pattern-ref"]
+    head_kind: Literal["type", "comp-ref", "pattern-ref", "edit-ref"]
     type_or_path: str
     scope_alias: Optional[str] = None
     eid: Optional[str] = None
@@ -977,34 +977,42 @@ def _parse_brace_value(c: _Cursor) -> Value:
     )
 
 
-_PROPGROUP_SIDE_ORDER_PARSE = {
-    # mirrors emit-side _PROPGROUP_SIDE_ORDER; factored out so parse
-    # normalization uses the same source-of-truth.
+# Canonical PropGroup entry ordering per grammar §7.6. Shared between
+# the parse-time normalization (so `parse(emit(doc)) == doc`) and the
+# emit-time serialization (so output is deterministic across two
+# implementations). Single source of truth — keyed by the full
+# `frozenset` of side-names belonging to the group.
+_PROPGROUP_CANONICAL_ORDER: dict[frozenset[str], tuple[str, ...]] = {
     frozenset(("top", "right", "bottom", "left")):
         ("top", "right", "bottom", "left"),
     frozenset(("top-left", "top-right", "bottom-left", "bottom-right")):
         ("top-left", "top-right", "bottom-right", "bottom-left"),
     frozenset(("horizontal", "vertical")):
         ("horizontal", "vertical"),
+    frozenset(("width", "height",
+               "min-width", "max-width",
+               "min-height", "max-height")):
+        ("width", "height",
+         "min-width", "max-width",
+         "min-height", "max-height"),
 }
 
 
 def _normalize_propgroup_entries(
     entries: list[PropAssign],
 ) -> list[PropAssign]:
-    """Sort PropGroup entries in canonical order per grammar §7.6."""
+    """Sort PropGroup entries in canonical order per grammar §7.6.
+
+    An entry set that is a SUBSET of any known group uses that group's
+    canonical order (partial `padding={top=8 left=12}` still emits in
+    t-r-b-l order). Entries belonging to no known group fall back to
+    lex order.
+    """
     keys = frozenset(e.key for e in entries)
-    for key_set, order in _PROPGROUP_SIDE_ORDER_PARSE.items():
-        if keys.issubset(key_set):
-            pos = {k: i for i, k in enumerate(order)}
-            return sorted(entries, key=lambda e: pos.get(e.key, 999))
-    # Partial match — still try to apply the order if entries are a
-    # subset of a known group (e.g., padding with only top/left).
-    for key_set, order in _PROPGROUP_SIDE_ORDER_PARSE.items():
+    for key_set, order in _PROPGROUP_CANONICAL_ORDER.items():
         if keys and keys.issubset(key_set):
             pos = {k: i for i, k in enumerate(order)}
             return sorted(entries, key=lambda e: pos.get(e.key, 999))
-    # Otherwise, lex-sort.
     return sorted(entries, key=lambda e: e.key)
 
 
@@ -1395,7 +1403,7 @@ def _parse_node(c: _Cursor) -> Node:
     """Parse a full Node per grammar §3."""
     t = c.peek()
 
-    head_kind: Literal["type", "comp-ref", "pattern-ref"]
+    head_kind: Literal["type", "comp-ref", "pattern-ref", "edit-ref"]
     scope_alias: Optional[str] = None
     type_or_path: str
     override_args: tuple[PropAssign, ...] = ()
@@ -1727,12 +1735,11 @@ def _parse_edit_node(c: _Cursor) -> Node:
                 kind="KIND_BAD_PATH",
                 line=nxt.line, col=nxt.col,
             )
-    # Synthesize a Node with head_kind=type and the path as the type_or_path.
-    # The edit-context semantic is preserved by the leading `@` — the
-    # parser produces a Node whose head represents an addressed eid.
-    # We encode this by putting the path into `type_or_path` with a
-    # special scope_alias="@" marker. A future semantic analyzer
-    # dispatches on this.
+    # Synthesize a Node with head_kind="edit-ref" (grammar §8) and the
+    # path as the type_or_path. The edit-context semantic is preserved
+    # by the discriminant — a future semantic analyzer / expansion pass
+    # dispatches on `head_kind == "edit-ref"`. Replaces an earlier
+    # `scope_alias="@"` sentinel that polluted the alias-tracking walk.
     # Now parse any trailing properties.
     properties: list[object] = []
     c.skip_eols()
@@ -1755,9 +1762,9 @@ def _parse_edit_node(c: _Cursor) -> Node:
             continue
         break
     head = NodeHead(
-        head_kind="type",
-        type_or_path="@" + ".".join(parts),
-        scope_alias="@",
+        head_kind="edit-ref",
+        type_or_path=".".join(parts),
+        scope_alias=None,
         properties=tuple(properties),
     )
     return Node(head=head, block=None)
@@ -2022,50 +2029,81 @@ def _iter_function_calls(v: Value):
 def _check_duplicate_eids(top_level: list[object]) -> None:
     """Grammar §5.1 — duplicate `#eid` within a scope is KIND_DUPLICATE_EID.
 
-    Scope is the enclosing Block (or the document root). The check walks
-    every Block and validates that no two sibling Nodes share the same eid.
+    Scope is the enclosing Block (or the document root). Walks every
+    Block — including SlotFill nodes' own eids (not just their child
+    blocks) and slot-default NodeExpr trees — so collisions in the full
+    AST are caught.
     """
     def check_block(block: Optional[Block]) -> None:
         if block is None:
             return
         seen: dict[str, Node] = {}
         for stmt in block.statements:
-            if isinstance(stmt, Node) and stmt.head.eid:
-                if stmt.head.eid in seen:
-                    raise DDMarkupParseError(
-                        f"duplicate `#{stmt.head.eid}` in this scope",
-                        kind="KIND_DUPLICATE_EID",
-                        eid=stmt.head.eid,
-                    )
-                seen[stmt.head.eid] = stmt
-            # Recurse into child blocks
             if isinstance(stmt, Node):
+                if stmt.head.eid:
+                    if stmt.head.eid in seen:
+                        raise DDMarkupParseError(
+                            f"duplicate `#{stmt.head.eid}` in this scope",
+                            kind="KIND_DUPLICATE_EID",
+                            eid=stmt.head.eid,
+                        )
+                    seen[stmt.head.eid] = stmt
                 check_block(stmt.block)
             elif isinstance(stmt, SlotFill):
-                check_block(stmt.node.block)
+                # SlotFill node is a sibling in the same scope — its
+                # head eid counts toward the enclosing scope's tally.
+                node = stmt.node
+                if node.head.eid:
+                    if node.head.eid in seen:
+                        raise DDMarkupParseError(
+                            f"duplicate `#{node.head.eid}` in this scope "
+                            f"(slot-fill `{stmt.slot_name}` collides)",
+                            kind="KIND_DUPLICATE_EID",
+                            eid=node.head.eid,
+                        )
+                    seen[node.head.eid] = node
+                check_block(node.block)
+
+    def check_slot_defaults(params: tuple[Param, ...]) -> None:
+        """Walk slot-default NodeExpr trees — their internal eids
+        count toward the enclosing Define's scope."""
+        for p in params:
+            if p.param_kind == "slot" and isinstance(p.default, Node):
+                # The default's head eid is in a separate scope (the
+                # slot-default site), not the define body, so we only
+                # recurse into the default's child blocks.
+                check_block(p.default.block)
 
     # Document-root scope
     root_seen: dict[str, Node] = {}
     for item in top_level:
-        if isinstance(item, Node) and item.head.eid:
-            if item.head.eid in root_seen:
-                raise DDMarkupParseError(
-                    f"duplicate `#{item.head.eid}` at document root",
-                    kind="KIND_DUPLICATE_EID",
-                    eid=item.head.eid,
-                )
-            root_seen[item.head.eid] = item
         if isinstance(item, Node):
+            if item.head.eid:
+                if item.head.eid in root_seen:
+                    raise DDMarkupParseError(
+                        f"duplicate `#{item.head.eid}` at document root",
+                        kind="KIND_DUPLICATE_EID",
+                        eid=item.head.eid,
+                    )
+                root_seen[item.head.eid] = item
             check_block(item.block)
-        elif isinstance(item, Define) and item.body is not None:
-            check_block(item.body)
+        elif isinstance(item, Define):
+            check_slot_defaults(item.params)
+            if item.body is not None:
+                check_block(item.body)
 
 
 def _check_function_names(
     top_level: list[object],
     tokens: tuple[TokenAssign, ...],
 ) -> None:
-    """Grammar §4.3 — FunctionCall with unknown name is KIND_UNKNOWN_FUNCTION."""
+    """Grammar §4.3 — FunctionCall with unknown name is KIND_UNKNOWN_FUNCTION.
+
+    Scans every value-position occurrence of FunctionCall, including
+    inside CompRef `override_args` (inline `-> comp(key=val)` form),
+    ValueTrailer attr values, NodeTrailer attr values, and slot-default
+    NodeExpr subtrees.
+    """
     def scan_value(v: Value) -> None:
         for fc in _iter_function_calls(v):
             if fc.name not in _KNOWN_FUNCTIONS:
@@ -2075,20 +2113,61 @@ def _check_function_names(
                     kind="KIND_UNKNOWN_FUNCTION",
                 )
 
-    for ta in tokens:
-        scan_value(ta.value)
-    for node in _iter_nodes(top_level):
+    def scan_trailer_attrs(attrs: tuple[tuple[str, Value], ...]) -> None:
+        for _, val in attrs:
+            scan_value(val)
+
+    def scan_node(node: Node) -> None:
+        # Node-head properties, override_args, positional, trailer
         for p in node.head.properties:
             if isinstance(p, PropAssign):
                 scan_value(p.value)
+                if p.trailer:
+                    scan_trailer_attrs(p.trailer.attrs)
             elif isinstance(p, PathOverride):
                 scan_value(p.value)
+        for a in node.head.override_args:
+            scan_value(a.value)
         if node.head.positional is not None:
             scan_value(node.head.positional)
+        if node.head.trailer is not None:
+            scan_trailer_attrs(node.head.trailer.attrs)
+        # Block body
         if node.block is not None:
             for stmt in node.block.statements:
-                if isinstance(stmt, PropAssign):
+                if isinstance(stmt, Node):
+                    scan_node(stmt)
+                elif isinstance(stmt, PropAssign):
                     scan_value(stmt.value)
+                    if stmt.trailer:
+                        scan_trailer_attrs(stmt.trailer.attrs)
+                elif isinstance(stmt, PathOverride):
+                    scan_value(stmt.value)
+                elif isinstance(stmt, SlotFill):
+                    scan_node(stmt.node)
+
+    for ta in tokens:
+        scan_value(ta.value)
+    for item in top_level:
+        if isinstance(item, Node):
+            scan_node(item)
+        elif isinstance(item, Define):
+            for p in item.params:
+                if p.default is not None:
+                    if isinstance(p.default, Node):
+                        scan_node(p.default)
+                    else:
+                        scan_value(p.default)
+            if item.body is not None:
+                for stmt in item.body.statements:
+                    if isinstance(stmt, Node):
+                        scan_node(stmt)
+                    elif isinstance(stmt, PropAssign):
+                        scan_value(stmt.value)
+                    elif isinstance(stmt, PathOverride):
+                        scan_value(stmt.value)
+                    elif isinstance(stmt, SlotFill):
+                        scan_node(stmt.node)
 
 
 def _check_define_cycles(top_level: list[object]) -> None:
@@ -2253,12 +2332,17 @@ def _check_slot_missing(top_level: list[object]) -> None:
 
     Only same-file pattern refs are checked (cross-file `alias::name`
     are deferred — the resolver phase handles external lookups).
+    Walks slot-default NodeExpr trees too, so nested pattern refs
+    inside a define's slot defaults are validated.
     """
     defines: dict[str, Define] = {
         d.name: d for d in top_level if isinstance(d, Define)
     }
 
     def check(node: object) -> None:
+        if isinstance(node, SlotFill):
+            check(node.node)
+            return
         if not isinstance(node, Node):
             return
         if node.head.head_kind == "pattern-ref" and not node.head.scope_alias:
@@ -2283,9 +2367,15 @@ def _check_slot_missing(top_level: list[object]) -> None:
 
     for item in top_level:
         check(item)
-        if isinstance(item, Define) and item.body is not None:
-            for s in item.body.statements:
-                check(s)
+        if isinstance(item, Define):
+            # Walk slot defaults — nested pattern-ref calls inside
+            # defaults must also satisfy their targets' required slots.
+            for p in item.params:
+                if p.param_kind == "slot" and isinstance(p.default, Node):
+                    check(p.default)
+            if item.body is not None:
+                for s in item.body.statements:
+                    check(s)
 
 
 def _slot_fills(pattern_ref_node: Node) -> set[str]:
@@ -2440,30 +2530,90 @@ def _matches_universal_prefix(path: str) -> bool:
 
 
 def _collect_scope_aliases(items: object, out: set[str]) -> None:
-    """Walk AST and collect every scope_alias use site."""
+    """Walk the AST by TYPE (not attribute-name strings) and collect
+    every `scope_alias` use site. Replaces an earlier generic `getattr`
+    walk that silently drifted when new AST node types were added.
+
+    This visitor is the single source of truth for "where can a scope
+    alias appear in an AST?" — update it (not the `_UNUSED_IMPORT`
+    check) when new AST types gain scope-alias-bearing fields.
+    """
     if items is None:
         return
     if isinstance(items, (list, tuple)):
         for it in items:
             _collect_scope_aliases(it, out)
         return
+
+    # Dispatch by type — one arm per AST node. Missing a type produces
+    # a silent skip, which is correct for leaf literals.
     if isinstance(items, L3Document):
         _collect_scope_aliases(items.top_level, out)
-        for ta in items.tokens:
-            _collect_scope_aliases(ta.value, out)
+        _collect_scope_aliases(items.tokens, out)
         return
-    sa = getattr(items, "scope_alias", None)
-    if isinstance(sa, str):
-        out.add(sa)
-    # Recurse into children
-    for attr in (
-        "top_level", "statements", "properties", "override_args",
-        "entries", "args", "params", "value", "default", "body",
-        "block", "head", "positional", "trailer", "node",
-    ):
-        child = getattr(items, attr, None)
-        if child is not None and child is not items:
-            _collect_scope_aliases(child, out)
+    if isinstance(items, TokenAssign):
+        _collect_scope_aliases(items.value, out)
+        return
+    if isinstance(items, Define):
+        _collect_scope_aliases(items.params, out)
+        if items.body is not None:
+            _collect_scope_aliases(items.body, out)
+        return
+    if isinstance(items, Param):
+        _collect_scope_aliases(items.default, out)
+        return
+    if isinstance(items, Block):
+        _collect_scope_aliases(items.statements, out)
+        return
+    if isinstance(items, Node):
+        _collect_scope_aliases(items.head, out)
+        _collect_scope_aliases(items.block, out)
+        return
+    if isinstance(items, NodeHead):
+        if items.scope_alias:
+            out.add(items.scope_alias)
+        _collect_scope_aliases(items.positional, out)
+        _collect_scope_aliases(items.override_args, out)
+        _collect_scope_aliases(items.properties, out)
+        _collect_scope_aliases(items.trailer, out)
+        return
+    if isinstance(items, PropAssign):
+        _collect_scope_aliases(items.value, out)
+        _collect_scope_aliases(items.trailer, out)
+        return
+    if isinstance(items, PathOverride):
+        _collect_scope_aliases(items.value, out)
+        return
+    if isinstance(items, SlotFill):
+        _collect_scope_aliases(items.node, out)
+        return
+    if isinstance(items, SlotPlaceholder):
+        return
+    if isinstance(items, TokenRef):
+        if items.scope_alias:
+            out.add(items.scope_alias)
+        return
+    if isinstance(items, ComponentRefValue):
+        if items.scope_alias:
+            out.add(items.scope_alias)
+        _collect_scope_aliases(items.override_args, out)
+        return
+    if isinstance(items, PatternRefValue):
+        if items.scope_alias:
+            out.add(items.scope_alias)
+        return
+    if isinstance(items, FunctionCall):
+        for a in items.args:
+            _collect_scope_aliases(a.value, out)
+        return
+    if isinstance(items, PropGroup):
+        _collect_scope_aliases(items.entries, out)
+        return
+    if isinstance(items, (NodeTrailer, ValueTrailer)):
+        for _, v in items.attrs:
+            _collect_scope_aliases(v, out)
+        return
+    # Literal_, SizingValue — leaves, no scope aliases.
 
 
 def emit_l3(doc: L3Document) -> str:
@@ -2529,6 +2679,11 @@ def _prop_rank(key: str) -> tuple[int, str]:
     return (3, "~" + key)
 
 
+# Emitter-side table retained for name-keyed lookups in `_emit_propgroup`
+# that need to match by PARENT PROPERTY NAME (e.g., `padding={...}` → order
+# by `"padding"` key). The entries map to the same canonical tuples as
+# `_PROPGROUP_CANONICAL_ORDER`; the two tables are consistent by
+# construction (same right-hand sides).
 _PROPGROUP_SIDE_ORDER = {
     "padding":      ("top", "right", "bottom", "left"),
     "radius":       ("top-left", "top-right", "bottom-right", "bottom-left"),
@@ -2642,6 +2797,10 @@ class _Emitter:
         elif h.head_kind == "pattern-ref":
             scope = f"{h.scope_alias}::" if h.scope_alias else ""
             parts.append(f"& {scope}{h.type_or_path}")
+        elif h.head_kind == "edit-ref":
+            # `@eid` addressing at construction context — emit via the
+            # same `@<path>` form that parsed in (grammar §5.2, §8).
+            parts.append(f"@{h.type_or_path}")
 
         # EID + alias
         if h.eid:

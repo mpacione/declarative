@@ -593,3 +593,101 @@ class TestOverrideParam:
         define = doc.top_level[0]
         kinds = [p.param_kind for p in define.params]
         assert kinds == ["scalar", "override"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 semantic pass coverage — gaps identified by agent 3
+# ---------------------------------------------------------------------------
+
+
+class TestSemanticPassGaps:
+    """Fixes for gaps agent-3 found in the 7 semantic passes."""
+
+    def test_duplicate_eid_in_slot_fill_scope(self) -> None:
+        """Two SlotFill nodes at the same pattern-ref block scope with
+        the same eid must collide. This was the agent-3 gap — SlotFill
+        node eids weren't being tracked at all.
+
+        Uses explicit `{}` blocks on each SlotFill's node to terminate
+        the head unambiguously (the multi-line head-continuation rule
+        §2.2 otherwise extends the first node's head across the next
+        line).
+        """
+        from dd.markup_l3 import DDMarkupParseError
+        src = """
+        define pair(slot first, slot second) { frame #p { {first} {second} } }
+        screen #s {
+          & pair #p1 {
+            first = frame #dup { x=0 y=0 }
+            second = frame #dup { x=1 y=1 }
+          }
+        }
+        """.strip()
+        with pytest.raises(DDMarkupParseError) as exc:
+            parse_l3(src)
+        assert exc.value.kind == "KIND_DUPLICATE_EID"
+
+    def test_unknown_function_inside_override_args(self) -> None:
+        """FunctionCall inside `-> comp(key=...)` override_args is scanned."""
+        from dd.markup_l3 import DDMarkupParseError
+        src = 'screen #s { -> nav/top-nav(fill=unknown-fn(1, 2)) }'
+        with pytest.raises(DDMarkupParseError) as exc:
+            parse_l3(src)
+        assert exc.value.kind == "KIND_UNKNOWN_FUNCTION"
+
+    def test_slot_missing_in_nested_slot_default(self) -> None:
+        """Nested pattern-ref inside a slot default must satisfy its
+        target's required slots."""
+        from dd.markup_l3 import DDMarkupParseError
+        src = """
+        define inner(slot body) { frame #i { {body} } }
+        define outer(slot wrap = & inner) { frame #o { {wrap} } }
+        screen #s { & outer #o1 { wrap = frame #w } }
+        """.strip()
+        # `& inner` as slot default omits required `body` slot.
+        with pytest.raises(DDMarkupParseError) as exc:
+            parse_l3(src)
+        assert exc.value.kind == "KIND_SLOT_MISSING"
+
+    def test_edit_ref_head_kind(self) -> None:
+        """`@eid` at construction parses as `head_kind="edit-ref"`,
+        not the old `scope_alias="@"` sentinel."""
+        src = "screen #s { @card-1 fill=#FF0000 }"
+        doc = parse_l3(src)
+        ref = doc.top_level[0].block.statements[0]
+        assert ref.head.head_kind == "edit-ref"
+        assert ref.head.scope_alias is None        # no more "@" sentinel
+        assert ref.head.type_or_path == "card-1"
+
+    def test_edit_ref_does_not_pollute_alias_tracking(self) -> None:
+        """The typed scope-alias walker must NOT collect `"@"` from an
+        edit-ref as a used-alias. Otherwise a `use ... as @` import (if
+        anyone ever wrote one) would be falsely considered referenced.
+        """
+        src = """
+        use "./other" as ut
+        screen #s { @card-1 fill=#FF0000 }
+        """.strip()
+        doc = parse_l3(src)
+        # `ut` is never referenced → must emit KIND_UNUSED_IMPORT warning.
+        # If edit-ref polluted the alias set, the warning would be suppressed.
+        warning_kinds = [w.kind for w in doc.warnings]
+        assert "KIND_UNUSED_IMPORT" in warning_kinds
+
+
+class TestPropGroupPartialSubset:
+    """§7.6 partial-subset ordering — fixed by unified canonical table."""
+
+    def test_partial_padding_uses_canonical_order(self) -> None:
+        """`padding={left=12 top=8}` emits as `{top=8 left=12}`."""
+        from dd.markup_l3 import emit_l3
+        src = "screen #s { padding={left=12 top=8} }"
+        doc = parse_l3(src)
+        emitted = emit_l3(doc)
+        # top appears before left in the emitted output
+        top_pos = emitted.index("top=8")
+        left_pos = emitted.index("left=12")
+        assert top_pos < left_pos, (
+            f"padding entries must follow top/right/bottom/left order "
+            f"even with partial subsets; got: {emitted}"
+        )
