@@ -77,6 +77,103 @@ _CROSS_AXIS_GRAMMAR_TO_SPEC = {
 }
 
 
+# ---------------------------------------------------------------------------
+# dd-markup key → `instance_overrides` (property_type, property_name) map.
+# Used by the `_self_overrides` channel to tag each entry with its DB
+# column values so Stage 1.7 can directly re-materialize rows.
+#
+# Keys with no entry here are spec-derived (e.g. `x`, `y`, `position`) —
+# those got computed by `dd.ir.generate_ir` from the node's parent-
+# relative coordinates and don't correspond to DB overrides. Stage 1.7
+# will filter on `db_prop_type is None` when rebuilding rows.
+# ---------------------------------------------------------------------------
+
+
+_SCALAR_KEY_TO_DB_MAP: dict[str, tuple[str, str]] = {
+    "visible": ("BOOLEAN", ":self:visible"),
+    "height": ("HEIGHT", ":self:height"),
+    "radius": ("CORNER_RADIUS", ":self:cornerRadius"),
+    "opacity": ("OPACITY", ":self:opacity"),
+    "gap": ("ITEM_SPACING", ":self:itemSpacing"),
+    "stroke-weight": ("STROKE_WEIGHT", ":self:strokeWeight"),
+    "fill": ("FILLS", ":self:fills"),
+    "stroke": ("STROKES", ":self:strokes"),
+    "shadow": ("EFFECTS", ":self:effects"),
+    "mainAxis": ("PRIMARY_ALIGN", ":self:primaryAxisAlignItems"),
+}
+
+
+_PADDING_KEY_TO_DB_MAP: dict[str, tuple[str, str]] = {
+    "top": ("PADDING_TOP", ":self:paddingTop"),
+    "right": ("PADDING_RIGHT", ":self:paddingRight"),
+    "bottom": ("PADDING_BOTTOM", ":self:paddingBottom"),
+    "left": ("PADDING_LEFT", ":self:paddingLeft"),
+}
+
+
+def _tag_and_fan_out_override(
+    pa: PropAssign,
+) -> list[dict[str, Any]]:
+    """Convert a single head-level PropAssign into one or more
+    `_self_overrides` entries, each tagged with the DB
+    (`property_type`, `property_name`) pair when the key maps to a
+    known `instance_overrides` column.
+
+    Fan-out rule: padding PropGroup → one entry per side (each with
+    its own `PADDING_{SIDE}` property_type).
+
+    Polymorphic-type rule: `width` is either `WIDTH` (numeric) or
+    `LAYOUT_SIZING_H` (SizingValue enum) depending on the Value
+    shape. Resolved here at capture time so Stage 1.7 doesn't need
+    type-dispatch logic.
+
+    Entries with no matching DB column get `db_prop_type=None` /
+    `db_prop_name=None` — typically spec-derived properties (x, y,
+    position) that `generate_ir` computed rather than loaded from
+    `instance_overrides`.
+    """
+    out: list[dict[str, Any]] = []
+
+    # Padding fan-out — each side becomes its own override entry.
+    if pa.key == "padding" and isinstance(pa.value, PropGroup):
+        for entry in pa.value.entries:
+            db_pair = _PADDING_KEY_TO_DB_MAP.get(entry.key)
+            out.append({
+                "key": f"padding.{entry.key}",
+                "value": _override_value_repr(entry.value),
+                "db_prop_type": db_pair[0] if db_pair else None,
+                "db_prop_name": db_pair[1] if db_pair else None,
+            })
+        return out
+
+    # Width is polymorphic: number Literal_ → WIDTH, SizingValue →
+    # LAYOUT_SIZING_H.
+    if pa.key == "width":
+        if isinstance(pa.value, SizingValue):
+            db_pair: Optional[tuple[str, str]] = (
+                "LAYOUT_SIZING_H", ":self:layoutSizingH",
+            )
+        else:
+            db_pair = ("WIDTH", ":self:width")
+        out.append({
+            "key": pa.key,
+            "value": _override_value_repr(pa.value),
+            "db_prop_type": db_pair[0],
+            "db_prop_name": db_pair[1],
+        })
+        return out
+
+    # Scalar-map lookup.
+    db_pair = _SCALAR_KEY_TO_DB_MAP.get(pa.key)
+    out.append({
+        "key": pa.key,
+        "value": _override_value_repr(pa.value),
+        "db_prop_type": db_pair[0] if db_pair else None,
+        "db_prop_name": db_pair[1] if db_pair else None,
+    })
+    return out
+
+
 # Layout direction keywords — grammar `horizontal`/`vertical`/`stacked`
 # map to the spec's `horizontal`/`vertical`/`stacked` (no change).
 # `absolute` is the screen wrapper's placeholder direction.
@@ -429,10 +526,11 @@ def _decode_node(
         for pa in head.properties:
             if pa.key.startswith("$ext."):
                 continue
-            self_overrides.append({
-                "key": pa.key,
-                "value": _override_value_repr(pa.value),
-            })
+            # Each PropAssign may fan out into multiple entries
+            # (padding PropGroup splits per side) and is tagged with
+            # the corresponding `instance_overrides` DB columns when
+            # the key has a known mapping.
+            self_overrides.extend(_tag_and_fan_out_override(pa))
         # Capture block-level child-path overrides (`;figmaId:...=value`).
         # Stage 1.3/1.4 compressor flattens only `:self:*` rows;
         # child-path rows persist when the AST comes from another
@@ -444,6 +542,8 @@ def _decode_node(
                     self_overrides.append({
                         "path": stmt.path,
                         "value": _override_value_repr(stmt.value),
+                        "db_prop_type": None,
+                        "db_prop_name": stmt.path,
                     })
         if self_overrides:
             element["_self_overrides"] = self_overrides

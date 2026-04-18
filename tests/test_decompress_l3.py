@@ -449,22 +449,59 @@ class TestCompRefSelfOverridesChannel:
         overrides = el.get("_self_overrides") or []
         keys_values = {o["key"]: o["value"] for o in overrides}
         assert keys_values == {"width": 20, "height": 20, "opacity": 0.2}
+        # Each gets DB column tags.
+        tags = {o["key"]: (o["db_prop_type"], o["db_prop_name"])
+                for o in overrides}
+        assert tags == {
+            "width": ("WIDTH", ":self:width"),
+            "height": ("HEIGHT", ":self:height"),
+            "opacity": ("OPACITY", ":self:opacity"),
+        }
 
-    def test_propgroup_override_captured_as_dict(self) -> None:
+    def test_width_sizing_enum_tagged_as_layout_sizing_h(self) -> None:
+        """`width=fill` on a CompRef is a `LAYOUT_SIZING_H` override,
+        not a `WIDTH` one. Value shape (SizingValue vs Literal_)
+        resolves the polymorphism."""
         doc = L3Document(top_level=(Node(head=NodeHead(
             head_kind="comp-ref",
-            type_or_path="button/small/translucent",
-            eid="button-sm",
+            type_or_path="b",
+            eid="b",
+            properties=(_p("width", SizingValue(size_kind="fill")),),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el["_self_overrides"]
+        assert overrides[0]["db_prop_type"] == "LAYOUT_SIZING_H"
+        assert overrides[0]["db_prop_name"] == ":self:layoutSizingH"
+
+    def test_padding_propgroup_fans_out_per_side(self) -> None:
+        """A `padding={top=N left=M}` PropGroup splits into two
+        `_self_overrides` entries (one per side) each tagged with
+        the matching `PADDING_{SIDE}` DB property_type."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="b",
+            eid="b",
             properties=(_p("padding", PropGroup(entries=(
                 _p("right", _n("10")),
                 _p("left", _n("10")),
             ))),),
         )),))
         el = ast_to_dict_ir(doc)["elements"]["frame-1"]
-        overrides = el.get("_self_overrides") or []
-        assert len(overrides) == 1
-        assert overrides[0]["key"] == "padding"
-        assert overrides[0]["value"] == {"right": 10, "left": 10}
+        overrides = el["_self_overrides"]
+        # Two entries, one per side.
+        assert len(overrides) == 2
+        by_name = {o["db_prop_name"]: o for o in overrides}
+        assert ":self:paddingRight" in by_name
+        assert ":self:paddingLeft" in by_name
+        assert by_name[":self:paddingRight"]["value"] == 10
+        assert by_name[":self:paddingLeft"]["value"] == 10
+        assert by_name[":self:paddingRight"]["db_prop_type"] == "PADDING_RIGHT"
+        assert by_name[":self:paddingLeft"]["db_prop_type"] == "PADDING_LEFT"
+
+    # Note: `test_propgroup_override_captured_as_dict` replaced by
+    # `test_padding_propgroup_fans_out_per_side` — padding now
+    # fans out into one entry per side (Stage 1.7 prep for
+    # instance_overrides row re-materialization).
 
     def test_function_call_override_preserves_shape(self) -> None:
         doc = L3Document(top_level=(Node(head=NodeHead(
@@ -536,10 +573,9 @@ class TestCompRefSelfOverridesChannel:
         )),))
         el = ast_to_dict_ir(doc)["elements"]["frame-1"]
         overrides = el.get("_self_overrides") or []
-        assert overrides[0] == {
-            "key": "fill",
-            "value": {"token": "color.primary"},
-        }
+        assert overrides[0]["key"] == "fill"
+        assert overrides[0]["value"] == {"token": "color.primary"}
+        assert overrides[0]["db_prop_type"] == "FILLS"
 
     def test_bounded_sizing_override_preserves_min_max(self) -> None:
         """A CompRef override with bounded sizing
@@ -580,10 +616,14 @@ class TestCompRefSelfOverridesChannel:
         el = ast_to_dict_ir(doc)["elements"]["frame-1"]
         overrides = el.get("_self_overrides") or []
         assert len(overrides) == 1
-        assert overrides[0] == {
-            "path": ";5749:82459:visible",
-            "value": False,
-        }
+        assert overrides[0]["path"] == ";5749:82459:visible"
+        assert overrides[0]["value"] is False
+        # Child-path overrides get the path as db_prop_name (it IS
+        # the DB row's `property_name` column value) but no
+        # db_prop_type — those require master-node lookup to resolve
+        # (Stage 1.7 scope).
+        assert overrides[0]["db_prop_name"] == ";5749:82459:visible"
+        assert overrides[0]["db_prop_type"] is None
 
     def test_corpus_compref_overrides_reflect_db_rows(
         self, db_conn: sqlite3.Connection,
