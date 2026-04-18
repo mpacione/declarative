@@ -23,9 +23,11 @@ from dd.markup_l3 import (
     Literal_,
     Node,
     NodeHead,
+    PathOverride,
     PropAssign,
     PropGroup,
     SizingValue,
+    TokenRef,
 )
 
 
@@ -311,18 +313,46 @@ class TestDecompressSimpleNode:
 
 
 class TestDefaultDirectionStacked:
-    """`direction="stacked"` is the spec IR's "no auto-layout;
-    absolute positioning" sentinel. The compressor drops it
-    (absence of `layout=` means stacked). The decompressor must
-    restore it when no `layout=` prop is present."""
+    """Direction defaults are context-dependent:
+    - `screen` type root → `"absolute"` (matches generate_ir shape).
+    - CompRef (`-> slash/path`) → no direction (master owns layout).
+    - anything else with no `layout=` prop → `"stacked"`."""
 
-    def test_stacked_direction_defaults_when_no_layout_prop(self) -> None:
+    def test_stacked_direction_defaults_on_inline_frame(self) -> None:
         doc = L3Document(top_level=(Node(head=NodeHead(
             head_kind="type", type_or_path="frame", eid="f",
             properties=(_p("width", _n("100")), _p("height", _n("100"))),
         )),))
         el = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)["elements"]["frame-1"]
         assert el["layout"]["direction"] == "stacked"
+
+    def test_absolute_direction_defaults_on_screen_root(self) -> None:
+        """`generate_ir` emits screen roots with `direction=absolute`
+        (dd/ir.py:1371). Without this default, the compressor →
+        decompressor round-trip silently flipped every screen root
+        from `absolute` to `stacked`."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="screen", eid="s",
+            properties=(_p("width", _n("428")), _p("height", _n("926"))),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["screen-1"]
+        assert el["layout"]["direction"] == "absolute"
+
+    def test_compref_skips_direction_default(self) -> None:
+        """CompRefs inherit layout from the master; decompressor
+        must NOT add a spurious `direction=stacked` entry. The
+        orig spec shape for Mode-1-eligible elements carries
+        direction only when explicitly overridden."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref", type_or_path="icon/more", eid="icn",
+            properties=(_p("width", _n("20")),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert "direction" not in (el.get("layout") or {})
 
     def test_layout_vertical_prop_beats_stacked_default(self) -> None:
         doc = L3Document(top_level=(Node(head=NodeHead(
@@ -492,6 +522,68 @@ class TestCompRefSelfOverridesChannel:
             doc, reexpand_screen_wrapper=False,
         )["elements"]["frame-1"]
         assert "_self_overrides" not in el
+
+    def test_tokenref_override_serializes_structurally(self) -> None:
+        """Token-bound override values (e.g. `fill={color.primary}`)
+        must preserve the token path, NOT serialize as `repr()`."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="card",
+            eid="c",
+            properties=(
+                _p("fill", TokenRef(path="color.primary")),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        assert overrides[0] == {
+            "key": "fill",
+            "value": {"token": "color.primary"},
+        }
+
+    def test_bounded_sizing_override_preserves_min_max(self) -> None:
+        """A CompRef override with bounded sizing
+        (`width=fill(min=100, max=300)`) must carry the bounds through
+        the _self_overrides channel — not emit `{sizing: "fill"}` alone."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/small",
+            eid="b",
+            properties=(
+                _p("width", SizingValue(size_kind="fill", min=100.0, max=300.0)),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        assert overrides[0]["value"] == {
+            "sizing": "fill", "min": 100.0, "max": 300.0,
+        }
+
+    def test_path_override_child_captured_in_self_overrides(self) -> None:
+        """`;figmaId:...=value` child-path overrides in the CompRef
+        block are captured in `_self_overrides` with a `path` key
+        (not `key`) so downstream can distinguish them from head-
+        level `:self:*` overrides."""
+        doc = L3Document(top_level=(Node(
+            head=NodeHead(
+                head_kind="comp-ref",
+                type_or_path="button/toolbar",
+                eid="bt",
+            ),
+            block=Block(statements=(
+                PathOverride(
+                    path=";5749:82459:visible",
+                    value=Literal_(lit_kind="bool", raw="false", py=False),
+                ),
+            )),
+        ),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        assert len(overrides) == 1
+        assert overrides[0] == {
+            "path": ";5749:82459:visible",
+            "value": False,
+        }
 
     def test_corpus_compref_overrides_reflect_db_rows(
         self, db_conn: sqlite3.Connection,
@@ -882,6 +974,41 @@ def test_full_corpus_tier2_root_is_screen(
         root_el = decomp["elements"][decomp["root"]]
         assert root_el["type"] == "screen", (
             f"screen {sid} root decompressed as type={root_el['type']!r}"
+        )
+
+
+def test_full_corpus_tier2_output_is_json_serializable(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Every decompressed corpus spec must serialize cleanly through
+    json.dumps — catches `_override_value_repr` repr() fallbacks or
+    other non-JSON leaks (e.g. Python dataclass reprs, frozenset
+    instances) via a full-corpus sweep."""
+    import json
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    for sid in screens:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=sid)
+        decomp = ast_to_dict_ir(doc)
+        try:
+            out = json.dumps(decomp)
+        except (TypeError, ValueError) as e:
+            pytest.fail(
+                f"screen {sid}: decomp is not JSON-serializable: {e}"
+            )
+        # Negative guard: no `_unhandled` repr fallback leaked into
+        # the output (would signal a Value kind we silently dropped).
+        assert "_unhandled" not in out, (
+            f"screen {sid}: decomp contains _unhandled Value kind, "
+            f"indicating a silent override drop"
         )
 
 

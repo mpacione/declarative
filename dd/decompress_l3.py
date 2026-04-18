@@ -38,13 +38,17 @@ from typing import Any, Optional
 
 from dd.markup_l3 import (
     Block,
+    ComponentRefValue,
     FunctionCall,
     L3Document,
     Literal_,
     Node,
+    PathOverride,
+    PatternRefValue,
     PropAssign,
     PropGroup,
     SizingValue,
+    TokenRef,
     Value,
 )
 
@@ -151,9 +155,16 @@ def _override_value_repr(v: Value) -> Any:
     - `Literal_` → its `py` payload.
     - `PropGroup` → dict of entry.key → `_override_value_repr(value)`.
     - `FunctionCall` → dict `{fn: name, args: [{name, value}, ...]}`.
-    - `SizingValue` → dict `{sizing: kind, px: N}`.
-    - Other shapes → `repr()` fallback (shouldn't appear on override
-      paths in Stage 1.5 but keeps the channel lossless).
+    - `SizingValue` → dict `{sizing: kind, min?: N, max?: N}` —
+      preserves any bounded-sizing min/max.
+    - `TokenRef` → dict `{token: path, scope_alias?: str}` — matches
+      grammar §6 token reference form.
+    - `ComponentRefValue` / `PatternRefValue` → dict
+      `{comp_ref|pattern_ref: path, ...}` — deep slot-default refs.
+    - `Node` (slot-default NodeExpr) — unhandled at this layer; emit
+      a placeholder `{node_head: <type>}` so JSON-ser stays clean.
+    - Anything else → `{"_unhandled": class_name}` so downstream can
+      detect the drop (never `repr()` — that leaks non-JSON strings).
     """
     if isinstance(v, Literal_):
         return v.py
@@ -171,8 +182,33 @@ def _override_value_repr(v: Value) -> Any:
         }
     if isinstance(v, SizingValue):
         out: dict[str, Any] = {"sizing": v.size_kind}
+        if v.min is not None:
+            out["min"] = v.min
+        if v.max is not None:
+            out["max"] = v.max
         return out
-    return repr(v)
+    if isinstance(v, TokenRef):
+        token_dict: dict[str, Any] = {"token": v.path}
+        if v.scope_alias is not None:
+            token_dict["scope_alias"] = v.scope_alias
+        return token_dict
+    if isinstance(v, ComponentRefValue):
+        return {
+            "comp_ref": v.path,
+            "scope_alias": v.scope_alias,
+            "override_args": [
+                {"key": oa.key, "value": _override_value_repr(oa.value)}
+                for oa in v.override_args
+            ],
+        }
+    if isinstance(v, PatternRefValue):
+        pr_dict: dict[str, Any] = {"pattern_ref": v.path}
+        if v.scope_alias is not None:
+            pr_dict["scope_alias"] = v.scope_alias
+        return pr_dict
+    if isinstance(v, Node):
+        return {"node_head": v.head.type_or_path, "eid": v.head.eid}
+    return {"_unhandled": type(v).__name__}
 
 
 def _sizing_dict_value(v: Value) -> Any:
@@ -213,14 +249,22 @@ def _props_by_key(props: tuple[PropAssign, ...]) -> dict[str, PropAssign]:
 
 def _decode_layout(
     props: dict[str, PropAssign], element: dict,
+    *, is_screen_root: bool = False, is_compref: bool = False,
 ) -> None:
-    """Populate `element["layout"]` from head-level PropAssigns."""
+    """Populate `element["layout"]` from head-level PropAssigns.
+
+    Direction default logic:
+    - If `layout=` prop is present: decode directly.
+    - If absent on a SCREEN root: default to `"absolute"` (matches
+      `generate_ir`'s synthetic-wrapper shape, `dd/ir.py:1371`).
+    - If absent on a CompRef: omit direction entirely (master owns
+      the layout axis in the spec IR; CompRefs typically carry no
+      direction of their own).
+    - If absent on any other inline node: default to `"stacked"` (the
+      spec sentinel for "no auto-layout").
+    """
     layout: dict = element.setdefault("layout", {})
 
-    # Direction (layout=<direction>). The compressor drops `stacked`
-    # (the spec's "no auto-layout; absolute positioning" sentinel)
-    # because it's the default when no `layout=` prop is present.
-    # Restore it here so the spec shape round-trips.
     if "layout" in props:
         v = props["layout"].value
         if isinstance(v, Literal_) and v.lit_kind == "enum":
@@ -228,8 +272,11 @@ def _decode_layout(
             if direction is not None:
                 layout["direction"] = direction
     else:
-        # Absence of `layout=` means the spec had `direction="stacked"`.
-        layout["direction"] = "stacked"
+        if is_screen_root:
+            layout["direction"] = "absolute"
+        elif not is_compref:
+            layout["direction"] = "stacked"
+        # CompRefs: skip direction entirely (master-owned).
 
     # Sizing (width, height)
     sizing: dict = {}
@@ -386,6 +433,18 @@ def _decode_node(
                 "key": pa.key,
                 "value": _override_value_repr(pa.value),
             })
+        # Capture block-level child-path overrides (`;figmaId:...=value`).
+        # Stage 1.3/1.4 compressor flattens only `:self:*` rows;
+        # child-path rows persist when the AST comes from another
+        # source (e.g., hand-authored markup). Preserving them in the
+        # same channel lets Stage 1.7 re-materialize them directly.
+        if node.block is not None:
+            for stmt in node.block.statements:
+                if isinstance(stmt, PathOverride):
+                    self_overrides.append({
+                        "path": stmt.path,
+                        "value": _override_value_repr(stmt.value),
+                    })
         if self_overrides:
             element["_self_overrides"] = self_overrides
     if head.eid:
@@ -395,7 +454,11 @@ def _decode_node(
         # so downstream key-preservation works.
         element["_original_name"] = head.eid
 
-    _decode_layout(props, element)
+    _decode_layout(
+        props, element,
+        is_screen_root=(type_kw == "screen"),
+        is_compref=is_compref,
+    )
     _decode_visual(props, element)
 
     # Ext-props (`$ext.*` diagnostic PropAssigns emitted by the
