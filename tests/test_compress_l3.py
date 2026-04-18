@@ -338,6 +338,164 @@ def test_compref_roundtrips_at_grammar_level(
 
 
 # ---------------------------------------------------------------------------
+# Stage 1.4 Part 1 — JSON / PropGroup `:self` override handlers
+# ---------------------------------------------------------------------------
+#
+# Covers `:self:fills`, `:self:strokes`, `:self:effects`,
+# `:self:primaryAxisAlignItems`, and `:self:padding{Left,Right,Top,Bottom}`
+# — overrides whose `override_value` is JSON or requires coalescing.
+# ---------------------------------------------------------------------------
+
+
+class TestSelfOverrideRawPaintNormalization:
+    """`_normalize_raw_paint` converts Figma-raw paint dicts (as they
+    live in `instance_overrides`) into the spec-normalized form
+    consumed by `_fill_to_value`."""
+
+    def test_solid_rgb_to_hex(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "SOLID", "visible": True, "opacity": 1,
+            "color": {"r": 1.0, "g": 0.5, "b": 0.0},
+        }
+        assert _normalize_raw_paint(raw) == {
+            "type": "solid", "color": "#FF8000",
+        }
+
+    def test_solid_with_alpha(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "SOLID", "visible": True, "opacity": 1,
+            "color": {"r": 0, "g": 0, "b": 0, "a": 0.5},
+        }
+        assert _normalize_raw_paint(raw) == {
+            "type": "solid", "color": "#00000080",
+        }
+
+    def test_solid_folds_paint_opacity_into_alpha(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        # Paint-level opacity multiplies into the color's alpha.
+        raw = {
+            "type": "SOLID", "visible": True, "opacity": 0.5,
+            "color": {"r": 1.0, "g": 1.0, "b": 1.0},
+        }
+        out = _normalize_raw_paint(raw)
+        assert out is not None
+        assert out["color"] == "#FFFFFF80"
+
+    def test_hidden_paint_returns_none(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "SOLID", "visible": False,
+            "color": {"r": 1.0, "g": 0, "b": 0},
+        }
+        assert _normalize_raw_paint(raw) is None
+
+    def test_gradient_linear_normalized(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "GRADIENT_LINEAR", "visible": True,
+            "gradientStops": [
+                {"color": {"r": 1.0, "g": 0, "b": 0}, "position": 0},
+                {"color": {"r": 0, "g": 1.0, "b": 0}, "position": 1},
+            ],
+        }
+        out = _normalize_raw_paint(raw)
+        assert out == {
+            "type": "gradient-linear",
+            "stops": [{"color": "#FF0000"}, {"color": "#00FF00"}],
+        }
+
+    def test_radial_gradient_unsupported(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {"type": "GRADIENT_RADIAL", "visible": True, "gradientStops": []}
+        assert _normalize_raw_paint(raw) is None
+
+    def test_image_normalized(self) -> None:
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "IMAGE", "visible": True,
+            "imageHash": "a" * 39 + "1",
+        }
+        out = _normalize_raw_paint(raw)
+        assert out == {
+            "type": "image",
+            "asset_hash": "a" * 39 + "1",
+        }
+
+
+class TestSelfOverrideCorpusCoverage:
+    """Sanity-check that the new `:self` handlers actually fire on the
+    Dank corpus (i.e. we're not just testing dead code)."""
+
+    def test_self_effects_emits_shadow_somewhere(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """The corpus has 391 `:self:effects` rows; at least one screen
+        must emit a `shadow=` PropAssign via the override path when its
+        CompRef instances have visible drop-shadow overrides."""
+        from dd.compress_l3 import compress_to_l3
+        from dd.markup_l3 import emit_l3
+        from dd.ir import generate_ir
+
+        # Find screens with :self:effects overrides.
+        rows = db_conn.execute(
+            "SELECT DISTINCT n.screen_id FROM instance_overrides io "
+            "JOIN nodes n ON n.id = io.node_id "
+            "WHERE io.property_name = ':self:effects' "
+            "LIMIT 20"
+        ).fetchall()
+        screens_with_effects = [r[0] for r in rows]
+
+        any_shadow = False
+        for sid in screens_with_effects:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            emitted = emit_l3(doc)
+            if "shadow=" in emitted:
+                any_shadow = True
+                break
+        assert any_shadow, (
+            "expected at least one corpus screen with :self:effects to "
+            "emit a `shadow=` PropAssign"
+        )
+
+    def test_self_padding_emits_propgroup_somewhere(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """1,312 `:self:paddingLeft` rows in corpus; at least one must
+        produce a `padding={left=N}` PropGroup from the override path."""
+        from dd.compress_l3 import compress_to_l3
+        from dd.markup_l3 import emit_l3
+        from dd.ir import generate_ir
+
+        rows = db_conn.execute(
+            "SELECT DISTINCT n.screen_id FROM instance_overrides io "
+            "JOIN nodes n ON n.id = io.node_id "
+            "WHERE io.property_name = ':self:paddingLeft' "
+            "LIMIT 10"
+        ).fetchall()
+        screens = [r[0] for r in rows]
+
+        any_padding = False
+        for sid in screens:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            emitted = emit_l3(doc)
+            if "padding={" in emitted:
+                any_padding = True
+                break
+        assert any_padding, (
+            "expected at least one corpus screen with :self:paddingLeft "
+            "to emit a `padding={...}` PropGroup"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Full-corpus Tier 1 sweep — the headline proof for Stage 1.3/1.4
 # ---------------------------------------------------------------------------
 

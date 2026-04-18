@@ -40,6 +40,8 @@ pixel-perfect corpus round-trip (that's Stage 1.5–1.7).
 
 from __future__ import annotations
 
+import json
+import math
 import re
 import sqlite3
 from typing import Any, Optional
@@ -444,6 +446,59 @@ def _effects_to_shadow(effects: list) -> Optional[Value]:
     return None
 
 
+def _normalize_raw_paint(raw: dict) -> Optional[dict]:
+    """Convert a Figma-raw paint dict (from `instance_overrides`) into
+    the spec-normalized shape consumed by `_fill_to_value`.
+
+    Raw form: `{type: "SOLID", color: {r,g,b[,a]}, visible, opacity, ...}`
+    Spec form: `{type: "solid", color: "#RRGGBB[AA]"}`
+
+    Hidden (`visible == false`) paints return None so callers skip them.
+    Opacity is folded into the alpha channel for SOLID; for gradients
+    each stop already carries alpha in its color dict.
+    """
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("visible") is False:
+        return None
+    typ = raw.get("type", "")
+    typ_lower = typ.lower() if isinstance(typ, str) else ""
+    if typ == "SOLID" or typ_lower == "solid":
+        color = raw.get("color")
+        if not isinstance(color, dict):
+            return None
+        # Fold paint-level opacity into alpha if sub-unit.
+        op = raw.get("opacity")
+        merged = dict(color)
+        if isinstance(op, (int, float)) and op < 1.0:
+            base_a = float(color.get("a", 1.0))
+            merged["a"] = base_a * op
+        return {"type": "solid", "color": _color_dict_to_hex(merged)}
+    if typ.startswith("GRADIENT_") or typ_lower.startswith("gradient-"):
+        stops_raw = raw.get("gradientStops") or raw.get("stops") or []
+        stops: list[dict] = []
+        for s in stops_raw:
+            if not isinstance(s, dict):
+                continue
+            c = s.get("color")
+            if isinstance(c, dict):
+                stops.append({"color": _color_dict_to_hex(c)})
+            elif isinstance(c, str):
+                stops.append({"color": c})
+        # Grammar §4.3 only has `gradient-linear(...)` — fold all linear
+        # gradient types to that form; radial/angular/diamond fall back
+        # to None (caller drops).
+        if typ == "GRADIENT_LINEAR" or typ_lower == "gradient-linear":
+            return {"type": "gradient-linear", "stops": stops}
+        return None
+    if typ == "IMAGE" or typ_lower == "image":
+        asset_hash = raw.get("imageHash") or raw.get("asset_hash")
+        if not isinstance(asset_hash, str):
+            return None
+        return {"type": "image", "asset_hash": asset_hash}
+    return None
+
+
 def _color_dict_to_hex(color: dict) -> str:
     """Convert a `{r,g,b,a}` dict (normalized 0..1) into `#RRGGBB[AA]`."""
     try:
@@ -804,7 +859,6 @@ def _fetch_corner_radius_map(
                 fv = float(raw)
                 # Guard against NaN / Infinity — both pass `float()`
                 # but would produce unparseable Literal_ nodes.
-                import math
                 if math.isfinite(fv) and fv != 0:
                     by_node_id[row[0]] = fv
             except (ValueError, TypeError):
@@ -866,6 +920,24 @@ _LAYOUT_SIZING_MAP = {
 }
 
 
+_PRIMARY_AXIS_MAP = {
+    # `primaryAxisAlignItems` values from the Figma API. Spec §4.2
+    # maps these onto the `mainAxis=<enum>` PropAssign.
+    "MIN": "min",
+    "CENTER": "center",
+    "MAX": "max",
+    "SPACE_BETWEEN": "space-between",
+}
+
+
+_PADDING_SIDE_MAP = {
+    ":self:paddingLeft": "left",
+    ":self:paddingRight": "right",
+    ":self:paddingTop": "top",
+    ":self:paddingBottom": "bottom",
+}
+
+
 def _fetch_self_overrides(
     conn: Optional[sqlite3.Connection],
     node_id_map: dict[str, int],
@@ -907,6 +979,11 @@ def _fetch_self_overrides(
 
     props_by_eid: dict[str, list[PropAssign]] = {}
     swap_by_eid: dict[str, str] = {}
+    # Per-side padding is coalesced into a single `padding={...}`
+    # PropGroup per eid so that `:self:paddingLeft` + `:self:paddingRight`
+    # produce `padding={right=N left=N}` rather than two scattered
+    # ext-props.
+    padding_by_eid: dict[str, dict[str, float]] = {}
     for row in rows:
         nid, ptype, pname, pval = row[0], row[1], row[2], row[3]
         eid = node_id_to_eid.get(nid)
@@ -940,7 +1017,94 @@ def _fetch_self_overrides(
                     key="width",
                     value=SizingValue(size_kind=dd_val),  # type: ignore[arg-type]
                 ))
+            continue
+        # FILLS / STROKES — JSON paint arrays. First visible paint wins
+        # (matches Stage-1 visual-axis emission from the spec).
+        if ptype == "FILLS" and pname == ":self:fills":
+            value = _raw_paint_json_to_value(pval)
+            if value is not None:
+                props.append(PropAssign(key="fill", value=value))
+            continue
+        if ptype == "STROKES" and pname == ":self:strokes":
+            value = _raw_paint_json_to_value(pval)
+            if value is not None:
+                props.append(PropAssign(key="stroke", value=value))
+            continue
+        # EFFECTS — JSON array; emit first DROP_SHADOW as
+        # `shadow=shadow(...)`. Truncation (2+ shadows) surfaces as the
+        # same `$ext.shadow_extra_count` diagnostic used in `_visual_props`.
+        if ptype == "EFFECTS" and pname == ":self:effects":
+            try:
+                effects = json.loads(pval)
+            except (ValueError, TypeError):
+                effects = None
+            if isinstance(effects, list):
+                sv = _effects_to_shadow(effects)
+                if sv is not None:
+                    props.append(PropAssign(key="shadow", value=sv))
+                extra = _count_extra_shadows(effects)
+                if extra > 0:
+                    props.append(PropAssign(
+                        key="$ext.shadow_extra_count",
+                        value=_num_literal(extra),
+                    ))
+            continue
+        # PRIMARY_ALIGN — bare enum → `mainAxis=<value>`.
+        if ptype == "PRIMARY_ALIGN" and pname == ":self:primaryAxisAlignItems":
+            dd_val = _PRIMARY_AXIS_MAP.get(pval)
+            if dd_val is not None:
+                props.append(PropAssign(
+                    key="mainAxis", value=_enum_literal(dd_val),
+                ))
+            continue
+        # PADDING_* — bare numeric per side; coalesce per eid below.
+        if pname in _PADDING_SIDE_MAP:
+            try:
+                fv = float(pval)
+            except (ValueError, TypeError):
+                continue
+            if not math.isfinite(fv):
+                continue
+            side = _PADDING_SIDE_MAP[pname]
+            padding_by_eid.setdefault(eid, {})[side] = fv
+            continue
+
+    # Emit coalesced padding PropGroups. Side order matches grammar
+    # §7.6: `top right bottom left`. PropGroup entries are themselves
+    # PropAssigns (same shape as the inline-layout padding emission).
+    for eid, sides in padding_by_eid.items():
+        entries: list[PropAssign] = []
+        for side in ("top", "right", "bottom", "left"):
+            if side in sides:
+                entries.append(PropAssign(
+                    key=side, value=_num_literal(sides[side]),
+                ))
+        if entries:
+            props_by_eid.setdefault(eid, []).append(PropAssign(
+                key="padding", value=PropGroup(entries=tuple(entries)),
+            ))
+
     return props_by_eid, swap_by_eid
+
+
+def _raw_paint_json_to_value(raw_json: str) -> Optional[Value]:
+    """Parse a Figma-raw paint-array JSON (from `instance_overrides`)
+    and return the first visible paint's dd-markup Value. Used for
+    `:self:fills` and `:self:strokes` override rows."""
+    try:
+        arr = json.loads(raw_json)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(arr, list):
+        return None
+    for raw in arr:
+        normalized = _normalize_raw_paint(raw)
+        if normalized is None:
+            continue
+        value = _fill_to_value(normalized)
+        if value is not None:
+            return value
+    return None
 
 
 def _resolve_swap_component_name(
