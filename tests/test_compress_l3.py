@@ -289,3 +289,67 @@ def test_full_corpus_tier1_round_trip(db_conn: sqlite3.Connection) -> None:
         pytest.fail(
             f"{len(failures)}/{len(screens)} screens failed Tier 1 round-trip:\n{details}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Golden-file snapshots — L0↔L3 §2.11
+# ---------------------------------------------------------------------------
+#
+# Each reference screen gets a frozen snapshot of its compressor output.
+# On first run the snapshot is WRITTEN and the test passes (with a
+# notice); on subsequent runs the current output is compared byte-wise.
+# Regressions surface as diffs in the test output.
+#
+# Set `COMPRESS_L3_UPDATE_SNAPSHOTS=1` to rewrite all snapshots.
+
+
+SNAPSHOT_DIR = Path(__file__).parent / "fixtures" / "markup"
+
+
+def _snapshot_path(slug: str) -> Path:
+    return SNAPSHOT_DIR / f"{slug}.stage1-expected.dd"
+
+
+@pytest.mark.parametrize("screen_id,slug", REFERENCE_SCREENS)
+def test_stage1_expected_snapshot(
+    db_conn: sqlite3.Connection, screen_id: int, slug: str,
+) -> None:
+    """Freeze the compressor's current output per reference screen.
+
+    Regressions manifest as diff between the fresh emit and the
+    committed `stage1-expected.dd` snapshot. This is the Stage 1
+    regression baseline until the Stage 3 synthetic-token pass lands
+    — see L0↔L3 §2.11 for the two-track oracle model.
+    """
+    import os
+    spec = generate_ir(db_conn, screen_id, semantic=True)["spec"]
+    doc = compress_to_l3(spec, db_conn, screen_id=screen_id)
+    emitted = emit_l3(doc)
+    path = _snapshot_path(slug)
+
+    if os.environ.get("COMPRESS_L3_UPDATE_SNAPSHOTS") == "1" or not path.exists():
+        path.write_text(emitted)
+        if not path.exists():                  # shouldn't happen, but guard
+            pytest.skip(f"wrote new snapshot: {path}")
+        return
+
+    expected = path.read_text()
+    if emitted != expected:
+        # Produce a short diff hint for humans
+        e_lines = expected.splitlines()
+        a_lines = emitted.splitlines()
+        diff = []
+        for i, (e, a) in enumerate(zip(e_lines, a_lines)):
+            if e != a:
+                diff.append(f"  line {i+1}:")
+                diff.append(f"    expected: {e}")
+                diff.append(f"    actual:   {a}")
+                if len(diff) > 15:
+                    break
+        if len(a_lines) != len(e_lines):
+            diff.append(f"  line count: expected {len(e_lines)}, got {len(a_lines)}")
+        pytest.fail(
+            f"snapshot drift on screen {screen_id} ({slug}):\n" +
+            "\n".join(diff) +
+            "\n(run with COMPRESS_L3_UPDATE_SNAPSHOTS=1 to accept)"
+        )

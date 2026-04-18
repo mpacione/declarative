@@ -1,0 +1,261 @@
+screen #iphone-13-pro-max-119 width=428 height=926 (extracted src=181) {
+  frame #frame-1 width=428 height=926 fill=#F6F6F6 {
+    rectangle #image-319 x=-331 y=-61 width=1012 height=1012 fill=image(asset=79b6dbeb4ccba396c2fc87649fce708791aeab02) visible=false
+    -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF {
+      frame #left y=47 width=130 height=64 layout=horizontal gap=8 padding={top=9 right=9 bottom=9 left=15} crossAxis=center {
+        -> button/small/translucent #button-small-translucent width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-back width=20 height=20 visible=false {
+            vector #vector-46 x=2.5 y=4 width=14.5 height=12
+          }
+          text #skip width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-new width=20 height=20 {
+            vector #vector-40 x=3 y=3 width=14 height=14
+          }
+        }
+        -> logo/dank #logo-dank width=hug height=hug layout=horizontal crossAxis=center {
+          image #logo width=24 height=24 {
+            ellipse #ellipse-55 x=3 y=3 width=18 height=18
+          }
+          frame #wordmark width=80 height=13 {
+            vector #vector width=73 height=13 fill=#000000
+          }
+        }
+        -> button/small/translucent #button-1 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) visible=false {
+          -> icon/menu #icon-menu width=20 height=20 {
+            vector #vector-41 x=4 y=4 width=12 height=12
+          }
+          text #text-1 width=hug height=hug fill=#09090B
+          -> icon/close #icon-close width=20 height=20 visible=false {
+            vector #vector-1 x=-1 y=10 width=15.556350708007812 height=15.556349754333496
+          }
+        }
+        -> button/small/translucent #button-2 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-1 width=20 height=20 visible=false {
+            vector #vector-2 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-2 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-2 width=20 height=20 {
+            vector #vector-3 x=3 y=3 width=14 height=14
+          }
+        }
+        heading #title width=41 height=22 fill=#FFFFFF visible=false
+        -> button/small/translucent #button-3 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-3 width=20 height=20 visible=false {
+            vector #vector-4 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-3 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-4 width=20 height=20 {
+            vector #vector-5 x=3 y=3 width=14 height=14
+          }
+        }
+      }
+      frame #center x=123.5 y=47 width=182 height=64 layout=horizontal gap=15 padding={top=12 right=10 bottom=12 left=10} align=center {
+        frame #titles width=hug height=hug layout=vertical gap=8 align=center visible=false {
+          heading #heading-1 width=hug height=hug fill=#000000
+          text #text-4 width=33 height=10 fill=#FFFFFF visible=false
+        }
+        -> button/small/translucent #button-4 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) {
+          -> icon/menu #icon-5 width=20 height=20 {
+            vector #vector-6 x=4 y=4 width=12 height=12
+          }
+          text #text-5 width=hug height=hug fill=#09090B
+          -> icon/close #icon-6 width=20 height=20 visible=false {
+            vector #vector-7 x=-1 y=10 width=15.556350708007812 height=15.556349754333496
+          }
+        }
+        -> logo/dank #image-1 width=hug height=hug layout=horizontal crossAxis=center visible=false {
+          image #image-2 width=24 height=24 {
+            ellipse #ellipse-1 x=3 y=3 width=18 height=18
+          }
+          frame #frame-2 width=80 height=13 {
+            vector #vector-8 width=73 height=13 fill=#000000
+          }
+        }
+        -> nav/tabs #nav-tabs width=hug height=hug layout=horizontal gap=4 crossAxis=center visible=false {
+          -> button/small/solid #button-small-solid width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
+            -> icon/mint #icon-mint width=20 height=20 {
+              group #icon x=1 y=1 width=18 height=18 {
+                vector #vector-9 x=1 y=1 width=18 height=18
+              }
+              vector #vector-10 x=5 y=5 width=10 height=10
+            }
+            heading #heading-2 width=hug height=hug fill=#000000
+            -> icon/wallet #icon-wallet width=20 height=20 visible=false {
+              vector #rectangle-274 x=2 y=2 width=16 height=16
+            }
+          }
+          -> button/small/solid #button-5 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) {
+            -> icon/fill #icon-fill width=20 height=20 {
+              rectangle #rectangle-1609 x=3 y=2 width=13 height=4
+              vector #vector-45 x=8 y=4 width=10 height=14
+            }
+            heading #heading-3 width=hug height=hug fill=#000000
+            -> icon/wallet #icon-7 width=20 height=20 visible=false {
+              vector #vector-11 x=2 y=2 width=16 height=16
+            }
+          }
+          -> button/small/solid #button-6 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
+            -> icon/folder #icon-folder width=20 height=20 {
+              vector #rectangle-259 x=1 y=2 width=18 height=16.999954223632812
+            }
+            heading #heading-4 width=hug height=hug fill=#000000
+            -> icon/wallet #icon-8 width=20 height=20 visible=false {
+              vector #vector-12 x=2 y=2 width=16 height=16
+            }
+          }
+          -> button/small/solid #button-7 width=hug height=44 layout=horizontal gap=10 padding={right=10 left=10} align=center {
+            -> icon/power #icon-power width=20 height=20 {
+              rectangle #image-326 x=-1 width=20 height=20 fill=image(asset=0151ac64e481ded7129861c043b2720623f496bc) visible=false
+              vector #rectangle-251 x=15.999983787536621 y=19.000003814697266 width=11.000000953674316 height=17
+            }
+            heading #heading-5 width=hug height=hug fill=#000000
+            -> icon/wallet #icon-9 width=20 height=20 visible=false {
+              vector #vector-13 x=2 y=2 width=16 height=16
+            }
+          }
+        }
+      }
+      frame #right x=298 y=47 width=130 height=64 layout=horizontal gap=10 padding={top=9 right=16 bottom=9 left=9} mainAxis=max crossAxis=center {
+        -> icon/more #icon-more width=24 height=24 visible=false {
+          vector #vector-14 x=13 y=4 width=16 height=1.9999991655349731 fill=#000000
+        }
+        -> button/small/translucent #button-8 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center {
+          -> icon/back #icon-10 width=20 height=20 visible=false {
+            vector #vector-15 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-6 width=43 height=12 fill=#09090B visible=false
+          -> icon/profile #icon-profile width=20 height=20 {
+            vector #vector-59 x=2 y=2 width=16 height=16
+          }
+        }
+        -> button/small/translucent #button-9 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center visible=false {
+          -> icon/back #icon-11 width=20 height=20 visible=false {
+            vector #vector-16 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-7 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-12 width=20 height=20 {
+            vector #vector-17 x=3 y=3 width=14 height=14
+          }
+        }
+        -> button/small/translucent #button-10 width=hug height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=gradient-linear(#D9FF40, #9EFF85) visible=false {
+          -> icon/edit #icon-edit width=20 height=20 {
+            vector #vector-18 x=1 y=1 width=18 height=17
+          }
+          text #text-8 width=hug height=hug fill=#09090B
+          -> icon/switch #icon-switch width=20 height=20 {
+            vector #rectangle-271 x=15 y=7 width=7.071068286895752 height=7.071067810058594
+            vector #rectangle-272 x=15 y=13 width=7.071068286895752 height=7.071067810058594
+          }
+        }
+        -> button/small/translucent #button-11 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-13 width=20 height=20 visible=false {
+            vector #vector-19 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-9 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-14 width=20 height=20 {
+            vector #vector-20 x=3 y=3 width=14 height=14
+          }
+        }
+        -> button/small/translucent #button-12 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-15 width=20 height=20 visible=false {
+            vector #vector-21 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-10 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-16 width=20 height=20 {
+            vector #vector-22 x=3 y=3 width=14 height=14
+          }
+        }
+        -> button/small/translucent #button-13 width=40 height=40 layout=horizontal gap=10 padding={right=10 left=10} align=center fill=#000000 visible=false {
+          -> icon/back #icon-17 width=20 height=20 visible=false {
+            vector #vector-23 x=2.5 y=4 width=14.5 height=12
+          }
+          text #text-11 width=66 height=12 fill=#09090B visible=false
+          -> icon/new #icon-18 width=20 height=20 {
+            vector #vector-24 x=3 y=3 width=14 height=14
+          }
+        }
+      }
+    }
+    container #frame-354 x=15 y=381 width=hug height=hug layout=vertical gap=12 {
+      container #frame-357 width=393 height=hug layout=horizontal gap=8 crossAxis=center {
+        -> icon/undo #icon-undo width=20 height=20 {
+          vector #rectangle-273 x=15.00000286102295 y=4.000000476837158 width=12.5 height=11.000001907348633 visible=false
+          vector #vector-25 x=2.5 y=3 width=14.5 height=13 visible=false
+          vector #vector-47 x=3 y=3 width=15 height=14
+        }
+        heading #field-title width=hug height=hug fill=#000000
+        heading #heading-6 width=fill height=hug fill=#000000
+      }
+      container #frame-353 width=hug height=hug layout=horizontal gap=10 {
+        frame #frame-350 width=140 height=100 fill=#FFFFFF
+        frame #frame-351 width=140 height=100 fill=#FFFFFF
+        frame #frame-352 width=140 height=100 fill=#FFFFFF
+      }
+    }
+    container #frame-355 x=15 y=544 width=hug height=hug layout=vertical gap=12 {
+      container #container-1 width=393 height=hug layout=horizontal gap=8 crossAxis=center {
+        -> icon/save #icon-save width=20 height=20 {
+          vector #vector-26 x=2 y=18.000001907348633 width=16.000001907348633 height=16.00005340576172
+        }
+        heading #heading-7 width=hug height=hug fill=#000000
+        heading #heading-8 width=fill height=hug fill=#000000
+      }
+      container #container-2 width=hug height=hug layout=horizontal gap=10 {
+        frame #frame-3 width=140 height=100 fill=#FFFFFF
+        frame #frame-4 width=140 height=100 fill=#FFFFFF
+        frame #frame-5 width=140 height=100 fill=#FFFFFF
+      }
+    }
+    container #frame-356 x=15 y=707 width=hug height=hug layout=vertical gap=12 {
+      container #container-3 width=393 height=hug layout=horizontal gap=8 crossAxis=center {
+        -> icon/store #icon-store width=20 height=20 {
+          vector #vector-27 x=2 y=3 width=16 height=14
+        }
+        heading #heading-9 width=hug height=hug fill=#000000
+        heading #heading-10 width=fill height=hug fill=#000000
+      }
+      container #container-4 width=hug height=hug layout=horizontal gap=10 {
+        frame #frame-6 width=140 height=100 fill=#FFFFFF
+        frame #frame-7 width=140 height=100 fill=#FFFFFF
+        frame #frame-8 width=140 height=100 fill=#FFFFFF
+      }
+    }
+    -> button/large/translucent #button-large-translucent x=15 y=300 width=397 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=gradient-linear(#D9FF40, #9EFF85) {
+      -> icon/mint #icon-19 width=20 height=20 {
+        group #group-1 x=1 y=1 width=18 height=18 {
+          vector #vector-28 x=1 y=1 width=18 height=18
+        }
+        vector #vector-29 x=5 y=5 width=10 height=10
+      }
+      text #buy-trophy width=hug height=hug fill=#09090B
+      -> icon/forward #icon-forward width=20 height=20 {
+        vector #vector-30 x=17 y=4 width=14.5 height=12
+      }
+    }
+    group #group x=130 y=130 width=168.16700744628906 height=140.99981689453125 {
+      vector #vector-31 x=130 y=152.59698677062988 width=168.16700744628906 height=118.40313720703125 fill=#DADADA
+      vector #vector-32 x=140.18084621429443 y=162.7872428894043 width=147.77243041992188 height=98.02108764648438 fill=#DADADA
+      vector #vector-33 x=161.76054763793945 y=162.78952407836914 width=3.671513080596924 height=98.01890563964844 fill=#DADADA
+      vector #vector-34 x=146.0604648590088 y=205.05309295654297 width=13.49614429473877 height=13.496146202087402 fill=#DADADA
+      vector #vector-35 x=151.19878768920898 y=189.30226516723633 width=3.671510934829712 height=10.559152603149414 fill=#DADADA
+      vector #vector-36 x=151.19878768920898 y=223.7271957397461 width=3.671510934829712 height=10.559152603149414 fill=#DADADA
+      vector #vector-37 x=151.19878768920898 y=171.51799774169922 width=3.671510934829712 height=10.559152603149414 fill=#DADADA
+      vector #vector-38 x=151.19878768920898 y=241.51146697998047 width=3.671510934829712 height=10.559152603149414 fill=#DADADA
+      vector #vector-39 x=161.75598526000977 y=227.22840118408203 width=47.01969909667969 height=33.580135345458984 fill=#DADADA
+      vector #vector-42 x=197.97742462158203 y=217.43302154541016 width=89.98295593261719 height=23.89347267150879 fill=#DADADA
+      vector #vector-43 x=173.83968353271484 y=211.02423858642578 width=36.96678924560547 height=26.949296951293945 fill=#DADADA
+      vector #vector-44 x=201.2089080810547 y=201.5427703857422 width=49.641700744628906 height=32.44135284423828 fill=#DADADA
+      vector #vector-48 x=177.55414581298828 y=196.1227569580078 width=15.747132301330566 height=9.158621788024902 fill=#DADADA
+      vector #vector-49 x=201.0828857421875 y=198.23003387451172 width=15.750218391418457 height=9.158622741699219 fill=#DADADA
+      vector #vector-50 x=252.43873596191406 y=189.04651641845703 width=19.873449325561523 height=17.69630241394043 fill=#DADADA
+      vector #vector-51 x=252.44615173339844 y=203.06128692626953 width=19.873458862304688 height=12.851463317871094 fill=#DADADA
+      vector #vector-52 x=260.5433807373047 y=212.23426055908203 width=3.671518087387085 height=14.509652137756348 fill=#DADADA
+      vector #vector-53 x=224.6498260498047 y=236.77658081054688 width=63.31055450439453 height=24.039081573486328 fill=#DADADA
+      vector #vector-54 x=234.20171356201172 y=130 width=42.68142318725586 height=58.34041213989258 fill=#DADADA
+      vector #vector-55 x=233.80939483642578 y=177.93733978271484 width=15.742657661437988 height=17.83639144897461 fill=#DADADA
+      vector #vector-56 x=256.52442169189453 y=139.24396228790283 width=15.349074363708496 height=10.423035621643066 fill=#DADADA
+      vector #vector-57 x=239.9735565185547 y=167.90988159179688 width=15.357758522033691 height=10.415690422058105 fill=#DADADA
+      vector #vector-58 x=180.4394989013672 y=172.06199645996094 width=30.656660079956055 height=18.849271774291992 fill=#DADADA
+    }
+  }
+}
