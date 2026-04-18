@@ -1,100 +1,98 @@
-screen #iphone-13-pro-max-87 width=428 height=926 (extracted src=222) {
-  frame #iphone-13-pro-max-87 width=428 height=926 fill=#F6F6F6 {
-    container #frame-359 x=17 y=231 width=hug height=hug layout=vertical crossAxis=center {
-      container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
-        text #field-title "Meme-00001" width=hug height=hug fill=#000000
-        container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
-          -> icon/more #icon-more width=20 height=20 opacity=0.2
-          text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
-        }
-      }
-      frame #frame-350 width=395 height=395 fill=#FFFFFF shadow=shadow(x=0, y=0, blur=0, color=#0000000D) radius=2 {
-        rectangle #image-320 x=119 y=135 width=157 height=172 fill=image(asset=5100e618ad172c0c2a7e2d8e3183bc55aa27cba6)
-        frame #frame-338 x=18 y=39 width=hug height=hug layout=horizontal padding={left=4} align=center radius=3 {
-          heading #it-is-i-do-not-be-afraid "It is I... do not be afraid" width=hug height=hug fill=#000000
-          rectangle #rectangle-22213 width=4 height=40
-        }
-        frame #shape x=26 y=204 width=126 height=126 {
-          frame #boundingbox x=8 y=8 width=110 height=110 stroke=#047AFF stroke-weight=1
-          frame #shape x=10 y=10 width=106 height=106 fill=#634AFF stroke=#FF1515 stroke-weight=1 radius=1
-          frame #control-topleft width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
-          frame #control-bottomleft x=0 y=110 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
-          frame #control-topright x=110 y=0 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
-          frame #control-bottomright x=110 y=110 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
-        }
+screen #iphone-13-pro-max-87 width=428 height=926 fill=#F6F6F6 (extracted src=222) {
+  container #frame-359 x=17 y=231 width=hug height=hug layout=vertical crossAxis=center {
+    container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
+      text #field-title "Meme-00001" width=hug height=hug fill=#000000
+      container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
+        -> icon/more #icon-more width=20 height=20 opacity=0.2
+        text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
       }
     }
-    frame #overlay width=428 height=926 fill=gradient-linear(#00000000, #000000)
-    button #button-toolbar x=126 y=794 width=hug height=hug layout=horizontal gap=12 padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 radius=16 {
-      -> button/large/translucent #button-large-translucent width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-    }
-    button #button-toolbar-2 x=18 y=124 width=hug height=hug layout=horizontal padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 radius=16 {
-      -> button/large/translucent #button-large-translucent width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-4 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 radius=10
-      -> button/large/translucent #button-large-translucent-5 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-6 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-7 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-      -> button/large/translucent #button-large-translucent-8 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
-    }
-    card #card-sheet-success x=0 y=516 width=hug height=hug layout=vertical gap=22 padding={top=22 right=24 bottom=60 left=24} crossAxis=center fill=#FFFFFF radius={top-left=28 top-right=28} {
-      container #frame-265 width=fill height=hug layout=horizontal gap=14 crossAxis=center {
-        heading #title "Border Size" width=fill height=hug fill=#000000
-        -> button/small/translucent #button-small-translucent width=99 height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 radius=10
+    frame #frame-350 width=395 height=395 fill=#FFFFFF shadow=shadow(x=0, y=0, blur=0, color=#0000000D) radius=2 {
+      rectangle #image-320 x=119 y=135 width=157 height=172 fill=image(asset=5100e618ad172c0c2a7e2d8e3183bc55aa27cba6)
+      frame #frame-338 x=18 y=39 width=hug height=hug layout=horizontal padding={left=4} align=center radius=3 {
+        heading #it-is-i-do-not-be-afraid "It is I... do not be afraid" width=hug height=hug fill=#000000
+        rectangle #rectangle-22213 width=4 height=40
       }
-      container #frame-397 width=380 height=hug layout=horizontal gap=12 {
-        text #message "Presets" width=380 height=17 fill=#09090B
-        frame #frame-290 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-1 #icon-stroke-1 width=30 height=30
-          }
-          text #message "Tiny" width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
-        }
-        frame #frame-291 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-2 #icon-stroke-2 width=30 height=30
-          }
-          text #message "Small" width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
-        }
-        frame #frame-292 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-3 #icon-stroke-3 width=30 height=30
-          }
-          text #message "Medium" width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
-        }
-        frame #frame-293 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-          container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
-            -> icon/stroke-4 #icon-stroke-4 width=30 height=30
-          }
-          text #message "Large" width=fill height=hug fill=#09090B
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
-        }
+      frame #shape x=26 y=204 width=126 height=126 {
+        frame #boundingbox x=8 y=8 width=110 height=110 stroke=#047AFF stroke-weight=1
+        frame #shape x=10 y=10 width=106 height=106 fill=#634AFF stroke=#FF1515 stroke-weight=1 radius=1
+        frame #control-topleft width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
+        frame #control-bottomleft x=0 y=110 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
+        frame #control-topright x=110 y=0 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
+        frame #control-bottomright x=110 y=110 width=16 height=16 fill=#FFFFFF stroke=#047AFF stroke-weight=1 radius=3
       }
-      container #frame-402 width=380 height=108 layout=vertical gap=10 {
-        text #message "Custom Size" width=380 height=17 fill=#09090B
-        frame #frame-398 width=fill height=hug layout=vertical gap=6 padding={top=8 right=20 bottom=28 left=20} align=center fill=#000000 radius=16 {
-          -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
-          text #message "32 px" width=fill height=hug fill=#09090B
-          button #button-slider width=fill height=22 layout=vertical mainAxis=center {
-            slider #slider width=fill height=22 {
-              rectangle #track x=0 y=8 width=340 height=6 fill=#000000 stroke=#FFFFFF stroke-weight=1 radius=3
-              frame #adjust-auto-layout-spacing x=0 y=8 width=182 height=6 fill=gradient-linear(#D9FF40, #9EFF85) stroke=#000000 stroke-weight=1 radius=3 {
-                rectangle #rectangle-240 x=154 y=-12 width=30 height=30 fill=#000000 stroke=#FFFFFF stroke-weight=1 radius=27
-              }
+    }
+  }
+  frame #overlay width=428 height=926 fill=gradient-linear(#00000000, #000000)
+  button #button-toolbar x=126 y=794 width=hug height=hug layout=horizontal gap=12 padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 radius=16 {
+    -> button/large/translucent #button-large-translucent width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+  }
+  button #button-toolbar-2 x=18 y=124 width=hug height=hug layout=horizontal padding={top=4 right=4 bottom=4 left=4} align=center fill=#000000 radius=16 {
+    -> button/large/translucent #button-large-translucent width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-2 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-3 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-4 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 radius=10
+    -> button/large/translucent #button-large-translucent-5 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-6 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-7 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+    -> button/large/translucent #button-large-translucent-8 width=48 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center radius=10
+  }
+  card #card-sheet-success x=0 y=516 width=hug height=hug layout=vertical gap=22 padding={top=22 right=24 bottom=60 left=24} crossAxis=center fill=#FFFFFF radius={top-left=28 top-right=28} {
+    container #frame-265 width=fill height=hug layout=horizontal gap=14 crossAxis=center {
+      heading #title "Border Size" width=fill height=hug fill=#000000
+      -> button/small/translucent #button-small-translucent width=99 height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 radius=10
+    }
+    container #frame-397 width=380 height=hug layout=horizontal gap=12 {
+      text #message "Presets" width=380 height=17 fill=#09090B
+      frame #frame-290 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+          -> icon/stroke-1 #icon-stroke-1 width=30 height=30
+        }
+        text #message "Tiny" width=fill height=hug fill=#09090B
+        -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+      }
+      frame #frame-291 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+          -> icon/stroke-2 #icon-stroke-2 width=30 height=30
+        }
+        text #message "Small" width=fill height=hug fill=#09090B
+        -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+      }
+      frame #frame-292 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+          -> icon/stroke-3 #icon-stroke-3 width=30 height=30
+        }
+        text #message "Medium" width=fill height=hug fill=#09090B
+        -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+      }
+      frame #frame-293 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+          -> icon/stroke-4 #icon-stroke-4 width=30 height=30
+        }
+        text #message "Large" width=fill height=hug fill=#09090B
+        -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+      }
+    }
+    container #frame-402 width=380 height=108 layout=vertical gap=10 {
+      text #message "Custom Size" width=380 height=17 fill=#09090B
+      frame #frame-398 width=fill height=hug layout=vertical gap=6 padding={top=8 right=20 bottom=28 left=20} align=center fill=#000000 radius=16 {
+        -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
+        text #message "32 px" width=fill height=hug fill=#09090B
+        button #button-slider width=fill height=22 layout=vertical mainAxis=center {
+          slider #slider width=fill height=22 {
+            rectangle #track x=0 y=8 width=340 height=6 fill=#000000 stroke=#FFFFFF stroke-weight=1 radius=3
+            frame #adjust-auto-layout-spacing x=0 y=8 width=182 height=6 fill=gradient-linear(#D9FF40, #9EFF85) stroke=#000000 stroke-weight=1 radius=3 {
+              rectangle #rectangle-240 x=154 y=-12 width=30 height=30 fill=#000000 stroke=#FFFFFF stroke-weight=1 radius=27
             }
           }
         }
       }
     }
-    -> safari-bottom #safari-bottom x=0 y=870 width=428 height=56
-    -> ios/homeindicator #ios-homeindicator x=0 y=892 width=428 height=34
-    -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF
-    -> ios/statusbar #ios-statusbar width=428 height=47
   }
+  -> safari-bottom #safari-bottom x=0 y=870 width=428 height=56
+  -> ios/homeindicator #ios-homeindicator x=0 y=892 width=428 height=34
+  -> nav/top-nav #nav-top-nav width=428 height=111 fill=#FFFFFF
+  -> ios/statusbar #ios-statusbar width=428 height=47
 }

@@ -1008,6 +1008,94 @@ def _build_comp_names_map(
     return out
 
 
+def _collapse_synthetic_screen_wrapper(spec: dict) -> dict:
+    """Collapse the synthetic `screen-1` → Figma-canvas-FRAME wrapper.
+
+    `dd.ir.generate_ir` emits a synthetic `screen-1` parent around every
+    screen's real canvas frame (which carries the user-visible name,
+    fill, etc.). Without this collapse, every screen renders as:
+
+        screen #iphone-13-pro-max-119 width=428 height=926 {
+          frame #iphone-13-pro-max-119 width=428 height=926 fill=#F6F6F6 {
+            ...
+
+    The two lines are redundant (identical eid, identical sizing) and
+    the second frame just holds the wrapper fill. Per L0↔L3 the screen
+    IS the canvas — one line, not two.
+
+    This pass:
+      1. Detects the pattern (root is `screen`; one child; child has
+         the same `_original_name`).
+      2. Hoists the child's visual + layout (except sizing) onto the
+         screen.
+      3. Replaces the screen's children with the grand-children.
+      4. Rewrites `_node_id_map` so override lookups keyed on
+         `screen-1` resolve to the canvas frame's node-id (the child
+         is what the DB actually knows about).
+
+    Returns a shallow-copied spec; original is not mutated.
+    """
+    elements = spec.get("elements")
+    root_key = spec.get("root")
+    if not isinstance(elements, dict) or not root_key:
+        return spec
+    root = elements.get(root_key)
+    if not isinstance(root, dict):
+        return spec
+    children = root.get("children") or []
+    if len(children) != 1:
+        return spec
+    child_key = children[0]
+    child = elements.get(child_key)
+    if not isinstance(child, dict):
+        return spec
+    # Must match on original name (defensive against unrelated
+    # single-child roots).
+    root_name = root.get("_original_name")
+    child_name = child.get("_original_name")
+    if not root_name or root_name != child_name:
+        return spec
+
+    # Build merged root.
+    new_root = dict(root)
+    # Hoist visual (fills / strokes / radius / effects / opacity).
+    if "visual" in child:
+        new_root["visual"] = child["visual"]
+    # Hoist layout direction (screen's is "absolute" placeholder) but
+    # KEEP the screen's sizing — it's the authoritative canvas size.
+    root_layout = dict(root.get("layout") or {})
+    child_layout = child.get("layout") or {}
+    if "direction" in child_layout:
+        root_layout["direction"] = child_layout["direction"]
+    if "gap" in child_layout:
+        root_layout["gap"] = child_layout["gap"]
+    if "padding" in child_layout:
+        root_layout["padding"] = child_layout["padding"]
+    if "alignment" in child_layout:
+        root_layout["alignment"] = child_layout["alignment"]
+    new_root["layout"] = root_layout
+    # Grandchildren become children.
+    new_root["children"] = list(child.get("children") or [])
+    # Promote _mode1_eligible if child had it (synthetic screen never does).
+    if child.get("_mode1_eligible") is not None:
+        new_root["_mode1_eligible"] = child["_mode1_eligible"]
+
+    new_elements = dict(elements)
+    new_elements[root_key] = new_root
+    # Leave the child element in place for any node_id_map lookups
+    # that expect to find it — but remap its node-id to the root.
+    node_id_map = dict(spec.get("_node_id_map") or {})
+    child_nid = node_id_map.get(child_key)
+    if child_nid is not None:
+        # Root now refers to the real canvas in the DB.
+        node_id_map[root_key] = child_nid
+
+    new_spec = dict(spec)
+    new_spec["elements"] = new_elements
+    new_spec["_node_id_map"] = node_id_map
+    return new_spec
+
+
 def compress_to_l3(
     spec: dict, conn: Optional[sqlite3.Connection] = None,
     *, screen_id: Optional[int] = None,
@@ -1028,6 +1116,11 @@ def compress_to_l3(
     # Defensive guards — bad input shouldn't crash with AttributeError.
     if not isinstance(spec, dict):
         return L3Document(namespace=None)
+    # Collapse the synthetic `screen` wrapper around the real Figma
+    # canvas frame before any property collection runs — downstream
+    # lookups (CKR, overrides, radius, bounds) key off the screen's
+    # remapped node-id.
+    spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
         return L3Document(namespace=None)

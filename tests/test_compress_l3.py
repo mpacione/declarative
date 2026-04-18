@@ -180,6 +180,87 @@ def test_eid_derived_from_original_name(db_conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Synthetic screen-wrapper collapse — `dd.ir.generate_ir` wraps the real
+# Figma canvas FRAME in a synthetic `screen-1` parent. The compressor
+# collapses the two into a single top-level node.
+# ---------------------------------------------------------------------------
+
+
+def test_synthetic_screen_wrapper_collapsed(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The compressor collapses the synthetic `screen` wrapper into the
+    real canvas FRAME. The top-level Node has exactly one child per
+    DB-level grand-child — no redundant intermediate `frame` line."""
+    doc = compress_to_l3(
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
+        db_conn,
+        screen_id=181,
+    )
+    root = doc.top_level[0]
+    # Type stays `screen` (the dd-markup keyword).
+    assert root.head.type_or_path == "screen"
+    # No child node is a `frame` with the SAME eid as the screen —
+    # that's the double-wrapper pattern we're eliminating.
+    screen_eid = root.head.eid
+    assert root.block is not None
+    redundant_wrappers = [
+        s for s in root.block.statements
+        if isinstance(s, Node)
+        and s.head.head_kind == "type"
+        and s.head.type_or_path == "frame"
+        and s.head.eid == screen_eid
+    ]
+    assert redundant_wrappers == [], (
+        f"screen `#{screen_eid}` still has a redundant `frame "
+        f"#{screen_eid}` wrapper in its block: {redundant_wrappers}"
+    )
+
+
+def test_collapsed_screen_hoists_canvas_fill(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The canvas FRAME's fill (#F6F6F6 on the reference screens)
+    hoists onto the collapsed `screen` node. Otherwise we'd lose the
+    canvas background."""
+    doc = compress_to_l3(
+        generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"],
+        db_conn,
+        screen_id=181,
+    )
+    props = doc.top_level[0].head.properties
+    fill_props = [p for p in props if p.key == "fill"]
+    assert len(fill_props) == 1, (
+        f"expected exactly 1 `fill` on collapsed screen root; got "
+        f"{len(fill_props)}: {fill_props}"
+    )
+
+
+def test_collapsed_screen_preserves_grandchildren(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """After collapsing the wrapper, the screen's children equal the
+    canvas FRAME's children — not wrapped in an intermediate frame."""
+    spec = generate_ir(db_conn, 181, semantic=True, filter_chrome=False)["spec"]
+    # Expected children = canvas FRAME's children in the raw spec.
+    raw_root = spec["elements"][spec["root"]]
+    assert len(raw_root.get("children") or []) == 1
+    canvas_key = raw_root["children"][0]
+    canvas = spec["elements"][canvas_key]
+    expected_child_count = len(canvas.get("children") or [])
+    assert expected_child_count > 0, "reference screen has no canvas children"
+
+    doc = compress_to_l3(spec, db_conn, screen_id=181)
+    # One Node-child per canvas grand-child. (Statements may also
+    # include a PropAssign etc. — we count only Nodes.)
+    assert doc.top_level[0].block is not None
+    node_children = [
+        s for s in doc.top_level[0].block.statements if isinstance(s, Node)
+    ]
+    assert len(node_children) == expected_child_count
+
+
+# ---------------------------------------------------------------------------
 # Slice C — CompRef emission via CKR lookup
 # ---------------------------------------------------------------------------
 
