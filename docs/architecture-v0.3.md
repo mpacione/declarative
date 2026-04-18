@@ -96,7 +96,7 @@ Every layer of the pipeline speaks the same language. Constrained decoding uses 
 
 ## 2. The markup language — overview
 
-Syntactically KDL-based (KDL v2 spec, finalized 2024). Rationale in the research record §1 and §Thread 1 — the shortest defense: LLM-friendly, typed annotations in the grammar natively, built-in `/-` for deletes, has a schema language, and parsers exist.
+The dialect is called **dd markup** (file extension `.dd`). Syntactically it uses KDL v2 (finalized 2024) as the lexical and block-structure substrate, plus the extensions documented below (§2.1–2.6). Rationale for the KDL substrate in the research record §1 and §Thread 1 — the shortest defense: LLM-friendly, typed annotations in the grammar natively, built-in `/-` for deletes, has a schema language, and parsers exist. We do NOT call our dialect "KDL" in prose or spec — it is a dd-markup dialect atop KDL v2. Naming choice recorded 2026-04-18 after collision audit (avoided: DDL/SQL, DML/SQL, UIML, XAML, IDL, SDL-GraphQL).
 
 ### 2.1 Value grammar
 
