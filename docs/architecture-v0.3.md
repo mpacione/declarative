@@ -574,8 +574,10 @@ These come from v0.1.5/v0.2 and earlier ADRs. Any change that breaks one of thes
 4. **Null-safe Mode 1** (ADR-002) — every `createInstance` has a missing-component placeholder fallback.
 5. **Structured error channel** (ADR-006) — failures never silently swallow; always emit KIND_* diagnostics.
 6. **Unified verification channel** (ADR-007) — per-node granularity for all verifier signals.
-7. **Token-bound fidelity** — IR never holds raw values; synthetic tokens fill gaps.
-8. **Leaf-parent gate** (Fix #1) — TEXT/RECTANGLE/VECTOR/LINE nodes cannot have appendChild called on them.
+7. **Token-bound fidelity (synthesis regime).** Token refs are the canonical form for clusterable-axis values in **synthesis output** and LLM-facing IR. Extract-produced IR may hold raw values on any axis; clustering promotes them to refs where a binding exists. Renderers must accept either form and resolve via `TokenCascade` as needed. Resolved 2026-04-18 per `docs/decisions/v0.3-grammar-modes.md`.
+7a. **One grammar, three validation modes.** The dd-markup grammar is one syntax. Validation operates in three modes: **Extract** (raw permitted), **Synthesis** (token-only on clusterable axes), **Render** (backend-capability-gated). A document is valid under one or more modes; documents from different sources must not be assumed valid under all modes.
+8. **Dict IR is canonical on the render path.** dd markup is a lossless serde over the dict IR, NOT the in-memory representation used by extract/compose/render. Every dict IR property must have a serde path through dd markup; tests must verify 204/204 round-trip on every IR schema change. Added 2026-04-18 per `docs/decisions/v0.3-canonical-ir.md`.
+9. **Leaf-parent gate** (Fix #1) — TEXT/RECTANGLE/VECTOR/LINE nodes cannot have appendChild called on them.
 
 ---
 
