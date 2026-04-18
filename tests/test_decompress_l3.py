@@ -380,7 +380,8 @@ class TestOriginalNamePreservation:
 
 class TestDecompressCompRef:
     """CompRef nodes (`-> slash/path`) decompress to Mode-1-eligible
-    leaves with the slash-path preserved."""
+    leaves with the slash-path preserved and head PropAssigns
+    captured in the `_self_overrides` channel for Stage 1.6."""
 
     def test_compref_marks_mode1_eligible(self) -> None:
         doc = L3Document(top_level=(Node(head=NodeHead(
@@ -393,6 +394,130 @@ class TestDecompressCompRef:
         assert el["_mode1_eligible"] is True
         assert el["_master_slash_path"] == "nav/top-nav"
         assert el["type"] == "frame"
+
+
+class TestCompRefSelfOverridesChannel:
+    """Stage 1.6 MVP — every head-level PropAssign on a CompRef is
+    a local override of the master and is captured structurally in
+    `element["_self_overrides"]`. Ready for downstream
+    re-materialization into `instance_overrides` rows."""
+
+    def test_scalar_override_captured(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="icon/more",
+            eid="icon-more",
+            properties=(
+                _p("width", _n("20")),
+                _p("height", _n("20")),
+                _p("opacity", Literal_(
+                    lit_kind="number", raw="0.2", py=0.2,
+                )),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        keys_values = {o["key"]: o["value"] for o in overrides}
+        assert keys_values == {"width": 20, "height": 20, "opacity": 0.2}
+
+    def test_propgroup_override_captured_as_dict(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/small/translucent",
+            eid="button-sm",
+            properties=(_p("padding", PropGroup(entries=(
+                _p("right", _n("10")),
+                _p("left", _n("10")),
+            ))),),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        assert len(overrides) == 1
+        assert overrides[0]["key"] == "padding"
+        assert overrides[0]["value"] == {"right": 10, "left": 10}
+
+    def test_function_call_override_preserves_shape(self) -> None:
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="card",
+            eid="card-a",
+            properties=(_p("shadow", FunctionCall(name="shadow", args=(
+                FuncArg(name="x", value=_n("0")),
+                FuncArg(name="y", value=_n("4")),
+                FuncArg(name="blur", value=_n("8")),
+                FuncArg(name="color", value=_hex("#00000040")),
+            ))),),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        overrides = el.get("_self_overrides") or []
+        assert len(overrides) == 1
+        assert overrides[0]["key"] == "shadow"
+        assert overrides[0]["value"] == {
+            "fn": "shadow",
+            "args": [
+                {"name": "x", "value": 0},
+                {"name": "y", "value": 4},
+                {"name": "blur", "value": 8},
+                {"name": "color", "value": "#00000040"},
+            ],
+        }
+
+    def test_ext_props_excluded_from_self_overrides(self) -> None:
+        """`$ext.*` diagnostics live in their own `$ext` sub-dict;
+        they must not leak into `_self_overrides`."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/large/translucent",
+            eid="btn",
+            properties=(
+                _p("width", _n("50")),
+                _p("$ext.shadow_all_hidden", _bool(True)),
+            ),
+        )),))
+        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        keys = [o["key"] for o in el.get("_self_overrides") or []]
+        assert "$ext.shadow_all_hidden" not in keys
+        assert "width" in keys
+        assert el["$ext"] == {"shadow_all_hidden": True}
+
+    def test_non_compref_has_no_self_overrides_channel(self) -> None:
+        """Inline (non-CompRef) nodes don't get the `_self_overrides`
+        channel — their PropAssigns are spec-path properties, not
+        overrides."""
+        doc = L3Document(top_level=(Node(head=NodeHead(
+            head_kind="type", type_or_path="frame", eid="f",
+            properties=(_p("fill", _hex("#FF0000")),),
+        )),))
+        el = ast_to_dict_ir(
+            doc, reexpand_screen_wrapper=False,
+        )["elements"]["frame-1"]
+        assert "_self_overrides" not in el
+
+    def test_corpus_compref_overrides_reflect_db_rows(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """For a corpus screen with :self:* override rows, the
+        decompressed CompRefs must carry matching entries in their
+        `_self_overrides` channels."""
+        from dd.compress_l3 import compress_to_l3
+        from dd.ir import generate_ir
+
+        # Screen 118 has :self:paddingLeft overrides per the
+        # compressor corpus probes.
+        spec = generate_ir(
+            db_conn, 118, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=118)
+        decomp = ast_to_dict_ir(doc, reexpand_screen_wrapper=False)
+        compref_overrides = sum(
+            len(el.get("_self_overrides") or [])
+            for el in decomp["elements"].values()
+            if el.get("_mode1_eligible")
+        )
+        assert compref_overrides > 0, (
+            "expected at least one CompRef on screen 118 to carry "
+            "_self_overrides entries (corpus has :self:paddingLeft rows)"
+        )
 
 
 class TestDecompressNested:

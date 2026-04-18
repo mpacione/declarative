@@ -143,6 +143,38 @@ def _shadow_function_to_dict(v: Value) -> Optional[dict]:
     return out
 
 
+def _override_value_repr(v: Value) -> Any:
+    """Serialize a PropAssign Value into a JSON-friendly form for
+    the `_self_overrides` channel. Preserves enough structure to
+    re-materialize an `instance_overrides` row downstream.
+
+    - `Literal_` → its `py` payload.
+    - `PropGroup` → dict of entry.key → `_override_value_repr(value)`.
+    - `FunctionCall` → dict `{fn: name, args: [{name, value}, ...]}`.
+    - `SizingValue` → dict `{sizing: kind, px: N}`.
+    - Other shapes → `repr()` fallback (shouldn't appear on override
+      paths in Stage 1.5 but keeps the channel lossless).
+    """
+    if isinstance(v, Literal_):
+        return v.py
+    if isinstance(v, PropGroup):
+        return {
+            e.key: _override_value_repr(e.value) for e in v.entries
+        }
+    if isinstance(v, FunctionCall):
+        return {
+            "fn": v.name,
+            "args": [
+                {"name": a.name, "value": _override_value_repr(a.value)}
+                for a in v.args
+            ],
+        }
+    if isinstance(v, SizingValue):
+        out: dict[str, Any] = {"sizing": v.size_kind}
+        return out
+    return repr(v)
+
+
 def _sizing_dict_value(v: Value) -> Any:
     """Convert a sizing PropAssign value back into the spec-IR shape:
     numeric for px, string for fill/hug, dict for bounded min/max."""
@@ -338,6 +370,24 @@ def _decode_node(
     if is_compref:
         element["_mode1_eligible"] = True
         element["_master_slash_path"] = head.type_or_path
+        # Stage 1.6 MVP — surface raw `:self:*` overrides as a
+        # structured channel so downstream consumers can
+        # re-materialize `instance_overrides`-shaped rows. Every
+        # head-level PropAssign on a CompRef is a local override
+        # of the master by definition (CompRefs inherit all
+        # properties; anything on the head overrides the inherited
+        # value). Excludes `$ext.*` diagnostics which have their
+        # own channel.
+        self_overrides: list[dict[str, Any]] = []
+        for pa in head.properties:
+            if pa.key.startswith("$ext."):
+                continue
+            self_overrides.append({
+                "key": pa.key,
+                "value": _override_value_repr(pa.value),
+            })
+        if self_overrides:
+            element["_self_overrides"] = self_overrides
     if head.eid:
         # Approximate `_original_name` from the AST EID. Lossy (EID
         # is the sanitized, lowercased IDENT form — not the raw Figma
