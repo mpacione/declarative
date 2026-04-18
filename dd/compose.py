@@ -432,7 +432,7 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "space.card.padding_y": 16,
     "space.card.gap": 12,
     "space.generic.padding_x": 12,
-    "space.generic.padding_y": 12,
+    "space.generic.padding_y": 8,
     "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
@@ -442,8 +442,6 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     # Radii
     "radius.button": 8,
     "radius.input": 8,
