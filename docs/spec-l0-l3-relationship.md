@@ -128,7 +128,8 @@ Rules:
    L3 compression (already done by `build_composition_spec`).
 2. **Type keyword resolution** for a surviving element:
    - If L1 SCI has a `canonical_type` AND the node has `component_key`,
-     emit a **component reference**: `-> <component-name>` (see §2.7).
+     emit a **component reference**: `-> <slash-path>` (see §2.7 for
+     slash-path derivation).
    - If L1 SCI has a `canonical_type` but no `component_key`, emit the
      canonical type as a dd keyword: `card { ... }`, `button { ... }`,
      `heading { ... }`, etc.
@@ -138,12 +139,64 @@ Rules:
      `GROUP → group`, `BOOLEAN_OPERATION → boolean-operation`,
      `LINE → line`, `STAR → star`, `POLYGON → polygon`.
 3. **Children ordering** preserves `sort_order` from L0.
-4. **EID emission**: the compressor emits `#{type}-{n}` auto-ids for
-   intermediate nodes AND emits explicit `#eid` at any node whose
-   original-name carried meaning (preserve as `#eid={sanitized-name}`
-   when the sanitized form is a valid IDENT). The auto-id form is
-   redundant with auto-generation at parse time; emitting it explicitly
-   is a deliberate round-trip aid (see §2.8 on determinism).
+4. **EID emission** — see §2.3.1 below for the sanitization algorithm.
+
+### 2.3.1 EID sanitization algorithm (normative)
+
+Every surviving element receives an EID. The compressor attempts, in
+order:
+
+1. **Name-derived EID.** Take `nodes.name`, apply the normalization
+   below. If the result is a non-empty IDENT per §2.4 of the grammar
+   spec AND is unique within the parent-Block scope, use it.
+2. **Auto-incremented EID.** Otherwise, use `{type}-{n}` where `type`
+   is the emitted TypeKeyword or the CompRef's last slash segment, and
+   `n` is the 1-based index of this node among same-type siblings.
+
+#### Normalization (Figma layer name → EID candidate)
+
+```
+normalize_to_eid(raw: str) -> str:
+    s = raw.lower()
+    s = replace_runs_of(s, r"[\s/]+", "-")     # spaces and slashes → `-`
+    s = replace_runs_of(s, r"[^a-z0-9_-]+", "") # drop all other non-IDENT chars
+    s = s.strip("-_")                          # trim leading/trailing separators
+    s = collapse_runs_of(s, r"-+", "-")        # collapse `--` → `-`
+    if s == "" or s[0].isdigit():              # invalid IDENT start
+        return ""                              # signal: use auto-increment
+    return s
+```
+
+Examples:
+- `"iPhone 13 Pro Max - 119"` → `"iphone-13-pro-max-119"` (starts with
+  letter; no invalid chars) → **accepted**
+- `"nav/top-nav"` → `"nav-top-nav"` → **accepted**
+- `"Safari - Bottom"` → `"safari-bottom"` → **accepted**
+- `"Frame 354"` → `"frame-354"` → **accepted**
+- `"(internal spacer)"` → after paren-strip: `"internal-spacer"` →
+  **accepted** (but this case won't occur; synthetic nodes filtered)
+- `"123"` → `"123"` → **rejected** (digit start) → auto-increment fires
+- `""` → `""` → **rejected** → auto-increment fires
+
+#### Collision handling
+
+When the normalized EID already exists in the parent-Block scope,
+append `-N` where N is the smallest integer ≥ 2 producing a unique
+id. Example: two sibling `"nav/top-nav"` nodes become `#nav-top-nav`
+and `#nav-top-nav-2`.
+
+#### When to omit the explicit `#eid`
+
+The compressor emits `#eid` ONLY when at least one of the following
+holds:
+- The node is referenced from any path override at any call site
+- The node is targeted by an instance-override in the input DB
+- The normalized name-derived EID is meaningfully different from the
+  auto-id (so preserving it carries information)
+
+Otherwise, the node relies on parser auto-id (grammar §3.4). This
+keeps emission compact — ~20 elements per screen, not 200 labeled
+eids.
 
 ### 2.4 Content axis
 
@@ -216,19 +269,92 @@ Rules:
 
 ### 2.7 Component references (L1 Mode-1-eligible instances)
 
-When an L0 node is an INSTANCE with a resolved `component_key`:
+When an L0 node is an INSTANCE with a resolved `component_key`, the
+compressor emits a CompRef. Slash-path derivation is normative — two
+implementers must produce the same output.
 
-1. Look up the Dank component name from `component_key_registry` (CKR).
-2. Emit `-> <slash-path-component-name>` where the path is the Figma
-   layer name split on `/` (preserving the Dank naming convention).
-3. Instance overrides (recorded in `instance_overrides` DB table,
-   aggregated into `override_tree` by `dd/ir.py::build_override_tree`)
-   flatten onto the `->` reference as property assignments:
-   - Text override on child → `text="..."` on the ref
-   - Visual override on child → property assignment with the target
-     path: `label.color={color.text.default}`
-   - Instance swap on a grandchild → nested `-> <other-path>` inside
-     the ref's block
+#### 2.7.1 Slash-path normalization
+
+The slash-path that appears after `->` is derived from the component
+master's NAME, NOT from the instance node's layer name. The master name
+lives in the `components.name` column reached via
+`nodes.component_key → components.key`.
+
+```
+derive_comp_slash_path(component_name: str) -> str:
+    # Master names in Dank are already slash-structured: "nav/top-nav",
+    # "button/small/translucent", "ios/alpha-keyboard". But they also
+    # may carry mixed-case + spaces + parens: "Safari - Bottom".
+    # Normalize each path segment with the same rule used for EIDs.
+    segments = component_name.split("/")
+    normalized = [normalize_to_eid(seg) for seg in segments if seg.strip()]
+    if not normalized or any(s == "" for s in normalized):
+        return ""                               # signal: fall back to Mode 2
+    return "/".join(normalized)
+```
+
+Examples (verified against Dank CKR):
+- `"nav/top-nav"` → `"nav/top-nav"` (already normalized)
+- `"button/small/translucent"` → `"button/small/translucent"`
+- `"Safari - Bottom"` → `"safari-bottom"` (no `/` in master name →
+  single-segment slash-path; still emits `-> safari-bottom`)
+- `"iOS/StatusBar"` → `"ios/statusbar"` (mixed case lowered)
+- `"ios/alpha-keyboard"` → `"ios/alpha-keyboard"`
+- `".icons/safari/lock"` → `"icons/safari/lock"` (leading dot stripped
+  by segment-normalization)
+
+When normalization produces an empty segment (e.g. all-numeric master
+name), the CompRef is dropped and the node falls through to the Mode 2
+inline frame path with `component_key` preserved as `$ext.component_key`
+for the renderer's Mode-1 attempt.
+
+#### 2.7.2 Instance override flattening
+
+Instance overrides are recorded in the `instance_overrides` DB table
+and aggregated into an `override_tree` by
+`dd/ir.py::build_override_tree`. Flattening onto the `-> ref` follows
+a **three-step walk**:
+
+1. **Direct text overrides** on the INSTANCE itself → `text=<literal>`
+   as a top-level property on the CompRef's NodeHead. The Figma
+   renderer recognizes `text=` on a CompRef as an instance-override
+   hint and resolves it against the master's default text slot.
+2. **Visual or nested-text overrides** within the component's child
+   tree → path-addressed property assignments using the target
+   child's **layer name path** from the master. Format:
+   `<child-slug>.<property>=<value>`. The child-slug is
+   `normalize_to_eid(child.name)`.
+3. **Instance swaps** (a child INSTANCE in the master is replaced by
+   a different INSTANCE in the override) → a nested CompRef inside
+   the outer ref's block:
+   ```
+   -> card/sheet/success #sheet {
+     body = -> meme-editor/custom-layout #body
+   }
+   ```
+   The outer ref's block is a CompRef Block (see grammar §3.2 — slot-
+   fill / property-assign disambiguation applies identically).
+
+#### 2.7.3 Override-args shorthand for slot defaults
+
+At `define`-level slot defaults, an inline override form is available
+(grammar §3):
+
+```
+slot cta = -> button/small/solid(label={cta_label})
+```
+
+This expands to:
+
+```
+slot cta = -> button/small/solid #auto {
+    label = {cta_label}
+}
+```
+
+The override-args form is compact and preferred at define-level slot
+defaults. At call sites and at document-body CompRefs, prefer the
+explicit Block form for clarity.
 
 ### 2.8 Determinism
 
@@ -239,10 +365,17 @@ Required for Tier 2 script byte-parity.
 Ordering rules:
 - Elements within a parent: sorted by `sort_order`, tie-break by
   `node_id`.
-- Properties on an element: sorted by a stable canonical ordering
-  defined in S2 §14 (the cheat-sheet ordering: structural → spatial →
-  visual → provenance).
+- Properties on an element: **canonical total order** per grammar §7.5
+  (structural → content → spatial → visual → extension → override →
+  trailer, with intra-block ordering specified for each category).
+- PropGroup entries: **canonical total order** per grammar §7.6 (e.g.
+  `padding={top=... right=... bottom=... left=...}` in that order).
 - Token block entries: sorted lexicographically by token path.
+- Imports: sorted lexicographically by alias (not path), ties broken
+  by path.
+
+These rules collectively produce byte-identical output for the same
+semantic input across independent emitter implementations.
 
 ### 2.9 Synthetic tokens (pre-Stage-3 posture)
 
@@ -263,6 +396,63 @@ After Stage 3:
 Compressor emits the synthetic-token reference in the L3 output; the
 synthetic-token DEFINITION lives in the top-level `tokens { }` block
 (so round-trip remains self-contained).
+
+### 2.10 Tokens-block internal resolution
+
+A top-level `tokens { ... }` block MAY declare tokens that reference
+other tokens inside the same block (self-referential token graph).
+Example from fixture 01:
+
+```
+tokens {
+  color.brand.accent.start = #D9FF40
+  color.brand.accent.end   = #9EFF85
+  color.brand.accent       = gradient-linear(
+                               {color.brand.accent.start},
+                               {color.brand.accent.end}
+                             )
+}
+```
+
+Resolution rules for a `tokens { }` block:
+
+1. Build a dependency graph from token assignments. Each `TokenRef`
+   inside a value establishes an edge.
+2. Topological sort. Cycles are hard-errors
+   (`KIND_CIRCULAR_TOKEN` — added to §9.5 of the grammar spec).
+3. Resolve in topo order. Each token's resolved value is memoized.
+4. Forward references within the block ARE permitted; the compressor
+   does not require declaration order.
+
+### 2.11 Fixture-vs-algorithm divergence (Stage 1 test oracle)
+
+An intentional mismatch exists between the hand-authored reference
+fixtures (`tests/fixtures/markup/01-login-welcome.dd`) and what the
+Stage 1 compression algorithm emits today:
+
+- **Fixtures:** express the DESIRED post-Stage-3 IR, with synthetic
+  tokens (`{color.brand.accent}`) and clean `tokens { }` blocks.
+- **Algorithm at Stage 1:** emits raw literals, because no Stage 3
+  clustering has run to define synthetic tokens yet.
+
+This is deliberate. The fixtures are the NORMATIVE GRAMMAR TARGET.
+They prove the grammar is rich enough for post-Stage-3 output.
+
+Stage 1 tests are therefore parameterized against TWO expected
+outputs per reference screen:
+
+| Test | Expected output |
+|------|----------------|
+| `test_fixture_parses` | Hand-authored `NN-*.dd` (grammar coverage) |
+| `test_fixture_roundtrips` | `parse(emit(parse(fixture))) == parse(fixture)` |
+| `test_compression_stage1` | Auto-generated `NN-*.stage1-expected.dd` — the raw-literal output of today's `compress_to_l3` against the DB screen |
+| `test_compression_stage3` | Not yet — gated on Stage 3 |
+
+Plan B Stage 1.3 creates the `NN-*.stage1-expected.dd` files by
+running a first-pass compressor against each reference screen's DB
+state and committing the result as a golden file. The fixture
+authoring (Plan A.4) and the Stage 1 compression output diverge;
+both are valid, and Stage 3 closes the gap.
 
 ---
 

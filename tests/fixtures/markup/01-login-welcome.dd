@@ -24,13 +24,12 @@
 
 namespace dank.reference.screen-181
 
-// `use` imports a remote library under a local alias. The alias is
-// referenced as a scope prefix in values and component paths via `::`.
-// Example (not exercised in this fixture — Dank is single-library — but
-// documented for the grammar): `-> studio::some/icon`. This fixture
-// treats all `-> path/to/component` refs as resolving against the
-// single Dank component-key registry.
-use "universal/tokens" as ut
+// No `use` imports in this fixture — the universal-catalog defaults are
+// the fallback layer in the grammar's resolution order (§4.2 step 4)
+// and need no explicit import. An unreferenced `use` alias is
+// `KIND_UNUSED_IMPORT` per §9.5, so we omit it entirely.
+// Cross-library `use ... as alias` with `alias::path` references is
+// exercised by fixture 03 (`./02-card-sheet` as `sheet22`).
 
 
 // System-axis block. Composes with the default universal token cascade
@@ -109,9 +108,15 @@ screen #01-login-welcome (extracted src=181) {
 
   // ---------- Hidden decorative background image
   // visible=false is an explicit design intent, preserved through serde.
+  // `79b6...` is an AssetHashLit (40 hex digits, no `#` prefix) valid
+  // only inside an asset-referencing FunctionCall per grammar §3/§4.1.
+  // The value-level trailer `#[extracted src="node:21616"]` annotates the
+  // fill value's provenance because the literal form alone doesn't
+  // self-describe that it came from the source file's image 319.
   rectangle #bg-image
       x=-331 y=-61 width=1012 height=1012
       fill=image(asset=79b6dbeb4ccba396c2fc87649fce708791aeab02)
+        #[extracted src="node:21616" asset_role="background"]
       visible=false
 
   // ---------- Three stacked option rows via pattern reference

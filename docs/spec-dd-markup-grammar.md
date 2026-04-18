@@ -271,12 +271,26 @@ TypeHint         ::= 'text' | 'number' | 'bool' | 'color' | 'dimension'
 Node             ::= NodeHead Block?
 NodeHead         ::= (TypeKeyword | CompRef | PatternRef)
                      EID?
+                     PositionalContent?                 // e.g. text "Hello"
                      NodeProperty*
                      NodeTrailer?
 NodeProperty     ::= PropAssign | PathOverride
+PositionalContent::= StringLit | TokenRef               // single positional value;
+                                                        // only valid on text-bearing
+                                                        // TypeKeyword nodes (text,
+                                                        // heading, button, etc.)
+                                                        // — validator enforces per
+                                                        // §7.3
 
-CompRef          ::= '->' CompPath
+CompRef          ::= '->' CompPath OverrideArgs?        // override-args allow
+                                                        //   -> comp(prop=val, ...)
+                                                        // as a compact inline
+                                                        // override form used at
+                                                        // slot-default sites
 PatternRef       ::= '&' PatternPath
+
+OverrideArgs     ::= '(' (OverrideArg (',' OverrideArg)* ','?)? ')'
+OverrideArg      ::= PropKey '=' ValueExpr
 
 CompPath         ::= (IDENT '::')? SlashPath
 PatternPath      ::= (IDENT '::')? DottedPath
@@ -301,28 +315,62 @@ ValueExpr        ::= Literal
                    | PatternRef
                    | FunctionCall
                    | PropGroup
+                   | Sizing                            // fill / hug / fixed + bounds
                    | NodeExpr                          // only as slot value
 
 NodeExpr         ::= Node                              // exactly one top-level node
 
-Literal          ::= StringLit | NumberLit | HexColorLit | BoolLit | NullLit
+Literal          ::= StringLit | NumberLit | HexColorLit | AssetHashLit
+                   | BoolLit | NullLit
 HexColorLit      ::= '#' HexDigit{6,8}                 // 6 or 8 hex digits
+AssetHashLit     ::= HexDigit{40}                      // SHA-1 content-address
+                                                       // for asset-registry values;
+                                                       // bare hex, no `#` prefix,
+                                                       // exactly 40 chars. Valid in
+                                                       // ValueExpr position only
+                                                       // inside image(asset=...) and
+                                                       // similar asset-referencing
+                                                       // function calls; the
+                                                       // validator restricts.
 BoolLit          ::= 'true' | 'false'
 NullLit          ::= 'null'
 
 TokenRef         ::= '{' DottedPath '}'                // also resolves param refs
 
 FunctionCall     ::= IDENT '(' FuncArgs? ')'
-FuncArgs         ::= FuncArg (',' FuncArg)*
+FuncArgs         ::= FuncArg ((',' | EOL) FuncArg)* ','?
 FuncArg          ::= ValueExpr | IDENT '=' ValueExpr   // positional or keyword
+                                                       // FuncArgs accept EOL as
+                                                       // separator so multi-line
+                                                       // calls like gradient-linear(
+                                                       //   {stop1},
+                                                       //   {stop2}
+                                                       // ) parse cleanly
 
-PropGroup        ::= '{' (PropAssign (',' | EOL)*)* '}'   // e.g. padding={top=8 ...}
+PropGroup        ::= '{' PropGroupEntries? '}'
+PropGroupEntries ::= PropAssign (PropGroupSep PropAssign)* PropGroupSep?
+PropGroupSep     ::= ',' | EOL | WHITESPACE           // space, comma, or newline
+                                                       // all separate entries. This
+                                                       // makes `{top=8 bottom=12}`
+                                                       // and `{top=8, bottom=12}`
+                                                       // and multi-line forms all
+                                                       // valid — LLM-reliable.
+
+Sizing           ::= SizingKeyword                     // bare `fill` / `hug` / `fixed`
+                   | SizingBounded                     // `fill(min=N, max=N)`
+SizingKeyword    ::= 'fill' | 'hug' | 'fixed'
+SizingBounded    ::= ('fill' | 'hug') '(' SizingArg (',' SizingArg)* ')'
+SizingArg        ::= ('min' | 'max') '=' NumberLit
 
 Block            ::= '{' EOL?
                        (Node | SlotPlaceholder | PropAssign | PathOverride
                         | SlotFill | ValueTrailer)*
                      '}'
 SlotFill         ::= IDENT '=' NodeExpr                // inside a pattern-ref body
+                                                       // or a CompRef Block (for
+                                                       // Figma instance overrides
+                                                       // targeting a slot-shaped
+                                                       // child of the master)
 SlotPlaceholder  ::= '{' IDENT '}'                     // expands slot/arg at
                                                        // semantic analysis; same
                                                        // lexical form as TokenRef,
@@ -330,7 +378,13 @@ SlotPlaceholder  ::= '{' IDENT '}'                     // expands slot/arg at
                                                        // (block vs value)
 
 NodeTrailer      ::= '(' IDENT PropAssign* ')'         // node-level provenance
-ValueTrailer     ::= '#[' IDENT PropAssign* ']'        // value-level provenance
+ValueTrailer     ::= '#[' IDENT PropAssign* ']'        // value-level provenance;
+                                                       // `#[` is a COMPOUND TOKEN
+                                                       // (single lex token when `#`
+                                                       // is immediately followed by
+                                                       // `[` with no whitespace);
+                                                       // distinguishes from `#eid`
+                                                       // which is `#` + IDENT.
 ```
 
 ### 3.1 Disambiguating `{` contexts
@@ -357,16 +411,50 @@ Parser state determines context:
 
 ### 3.2 Disambiguating slot-fill vs property-assign
 
-Inside a pattern-reference Block, an assignment statement `key = X`
-can be either:
-- A **property assignment** if `X` is a ValueExpr starting with a literal,
-  token ref, function call, or prop group
-- A **slot fill** if `X` is a NodeExpr (starts with a type keyword, `->`,
-  or `&`)
+Inside a PatternRef Block OR a CompRef Block, an assignment statement
+`key = X` can be either:
 
-The parser tracks per-pattern slot declarations from the referenced
-`define`; at the assignment site, it disambiguates by the first token of
-the RHS. Type-keyword start → slot fill. Everything else → property.
+- A **property assignment** (`PropAssign`) if `X` is a ValueExpr starting
+  with a literal, token ref, function call, prop group, or sizing
+  keyword
+- A **slot fill** (`SlotFill`) if `X` is a NodeExpr (starts with a type
+  keyword, `->`, or `&`)
+
+Disambiguation rule (first-token lookahead on RHS, applied identically
+in PatternRef and CompRef block contexts):
+
+| First RHS token | Statement kind |
+|-----------------|---------------|
+| StringLit / NumberLit / HexColorLit / AssetHashLit / BoolLit / NullLit | PropAssign |
+| `{` (followed by IDENT `.` / IDENT `}`) | PropAssign (TokenRef value) |
+| `{` (followed by IDENT `=`) | PropAssign (PropGroup value) |
+| `fill` / `hug` / `fixed` (bare SizingKeyword) | PropAssign (Sizing value) |
+| `fill(` / `hug(` | PropAssign (SizingBounded) |
+| IDENT `(` (other function names) | PropAssign (FunctionCall value) |
+| TypeKeyword | SlotFill |
+| `->` | SlotFill |
+| `&` | SlotFill |
+
+The rule is syntactic (first-token lookahead) and does NOT require
+resolved knowledge of the target define's slot table — it's a pure
+parse-time decision. The SEMANTIC CHECK (does the key match a declared
+slot / property?) runs after parsing; a SlotFill against a non-slot key
+emits `KIND_SLOT_UNKNOWN`, a PropAssign against a non-property key emits
+`KIND_PROP_UNKNOWN` at validation time.
+
+**Applies identically to CompRef blocks.** Figma instance overrides
+(e.g., `-> button/small/translucent { text="Done" }`) treat the Block
+identically — `text="Done"` is a PropAssign (string literal on RHS).
+A nested override targeting a slot-shaped child of the master
+component uses the SlotFill form: `-> card/primary { action = button #cta }`.
+
+### 3.3 Disambiguating function call vs IDENT reference
+
+Inside a ValueExpr, `IDENT` alone is a bare identifier — an error except
+for the three SizingKeyword forms (`fill`, `hug`, `fixed`) which have
+dedicated productions. `IDENT(...)` is a function call (or
+SizingBounded for `fill`/`hug`). `{IDENT...}` is a TokenRef or
+PropGroup (braces disambiguate per §3.1).
 
 ### 3.3 Disambiguating function call vs IDENT reference
 
@@ -392,6 +480,265 @@ Auto-ids are NOT stable across tree edits (inserting a new frame at
 position 1 renumbers everyone). Code that edits a document MUST NOT
 address auto-id'd nodes by their synthesized id — promote to explicit
 `#eid` first.
+
+### 3.5 AST shape — `L3Document` and friends
+
+This section specifies the Python object shape the parser emits and the
+emitter consumes. It's binding on `dd/markup.py` and on any test that
+does `.attr` access on parsed output (see
+`tests/test_dd_markup_l3.py`).
+
+All classes live in `dd.markup` and are frozen dataclasses
+(`@dataclass(frozen=True)`). Frozen means structural equality holds
+via `==`; this is what the round-trip tests check.
+
+```python
+from dataclasses import dataclass, field
+from typing import Literal, Optional, Union
+
+
+# --- Top-level ------------------------------------------------------------
+
+@dataclass(frozen=True)
+class L3Document:
+    namespace: Optional[str]                    # from `namespace x.y.z`
+    uses: tuple["UseDecl", ...]                 # from `use "path" as alias`
+    tokens: tuple["TokenAssign", ...]           # from `tokens { ... }`
+    top_level: tuple["TopLevelItem", ...]       # defines + root nodes, in
+                                                # source order
+    warnings: tuple["Warning", ...]             # e.g. KIND_UNUSED_IMPORT
+    source_path: Optional[str]                  # origin file (for errors)
+
+
+@dataclass(frozen=True)
+class UseDecl:
+    path: str                                   # the quoted string literal
+    alias: str
+    is_relative: bool                           # True if `./` or `../` prefix
+
+
+@dataclass(frozen=True)
+class TokenAssign:
+    path: str                                   # e.g. "color.brand.accent"
+    value: "Value"
+
+
+# Top-level items are either defines or construction/edit nodes.
+TopLevelItem = Union["Define", "Node"]
+
+
+# --- Definitions ----------------------------------------------------------
+
+@dataclass(frozen=True)
+class Define:
+    kind: Literal["define"] = "define"          # discriminant
+    name: str = ""                              # the `define NAME` part
+    params: tuple["Param", ...] = ()
+    body: "Block" = None                        # the `{ ... }` body
+
+
+@dataclass(frozen=True)
+class Param:
+    kind: Literal["scalar", "slot", "override"]
+    name: str                                   # IDENT
+    type_hint: Optional[str]                    # scalar: "text"/"number"/etc.
+    default: Optional["Value"]                  # scalar/slot: None if
+                                                # required at call site
+
+
+# --- Nodes ----------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Node:
+    kind: Literal["node"] = "node"              # discriminant
+    head: "NodeHead" = None
+    block: Optional["Block"] = None
+
+
+@dataclass(frozen=True)
+class NodeHead:
+    head_kind: Literal["type", "comp-ref", "pattern-ref"]
+    type_or_path: str                           # TypeKeyword, CompPath, or
+                                                # PatternPath string form
+    alias: Optional[str]                        # from `alias::` prefix, if any
+    scope_alias: Optional[str]                  # = alias (repeated for clarity
+                                                # when scope is relevant)
+    eid: Optional[str]                          # from `#eid`
+    override_args: tuple["PropAssign", ...]     # CompRef `-> c(k=v, ...)` args
+    positional: Optional["Value"]               # positional text content
+    properties: tuple["Property", ...]          # NodeProperty list
+    trailer: Optional["NodeTrailer"]            # `(kind ...)` trailer
+
+
+@dataclass(frozen=True)
+class Block:
+    statements: tuple["BlockStatement", ...]
+
+
+# Block statements — tagged union.
+BlockStatement = Union[
+    Node,
+    "SlotPlaceholder",
+    "PropAssign",
+    "PathOverride",
+    "SlotFill",
+    "ValueTrailerStatement",    # rare; provenance on a bare value in a block
+]
+
+
+@dataclass(frozen=True)
+class SlotPlaceholder:
+    kind: Literal["slot-placeholder"] = "slot-placeholder"
+    name: str = ""                              # the IDENT inside `{...}`
+
+
+# --- Properties / overrides / slot-fills ----------------------------------
+
+Property = Union["PropAssign", "PathOverride"]
+
+
+@dataclass(frozen=True)
+class PropAssign:
+    kind: Literal["prop-assign"] = "prop-assign"
+    key: str                                    # DottedPath or ExtKey
+    value: "Value"
+    trailer: Optional["ValueTrailer"]           # `#[kind ...]` on the value
+
+
+@dataclass(frozen=True)
+class PathOverride:
+    kind: Literal["path-override"] = "path-override"
+    path: str                                   # DottedPath into internal
+                                                # structure of a pattern
+    value: "Value"
+
+
+@dataclass(frozen=True)
+class SlotFill:
+    kind: Literal["slot-fill"] = "slot-fill"
+    slot_name: str
+    node: Node                                  # single NodeExpr
+
+
+# --- Values ---------------------------------------------------------------
+
+Value = Union[
+    "Literal",
+    "TokenRef",
+    "ComponentRefValue",
+    "PatternRefValue",
+    "FunctionCall",
+    "PropGroup",
+    "SizingValue",
+    Node,                                       # when in slot-value position
+]
+
+
+@dataclass(frozen=True)
+class Literal:
+    kind: Literal["literal"] = "literal"
+    lit_kind: Literal["string", "number", "hex-color", "asset-hash",
+                      "bool", "null"]
+    raw: str                                    # the lexeme as written
+    py: object                                  # Python-typed value
+                                                # (str / int / float / bool /
+                                                # None; hex-color as str)
+
+
+@dataclass(frozen=True)
+class TokenRef:
+    kind: Literal["token-ref"] = "token-ref"
+    path: str                                   # DottedPath
+    scope_alias: Optional[str]                  # `alias::path` prefix
+
+
+@dataclass(frozen=True)
+class FunctionCall:
+    kind: Literal["function-call"] = "function-call"
+    name: str                                   # e.g. "gradient-linear"
+    args: tuple["FuncArg", ...]
+
+
+@dataclass(frozen=True)
+class FuncArg:
+    name: Optional[str]                         # None = positional
+    value: Value
+
+
+@dataclass(frozen=True)
+class PropGroup:
+    kind: Literal["prop-group"] = "prop-group"
+    entries: tuple["PropAssign", ...]
+
+
+@dataclass(frozen=True)
+class SizingValue:
+    kind: Literal["sizing"] = "sizing"
+    size_kind: Literal["fill", "hug", "fixed"]
+    min: Optional[float]                        # only for bounded fill/hug
+    max: Optional[float]
+
+
+# --- Trailers -------------------------------------------------------------
+
+@dataclass(frozen=True)
+class NodeTrailer:
+    kind: str                                   # e.g. "extracted"
+    attrs: tuple[tuple[str, Value], ...]        # ordered key=value pairs
+
+
+@dataclass(frozen=True)
+class ValueTrailer:
+    kind: str                                   # e.g. "user-edited"
+    attrs: tuple[tuple[str, Value], ...]
+
+
+# --- Errors ---------------------------------------------------------------
+
+@dataclass
+class Warning:
+    kind: str                                   # e.g. "KIND_UNUSED_IMPORT"
+    message: str
+    line: Optional[int]
+    col: Optional[int]
+
+
+class DDMarkupError(Exception):
+    """Base — carries `.line`, `.col`, `.snippet` when known."""
+
+
+class DDMarkupLexError(DDMarkupError):
+    """Lex-time failure. No `.kind` — lex errors happen before semantics."""
+
+
+class DDMarkupParseError(DDMarkupError):
+    """Parse- or semantic-analysis failure. Has `.kind: str` from the KIND
+    catalog in §9.5. Also carries `.eid: Optional[str]` when the error
+    is attributable to a specific node."""
+    kind: str
+    eid: Optional[str]
+
+
+class DDMarkupSerializeError(DDMarkupError):
+    """Emitter failure — value has no canonical serialization. Carries
+    `.path` (dotted-key trail from the IR root)."""
+```
+
+**Public API on `dd.markup`:**
+
+```python
+def parse_l3(source: str, *, source_path: str | None = None) -> L3Document: ...
+
+def emit_l3(doc: L3Document) -> str: ...
+
+def validate(doc: L3Document, *, mode: str = "E") -> list[Warning]: ...
+```
+
+All three are pure functions. `parse_l3` + `emit_l3` satisfy:
+- `parse_l3(emit_l3(doc)) == doc` — round-trip through the AST
+- `emit_l3(parse_l3(src))` is idempotent under a `parse_l3` reparse
+
+The emitter is deterministic (§7.5, §7.6 ordering rules).
 
 ---
 
@@ -534,14 +881,40 @@ At call site:
 use "path/to/library" as alias
 ```
 
-- Path is a string literal; relative paths resolve from the importing
-  file's directory. Bare library names (no `/`) resolve against a
-  configured search path (future).
+- Path is a string literal. Resolution cases:
+  - Starts with `./` or `../` → **relative path**, resolved from the
+    importing file's directory. `use "./02-card-sheet" as sheet22`.
+  - Ends with `.dd` (with or without `./`) → **relative path** (the
+    extension is suffixed if absent).
+  - Otherwise → **logical library name**, resolved against a configured
+    search path. A library name MAY contain `/` (e.g.,
+    `"universal/tokens"` resolves within the search path; this is NOT
+    a relative path). The search path is configured per-parse-context
+    (project-local + system libraries).
 - Alias is mandatory. No un-aliased imports.
 - Inside the document, cross-library refs use `alias::path`:
-  `-> studio::nav/top-nav`, `& sheet22::card-section`
+  `-> studio::nav/top-nav`, `& sheet22::card-section`.
 - Same-library refs use unqualified paths: `& option-row`,
-  `-> nav/top-nav`
+  `-> nav/top-nav`.
+- An imported alias that is NEVER referenced inside the document is a
+  WARNING (`KIND_UNUSED_IMPORT`) — not fatal, but flagged to drive
+  cleanup. Authors who want to declare the import for forward-compat
+  without a reference can silence with `use "..." as alias #[keep]`.
+
+### 6.2.1 Define ordering — forward references permitted
+
+Pattern definitions (`define name(...) { body }`) MAY appear either
+BEFORE or AFTER their first `& name` reference in a document. The
+parser runs in two passes:
+
+1. **Discovery pass** — walks the whole document, records every `define`
+   declaration keyed by name into the file's define table. Does NOT
+   expand bodies.
+2. **Resolution pass** — walks again, expanding `& name` refs against
+   the populated define table.
+
+Forward references work. Circular references are detected during
+resolution (`KIND_CIRCULAR_DEFINE`, §6.3).
 
 ### 6.3 Cycle detection
 
@@ -613,6 +986,70 @@ Per-property capability gating (ADR-001) is enforced at **semantic
 analysis** time, not parse time. The parser accepts any `IDENT=value`
 assignment; the validator (see §10) checks against the per-backend
 capability table.
+
+### 7.4 Alignment — `align` shorthand vs `mainAxis` / `crossAxis`
+
+The Spatial axis has three alignment properties that interact:
+
+| Property | Applies to | Values |
+|----------|-----------|--------|
+| `mainAxis` | Primary-axis alignment within a horizontal/vertical layout | `start` / `end` / `center` / `space-between` / `space-around` / `space-evenly` |
+| `crossAxis` | Cross-axis alignment within a horizontal/vertical layout | `start` / `end` / `center` / `stretch` / `baseline` |
+| `align` | **Shorthand** for `mainAxis=<v> crossAxis=<v>` when both equal | `start` / `end` / `center` / `stretch` |
+
+**Normalization rule (for emission determinism — Tier 2 byte-parity):**
+- If both `mainAxis` and `crossAxis` are set to the SAME value from the
+  shorthand-legal set (`start`, `end`, `center`, `stretch`), emit the
+  shorthand `align=<v>` and OMIT both long-form props.
+- If they differ, or if only one is set, emit the long form(s).
+- The emitter MUST be deterministic: the shorthand and long form are
+  NEVER both emitted on the same node.
+
+### 7.5 Property key ordering within a node (canonical emission order)
+
+For emission determinism, properties on a single node are emitted in
+this total order (Tier 2 byte-parity requires determinism; a stable
+total order makes two independent emitters produce byte-identical
+output for the same semantic node):
+
+1. **Structural / identity block** (in order):
+   `variant`, `role`, `as`
+2. **Content block** (in declaration order — text-bearing types only):
+   `text`, `label`, `placeholder`, `content`, `value`, `min`, `max`
+3. **Spatial block** (in order):
+   `x`, `y`, `width`, `height`, `min-width`, `max-width`, `min-height`,
+   `max-height`, `layout`, `gap`, `padding`, `mainAxis`, `crossAxis`,
+   `align`, `constraints`
+4. **Visual block** (in order):
+   `fill`, `fills`, `stroke`, `strokes`, `stroke-weight`, `effects`,
+   `shadow`, `radius`, `opacity`, `blend`, `visible`, `font`, `size`,
+   `weight`, `color`, `line-height`, `letter-spacing`
+5. **Extension metadata** (lex order):
+   all `$ext.*` keys sorted lexicographically
+6. **Path overrides** (at call site only, lex order):
+   `dotted.path` overrides sorted lexicographically
+7. **NodeTrailer** (last on head line):
+   `(kind ...)`
+
+Within each block, keys not listed are sorted lexicographically after
+the enumerated keys. Parsers MUST accept any ordering; emitters MUST
+use this canonical ordering.
+
+### 7.6 PropGroup entries — canonical internal ordering
+
+Inside a `PropGroup` (e.g. `padding={top=8 right=12 bottom=8 left=12}`),
+entries are emitted in this order when the group is one of the
+well-known structural groups:
+
+| Group | Order |
+|-------|-------|
+| `padding={...}` | top, right, bottom, left |
+| `radius={...}` | top-left, top-right, bottom-right, bottom-left |
+| `constraints={...}` | horizontal, vertical |
+| `sizing={...}` | width, height, min-width, max-width, min-height, max-height |
+
+For unknown PropGroup keys, entries are emitted in lex order. Entries
+that are absent are omitted from the emission (no `null` placeholders).
 
 ---
 
@@ -735,12 +1172,58 @@ them as part of the IR, the emitter re-emits them verbatim. The verifier
 uses provenance to target low-confidence `synthesized` values first.
 UIs filter views by kind.
 
-### 9.5 Proxy structured-error channel
+### 9.5 Structured-error channel and KIND catalog
 
-If parse encounters any structured error (`KIND_*`), the error's `eid`,
-`kind`, and message are preserved on the parser output (not in the IR
-itself — the IR remains clean). This mirrors ADR-006 (boundary contract)
-and ADR-007 (unified verification channel).
+If parse encounters any structured error, a `DDMarkupParseError` is
+raised carrying a `.kind: str` attribute drawn from the **closed KIND
+catalog** below. The catalog is normative — parser implementations MUST
+emit exactly these kinds for the listed triggers. Tests in
+`tests/test_dd_markup_l3.py` and `tests/fixtures/markup/invalid-variations.md`
+assert against these exact strings.
+
+This mirrors ADR-006 (boundary contract) and ADR-007 (unified
+verification channel): one vocabulary for failure, used by the parser
+AND the renderer AND the verifier.
+
+#### Catalog — parse / semantic-analysis errors
+
+| KIND | When fired | Where in spec |
+|------|-----------|---------------|
+| `KIND_DUPLICATE_EID` | Two `#eid` with the same IDENT in the same Block scope | §5.1 |
+| `KIND_UNRESOLVED_REF` | `{dotted.path}` cannot resolve via the order in §4.2 | §4.2 |
+| `KIND_UNKNOWN_FUNCTION` | A `FunctionCall` uses an IDENT not in the closed function set (§4.3) | §4.3 |
+| `KIND_SLOT_MISSING` | A `& pattern` call site omits a slot with no default | §6.1 |
+| `KIND_SLOT_UNKNOWN` | Slot-fill targets an IDENT not declared in the referenced `define`'s slot list | §3.2 |
+| `KIND_PROP_UNKNOWN` | Property key is not in the capability table for the node's TypeKeyword on the active backend | §7.3 |
+| `KIND_BAD_PATH` | A SlashPath uses `.` or a DottedPath uses `/`; or an EID contains non-IDENT chars | §6.5, §2.8 |
+| `KIND_CIRCULAR_DEFINE` | Definition graph has a cycle (detected by three-color DFS) | §6.3 |
+| `KIND_CIRCULAR_IMPORT` | `use` import graph has a cycle | §6.2 (and L0↔L3 §3.3) |
+| `KIND_CIRCULAR_TOKEN` | `tokens { }` block has a self-referential token cycle | L0↔L3 §2.10 |
+| `KIND_AMBIGUOUS_PARAM` | Scalar-arg name collides with an internal eid in the same `define`; call site's `name=X` could bind to either | Q3 |
+| `KIND_WILDCARD_IN_CONSTRUCT` | A wildcard `*` or `**` appears inside an `@eid` used in a construction context (not an edit verb) | §5.2, §8 |
+| `KIND_EMPTY_BLOCK` | An empty `{}` block body (no children, no properties inside the block) | Q6 |
+| `KIND_OVERRIDE_TARGET_MISSING` | A path override at a `& pattern` call site targets an eid that doesn't exist after expansion | §6 (L0↔L3 spec) |
+| `KIND_INSTANCE_UNKEYED` | `node_type=INSTANCE` with null `component_key` (extractor-side; fail-open in L3 emission) | L0↔L3 §OQ-2 |
+| `KIND_UNUSED_IMPORT` | **Warning** (non-fatal): `use` alias declared but never referenced via `alias::...` | §6.2 |
+
+Note on severity: all KIND values listed are **hard-errors** (halt the
+parse) EXCEPT `KIND_UNUSED_IMPORT`, which is a **warning** (surfaced on
+the parse result's `warnings` list, parse succeeds).
+
+#### Lex-time errors
+
+Lex-time errors use simpler error classes (not `DDMarkupParseError`)
+since they fire before KIND-level semantics exist. They carry only
+`line`, `col`, `snippet`:
+
+- Malformed hex literal (wrong digit count, non-hex char)
+- Unterminated string literal
+- Invalid escape sequence
+- Bare `\r` without `\n`
+- `*` or non-IDENT char inside `#...` (EID position)
+- Unmatched bracket / brace
+
+These propagate as `DDMarkupLexError(DDMarkupError)`.
 
 ---
 
