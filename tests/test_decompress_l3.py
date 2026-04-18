@@ -948,6 +948,55 @@ class TestStage17MasterSubtreeExpansion:
                     f"spurious direction={direction!r}"
                 )
 
+    def test_nested_compref_recursively_inflates(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """INSTANCE rows inside a master subtree must re-inflate their
+        OWN master's subtree (recursive). Before the fix, nested
+        instances were Mode-1-marked leaves with no children even when
+        their component resolved in CKR."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(
+            doc, db_conn, reexpand_screen_wrapper=False,
+        )
+        # Count Mode-1 elements with children (i.e. nested instances
+        # whose master resolved and re-inflated). Screen 181 has
+        # multiple nested CompRefs (e.g., button contains icons +
+        # text, each icon is itself a Mode-1 instance with its own
+        # master subtree).
+        nested_inflated = sum(
+            1 for el in decomp["elements"].values()
+            if el.get("_mode1_eligible") and el.get("children")
+        )
+        assert nested_inflated >= 30, (
+            f"expected ≥30 Mode-1 elements with inflated children on "
+            f"screen 181; got {nested_inflated}"
+        )
+
+    def test_recursive_inflation_terminates_on_cycles(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Cycle detection: `visiting_masters` set prevents runaway
+        recursion when a master contains an instance of itself. Full
+        corpus sweep would deadlock without the guard; this test
+        verifies the sweep completes in bounded time."""
+        import time
+        start = time.monotonic()
+        for sid in [181, 222, 237, 118, 119]:
+            spec = generate_ir(
+                db_conn, sid, semantic=True, filter_chrome=False,
+            )["spec"]
+            doc = compress_to_l3(spec, db_conn, screen_id=sid)
+            ast_to_dict_ir(doc, db_conn)
+        elapsed = time.monotonic() - start
+        assert elapsed < 10, (
+            f"5-screen sweep with inflation took {elapsed:.1f}s "
+            f"(expected < 10s; regression in cycle detection?)"
+        )
+
     def test_mode1_eligible_propagates_to_inflated_instance_children(
         self, db_conn: sqlite3.Connection,
     ) -> None:

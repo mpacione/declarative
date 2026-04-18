@@ -341,6 +341,14 @@ class _DecompressCtx:
         # corpus sweep (129 CKR rows × ~100 CompRefs per screen × 204
         # screens = ~2.6M Python string ops without the cache).
         self._master_root_cache: Optional[dict[str, Optional[int]]] = None
+        # component_key → master root node_id (analogous cache for
+        # the nested-INSTANCE inflation path, keyed by the column
+        # value INSTANCE nodes carry).
+        self._ckr_key_cache: Optional[dict[str, Optional[int]]] = None
+        # Master root node_ids currently being inflated — prevents
+        # runaway recursion when a master contains a (hypothetical)
+        # instance of itself.
+        self.visiting_masters: set[int] = set()
 
     def next_key(self, type_kw: str) -> str:
         n = self.type_counter.get(type_kw, 0) + 1
@@ -355,6 +363,18 @@ class _DecompressCtx:
         if self._master_root_cache is None:
             self._master_root_cache = _build_master_root_cache(self.conn)
         return self._master_root_cache.get(slash_path)
+
+    def resolve_master_root_by_ck(
+        self, component_key: str,
+    ) -> Optional[int]:
+        """Cached lookup from component_key (the SHA INSTANCE nodes
+        carry) to master root node_id. Used by the nested-INSTANCE
+        inflation path."""
+        if self.conn is None or not component_key:
+            return None
+        if self._ckr_key_cache is None:
+            self._ckr_key_cache = _build_ckr_key_cache(self.conn)
+        return self._ckr_key_cache.get(component_key)
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +412,34 @@ _LAYOUT_MODE_TO_SPEC_DIRECTION = {
     None: "stacked",
     "NONE": "stacked",
 }
+
+
+def _build_ckr_key_cache(
+    conn: sqlite3.Connection,
+) -> dict[str, Optional[int]]:
+    """Build a `{component_key: master_root_node_id}` map. Analogous
+    to `_build_master_root_cache` but keyed by the SHA that INSTANCE
+    nodes carry in `nodes.component_key`, rather than the sanitized
+    slash-path."""
+    rows = conn.execute(
+        "SELECT component_key, figma_node_id FROM component_key_registry "
+        "WHERE figma_node_id IS NOT NULL AND component_key IS NOT NULL"
+    ).fetchall()
+    ck_to_fnid: dict[str, str] = {ck: fnid for ck, fnid in rows}
+    if not ck_to_fnid:
+        return {}
+    fnids = list(ck_to_fnid.values())
+    placeholders = ",".join("?" for _ in fnids)
+    node_rows = conn.execute(
+        f"SELECT figma_node_id, id FROM nodes WHERE "
+        f"figma_node_id IN ({placeholders})",
+        fnids,
+    ).fetchall()
+    fnid_to_nid: dict[str, int] = {fnid: int(nid) for fnid, nid in node_rows}
+    return {
+        ck: fnid_to_nid.get(fnid)
+        for ck, fnid in ck_to_fnid.items()
+    }
 
 
 def _build_master_root_cache(
@@ -669,7 +717,7 @@ _MASTER_COLS = (
     "id", "parent_id", "name", "node_type", "x", "y", "width", "height",
     "layout_mode", "fills", "strokes", "effects", "corner_radius",
     "opacity", "stroke_weight", "stroke_align", "text_content", "visible",
-    "sort_order",
+    "sort_order", "component_key",
 )
 
 
@@ -721,16 +769,37 @@ def _expand_master_subtree(
 
     def walk(row: dict, parent_row: Optional[dict]) -> str:
         element = _db_row_to_element(row, parent_row)
-        # Propagate `_mode1_eligible` for nested INSTANCE nodes inside
-        # a master subtree — matches how `dd.ir.generate_ir` marks
-        # every instance element. Full recursive re-inflation of inner
-        # masters is out of scope for Stage 1.7 (deferred).
-        if (row.get("node_type") or "").upper() == "INSTANCE":
+        is_instance = (row.get("node_type") or "").upper() == "INSTANCE"
+        if is_instance:
             element["_mode1_eligible"] = True
         key = ctx.next_key(element["type"])
+
+        # Direct descendants in the same subtree.
         child_keys: list[str] = []
         for crow in children_by_parent.get(row["id"], []):
             child_keys.append(walk(crow, row))
+
+        # Nested CompRef re-inflation: an INSTANCE row inside a master
+        # subtree typically has no DB descendants of its own (its
+        # children live under a DIFFERENT master). Look up its own
+        # master via `component_key` and inflate recursively, with
+        # cycle detection.
+        if is_instance and not child_keys:
+            ck = row.get("component_key")
+            if isinstance(ck, str) and ck:
+                inner_master_id = ctx.resolve_master_root_by_ck(ck)
+                if (
+                    inner_master_id is not None
+                    and inner_master_id not in ctx.visiting_masters
+                ):
+                    ctx.visiting_masters.add(inner_master_id)
+                    try:
+                        child_keys = _expand_master_by_root_id(
+                            inner_master_id, ctx,
+                        )
+                    finally:
+                        ctx.visiting_masters.discard(inner_master_id)
+
         if child_keys:
             element["children"] = child_keys
         ctx.elements[key] = element
@@ -739,6 +808,78 @@ def _expand_master_subtree(
     result_keys: list[str] = []
     for crow in children_by_parent.get(master_root_id, []):
         result_keys.append(walk(crow, master_row))
+    return result_keys
+
+
+def _expand_master_by_root_id(
+    master_root_id: int, ctx: _DecompressCtx,
+) -> list[str]:
+    """Inflate a master's direct children given the master's root
+    node_id directly (bypassing the slash-path resolution step).
+    Used by the nested-INSTANCE recursion path."""
+    conn = ctx.conn
+    if conn is None:
+        return []
+    cols = ", ".join(_MASTER_COLS)
+    rows = conn.execute(
+        f"WITH RECURSIVE sub(id) AS ("
+        f"  SELECT ? UNION ALL "
+        f"  SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
+        f") "
+        f"SELECT {cols} FROM nodes WHERE id IN (SELECT id FROM sub) "
+        f"ORDER BY parent_id, sort_order, id",
+        (master_root_id,),
+    ).fetchall()
+    if not rows:
+        return []
+    by_id: dict[int, dict] = {
+        row[0]: dict(zip(_MASTER_COLS, row)) for row in rows
+    }
+    master_row = by_id.get(master_root_id)
+    if master_row is None:
+        return []
+    children_by_parent: dict[int, list[dict]] = {}
+    for row in rows:
+        pid = row[1]
+        if pid is not None and pid in by_id:
+            children_by_parent.setdefault(pid, []).append(
+                dict(zip(_MASTER_COLS, row))
+            )
+
+    def walk_inner(row: dict, parent_row: Optional[dict]) -> str:
+        element = _db_row_to_element(row, parent_row)
+        is_inner_instance = (
+            (row.get("node_type") or "").upper() == "INSTANCE"
+        )
+        if is_inner_instance:
+            element["_mode1_eligible"] = True
+        key = ctx.next_key(element["type"])
+        child_keys: list[str] = []
+        for crow in children_by_parent.get(row["id"], []):
+            child_keys.append(walk_inner(crow, row))
+        if is_inner_instance and not child_keys:
+            ck = row.get("component_key")
+            if isinstance(ck, str) and ck:
+                deeper_master_id = ctx.resolve_master_root_by_ck(ck)
+                if (
+                    deeper_master_id is not None
+                    and deeper_master_id not in ctx.visiting_masters
+                ):
+                    ctx.visiting_masters.add(deeper_master_id)
+                    try:
+                        child_keys = _expand_master_by_root_id(
+                            deeper_master_id, ctx,
+                        )
+                    finally:
+                        ctx.visiting_masters.discard(deeper_master_id)
+        if child_keys:
+            element["children"] = child_keys
+        ctx.elements[key] = element
+        return key
+
+    result_keys: list[str] = []
+    for crow in children_by_parent.get(master_root_id, []):
+        result_keys.append(walk_inner(crow, master_row))
     return result_keys
 
 
