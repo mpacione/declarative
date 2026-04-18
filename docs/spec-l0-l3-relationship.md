@@ -276,9 +276,17 @@ implementers must produce the same output.
 #### 2.7.1 Slash-path normalization
 
 The slash-path that appears after `->` is derived from the component
-master's NAME, NOT from the instance node's layer name. The master name
-lives in the `components.name` column reached via
-`nodes.component_key → components.key`.
+master's NAME, NOT from the instance node's layer name. The master
+name lives in the **`component_key_registry.name`** column reached via
+`nodes.component_key → component_key_registry.component_key`.
+
+(Earlier drafts of this spec cited `components.name`. On the Dank DB,
+the `components` table has no `key` column and zero rows — the
+authoritative CKR-vs-instances join goes through
+`component_key_registry`, which `dd/ir.py::query_screen_visuals`
+already uses at line 592–596. Confirmed against the live DB:
+25 CKR entries with null `figma_node_id` are the Mode-2 fallback
+"orphan" case and still carry a `name` field.)
 
 ```
 derive_comp_slash_path(component_name: str) -> str:
@@ -312,8 +320,19 @@ for the renderer's Mode-1 attempt.
 
 Instance overrides are recorded in the `instance_overrides` DB table
 and aggregated into an `override_tree` by
-`dd/ir.py::build_override_tree`. Flattening onto the `-> ref` follows
-a **three-step walk**:
+`dd/ir.py::build_override_tree`. **The override tree is NOT present in
+the `generate_ir(..., semantic=True)` dict output** — it lives in the
+raw visual-dict produced by `query_screen_visuals` and consumed by the
+renderer directly, not the semantic CompositionSpec. The compressor
+therefore takes a `sqlite3.Connection` alongside the dict IR so it can
+query overrides directly:
+
+```python
+compress_to_l3(spec: dict, conn: sqlite3.Connection) -> L3Document
+```
+
+Once the override tree is fetched per-screen, flattening onto the
+`-> ref` follows a **three-step walk**:
 
 1. **Direct text overrides** on the INSTANCE itself → `text=<literal>`
    as a top-level property on the CompRef's NodeHead. The Figma

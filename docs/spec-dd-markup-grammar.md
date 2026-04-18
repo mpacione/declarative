@@ -121,6 +121,13 @@ MAY reject BOMs (the parser does not skip them; they are invalid input).
     - An edit verb (`set`, `append`, `insert`, `delete`, `move`, `swap`,
       `replace`)
     - `$ext.` (extension metadata)
+  - **Exception for TypeKeyword followed by `=` or `.`:** a
+    TypeKeyword in continuation position that is IMMEDIATELY followed
+    by `=` or `.` is treated as a **property-path continuation**, not a
+    new statement. This lets fixtures write `container.gap=8` as a
+    path-override on a `& option-row` call (where `container` is both
+    a TypeKeyword and a legal internal-eid path prefix). The parser
+    disambiguates via a single-token look-ahead after the TypeKeyword.
 - Whitespace between tokens on the same line is ignored except where it
   separates adjacent identifiers that would otherwise fuse
 - **Between top-level statements and inside a Block**, a blank line is
