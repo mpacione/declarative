@@ -15,7 +15,7 @@ delta from its base fixture — ideally exactly one violation per example.
 Duplicate `#eid` within the same scope → `KIND_DUPLICATE_EID` (§5.1).
 
 ```
-screen #01 {
+screen #s1 {
   width=428 height=926
   frame #tile-1 width=140 height=100
   frame #tile-1 width=140 height=100   // ← duplicate #tile-1 in this scope
@@ -27,7 +27,7 @@ screen #01 {
 Token reference with no resolver hit → `KIND_UNRESOLVED_REF` (§4.2).
 
 ```
-screen #01 {
+screen #s1 {
   width=428 height=926
   fill={color.brand.accent}   // ← no matching token in scope
   // (compare to 01-login-welcome.dd which defines color.brand.accent
@@ -42,7 +42,7 @@ closed function set is `gradient-linear`, `gradient-radial`, `image`,
 `rgba`, `shadow`).
 
 ```
-screen #01 {
+screen #s1 {
   width=428 height=926
   fill=radial-blur(#D9FF40, 42)   // ← `radial-blur` is not a function
 }
@@ -67,7 +67,7 @@ define card-section(
   }
 }
 
-screen #02 {
+screen #s2 {
   width=428 height=926
   & card-section heading="Presets"      // ← missing body= slot fill
 }
@@ -78,7 +78,7 @@ screen #02 {
 `.` inside a CompPath (slash-path-only) → `KIND_BAD_PATH` (§6.5).
 
 ```
-screen #02 {
+screen #s2 {
   width=428 height=926
   -> nav.top-nav x=0 y=0    // ← `.` in component ref (must be `/`)
 }
@@ -91,7 +91,7 @@ screen #02 {
 ```
 define row-tile() { frame #t }
 
-screen #02 {
+screen #s2 {
   width=428 height=926
   & row-tile/child         // ← `/` in pattern ref (must be `.`)
 }
@@ -118,7 +118,7 @@ addressing ONLY during edit verbs; a construction top-level `@` is
 illegal).
 
 ```
-screen #03 {
+screen #s3 {
   width=428 height=926
   @grid/*/buy-button width=100 height=40   // ← `@eid` at construction
                                             //   position uses a wildcard
@@ -132,7 +132,7 @@ Empty `{}` block with nothing inside → `KIND_EMPTY_BLOCK` (§3, §6 —
 "empty `{}` is forbidden — represent 'no children' by absence"; Q6).
 
 ```
-screen #03 {
+screen #s3 {
   width=428 height=926
   frame #decorative {}        // ← empty block; remove the braces instead
 }
@@ -153,7 +153,7 @@ define row(
   }
 }
 
-screen #03 {
+screen #s3 {
   width=428 height=926
   & row header="Hi"                // ← at the call site, `header=` is
                                    //   ambiguous: scalar-arg fill OR

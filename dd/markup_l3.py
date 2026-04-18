@@ -162,7 +162,7 @@ class UseDecl:
 @dataclass(frozen=True)
 class Literal_:
     lit_kind: Literal[
-        "string", "number", "hex-color", "asset-hash", "bool", "null"
+        "string", "number", "hex-color", "asset-hash", "bool", "null", "enum"
     ]
     raw: str
     py: object = None
@@ -633,6 +633,26 @@ def tokenize(source: str) -> list[Token]:
                            start_line, start_col)
             continue
 
+        # Asset hash literal: 40 hex digits (lower/mixed case). Must be
+        # checked BEFORE the number path because asset hashes can start
+        # with a digit (SHA-1 output is hex-encoded, uniform distribution).
+        # Terminator must not be IDENT-continuation to avoid matching a
+        # prefix of some longer identifier.
+        if ch in "0123456789abcdefABCDEF":
+            j = i
+            while j < n and source[j] in "0123456789abcdefABCDEF":
+                j += 1
+            hex_run_len = j - i
+            if hex_run_len == 40 and (
+                j >= n or not _is_ident_continue(source[j])
+            ):
+                raw = source[i:j]
+                toks.append(Token("ASSET_HASH", raw, line, col))
+                col += (j - i)
+                i = j
+                continue
+            # else: not an asset hash; fall through to NUMBER/IDENT paths
+
         # Hex color literal: `#` + 6 or 8 hex digits
         # NOTE: the `#` is already handled above as HASH; hex-color
         # recognition is done at parse time by looking at HASH + IDENT-like
@@ -774,13 +794,20 @@ def _parse_dotted_path(c: _Cursor) -> str:
     return ".".join(parts)
 
 
-def _parse_value(c: _Cursor) -> Value:
-    """Parse a minimal ValueExpr — string/number/hex/asset/bool/null/token-ref/sizing.
+_SIZING_KW = frozenset(("fill", "hug", "fixed"))
+_BOOL_NULL_KW = frozenset(("true", "false", "null"))
 
-    Current-slice subset; function calls, prop-groups, node-exprs land
-    in the next slice.
+
+def _parse_value(c: _Cursor) -> Value:
+    """Parse a ValueExpr per grammar §4.1.
+
+    Dispatches on the first token of the RHS. Handles all value forms:
+    literal, token-ref, prop-group, sizing (bare + bounded),
+    function-call, comp-ref-value (at slot-default), pattern-ref-value.
     """
     t = c.peek()
+
+    # Literals
     if t.type == "STRING":
         c.advance()
         return Literal_(lit_kind="string", raw=t.value, py=_unquote(t.value))
@@ -793,24 +820,39 @@ def _parse_value(c: _Cursor) -> Value:
     if t.type == "ASSET_HASH":
         c.advance()
         return Literal_(lit_kind="asset-hash", raw=t.value, py=t.value)
-    if t.type == "IDENT" and t.value in ("true", "false"):
+    if t.type == "IDENT" and t.value in _BOOL_NULL_KW:
         c.advance()
+        if t.value == "null":
+            return Literal_(lit_kind="null", raw=t.value, py=None)
         return Literal_(lit_kind="bool", raw=t.value, py=(t.value == "true"))
-    if t.type == "IDENT" and t.value == "null":
-        c.advance()
-        return Literal_(lit_kind="null", raw=t.value, py=None)
-    # Sizing keywords — bare (fill / hug / fixed)
-    if t.type == "IDENT" and t.value in ("fill", "hug", "fixed"):
-        c.advance()
-        # Bounded form lands in next slice — for now only bare keyword
-        return SizingValue(size_kind=t.value)  # type: ignore[arg-type]
+
+    # Sizing keywords. Bare (`fill`) or bounded (`fill(min=N, max=N)`).
+    if t.type == "IDENT" and t.value in _SIZING_KW:
+        return _parse_sizing(c)
+
+    # LBRACE: TokenRef or PropGroup. Disambiguate via look-ahead.
     if t.type == "LBRACE":
-        # TokenRef — `{dotted.path}` form. PropGroup disambiguation is
-        # deferred to a later slice.
+        return _parse_brace_value(c)
+
+    # Component-ref value (at slot-default site): `-> path/to/comp(args)`
+    if t.type == "ARROW":
+        return _parse_comp_ref_as_value(c)
+
+    # Pattern-ref value: `& name.with.dots`
+    if t.type == "AMP":
+        return _parse_pattern_ref_as_value(c)
+
+    # FunctionCall: IDENT followed by LPAREN
+    if t.type == "IDENT" and c.peek(1).type == "LPAREN":
+        return _parse_function_call(c)
+
+    # EnumLit — bare IDENT used as a value (e.g., `layout=vertical`,
+    # `align=center`, `mainAxis=space-between`). Catch-all for enum-like
+    # keywords that aren't otherwise reserved. The schema validator
+    # (capability-gated per ADR-001) checks legality at semantic time.
+    if t.type == "IDENT":
         c.advance()
-        path = _parse_dotted_path(c)
-        c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
-        return TokenRef(path=path)
+        return Literal_(lit_kind="enum", raw=t.value, py=t.value)
 
     raise DDMarkupParseError(
         f"expected a value, got {t.type} `{t.value}`",
@@ -818,6 +860,233 @@ def _parse_value(c: _Cursor) -> Value:
         line=t.line,
         col=t.col,
     )
+
+
+def _parse_sizing(c: _Cursor) -> SizingValue:
+    """SizingKeyword | SizingBounded (grammar §3 + §4.4)."""
+    kw = c.advance()
+    assert kw.value in _SIZING_KW
+    if c.peek().type != "LPAREN":
+        return SizingValue(size_kind=kw.value)  # type: ignore[arg-type]
+    # Bounded: fill(min=N, max=N)
+    c.advance()  # (
+    min_val: Optional[float] = None
+    max_val: Optional[float] = None
+    while c.peek().type != "RPAREN":
+        key = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+        if key.value not in ("min", "max"):
+            raise DDMarkupParseError(
+                f"sizing bound arg must be `min` or `max`, got `{key.value}`",
+                kind="KIND_BAD_SYNTAX", line=key.line, col=key.col,
+            )
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        num = c.expect("NUMBER", kind="KIND_BAD_SYNTAX")
+        parsed = _parse_number(num.value)
+        if key.value == "min":
+            min_val = float(parsed)
+        else:
+            max_val = float(parsed)
+        if c.peek().type == "COMMA":
+            c.advance()
+    c.expect("RPAREN", kind="KIND_BAD_SYNTAX")
+    return SizingValue(size_kind=kw.value, min=min_val, max=max_val)  # type: ignore[arg-type]
+
+
+def _parse_brace_value(c: _Cursor) -> Value:
+    """After `{` in value position: TokenRef or PropGroup.
+
+    Disambiguation:
+      - `{ IDENT . IDENT ... }` or `{ IDENT }` → TokenRef
+      - `{ IDENT = ... }` (or multi-entry) → PropGroup
+    """
+    c.advance()  # {
+    # Empty `{}` is a lex error here; defer to the parser check:
+    if c.peek().type == "RBRACE":
+        raise DDMarkupParseError(
+            "empty `{}` not allowed in value position",
+            kind="KIND_BAD_SYNTAX",
+            line=c.peek().line, col=c.peek().col,
+        )
+    # Look ahead: first IDENT followed by `.` or `}` means TokenRef,
+    # followed by `=` means PropGroup.
+    first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    if c.peek().type == "DOT" or c.peek().type == "RBRACE":
+        # TokenRef
+        parts = [first.value]
+        while c.peek().type == "DOT":
+            c.advance()
+            seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+            parts.append(seg.value)
+        c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
+        return TokenRef(path=".".join(parts))
+    if c.peek().type == "EQ":
+        # PropGroup
+        entries: list[PropAssign] = []
+        # First entry
+        c.advance()  # =
+        val = _parse_value(c)
+        entries.append(PropAssign(key=first.value, value=val))
+        _skip_propgroup_sep(c)
+        while c.peek().type != "RBRACE":
+            key_path = _parse_dotted_or_single(c)
+            c.expect("EQ", kind="KIND_BAD_SYNTAX")
+            v = _parse_value(c)
+            entries.append(PropAssign(key=key_path, value=v))
+            _skip_propgroup_sep(c)
+        c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
+        return PropGroup(entries=tuple(entries))
+    raise DDMarkupParseError(
+        f"expected `.`, `}}`, or `=` inside brace value; got {c.peek().type} `{c.peek().value}`",
+        kind="KIND_BAD_SYNTAX",
+        line=c.peek().line, col=c.peek().col,
+    )
+
+
+def _skip_propgroup_sep(c: _Cursor) -> None:
+    """PropGroup entries are separated by `,`, EOL, or whitespace (§2/§7.6).
+
+    At this point the tokenizer has emitted EOL for newlines but has
+    discarded spaces, so the only tokens we need to consume between
+    entries are COMMA and EOL.
+    """
+    while c.peek().type in ("COMMA", "EOL"):
+        c.advance()
+
+
+def _parse_dotted_or_single(c: _Cursor) -> str:
+    """Parse IDENT (. IDENT)* — single or dotted path."""
+    first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    parts = [first.value]
+    while c.peek().type == "DOT":
+        c.advance()
+        seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+        parts.append(seg.value)
+    return ".".join(parts)
+
+
+def _parse_function_call(c: _Cursor) -> FunctionCall:
+    """IDENT `(` FuncArgs? `)` per grammar §3/§4.3."""
+    name_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    c.expect("LPAREN", kind="KIND_BAD_SYNTAX")
+    args: list[FuncArg] = []
+    # skip initial EOLs after `(` — allow multi-line function calls
+    while c.peek().type == "EOL":
+        c.advance()
+    while c.peek().type != "RPAREN":
+        arg = _parse_func_arg(c)
+        args.append(arg)
+        # comma, EOL, or close
+        while c.peek().type in ("COMMA", "EOL"):
+            c.advance()
+    c.expect("RPAREN", kind="KIND_BAD_SYNTAX")
+    return FunctionCall(name=name_tok.value, args=tuple(args))
+
+
+def _parse_func_arg(c: _Cursor) -> FuncArg:
+    """FuncArg — either positional ValueExpr or `name=ValueExpr`."""
+    # Look-ahead: if IDENT followed by `=`, it's a keyword arg.
+    if c.peek().type == "IDENT" and c.peek(1).type == "EQ":
+        name = c.advance().value
+        c.advance()  # =
+        return FuncArg(name=name, value=_parse_value(c))
+    return FuncArg(name=None, value=_parse_value(c))
+
+
+def _parse_comp_ref_as_value(c: _Cursor) -> ComponentRefValue:
+    """`-> path/to/comp(optional-args)` used as a value expression.
+
+    Only appears as a slot-default or inside a PropAssign's RHS that
+    maps to a structural param (exercised in fixture 01's
+    `slot cta = -> button/small/solid(label={cta_label})`).
+    """
+    c.expect("ARROW", kind="KIND_BAD_SYNTAX")
+    scope, path = _parse_comp_path(c)
+    override_args: tuple[PropAssign, ...] = ()
+    if c.peek().type == "LPAREN":
+        override_args = _parse_override_args(c)
+    return ComponentRefValue(path=path, scope_alias=scope, override_args=override_args)
+
+
+def _parse_pattern_ref_as_value(c: _Cursor) -> PatternRefValue:
+    c.expect("AMP", kind="KIND_BAD_SYNTAX")
+    scope, path = _parse_pattern_path(c)
+    return PatternRefValue(path=path, scope_alias=scope)
+
+
+def _parse_comp_path(c: _Cursor) -> tuple[Optional[str], str]:
+    """Parse a CompPath — `IDENT '::'? IDENT '/' IDENT ...`.
+
+    `.` appearing in a CompPath is `KIND_BAD_PATH`.
+    Returns (scope_alias, slash-path).
+    """
+    first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    scope: Optional[str] = None
+    if c.peek().type == "SCOPE":
+        c.advance()
+        scope = first.value
+        first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    # Must be followed by `/` for a multi-segment slash-path, OR just
+    # a bare single-segment name (rare but legal, e.g. `-> icon/back`
+    # is two segments; `-> safari-bottom` might be one).
+    parts = [first.value]
+    while c.peek().type == "SLASH":
+        c.advance()
+        seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+        parts.append(seg.value)
+    # If a DOT appears here, that's a violation — CompPath uses `/`.
+    if c.peek().type == "DOT":
+        t = c.peek()
+        raise DDMarkupParseError(
+            f"`.` not allowed in component-ref path (use `/`)",
+            kind="KIND_BAD_PATH",
+            line=t.line, col=t.col,
+        )
+    return scope, "/".join(parts)
+
+
+def _parse_pattern_path(c: _Cursor) -> tuple[Optional[str], str]:
+    """Parse a PatternPath — `IDENT '::'? IDENT ('.' IDENT)*`.
+
+    `/` appearing in a PatternPath is `KIND_BAD_PATH`.
+    Returns (scope_alias, dotted-path).
+    """
+    first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    scope: Optional[str] = None
+    if c.peek().type == "SCOPE":
+        c.advance()
+        scope = first.value
+        first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    parts = [first.value]
+    while c.peek().type == "DOT":
+        c.advance()
+        seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+        parts.append(seg.value)
+    # A SLASH here is a violation.
+    if c.peek().type == "SLASH":
+        t = c.peek()
+        raise DDMarkupParseError(
+            f"`/` not allowed in pattern-ref path (use `.`)",
+            kind="KIND_BAD_PATH",
+            line=t.line, col=t.col,
+        )
+    return scope, ".".join(parts)
+
+
+def _parse_override_args(c: _Cursor) -> tuple[PropAssign, ...]:
+    """`(key=val, key=val, ...)` — per grammar §3 OverrideArgs."""
+    c.expect("LPAREN", kind="KIND_BAD_SYNTAX")
+    args: list[PropAssign] = []
+    while c.peek().type != "RPAREN":
+        while c.peek().type == "EOL":
+            c.advance()
+        key = _parse_dotted_or_single(c)
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        val = _parse_value(c)
+        args.append(PropAssign(key=key, value=val))
+        while c.peek().type in ("COMMA", "EOL"):
+            c.advance()
+    c.expect("RPAREN", kind="KIND_BAD_SYNTAX")
+    return tuple(args)
 
 
 def _unquote(raw: str) -> str:
@@ -908,35 +1177,568 @@ def _parse_preamble(c: _Cursor) -> tuple[
     return ns, tuple(uses), tuple(tokens)
 
 
+# ---------------------------------------------------------------------------
+# Top-level + Node + Block + Define parsing
+# ---------------------------------------------------------------------------
+#
+# Grammar productions implemented in this section:
+#   TopLevelItem := DefineDecl | Node
+#   Node         := NodeHead Block?
+#   NodeHead     := (TypeKeyword | CompRef | PatternRef)
+#                   EID? ('as' IDENT)?
+#                   PositionalContent?
+#                   NodeProperty*
+#                   NodeTrailer?
+#   Block        := '{' (Node | SlotPlaceholder | PropAssign
+#                       | PathOverride | SlotFill | ValueTrailer)* '}'
+#   DefineDecl   := 'define' IDENT ParamList Block
+#   ParamList    := '(' (Param (',' Param)* ','?)? ')'
+#   Param        := ScalarParam | SlotParam
+#
+# Disambiguation rules live in grammar §3.1/§3.2 (applied below).
+# ---------------------------------------------------------------------------
+
+
+# Type keywords per grammar §2.7. This set is closed at parse time; new
+# canonical types extend it by editing the grammar spec AND this set
+# together. `fill`/`hug`/`fixed` are value keywords, not TypeKeyword.
+_TYPE_KEYWORDS = frozenset((
+    "screen", "frame", "text", "rectangle", "vector", "group", "ellipse",
+    "button", "card", "header", "container", "icon", "image", "slider",
+    "heading", "tabs", "overlay", "list", "input", "toggle", "checkbox",
+    "radio", "avatar", "badge", "dialog", "drawer", "menu", "popover",
+    "tooltip", "chart", "divider", "boolean-operation", "line", "star",
+    "polygon", "nav",
+))
+
+_TEXT_BEARING_TYPES = frozenset((
+    "text", "heading", "button", "badge", "tooltip", "input",
+))
+
+
+def _is_statement_starter(tt: TokenType, value: str) -> bool:
+    """Per grammar §2.2 — what tokens can start a new statement?"""
+    if tt == "IDENT":
+        return value in _TYPE_KEYWORDS or value in (
+            "define", "namespace", "use", "tokens",
+            "set", "append", "insert", "delete", "move", "swap", "replace",
+        )
+    return tt in ("ARROW", "AMP", "AT", "DOLLAR")
+
+
+def _parse_node_trailer(c: _Cursor) -> Optional[NodeTrailer]:
+    """Parse `(kind key=val key=val)` — node-level provenance trailer."""
+    if c.peek().type != "LPAREN":
+        return None
+    # Look-ahead: inside `(`, must start with IDENT to be a trailer.
+    # Otherwise it could be a function-call arg-list (shouldn't reach
+    # here — function-calls are in value position).
+    if c.peek(1).type != "IDENT":
+        return None
+    c.advance()  # (
+    kind_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    attrs: list[tuple[str, Value]] = []
+    while c.peek().type != "RPAREN":
+        while c.peek().type in ("COMMA", "EOL"):
+            c.advance()
+        if c.peek().type == "RPAREN":
+            break
+        key = _parse_dotted_or_single(c)
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        val = _parse_value(c)
+        attrs.append((key, val))
+    c.expect("RPAREN", kind="KIND_BAD_SYNTAX")
+    return NodeTrailer(kind=kind_tok.value, attrs=tuple(attrs))
+
+
+def _parse_value_trailer(c: _Cursor) -> Optional[ValueTrailer]:
+    """Parse `#[kind key=val ...]` — value-level provenance trailer."""
+    if c.peek().type != "VALUE_TRAILER_OPEN":
+        return None
+    c.advance()  # #[
+    kind_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    attrs: list[tuple[str, Value]] = []
+    while c.peek().type != "RBRACK":
+        while c.peek().type in ("COMMA", "EOL"):
+            c.advance()
+        if c.peek().type == "RBRACK":
+            break
+        key = _parse_dotted_or_single(c)
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        val = _parse_value(c)
+        attrs.append((key, val))
+    c.expect("RBRACK", kind="KIND_BAD_SYNTAX")
+    return ValueTrailer(kind=kind_tok.value, attrs=tuple(attrs))
+
+
+def _parse_node(c: _Cursor) -> Node:
+    """Parse a full Node per grammar §3."""
+    t = c.peek()
+
+    head_kind: Literal["type", "comp-ref", "pattern-ref"]
+    scope_alias: Optional[str] = None
+    type_or_path: str
+    override_args: tuple[PropAssign, ...] = ()
+
+    if t.type == "ARROW":
+        c.advance()
+        scope_alias, type_or_path = _parse_comp_path(c)
+        head_kind = "comp-ref"
+        if c.peek().type == "LPAREN":
+            # OverrideArgs inline on the node head
+            override_args = _parse_override_args(c)
+    elif t.type == "AMP":
+        c.advance()
+        scope_alias, type_or_path = _parse_pattern_path(c)
+        head_kind = "pattern-ref"
+    elif t.type == "IDENT" and t.value in _TYPE_KEYWORDS:
+        c.advance()
+        type_or_path = t.value
+        head_kind = "type"
+    else:
+        raise DDMarkupParseError(
+            f"expected a node head (TypeKeyword, `->`, or `&`), got {t.type} `{t.value}`",
+            kind="KIND_BAD_SYNTAX",
+            line=t.line, col=t.col,
+        )
+
+    # Optional EID
+    eid: Optional[str] = None
+    if c.peek().type == "HASH":
+        c.advance()
+        eid_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+        eid = eid_tok.value
+
+    # Optional `as <name>` alias (sugar for #eid at pattern-ref call sites)
+    alias: Optional[str] = None
+    if c.peek().type == "IDENT" and c.peek().value == "as":
+        c.advance()
+        alias_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+        alias = alias_tok.value
+
+    # Optional positional content on text-bearing types.
+    # PositionalContent := StringLit | TokenRef
+    # Positional may appear on a continuation line after the head start,
+    # so skip EOLs with rollback if the next token isn't positional.
+    positional: Optional[Value] = None
+    if head_kind == "type" and type_or_path in _TEXT_BEARING_TYPES:
+        saved_for_pos = c.pos
+        while c.peek().type == "EOL":
+            c.advance()
+        pk = c.peek()
+        if pk.type == "STRING":
+            c.advance()
+            positional = Literal_(lit_kind="string", raw=pk.value, py=_unquote(pk.value))
+        elif pk.type == "LBRACE":
+            # Could be TokenRef (positional) or PropGroup (unlikely here).
+            # Look ahead: IDENT followed by `.` or `}` → TokenRef.
+            if c.peek(1).type == "IDENT" and c.peek(2).type in ("DOT", "RBRACE"):
+                positional = _parse_brace_value(c)
+            else:
+                c.pos = saved_for_pos    # not positional, rewind
+        else:
+            c.pos = saved_for_pos        # not positional, rewind
+
+    # NodeProperty* — PropAssign | PathOverride, plus inline ValueTrailer
+    # attached to the preceding value.
+    properties: list[object] = []
+    trailer: Optional[NodeTrailer] = None
+
+    while True:
+        # Skip intra-head EOLs (multi-line head continuation, grammar §2.2)
+        # But only skip EOLs if the next non-EOL token is a continuation
+        # of the head (a property, trailer, or block open).
+        saved_pos = c.pos
+        while c.peek().type == "EOL":
+            c.advance()
+        nxt = c.peek()
+        # Termination conditions per §2.2
+        if nxt.type in ("LBRACE", "RBRACE", "EOF"):
+            break
+        # An IDENT that's a TypeKeyword looks like a statement-starter,
+        # BUT if it's followed by `=` or `.`, it's a property path
+        # (e.g., `container.gap=8` where `container` is both a type
+        # keyword AND a legal internal-eid). Continue the head in that
+        # case.
+        is_type_continuation_prop = (
+            nxt.type == "IDENT"
+            and nxt.value in _TYPE_KEYWORDS
+            and c.peek(1).type in ("EQ", "DOT")
+        )
+        if (
+            _is_statement_starter(nxt.type, nxt.value)
+            and not is_type_continuation_prop
+            and c.pos != saved_pos
+        ):
+            # A new statement on a new line ends the head
+            c.pos = saved_pos
+            # Consume the trailing EOLs so the block/parent sees them
+            while c.peek().type == "EOL":
+                c.advance()
+            break
+
+        # NodeTrailer on the head line — `(kind ...)` before block/end
+        if nxt.type == "LPAREN" and c.peek(1).type == "IDENT":
+            trailer = _parse_node_trailer(c)
+            continue
+
+        # PropAssign / PathOverride (both are `IDENT (.IDENT)* = value`)
+        if nxt.type == "IDENT":
+            # Must not be a RESERVED_KEYWORD (like 'as' — handled above)
+            if nxt.value == "as":
+                break
+            key = _parse_dotted_or_single(c)
+            c.expect("EQ", kind="KIND_BAD_SYNTAX")
+            val = _parse_value(c)
+            # Value-level trailer may be inline or on a continuation line.
+            saved = c.pos
+            while c.peek().type == "EOL":
+                c.advance()
+            vtrailer = _parse_value_trailer(c)
+            if vtrailer is None:
+                c.pos = saved
+            if "." in key:
+                properties.append(PathOverride(path=key, value=val))
+            else:
+                properties.append(PropAssign(key=key, value=val, trailer=vtrailer))
+            continue
+
+        if nxt.type == "DOLLAR":
+            # $ext.* property keys
+            c.advance()
+            key_rest_first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+            key_parts = ["$" + key_rest_first.value]
+            while c.peek().type == "DOT":
+                c.advance()
+                seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+                key_parts.append(seg.value)
+            full_key = ".".join(key_parts)
+            c.expect("EQ", kind="KIND_BAD_SYNTAX")
+            val = _parse_value(c)
+            properties.append(PropAssign(key=full_key, value=val))
+            continue
+
+        # Something else — end of head
+        break
+
+    # Optional Block body. Disambiguate: `{` immediately followed by
+    # `IDENT }` is a SIBLING SlotPlaceholder (the next statement at the
+    # outer block's level), not a child-block open for this node.
+    block: Optional[Block] = None
+    while c.peek().type == "EOL":
+        c.advance()
+    if (
+        c.peek().type == "LBRACE"
+        and not (
+            c.peek(1).type == "IDENT"
+            and c.peek(2).type == "RBRACE"
+        )
+    ):
+        block = _parse_block(c)
+
+    head = NodeHead(
+        head_kind=head_kind,
+        type_or_path=type_or_path,
+        scope_alias=scope_alias,
+        eid=eid,
+        alias=alias,
+        override_args=override_args,
+        positional=positional,
+        properties=tuple(properties),
+        trailer=trailer,
+    )
+    return Node(head=head, block=block)
+
+
+def _parse_block(c: _Cursor) -> Block:
+    """Parse a `{ ... }` block body per grammar §3."""
+    lbrace = c.expect("LBRACE", kind="KIND_BAD_SYNTAX")
+    c.skip_eols()
+    stmts: list[object] = []
+
+    # Empty `{}` is forbidden per Q6 — KIND_EMPTY_BLOCK
+    if c.peek().type == "RBRACE":
+        c.advance()
+        raise DDMarkupParseError(
+            "empty `{}` block is forbidden; use absence instead",
+            kind="KIND_EMPTY_BLOCK",
+            line=lbrace.line, col=lbrace.col,
+        )
+
+    while c.peek().type != "RBRACE":
+        stmt = _parse_block_statement(c)
+        stmts.append(stmt)
+        c.skip_eols()
+    c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
+    return Block(statements=tuple(stmts))
+
+
+def _parse_block_statement(c: _Cursor) -> object:
+    """Dispatch: Node | SlotPlaceholder | SlotFill | PropAssign | PathOverride.
+
+    Dispatch order matters. `text="Done"` inside a CompRef block is a
+    PropAssign where `text` is the property KEY (Figma instance-override
+    text), NOT a text node. So the `IDENT = value` / `IDENT . path = value`
+    branch runs BEFORE the TypeKeyword → Node branch.
+    """
+    t = c.peek()
+
+    # SlotPlaceholder `{name}` as a standalone block statement
+    if t.type == "LBRACE" and c.peek(1).type == "IDENT" and c.peek(2).type == "RBRACE":
+        c.advance()  # {
+        name_tok = c.advance()  # IDENT
+        c.advance()  # }
+        return SlotPlaceholder(name=name_tok.value)
+
+    # IDENT followed by `=` / `.` → PropAssign / PathOverride / SlotFill.
+    # This runs BEFORE the TypeKeyword-is-node check because type keywords
+    # may legitimately be used as property keys (e.g., `text="Done"` as a
+    # Figma instance override on a CompRef).
+    if t.type == "IDENT":
+        tt = c.peek(1).type
+        if tt == "EQ":
+            rhs = c.peek(2)
+            is_node_rhs = (
+                (rhs.type == "IDENT" and rhs.value in _TYPE_KEYWORDS)
+                or rhs.type == "ARROW"
+                or rhs.type == "AMP"
+            )
+            if is_node_rhs:
+                slot_name = c.advance().value
+                c.advance()  # =
+                node = _parse_node(c)
+                return SlotFill(slot_name=slot_name, node=node)
+            # PropAssign
+            key = c.advance().value
+            c.advance()  # =
+            val = _parse_value(c)
+            vtrailer = _parse_value_trailer(c)
+            return PropAssign(key=key, value=val, trailer=vtrailer)
+        if tt == "DOT":
+            path = _parse_dotted_or_single(c)
+            c.expect("EQ", kind="KIND_BAD_SYNTAX")
+            val = _parse_value(c)
+            return PathOverride(path=path, value=val)
+
+    # Node-start tokens: TypeKeyword / `->` / `&`. Falls through here
+    # when the IDENT is a TypeKeyword NOT followed by `=` or `.`.
+    if (
+        (t.type == "IDENT" and t.value in _TYPE_KEYWORDS)
+        or t.type == "ARROW"
+        or t.type == "AMP"
+    ):
+        return _parse_node(c)
+
+    # `@eid` reference — edit-context node (parses through same productions)
+    if t.type == "AT":
+        return _parse_edit_node(c)
+
+    # $ext
+    if t.type == "DOLLAR":
+        c.advance()
+        first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+        key_parts = ["$" + first.value]
+        while c.peek().type == "DOT":
+            c.advance()
+            seg = c.expect("IDENT", kind="KIND_BAD_PATH")
+            key_parts.append(seg.value)
+        c.expect("EQ", kind="KIND_BAD_SYNTAX")
+        val = _parse_value(c)
+        return PropAssign(key=".".join(key_parts), value=val)
+
+    raise DDMarkupParseError(
+        f"unexpected token in block body: {t.type} `{t.value}`",
+        kind="KIND_BAD_SYNTAX",
+        line=t.line, col=t.col,
+    )
+
+
+def _parse_edit_node(c: _Cursor) -> Node:
+    """`@eid [props]` — edit-context reference. Parses through Node.
+
+    Wildcard `*`/`**` in an `@eid` path during a NON-edit-verb context
+    is `KIND_WILDCARD_IN_CONSTRUCT`. We're inside a block body here,
+    not an edit verb — so any wildcard fires the error.
+    """
+    at_tok = c.expect("AT", kind="KIND_BAD_SYNTAX")
+    # Parse @-path; disallow `*` / `**` segments at construction.
+    first = c.expect("IDENT", kind="KIND_BAD_PATH")
+    parts = [first.value]
+    while c.peek().type in ("DOT", "SLASH"):
+        sep_tok = c.advance()
+        nxt = c.peek()
+        if nxt.type == "IDENT":
+            parts.append(nxt.value)
+            c.advance()
+        else:
+            # Wildcard or other — only IDENT allowed at construction.
+            raise DDMarkupParseError(
+                "wildcards are not allowed in construction `@eid` paths "
+                "(edit-verb context only)",
+                kind="KIND_WILDCARD_IN_CONSTRUCT",
+                line=at_tok.line, col=at_tok.col,
+            )
+    # Synthesize a Node with head_kind=type and the path as the type_or_path.
+    # The edit-context semantic is preserved by the leading `@` — the
+    # parser produces a Node whose head represents an addressed eid.
+    # We encode this by putting the path into `type_or_path` with a
+    # special scope_alias="@" marker. A future semantic analyzer
+    # dispatches on this.
+    # Now parse any trailing properties.
+    properties: list[object] = []
+    c.skip_eols()
+    while True:
+        nxt = c.peek()
+        if nxt.type in ("RBRACE", "EOF", "LBRACE"):
+            break
+        if _is_statement_starter(nxt.type, nxt.value):
+            break
+        if nxt.type == "IDENT":
+            key = _parse_dotted_or_single(c)
+            c.expect("EQ", kind="KIND_BAD_SYNTAX")
+            val = _parse_value(c)
+            if "." in key:
+                properties.append(PathOverride(path=key, value=val))
+            else:
+                properties.append(PropAssign(key=key, value=val))
+            while c.peek().type == "EOL":
+                c.advance()
+            continue
+        break
+    head = NodeHead(
+        head_kind="type",
+        type_or_path="@" + ".".join(parts),
+        scope_alias="@",
+        properties=tuple(properties),
+    )
+    return Node(head=head, block=None)
+
+
+# ---------------------------------------------------------------------------
+# Define parser
+# ---------------------------------------------------------------------------
+
+
+_VALID_TYPE_HINTS = frozenset((
+    "text", "number", "bool", "color", "dimension", "node", "slot",
+))
+
+
+def _parse_define(c: _Cursor) -> Define:
+    """`define NAME(params) { body }` per grammar §6.1."""
+    c.expect("IDENT", value="define", kind="KIND_BAD_SYNTAX")
+    name_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    params = _parse_param_list(c)
+    c.skip_eols()
+    body = _parse_block(c)
+    return Define(name=name_tok.value, params=tuple(params), body=body)
+
+
+def _parse_param_list(c: _Cursor) -> list[Param]:
+    """`(param, param, ...)`  — optional, comma-separated, trailing-comma OK."""
+    c.expect("LPAREN", kind="KIND_BAD_SYNTAX")
+    params: list[Param] = []
+    while c.peek().type == "EOL":
+        c.advance()
+    while c.peek().type != "RPAREN":
+        params.append(_parse_param(c))
+        while c.peek().type in ("COMMA", "EOL"):
+            c.advance()
+    c.expect("RPAREN", kind="KIND_BAD_SYNTAX")
+    return params
+
+
+def _parse_param(c: _Cursor) -> Param:
+    """ScalarParam | SlotParam per grammar §3.
+
+    SlotParam defaults are NodeExpr (full node), not generic Value —
+    per grammar §6.1 a slot fills a structural subtree position.
+    """
+    t = c.peek()
+    if t.type == "IDENT" and t.value == "slot":
+        c.advance()
+        name = c.expect("IDENT", kind="KIND_BAD_SYNTAX").value
+        default: Optional[Value] = None
+        if c.peek().type == "EQ":
+            c.advance()
+            # Slot default is a NodeExpr — parse via _parse_node if the
+            # RHS starts with a node-head token, else fall back to a
+            # generic value (rare — NodeExpr is the spec'd form).
+            rhs = c.peek()
+            if (
+                (rhs.type == "IDENT" and rhs.value in _TYPE_KEYWORDS)
+                or rhs.type == "ARROW"
+                or rhs.type == "AMP"
+            ):
+                default = _parse_node(c)     # type: ignore[assignment]
+            else:
+                default = _parse_value(c)
+        return Param(param_kind="slot", name=name, type_hint=None, default=default)
+    # ScalarParam — `name: type [= default]`
+    name = c.expect("IDENT", kind="KIND_BAD_SYNTAX").value
+    c.expect("COLON", kind="KIND_BAD_SYNTAX")
+    type_hint_tok = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
+    type_hint = type_hint_tok.value
+    default2: Optional[Value] = None
+    if c.peek().type == "EQ":
+        c.advance()
+        default2 = _parse_value(c)
+    return Param(
+        param_kind="scalar",
+        name=name,
+        type_hint=type_hint,
+        default=default2,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
 def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
     """Parse a dd markup source file and return its L3Document.
 
-    Current Stage 1.2 scope: preamble + empty/simple top-level body.
-    Full node / define / pattern-ref parsing lands in subsequent slices.
+    Stage 1.2 scope (slices A–I):
+    - Full preamble (namespace + use + tokens)
+    - Top-level nodes and defines with nested blocks
+    - All value forms (literal, token-ref, prop-group, sizing, function-call,
+      comp-ref-value, pattern-ref-value)
+    - Node + value trailers
+    - Pattern refs, slot fills, slot placeholders, path overrides
+    - `$ext.*` extension metadata
+    - Edit-context `@eid` in construction (parses; wildcard detection
+      fires `KIND_WILDCARD_IN_CONSTRUCT`)
     """
     toks = tokenize(source)
     c = _Cursor(toks)
 
     ns, uses, tokens_tuple = _parse_preamble(c)
 
-    # Top-level body: this slice accepts a minimal `screen #eid { ... }`
-    # or EOF. Full parsing continues in the next slice.
     top_level: list[object] = []
     warnings: list[Warning] = []
 
     c.skip_eols()
     while c.peek().type != "EOF":
-        # Not yet implemented: full TopLevelItem parsing
-        # For Stage 1.2 slice A, just surface a structured warning and stop
-        # so the test harness can still exercise the preamble path.
         t = c.peek()
-        warnings.append(Warning(
-            kind="STAGE_1_2_WIP",
-            message=f"top-level item parsing not yet implemented (token: {t.type} `{t.value}`)",
-            line=t.line,
-            col=t.col,
-        ))
-        break
+        if t.type == "IDENT" and t.value == "define":
+            top_level.append(_parse_define(c))
+        else:
+            top_level.append(_parse_node(c))
+        c.skip_eols()
+
+    # Semantic pass: collect `KIND_UNUSED_IMPORT` warnings.
+    used_aliases: set[str] = set()
+    _collect_scope_aliases(top_level, used_aliases)
+    for ta in tokens_tuple:
+        _collect_scope_aliases((ta.value,), used_aliases)
+    for u in uses:
+        if u.alias not in used_aliases:
+            warnings.append(Warning(
+                kind="KIND_UNUSED_IMPORT",
+                message=f"`use` alias `{u.alias}` is never referenced",
+                line=None, col=None,
+            ))
 
     return L3Document(
         namespace=ns,
@@ -946,6 +1748,33 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
         warnings=tuple(warnings),
         source_path=source_path,
     )
+
+
+def _collect_scope_aliases(items: object, out: set[str]) -> None:
+    """Walk AST and collect every scope_alias use site."""
+    if items is None:
+        return
+    if isinstance(items, (list, tuple)):
+        for it in items:
+            _collect_scope_aliases(it, out)
+        return
+    if isinstance(items, L3Document):
+        _collect_scope_aliases(items.top_level, out)
+        for ta in items.tokens:
+            _collect_scope_aliases(ta.value, out)
+        return
+    sa = getattr(items, "scope_alias", None)
+    if isinstance(sa, str):
+        out.add(sa)
+    # Recurse into children
+    for attr in (
+        "top_level", "statements", "properties", "override_args",
+        "entries", "args", "params", "value", "default", "body",
+        "block", "head", "positional", "trailer", "node",
+    ):
+        child = getattr(items, attr, None)
+        if child is not None and child is not items:
+            _collect_scope_aliases(child, out)
 
 
 def emit_l3(doc: L3Document) -> str:

@@ -97,7 +97,7 @@ define option-row(
 
 // The screen itself. `(extracted src=181)` establishes default provenance;
 // all descendants inherit `kind=extracted` unless a child overrides.
-screen #01-login-welcome (extracted src=181) {
+screen #login-welcome (extracted src=181) {
   width=428 height=926 fill={color.surface.default}
 
   // ---------- System chrome (design content, per feedback_system_chrome_is_design)

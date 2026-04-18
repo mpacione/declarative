@@ -46,19 +46,21 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Module-level skip until Plan B Stage 1.2 full parser ships. The
-# preamble-only tests that the current `dd.markup_l3` can satisfy live
-# in `tests/test_dd_markup_l3_preamble.py` and run unconditionally.
-# Remove this skip when the full node / define / pattern-ref surface
-# lands in `dd.markup_l3`.
+# Slice D–I of Stage 1.2 has shipped the parser for the full fixture
+# surface (all 3 fixtures parse). Tests that depend on the EMITTER
+# (`emit_l3` — Stage 1.3/1.4), on semantic passes (ambiguous-param,
+# unresolved-ref resolution, empty-block detection after parse), or on
+# AST-attribute shapes that this scaffold guessed before Stage 1.2
+# landed — are still gated module-wide until the emitter ships and the
+# scaffold is migrated. Use `tests/test_dd_markup_l3_preamble.py` and
+# `tests/test_dd_markup_l3_nodes.py` for tests that run unconditionally
+# against the current parser.
 # ---------------------------------------------------------------------------
 pytestmark = pytest.mark.skip(
     reason=(
-        "Plan B Stage 1.2: full node/define/pattern-ref parsing not yet "
-        "shipped in `dd.markup_l3`. Preamble tests live in "
-        "`test_dd_markup_l3_preamble.py` and run. These tests become the "
-        "TDD red phase for the remaining slices. See "
-        "docs/plan-v0.3.md and docs/spec-dd-markup-grammar.md §15."
+        "Plan B Stage 1.2: parser shipped but emitter + semantic passes "
+        "pending (Stage 1.3/1.4). Live tests for the current parser live "
+        "in `test_dd_markup_l3_preamble.py` and `test_dd_markup_l3_nodes.py`."
     ),
 )
 

@@ -35,7 +35,7 @@ namespace dank.reference.screen-237
 use "./02-card-sheet" as sheet22
 
 
-screen #03-keyboard-sheet (extracted src=237) {
+screen #keyboard-sheet (extracted src=237) {
   width=428 height=926 fill={color.surface.default}
 
 

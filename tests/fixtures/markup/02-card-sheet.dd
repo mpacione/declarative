@@ -68,7 +68,7 @@ define card-section(
 }
 
 
-screen #02-card-sheet (extracted src=222) {
+screen #card-sheet (extracted src=222) {
   width=428 height=926 fill={color.surface.default}
 
   // ---------- Base layer: meme-editor canvas (minimal, abstracted) --------
