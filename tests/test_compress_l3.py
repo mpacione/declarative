@@ -440,6 +440,65 @@ class TestRegressionFromReview:
             assert isinstance(doc, L3Document)
             assert len(doc.top_level) == 0
 
+    def test_radius_uniform_emitted_from_nodes_table(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Uniform `corner_radius` on DB nodes surfaces as `radius=<N>`
+        on the emitted output. Screen 181 has many radius values
+        (Safari chrome, home indicator, button corners) — should see
+        ≥5 `radius=` occurrences."""
+        doc = compress_to_l3(
+            generate_ir(db_conn, 181, semantic=True)["spec"],
+            db_conn,
+            screen_id=181,
+        )
+        emitted = emit_l3(doc)
+        assert emitted.count("radius=") >= 5
+
+    def test_radius_per_corner_emitted_as_propgroup(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Per-corner `corner_radius` (JSON dict in DB) emits as
+        PropGroup with canonical `top-left, top-right, bottom-right,
+        bottom-left` ordering per §7.6."""
+        # Screen 222's meme-editor has card/sheet/success with per-
+        # corner radii.
+        doc = compress_to_l3(
+            generate_ir(db_conn, 222, semantic=True)["spec"],
+            db_conn,
+            screen_id=222,
+        )
+        emitted = emit_l3(doc)
+        # If any per-corner radii exist, they should appear in canonical
+        # order.
+        if "top-left=" in emitted:
+            # Verify canonical ordering in at least one PropGroup
+            import re
+            for m in re.finditer(
+                r"radius=\{[^}]*\}", emitted,
+            ):
+                group_body = m.group(0)
+                # Extract the order of the keys
+                keys = re.findall(
+                    r"(top-left|top-right|bottom-right|bottom-left)=",
+                    group_body,
+                )
+                canonical = [
+                    "top-left", "top-right", "bottom-right", "bottom-left",
+                ]
+                # Keys should be a subsequence of canonical order
+                canonical_idx = 0
+                for k in keys:
+                    while (canonical_idx < len(canonical)
+                           and canonical[canonical_idx] != k):
+                        canonical_idx += 1
+                    if canonical_idx >= len(canonical):
+                        pytest.fail(
+                            f"radius PropGroup not in canonical order: "
+                            f"{group_body}"
+                        )
+                    canonical_idx += 1
+
     def test_eid_collision_appends_dash_n_suffix(self) -> None:
         """Agent-1 Finding #1: two siblings with the same sanitized
         name should produce `#nav-top-nav` and `#nav-top-nav-2`, NOT

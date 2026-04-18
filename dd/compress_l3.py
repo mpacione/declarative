@@ -315,6 +315,27 @@ def _visual_props(visual: dict) -> list[PropAssign]:
         # Multi-fill array: deferred to a follow-up slice (value-array
         # form `fills=[...]` not yet supported in Stage 1.2 parser).
 
+    # Strokes (single-stroke common case; multi-stroke deferred)
+    strokes = visual.get("strokes") or []
+    if isinstance(strokes, list) and strokes and len(strokes) == 1:
+        sv = _fill_to_value(strokes[0])      # same hex/gradient/image forms
+        if sv is not None:
+            props.append(PropAssign(key="stroke", value=sv))
+        stroke_width = strokes[0].get("width") if isinstance(strokes[0], dict) else None
+        if isinstance(stroke_width, (int, float)) and stroke_width > 0:
+            props.append(PropAssign(
+                key="stroke-weight", value=_num_literal(stroke_width),
+            ))
+
+    # Effects — DROP_SHADOW becomes `shadow=shadow(dx, dy, blur, color)`;
+    # blur effects (BACKGROUND_BLUR / LAYER_BLUR) are deferred (no
+    # matching grammar function yet — §4.3 only has `shadow`).
+    effects = visual.get("effects") or []
+    if isinstance(effects, list):
+        shadow_value = _effects_to_shadow(effects)
+        if shadow_value is not None:
+            props.append(PropAssign(key="shadow", value=shadow_value))
+
     # Radius (uniform only in MVP)
     cr = visual.get("cornerRadius")
     if isinstance(cr, (int, float)) and cr > 0:
@@ -326,6 +347,58 @@ def _visual_props(visual: dict) -> list[PropAssign]:
         props.append(PropAssign(key="opacity", value=_num_literal(op)))
 
     return props
+
+
+def _effects_to_shadow(effects: list) -> Optional[Value]:
+    """Convert the first DROP_SHADOW effect into a `shadow(...)` FunctionCall.
+
+    Grammar §4.3 defines `shadow(x=<px>, y=<px>, blur=<px>, color=<color>)`.
+    Ignores BACKGROUND_BLUR, LAYER_BLUR, INNER_SHADOW, and any drops after
+    the first one (multi-shadow arrays aren't in the grammar yet).
+    """
+    for eff in effects:
+        if not isinstance(eff, dict):
+            continue
+        if eff.get("type") != "drop-shadow" and eff.get("type") != "DROP_SHADOW":
+            continue
+        if eff.get("visible") is False:
+            continue                         # skip hidden drops
+        dx = eff.get("offset", {}).get("x") if isinstance(eff.get("offset"), dict) else eff.get("offsetX", 0)
+        dy = eff.get("offset", {}).get("y") if isinstance(eff.get("offset"), dict) else eff.get("offsetY", 0)
+        blur = eff.get("radius", 0)
+        color = eff.get("color")
+        if isinstance(color, dict):          # normalized DB form
+            color_hex = _color_dict_to_hex(color)
+        elif isinstance(color, str):
+            color_hex = color
+        else:
+            color_hex = "#00000040"          # sensible default
+        args = [
+            FuncArg(name="x", value=_num_literal(dx or 0)),
+            FuncArg(name="y", value=_num_literal(dy or 0)),
+            FuncArg(name="blur", value=_num_literal(blur or 0)),
+            FuncArg(
+                name="color",
+                value=Literal_(lit_kind="hex-color", raw=color_hex, py=color_hex),
+            ),
+        ]
+        return FunctionCall(name="shadow", args=tuple(args))
+    return None
+
+
+def _color_dict_to_hex(color: dict) -> str:
+    """Convert a `{r,g,b,a}` dict (normalized 0..1) into `#RRGGBB[AA]`."""
+    try:
+        r = int(round(float(color.get("r", 0)) * 255))
+        g = int(round(float(color.get("g", 0)) * 255))
+        b = int(round(float(color.get("b", 0)) * 255))
+        a = float(color.get("a", 1.0))
+    except (TypeError, ValueError):
+        return "#000000"
+    base = f"#{r:02X}{g:02X}{b:02X}"
+    if a >= 0.999:
+        return base
+    return f"{base}{int(round(a * 255)):02X}"
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +452,7 @@ def _compress_element(
     used_eids: set[str],
     comp_names: dict[str, str],
     self_overrides: dict[str, list[PropAssign]],
+    radius_map: dict[str, float],
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -446,6 +520,36 @@ def _compress_element(
     props: list[PropAssign] = []
     props.extend(_spatial_props(element.get("layout") or {}))
     props.extend(_visual_props(element.get("visual") or {}))
+    # cornerRadius isn't in the CompositionSpec; pull from our batched
+    # DB lookup. Value is either a scalar float (uniform) or a dict
+    # `{"tl": ..., "tr": ..., "bl": ..., "br": ...}` (per-corner).
+    if eid_key in radius_map and not any(p.key == "radius" for p in props):
+        radius_val = radius_map[eid_key]
+        if isinstance(radius_val, (int, float)):
+            props.append(PropAssign(
+                key="radius", value=_num_literal(radius_val),
+            ))
+        elif isinstance(radius_val, dict):
+            # Per-corner: emit as PropGroup in grammar §7.6 canonical
+            # order `top-left, top-right, bottom-right, bottom-left`.
+            # The DB uses abbreviated `tl/tr/bl/br` keys.
+            canonical_corners = (
+                ("tl", "top-left"),
+                ("tr", "top-right"),
+                ("br", "bottom-right"),
+                ("bl", "bottom-left"),
+            )
+            entries: list[PropAssign] = []
+            for short, long_name in canonical_corners:
+                v = radius_val.get(short)
+                if isinstance(v, (int, float)) and v != 0:
+                    entries.append(PropAssign(
+                        key=long_name, value=_num_literal(v),
+                    ))
+            if entries:
+                props.append(PropAssign(
+                    key="radius", value=PropGroup(entries=tuple(entries)),
+                ))
     props.extend(visible_prop)
 
     # Slice B MVP: flatten `:self` instance overrides onto CompRef heads.
@@ -505,7 +609,7 @@ def _compress_element(
         for child_id in child_ids:
             child_node = _compress_element(
                 child_id, spec, child_counter, child_used_eids,
-                comp_names, self_overrides,
+                comp_names, self_overrides, radius_map,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -520,6 +624,72 @@ def _compress_element(
 # ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Visual-axis enrichment from the DB — `corner_radius` isn't in the
+# CompositionSpec (`build_composition_spec` doesn't copy it), so we
+# query `nodes.corner_radius` directly for every element that has a
+# node-id mapping. This is a low-cost batched lookup per screen.
+# ---------------------------------------------------------------------------
+
+
+def _fetch_corner_radius_map(
+    conn: Optional[sqlite3.Connection],
+    node_id_map: dict[str, int],
+) -> dict[str, object]:
+    """Batched query: `element_id → corner_radius` for every node with
+    a non-null, non-zero `corner_radius` value.
+
+    The DB `corner_radius` column is polymorphic: usually a uniform
+    float (e.g. `10.0`), but for per-corner radii it stores a JSON
+    string like `'{"tl": 28.0, "tr": 28.0, "bl": 0.0, "br": 0.0}'`.
+    Callers dispatch on the value type.
+    """
+    if conn is None or not node_id_map:
+        return {}
+    node_ids = list(node_id_map.values())
+    if not node_ids:
+        return {}
+    import json
+    placeholders = ",".join("?" for _ in node_ids)
+    rows = conn.execute(
+        f"SELECT id, corner_radius FROM nodes "
+        f"WHERE id IN ({placeholders}) "
+        f"  AND corner_radius IS NOT NULL AND corner_radius != '0' "
+        f"  AND corner_radius != 0",
+        node_ids,
+    ).fetchall()
+    by_node_id: dict[int, object] = {}
+    for row in rows:
+        raw = row[1]
+        if isinstance(raw, (int, float)):
+            if raw != 0:
+                by_node_id[row[0]] = float(raw)
+        elif isinstance(raw, str):
+            if not raw or raw == "0" or raw == "0.0":
+                continue
+            # Try JSON — per-corner dict — before float
+            if raw.startswith("{"):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        by_node_id[row[0]] = parsed
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            # Fall through: try as float scalar
+            try:
+                fv = float(raw)
+                if fv != 0:
+                    by_node_id[row[0]] = fv
+            except (ValueError, TypeError):
+                pass
+    out: dict[str, object] = {}
+    for eid, nid in node_id_map.items():
+        if nid in by_node_id:
+            out[eid] = by_node_id[nid]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -705,15 +875,17 @@ def compress_to_l3(
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
+    node_id_map = spec.get("_node_id_map") or {}
     comp_names = _build_comp_names_map(spec, conn)
     # Eligible EIDs for override lookup = those that will emit as
     # CompRefs (Mode-1 + CKR resolved).
     eligible_eids = list(comp_names.keys())
-    self_overrides = _fetch_self_overrides(
-        conn, spec.get("_node_id_map") or {}, eligible_eids,
-    )
+    self_overrides = _fetch_self_overrides(conn, node_id_map, eligible_eids)
+    # cornerRadius lives in the nodes table, NOT in the CompositionSpec.
+    radius_map = _fetch_corner_radius_map(conn, node_id_map)
     root_node = _compress_element(
-        root_key, spec, root_counter, used_eids, comp_names, self_overrides,
+        root_key, spec, root_counter, used_eids,
+        comp_names, self_overrides, radius_map,
     )
     if root_node is None:
         return L3Document(namespace=None)

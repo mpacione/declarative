@@ -9,9 +9,9 @@ screen #iphone-13-pro-max-119 width=428 height=926 (extracted src=181) {
         heading #field-title-2 "More" width=fill height=hug fill=#000000
       }
       container #frame-353 width=hug height=hug layout=horizontal gap=10 {
-        frame #frame-350 width=140 height=100 fill=#FFFFFF
-        frame #frame-351 width=140 height=100 fill=#FFFFFF
-        frame #frame-352 width=140 height=100 fill=#FFFFFF
+        frame #frame-350 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-351 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-352 width=140 height=100 fill=#FFFFFF radius=10
       }
     }
     container #frame-355 x=15 y=544 width=hug height=hug layout=vertical gap=12 {
@@ -21,9 +21,9 @@ screen #iphone-13-pro-max-119 width=428 height=926 (extracted src=181) {
         heading #field-title-2 "More" width=fill height=hug fill=#000000
       }
       container #frame-353 width=hug height=hug layout=horizontal gap=10 {
-        frame #frame-350 width=140 height=100 fill=#FFFFFF
-        frame #frame-351 width=140 height=100 fill=#FFFFFF
-        frame #frame-352 width=140 height=100 fill=#FFFFFF
+        frame #frame-350 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-351 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-352 width=140 height=100 fill=#FFFFFF radius=10
       }
     }
     container #frame-356 x=15 y=707 width=hug height=hug layout=vertical gap=12 {
@@ -33,12 +33,12 @@ screen #iphone-13-pro-max-119 width=428 height=926 (extracted src=181) {
         heading #field-title-2 "More" width=fill height=hug fill=#000000
       }
       container #frame-353 width=hug height=hug layout=horizontal gap=10 {
-        frame #frame-350 width=140 height=100 fill=#FFFFFF
-        frame #frame-351 width=140 height=100 fill=#FFFFFF
-        frame #frame-352 width=140 height=100 fill=#FFFFFF
+        frame #frame-350 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-351 width=140 height=100 fill=#FFFFFF radius=10
+        frame #frame-352 width=140 height=100 fill=#FFFFFF radius=10
       }
     }
-    -> button/large/translucent #button-large-translucent x=15 y=300 width=397 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=gradient-linear(#D9FF40, #9EFF85)
+    -> button/large/translucent #button-large-translucent x=15 y=300 width=397 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=gradient-linear(#D9FF40, #9EFF85) radius=10
     group #group x=130 y=130 width=168.167 height=140.9998 {
       vector #vector x=130 y=152.597 width=168.167 height=118.4031 fill=#DADADA
       vector #vector-2 x=140.1808 y=162.7872 width=147.7724 height=98.0211 fill=#DADADA
