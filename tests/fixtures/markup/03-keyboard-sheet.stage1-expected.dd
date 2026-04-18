@@ -1,8 +1,8 @@
 screen #iphone-13-pro-max-79 width=428 height=926 fill=#F6F6F6 (extracted src=237) {
   container #frame-359 x=17 y=202 width=hug height=hug layout=vertical crossAxis=center {
-    container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
+    container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space-between crossAxis=center {
       text #field-title "Meme-00001" width=hug height=hug fill=#000000
-      container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
+      container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=end crossAxis=center {
         -> icon/more #icon-more width=20 height=20 opacity=0.2
         text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
       }
@@ -45,7 +45,7 @@ screen #iphone-13-pro-max-79 width=428 height=926 fill=#F6F6F6 (extracted src=23
       -> button/small/translucent #button-small-translucent-3 width=99 height=40 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=#000000 radius=10
     }
     container #frame-397 width=380 height=hug layout=horizontal gap=12 {
-      container #frame-410 width=380 height=hug layout=horizontal mainAxis=space_between visible=false {
+      container #frame-410 width=380 height=hug layout=horizontal mainAxis=space-between visible=false {
         text #message "Presets" width=hug height=hug fill=#09090B
         text #message-2 "-100%" width=hug height=hug fill=#09090B
       }
@@ -78,11 +78,11 @@ screen #iphone-13-pro-max-79 width=428 height=926 fill=#F6F6F6 (extracted src=23
         rectangle #rectangle-22238 width=38 height=38 fill=#3A009A stroke=#000000 stroke-weight=1 radius=8
         rectangle #rectangle-22239 width=38 height=38 fill=#92007A stroke=#000000 stroke-weight=1 radius=8
       }
-      container #frame-407 width=380 height=hug layout=horizontal mainAxis=space_between {
+      container #frame-407 width=380 height=hug layout=horizontal mainAxis=space-between {
         text #message "System Colors" width=106 height=28 fill=#09090B
         text #message-2 "Saved Colors" width=188 height=28 fill=#09090B
       }
-      container #frame-408 width=380 height=hug layout=horizontal mainAxis=space_between visible=false {
+      container #frame-408 width=380 height=hug layout=horizontal mainAxis=space-between visible=false {
         text #message "Opacity" width=hug height=hug fill=#09090B
         text #message-2 "100%" width=hug height=hug fill=#09090B
       }

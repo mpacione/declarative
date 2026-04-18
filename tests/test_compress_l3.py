@@ -428,70 +428,243 @@ class TestSelfOverrideCorpusCoverage:
     """Sanity-check that the new `:self` handlers actually fire on the
     Dank corpus (i.e. we're not just testing dead code)."""
 
-    def test_self_effects_emits_shadow_somewhere(
+    def test_self_effects_surfaces_diagnostic_from_fetch(
         self, db_conn: sqlite3.Connection,
     ) -> None:
-        """The corpus has 391 `:self:effects` rows; at least one screen
-        must emit a `shadow=` PropAssign via the override path when its
-        CompRef instances have visible drop-shadow overrides."""
-        from dd.compress_l3 import compress_to_l3
-        from dd.markup_l3 import emit_l3
+        """All 391 `:self:effects` rows in the Dank corpus consist of
+        DROP_SHADOW entries with `visible=false` (Figma's idiom for
+        "turn off the master's shadow"). `_effects_to_shadow` skips
+        those, so if the override handler doesn't surface a diagnostic,
+        the compressor silently drops the override — indistinguishable
+        at round-trip from "inherit the master's shadow". Assert the
+        `$ext.shadow_all_hidden=true` diagnostic fires via the direct
+        `_fetch_self_overrides` return, not via substring search on
+        emitted markup (which is polluted by spec-derived `shadow=`
+        PropAssigns from `_visual_props`)."""
+        from dd.compress_l3 import _fetch_self_overrides
         from dd.ir import generate_ir
 
-        # Find screens with :self:effects overrides.
-        rows = db_conn.execute(
+        row = db_conn.execute(
             "SELECT DISTINCT n.screen_id FROM instance_overrides io "
             "JOIN nodes n ON n.id = io.node_id "
-            "WHERE io.property_name = ':self:effects' "
-            "LIMIT 20"
-        ).fetchall()
-        screens_with_effects = [r[0] for r in rows]
-
-        any_shadow = False
-        for sid in screens_with_effects:
-            spec = generate_ir(
-                db_conn, sid, semantic=True, filter_chrome=False,
-            )["spec"]
-            doc = compress_to_l3(spec, db_conn, screen_id=sid)
-            emitted = emit_l3(doc)
-            if "shadow=" in emitted:
-                any_shadow = True
+            "WHERE io.property_name = ':self:effects' LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        spec = generate_ir(
+            db_conn, row[0], semantic=True, filter_chrome=False,
+        )["spec"]
+        node_id_map = spec.get("_node_id_map") or {}
+        props_by_eid, _ = _fetch_self_overrides(
+            db_conn, node_id_map, list(node_id_map.keys()),
+        )
+        found = False
+        for plist in props_by_eid.values():
+            for p in plist:
+                if p.key == "$ext.shadow_all_hidden":
+                    assert p.value.py is True
+                    found = True
+                    break
+            if found:
                 break
-        assert any_shadow, (
-            "expected at least one corpus screen with :self:effects to "
-            "emit a `shadow=` PropAssign"
+        assert found, (
+            f"_fetch_self_overrides did not emit "
+            f"$ext.shadow_all_hidden=true for any eid on screen "
+            f"{row[0]} (known all-hidden EFFECTS overrides)"
         )
 
-    def test_self_padding_emits_propgroup_somewhere(
+    def test_self_padding_returns_propgroup_from_fetch(
         self, db_conn: sqlite3.Connection,
     ) -> None:
-        """1,312 `:self:paddingLeft` rows in corpus; at least one must
-        produce a `padding={left=N}` PropGroup from the override path."""
-        from dd.compress_l3 import compress_to_l3
-        from dd.markup_l3 import emit_l3
+        """Directly assert `_fetch_self_overrides` (the override path
+        under test) returns a `padding=PropGroup(...)` for at least one
+        real corpus eid. `_spatial_props` also emits `padding={...}`
+        from spec-layout data, so a corpus-wide substring search on
+        emitted markup is a false-positive-prone signal — we probe the
+        internal return dict instead so a regression that silently
+        drops the override branch would fail the test."""
+        from dd.compress_l3 import _fetch_self_overrides
+        from dd.markup_l3 import PropGroup
         from dd.ir import generate_ir
 
-        rows = db_conn.execute(
+        # Pick a screen with :self:paddingLeft overrides.
+        row = db_conn.execute(
             "SELECT DISTINCT n.screen_id FROM instance_overrides io "
             "JOIN nodes n ON n.id = io.node_id "
-            "WHERE io.property_name = ':self:paddingLeft' "
-            "LIMIT 10"
-        ).fetchall()
-        screens = [r[0] for r in rows]
+            "WHERE io.property_name = ':self:paddingLeft' LIMIT 1"
+        ).fetchone()
+        assert row is not None, (
+            ":self:paddingLeft corpus rows vanished unexpectedly"
+        )
+        spec = generate_ir(
+            db_conn, row[0], semantic=True, filter_chrome=False,
+        )["spec"]
+        node_id_map = spec.get("_node_id_map") or {}
+        props_by_eid, _ = _fetch_self_overrides(
+            db_conn, node_id_map, list(node_id_map.keys()),
+        )
+        # At least one eid on this screen must have a `padding=`
+        # PropAssign whose value is a PropGroup (the coalesced form).
+        found = False
+        for plist in props_by_eid.values():
+            for p in plist:
+                if p.key == "padding" and isinstance(p.value, PropGroup):
+                    found = True
+                    break
+            if found:
+                break
+        assert found, (
+            f"_fetch_self_overrides should return a padding=PropGroup "
+            f"for at least one eid on screen {row[0]}; got "
+            f"{props_by_eid}"
+        )
 
-        any_padding = False
-        for sid in screens:
+
+class TestOverrideMergeSemantics:
+    """Spec §2.7.2 — override IS the authoritative value. For scalar
+    properties: full replace. For side/corner-addressable PropGroups
+    (padding, radius): per-entry patch so a partial override preserves
+    the spec-derived entries it doesn't touch."""
+
+    def test_padding_override_patches_left_preserves_top_right_bottom(
+        self,
+    ) -> None:
+        """A `:self:paddingLeft` override on an instance whose spec-
+        derived layout already emits a full 4-side padding must yield
+        the spec's `top`/`right`/`bottom` entries + the override's
+        `left`. Wholesale replace would drop 3 of 4 sides."""
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign, PropGroup
+
+        def n(raw: str) -> Literal_:
+            return Literal_(lit_kind="number", raw=raw, py=int(raw))
+
+        spec_padding = PropAssign(
+            key="padding",
+            value=PropGroup(entries=(
+                PropAssign(key="top", value=n("16")),
+                PropAssign(key="right", value=n("16")),
+                PropAssign(key="bottom", value=n("16")),
+                PropAssign(key="left", value=n("16")),
+            )),
+        )
+        override_padding = PropAssign(
+            key="padding",
+            value=PropGroup(entries=(
+                PropAssign(key="left", value=n("24")),
+            )),
+        )
+        merged = _merge_override_prop([spec_padding], override_padding)
+        assert len(merged) == 1
+        assert merged[0].key == "padding"
+        entries = merged[0].value.entries
+        keys = [e.key for e in entries]
+        # Canonical §7.6 order preserved.
+        assert keys == ["top", "right", "bottom", "left"]
+        assert entries[0].value.py == 16          # top from spec
+        assert entries[1].value.py == 16          # right from spec
+        assert entries[2].value.py == 16          # bottom from spec
+        assert entries[3].value.py == 24          # left from override
+
+    def test_scalar_override_still_wholesale_replaces(self) -> None:
+        """Non-PropGroup overrides (e.g. `visible`, `opacity`, `fill`)
+        still fully replace the spec-derived value."""
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign
+
+        spec = PropAssign(
+            key="fill",
+            value=Literal_(lit_kind="hex-color", raw="#000000", py="#000000"),
+        )
+        override = PropAssign(
+            key="fill",
+            value=Literal_(lit_kind="hex-color", raw="#FF0000", py="#FF0000"),
+        )
+        merged = _merge_override_prop([spec], override)
+        assert len(merged) == 1
+        assert merged[0].value.raw == "#FF0000"
+
+    def test_override_without_existing_prop_appends(self) -> None:
+        from dd.compress_l3 import _merge_override_prop
+        from dd.markup_l3 import Literal_, PropAssign
+
+        override = PropAssign(
+            key="opacity",
+            value=Literal_(lit_kind="number", raw="0.5", py=0.5),
+        )
+        merged = _merge_override_prop([], override)
+        assert merged == [override]
+
+
+class TestMainAxisEnumNormalization:
+    """Grammar §7.4 — `mainAxis` values are
+    `start|end|center|space-between|space-around|space-evenly`.
+    Figma's raw enum is `MIN|CENTER|MAX|SPACE_BETWEEN|...`; the spec
+    IR lowercases these. The compressor must map both to the grammar's
+    canonical form before emission."""
+
+    def test_mainAxis_min_maps_to_start(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """No corpus screen should emit `mainAxis=min` — that's not in
+        the §7.4 legal set."""
+        from dd.compress_l3 import compress_to_l3
+        from dd.ir import generate_ir
+        from dd.markup_l3 import emit_l3
+
+        for sid in [181, 222, 237]:
             spec = generate_ir(
                 db_conn, sid, semantic=True, filter_chrome=False,
             )["spec"]
             doc = compress_to_l3(spec, db_conn, screen_id=sid)
-            emitted = emit_l3(doc)
-            if "padding={" in emitted:
-                any_padding = True
-                break
-        assert any_padding, (
-            "expected at least one corpus screen with :self:paddingLeft "
-            "to emit a `padding={...}` PropGroup"
+            out = emit_l3(doc)
+            assert "mainAxis=min" not in out
+            assert "mainAxis=max" not in out
+            assert "mainAxis=space_between" not in out  # underscore variant
+
+    def test_primary_align_self_override_emits_grammar_enum(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """`:self:primaryAxisAlignItems` override rows must normalize
+        through `_PRIMARY_AXIS_MAP` to a §7.4 legal keyword."""
+        from dd.compress_l3 import _fetch_self_overrides
+        from dd.ir import generate_ir
+        from dd.markup_l3 import Literal_
+
+        # Find a screen with PRIMARY_ALIGN overrides.
+        row = db_conn.execute(
+            "SELECT DISTINCT n.screen_id FROM instance_overrides io "
+            "JOIN nodes n ON n.id = io.node_id "
+            "WHERE io.property_name = ':self:primaryAxisAlignItems' "
+            "LIMIT 1"
+        ).fetchone()
+        if row is None:
+            pytest.skip("no :self:primaryAxisAlignItems rows in corpus")
+
+        spec = generate_ir(
+            db_conn, row[0], semantic=True, filter_chrome=False,
+        )["spec"]
+        node_id_map = spec.get("_node_id_map") or {}
+        props_by_eid, _ = _fetch_self_overrides(
+            db_conn, node_id_map, list(node_id_map.keys()),
+        )
+        legal_values = {
+            "start", "end", "center",
+            "space-between", "space-around", "space-evenly",
+        }
+        found_mainaxis = False
+        for plist in props_by_eid.values():
+            for p in plist:
+                if p.key != "mainAxis":
+                    continue
+                found_mainaxis = True
+                assert isinstance(p.value, Literal_)
+                assert p.value.py in legal_values, (
+                    f"mainAxis override emitted non-grammar value "
+                    f"{p.value.py!r} (legal: {legal_values})"
+                )
+        assert found_mainaxis, (
+            "_fetch_self_overrides did not produce a mainAxis "
+            "PropAssign despite :self:primaryAxisAlignItems rows"
         )
 
 

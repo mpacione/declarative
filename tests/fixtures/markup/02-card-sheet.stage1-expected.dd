@@ -1,8 +1,8 @@
 screen #iphone-13-pro-max-87 width=428 height=926 fill=#F6F6F6 (extracted src=222) {
   container #frame-359 x=17 y=231 width=hug height=hug layout=vertical crossAxis=center {
-    container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space_between crossAxis=center {
+    container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space-between crossAxis=center {
       text #field-title "Meme-00001" width=hug height=hug fill=#000000
-      container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=max crossAxis=center {
+      container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=end crossAxis=center {
         -> icon/more #icon-more width=20 height=20 opacity=0.2
         text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000
       }
@@ -46,29 +46,29 @@ screen #iphone-13-pro-max-87 width=428 height=926 fill=#F6F6F6 (extracted src=22
     }
     container #frame-397 width=380 height=hug layout=horizontal gap=12 {
       text #message "Presets" width=380 height=17 fill=#09090B
-      frame #frame-290 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+      frame #frame-290 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space-between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space-between crossAxis=center {
           -> icon/stroke-1 #icon-stroke-1 width=30 height=30
         }
         text #message "Tiny" width=fill height=hug fill=#09090B
         -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
       }
-      frame #frame-291 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+      frame #frame-291 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space-between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space-between crossAxis=center {
           -> icon/stroke-2 #icon-stroke-2 width=30 height=30
         }
         text #message "Small" width=fill height=hug fill=#09090B
         -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
       }
-      frame #frame-292 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+      frame #frame-292 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space-between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space-between crossAxis=center {
           -> icon/stroke-3 #icon-stroke-3 width=30 height=30
         }
         text #message "Medium" width=fill height=hug fill=#09090B
         -> icon/checkbox-empty #icon-checkbox-empty width=20 height=20 visible=false
       }
-      frame #frame-293 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space_between crossAxis=center fill=#000000 radius=16 {
-        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space_between crossAxis=center {
+      frame #frame-293 width=86 height=86 layout=vertical gap=14 padding={top=14 right=10 bottom=14 left=10} mainAxis=space-between crossAxis=center fill=#000000 radius=16 {
+        container #frame-399 width=fill height=fill layout=vertical gap=10 mainAxis=space-between crossAxis=center {
           -> icon/stroke-4 #icon-stroke-4 width=30 height=30
         }
         text #message "Large" width=fill height=hug fill=#09090B

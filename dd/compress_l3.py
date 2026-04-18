@@ -313,21 +313,27 @@ def _spatial_props(
                 key="padding", value=PropGroup(entries=tuple(entries)),
             ))
 
-    # Alignment
-    main_align = layout.get("mainAxisAlignment")
-    cross_align = layout.get("crossAxisAlignment")
-    if (
-        main_align == "center" and cross_align == "center"
-    ):
+    # Alignment — normalize Figma/IR enum values to grammar §7.4's
+    # canonical set before emission (e.g. `min` → `start`).
+    main_raw = layout.get("mainAxisAlignment")
+    cross_raw = layout.get("crossAxisAlignment")
+    main_norm: Optional[str] = None
+    cross_norm: Optional[str] = None
+    if isinstance(main_raw, str):
+        main_norm = _MAIN_AXIS_SPEC_TO_GRAMMAR.get(main_raw)
+    if isinstance(cross_raw, str):
+        cross_norm = _CROSS_AXIS_SPEC_TO_GRAMMAR.get(cross_raw)
+
+    if main_norm == "center" and cross_norm == "center":
         props.append(PropAssign(key="align", value=_enum_literal("center")))
     else:
-        if isinstance(main_align, str):
+        if main_norm is not None:
             props.append(PropAssign(
-                key="mainAxis", value=_enum_literal(main_align),
+                key="mainAxis", value=_enum_literal(main_norm),
             ))
-        if isinstance(cross_align, str):
+        if cross_norm is not None:
             props.append(PropAssign(
-                key="crossAxis", value=_enum_literal(cross_align),
+                key="crossAxis", value=_enum_literal(cross_norm),
             ))
 
     return props
@@ -558,6 +564,80 @@ def _auto_eid(type_kw: str, sibling_index: int) -> str:
     return f"{type_kw}-{sibling_index}"
 
 
+_PROPGROUP_MERGE_KEYS: frozenset[str] = frozenset({
+    # Property keys whose `PropGroup` values compose per-entry rather
+    # than wholesale-replacing the existing group. Padding and radius
+    # are side/corner addressable; a `:self:paddingLeft` override must
+    # patch the `left` entry while preserving the spec's `top`, `right`,
+    # and `bottom` entries (§2.7.2 — override IS the authoritative
+    # value, but per the named side, not the entire group).
+    "padding",
+    "radius",
+})
+
+
+def _merge_override_prop(
+    props: list[PropAssign], override_prop: PropAssign,
+) -> list[PropAssign]:
+    """Merge a single `:self` override PropAssign into the CompRef's
+    existing property list.
+
+    Default behavior: override replaces any existing PropAssign with
+    the same key (§2.7.2 step 1).
+
+    Special case for `_PROPGROUP_MERGE_KEYS`: when BOTH existing and
+    override values are PropGroups, merge their entries by inner key.
+    `:self:paddingLeft` therefore patches the `left` side only, leaving
+    `top` / `right` / `bottom` spec-derived entries intact.
+    """
+    # Find any existing prop with the same key (compressor only emits
+    # one per key, so at most one match).
+    existing_idx: Optional[int] = None
+    for idx, p in enumerate(props):
+        if p.key == override_prop.key:
+            existing_idx = idx
+            break
+
+    if existing_idx is None:
+        return props + [override_prop]
+
+    existing = props[existing_idx]
+    if (
+        override_prop.key in _PROPGROUP_MERGE_KEYS
+        and isinstance(existing.value, PropGroup)
+        and isinstance(override_prop.value, PropGroup)
+    ):
+        # Merge entries by inner key — override wins on collision, spec
+        # entries persist for any inner key the override doesn't touch.
+        merged_entries: dict[str, PropAssign] = {
+            e.key: e for e in existing.value.entries
+        }
+        for e in override_prop.value.entries:
+            merged_entries[e.key] = e
+        # Preserve canonical side/corner order for both radius and
+        # padding — spec §7.6 (padding: top/right/bottom/left;
+        # radius: top-left/top-right/bottom-right/bottom-left).
+        order = {
+            "padding": ("top", "right", "bottom", "left"),
+            "radius": ("top-left", "top-right", "bottom-right", "bottom-left"),
+        }.get(override_prop.key, ())
+        ordered_entries: list[PropAssign] = []
+        for k in order:
+            if k in merged_entries:
+                ordered_entries.append(merged_entries[k])
+        for k, v in merged_entries.items():
+            if k not in order:
+                ordered_entries.append(v)
+        merged_prop = PropAssign(
+            key=override_prop.key,
+            value=PropGroup(entries=tuple(ordered_entries)),
+        )
+        return props[:existing_idx] + [merged_prop] + props[existing_idx + 1:]
+
+    # Default: replace.
+    return props[:existing_idx] + [override_prop] + props[existing_idx + 1:]
+
+
 def _compress_element(
     eid_key: str,
     spec: dict,
@@ -684,15 +764,8 @@ def _compress_element(
     # Only runs for Mode-1-eligible nodes that successfully resolved to
     # a CompRef; inline-frame fallbacks skip this step.
     if head_kind == "comp-ref" and eid_key in self_overrides:
-        # Merge override props, de-duplicating by key (override wins
-        # over the compressor's default derivation — per §2.7.2 the
-        # override IS the authoritative value).
-        existing_keys = {p.key for p in props}
         for override_prop in self_overrides[eid_key]:
-            if override_prop.key in existing_keys:
-                # Replace the existing prop with the override version
-                props = [p for p in props if p.key != override_prop.key]
-            props.append(override_prop)
+            props = _merge_override_prop(props, override_prop)
 
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
@@ -921,12 +994,48 @@ _LAYOUT_SIZING_MAP = {
 
 
 _PRIMARY_AXIS_MAP = {
-    # `primaryAxisAlignItems` values from the Figma API. Spec §4.2
-    # maps these onto the `mainAxis=<enum>` PropAssign.
-    "MIN": "min",
+    # `primaryAxisAlignItems` values from the Figma API map onto
+    # grammar §7.4's `mainAxis=<enum>` legal set:
+    # `start | end | center | space-between | space-around | space-evenly`.
+    # Figma's MIN/MAX correspond to start/end respectively — NOT the
+    # literal keywords `min`/`max` (which aren't in §7.4).
+    "MIN": "start",
     "CENTER": "center",
-    "MAX": "max",
+    "MAX": "end",
     "SPACE_BETWEEN": "space-between",
+    "SPACE_AROUND": "space-around",
+    "SPACE_EVENLY": "space-evenly",
+}
+
+
+# Spec-level alignment values flow through `dd.ir.generate_ir` which
+# lower-cases Figma's enum (e.g. `MIN` → `min`, `SPACE_BETWEEN` →
+# `space_between`). `_spatial_props` normalizes those to §7.4's
+# canonical set at emission time so the output is decoder-legal.
+_MAIN_AXIS_SPEC_TO_GRAMMAR = {
+    "min": "start",
+    "center": "center",
+    "max": "end",
+    "space_between": "space-between",
+    "space-between": "space-between",
+    "space_around": "space-around",
+    "space-around": "space-around",
+    "space_evenly": "space-evenly",
+    "space-evenly": "space-evenly",
+    # Pre-normalized Figma values also accepted:
+    "start": "start",
+    "end": "end",
+}
+
+_CROSS_AXIS_SPEC_TO_GRAMMAR = {
+    "min": "start",
+    "center": "center",
+    "max": "end",
+    "stretch": "stretch",
+    "baseline": "baseline",
+    # Pre-normalized values:
+    "start": "start",
+    "end": "end",
 }
 
 
@@ -1033,6 +1142,12 @@ def _fetch_self_overrides(
         # EFFECTS — JSON array; emit first DROP_SHADOW as
         # `shadow=shadow(...)`. Truncation (2+ shadows) surfaces as the
         # same `$ext.shadow_extra_count` diagnostic used in `_visual_props`.
+        # An override that consists entirely of hidden drops (Figma's
+        # way of saying "turn off the master's shadow") emits
+        # `$ext.shadow_all_hidden=true` — the grammar lacks a
+        # `shadow=none` form, so without this diagnostic the override
+        # is indistinguishable from "inherit master's shadow" at
+        # round-trip (60% of corpus :self:effects rows are all-hidden).
         if ptype == "EFFECTS" and pname == ":self:effects":
             try:
                 effects = json.loads(pval)
@@ -1042,6 +1157,22 @@ def _fetch_self_overrides(
                 sv = _effects_to_shadow(effects)
                 if sv is not None:
                     props.append(PropAssign(key="shadow", value=sv))
+                else:
+                    # No visible shadow came back; if the array had any
+                    # shadow-kind entries AT ALL they must be hidden —
+                    # surface that as a diagnostic.
+                    has_shadow_kind = any(
+                        isinstance(e, dict)
+                        and e.get("type") in ("drop-shadow", "DROP_SHADOW")
+                        for e in effects
+                    )
+                    if has_shadow_kind:
+                        props.append(PropAssign(
+                            key="$ext.shadow_all_hidden",
+                            value=Literal_(
+                                lit_kind="bool", raw="true", py=True,
+                            ),
+                        ))
                 extra = _count_extra_shadows(effects)
                 if extra > 0:
                     props.append(PropAssign(
