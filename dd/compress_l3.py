@@ -460,8 +460,9 @@ def _normalize_raw_paint(raw: dict) -> Optional[dict]:
     Spec form: `{type: "solid", color: "#RRGGBB[AA]"}`
 
     Hidden (`visible == false`) paints return None so callers skip them.
-    Opacity is folded into the alpha channel for SOLID; for gradients
-    each stop already carries alpha in its color dict.
+    Paint-level `opacity` multiplies into the color alpha for SOLID
+    AND into every stop's alpha for gradients (Figma stores paint-level
+    opacity multiplicatively on top of per-stop alpha, not instead of).
     """
     if not isinstance(raw, dict):
         return None
@@ -469,16 +470,18 @@ def _normalize_raw_paint(raw: dict) -> Optional[dict]:
         return None
     typ = raw.get("type", "")
     typ_lower = typ.lower() if isinstance(typ, str) else ""
+    op = raw.get("opacity")
+    op_float: Optional[float] = None
+    if isinstance(op, (int, float)) and op < 1.0:
+        op_float = float(op)
     if typ == "SOLID" or typ_lower == "solid":
         color = raw.get("color")
         if not isinstance(color, dict):
             return None
-        # Fold paint-level opacity into alpha if sub-unit.
-        op = raw.get("opacity")
         merged = dict(color)
-        if isinstance(op, (int, float)) and op < 1.0:
+        if op_float is not None:
             base_a = float(color.get("a", 1.0))
-            merged["a"] = base_a * op
+            merged["a"] = base_a * op_float
         return {"type": "solid", "color": _color_dict_to_hex(merged)}
     if typ.startswith("GRADIENT_") or typ_lower.startswith("gradient-"):
         stops_raw = raw.get("gradientStops") or raw.get("stops") or []
@@ -488,8 +491,14 @@ def _normalize_raw_paint(raw: dict) -> Optional[dict]:
                 continue
             c = s.get("color")
             if isinstance(c, dict):
-                stops.append({"color": _color_dict_to_hex(c)})
+                merged = dict(c)
+                if op_float is not None:
+                    base_a = float(c.get("a", 1.0))
+                    merged["a"] = base_a * op_float
+                stops.append({"color": _color_dict_to_hex(merged)})
             elif isinstance(c, str):
+                # Pre-hex-ified stop — can't apply paint opacity
+                # without parsing the hex back out; pass through.
                 stops.append({"color": c})
         # Grammar §4.3 only has `gradient-linear(...)` — fold all linear
         # gradient types to that form; radial/angular/diamond fall back
@@ -1354,10 +1363,16 @@ def _collapse_synthetic_screen_wrapper(spec: dict) -> dict:
     """
     elements = spec.get("elements")
     root_key = spec.get("root")
-    if not isinstance(elements, dict) or not root_key:
+    if not isinstance(elements, dict) or not isinstance(root_key, str):
+        return spec
+    # Only trigger on the synthetic-wrapper pattern `generate_ir`
+    # produces (`root=="screen-1"` and root.type=="screen"). Guards
+    # against collapsing user-authored hierarchies that coincidentally
+    # have one child with a matching name.
+    if not root_key.startswith("screen-"):
         return spec
     root = elements.get(root_key)
-    if not isinstance(root, dict):
+    if not isinstance(root, dict) or root.get("type") != "screen":
         return spec
     children = root.get("children") or []
     if len(children) != 1:

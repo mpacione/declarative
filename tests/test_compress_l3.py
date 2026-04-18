@@ -186,6 +186,67 @@ def test_eid_derived_from_original_name(db_conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_collapse_requires_synthetic_screen_key_pattern(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The collapse heuristic requires the root key to start with
+    `screen-` (the synthetic-wrapper pattern `dd.ir.generate_ir`
+    produces). A user-authored root with a single same-named child
+    (e.g. `frame-1 → frame-1-inner` both named `"Card"`) must NOT
+    collapse — that'd silently flatten real hierarchies."""
+    from dd.compress_l3 import _collapse_synthetic_screen_wrapper
+
+    # Hand-authored spec that looks like the pattern but uses a
+    # non-synthetic root key.
+    spec = {
+        "root": "card-root",
+        "elements": {
+            "card-root": {
+                "type": "screen",
+                "_original_name": "Card",
+                "children": ["card-inner"],
+            },
+            "card-inner": {
+                "type": "frame",
+                "_original_name": "Card",
+                "visual": {"fills": [{"type": "solid", "color": "#000"}]},
+                "children": [],
+            },
+        },
+        "_node_id_map": {"card-root": 1, "card-inner": 2},
+    }
+    out = _collapse_synthetic_screen_wrapper(spec)
+    # Spec passes through unchanged — no collapse.
+    assert out["elements"]["card-root"]["children"] == ["card-inner"]
+    assert "visual" not in out["elements"]["card-root"]
+
+
+def test_collapse_requires_root_type_screen(self=None) -> None:
+    """Even with a `screen-N` key, the root's `type` must be `"screen"`
+    for the collapse to fire. A frame-typed root that happens to be
+    keyed `"screen-1"` is not a synthetic wrapper."""
+    from dd.compress_l3 import _collapse_synthetic_screen_wrapper
+
+    spec = {
+        "root": "screen-1",
+        "elements": {
+            "screen-1": {
+                "type": "frame",         # NOT "screen"
+                "_original_name": "X",
+                "children": ["frame-1"],
+            },
+            "frame-1": {
+                "type": "frame",
+                "_original_name": "X",
+                "children": [],
+            },
+        },
+    }
+    out = _collapse_synthetic_screen_wrapper(spec)
+    # No collapse because root.type != "screen".
+    assert out["elements"]["screen-1"]["children"] == ["frame-1"]
+
+
 def test_synthetic_screen_wrapper_collapsed(
     db_conn: sqlite3.Connection,
 ) -> None:
@@ -390,6 +451,26 @@ class TestSelfOverrideRawPaintNormalization:
             "color": {"r": 1.0, "g": 0, "b": 0},
         }
         assert _normalize_raw_paint(raw) is None
+
+    def test_gradient_opacity_folds_into_each_stop(self) -> None:
+        """Figma stores paint-level `opacity` multiplicatively on top
+        of each stop's per-color alpha — must fold both into the
+        hex-alpha byte, not just ignore paint opacity on gradients."""
+        from dd.compress_l3 import _normalize_raw_paint
+        raw = {
+            "type": "GRADIENT_LINEAR", "visible": True, "opacity": 0.5,
+            "gradientStops": [
+                {"color": {"r": 1.0, "g": 0, "b": 0, "a": 1.0}, "position": 0},
+                {"color": {"r": 0, "g": 0, "b": 1.0, "a": 0.8}, "position": 1},
+            ],
+        }
+        out = _normalize_raw_paint(raw)
+        assert out is not None
+        assert out["type"] == "gradient-linear"
+        # 0.5 paint opacity × 1.0 stop alpha → 0x80
+        # 0.5 paint opacity × 0.8 stop alpha = 0.4 → 0x66
+        assert out["stops"][0]["color"] == "#FF000080"
+        assert out["stops"][1]["color"] == "#0000FF66"
 
     def test_gradient_linear_normalized(self) -> None:
         from dd.compress_l3 import _normalize_raw_paint
