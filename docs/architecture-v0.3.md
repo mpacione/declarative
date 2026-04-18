@@ -94,9 +94,31 @@ Every layer of the pipeline speaks the same language. Constrained decoding uses 
 
 ---
 
+## 1.5. The canonical-IR question — resolved conservative
+
+Raised 2026-04-18 after reviewer 3 flagged dual-representation risk: dict IR (round-trip path) vs dd markup (v0.3 LLM path). Two positions were considered:
+
+- **Aggressive (unify):** dd markup becomes the canonical in-memory IR. Rewrites extract + renderers + composition providers to operate on the markup AST.
+- **Conservative (bridge):** dd markup is a lossless serde over the dict IR. Dict IR remains canonical on the render path; markup is used at LLM boundaries.
+
+**Decision: conservative.** Evidence: a throwaway serde (`dd/markup.py`) round-trips 204/204 app_screens at dict level (zero errors, 7.5s) AND produces byte-identical Figma scripts post-round-trip (204/204, 15.6s). Script-identity implies pixel parity by construction. Aggressive is a multi-week refactor for a maintenance optimization, not a feature enabler; conservative ships with zero renderer changes.
+
+**Invariant this introduces:** any property added to the dict IR must also have a serde path through dd markup. Tests must verify round-trip parity remains 204/204 on every commit that touches the IR schema. Revisit aggressive only if an MVP feature requires it (none predicted).
+
+**Full decision record:** `docs/decisions/v0.3-canonical-ir.md`.
+
+**Consequences for downstream priorities:**
+- **1A (underscore fields)** → resolved as bridge; no grammar-first-class treatment needed.
+- **1B (grammar modes)** → unchanged.
+- **1C (RenderReport schema)** → unchanged.
+- **Priority 3 (provider audit)** → scope shrunk; providers keep operating on dict IR.
+- **Priority 4 (parity gating)** → unchanged; still mandatory.
+
+---
+
 ## 2. The markup language — overview
 
-Syntactically KDL-based (KDL v2 spec, finalized 2024). Rationale in the research record §1 and §Thread 1 — the shortest defense: LLM-friendly, typed annotations in the grammar natively, built-in `/-` for deletes, has a schema language, and parsers exist.
+The dialect is called **dd markup** (file extension `.dd`). Syntactically it uses KDL v2 (finalized 2024) as the lexical and block-structure substrate, plus the extensions documented below (§2.1–2.6). Rationale for the KDL substrate in the research record §1 and §Thread 1 — the shortest defense: LLM-friendly, typed annotations in the grammar natively, built-in `/-` for deletes, has a schema language, and parsers exist. We do NOT call our dialect "KDL" in prose or spec — it is a dd-markup dialect atop KDL v2. Naming choice recorded 2026-04-18 after collision audit (avoided: DDL/SQL, DML/SQL, UIML, XAML, IDL, SDL-GraphQL).
 
 ### 2.1 Value grammar
 
@@ -552,8 +574,10 @@ These come from v0.1.5/v0.2 and earlier ADRs. Any change that breaks one of thes
 4. **Null-safe Mode 1** (ADR-002) — every `createInstance` has a missing-component placeholder fallback.
 5. **Structured error channel** (ADR-006) — failures never silently swallow; always emit KIND_* diagnostics.
 6. **Unified verification channel** (ADR-007) — per-node granularity for all verifier signals.
-7. **Token-bound fidelity** — IR never holds raw values; synthetic tokens fill gaps.
-8. **Leaf-parent gate** (Fix #1) — TEXT/RECTANGLE/VECTOR/LINE nodes cannot have appendChild called on them.
+7. **Token-bound fidelity (synthesis regime).** Token refs are the canonical form for clusterable-axis values in **synthesis output** and LLM-facing IR. Extract-produced IR may hold raw values on any axis; clustering promotes them to refs where a binding exists. Renderers must accept either form and resolve via `TokenCascade` as needed. Resolved 2026-04-18 per `docs/decisions/v0.3-grammar-modes.md`.
+7a. **One grammar, three validation modes.** The dd-markup grammar is one syntax. Validation operates in three modes: **Extract** (raw permitted), **Synthesis** (token-only on clusterable axes), **Render** (backend-capability-gated). A document is valid under one or more modes; documents from different sources must not be assumed valid under all modes.
+8. **Dict IR is canonical on the render path.** dd markup is a lossless serde over the dict IR, NOT the in-memory representation used by extract/compose/render. Every dict IR property must have a serde path through dd markup; tests must verify 204/204 round-trip on every IR schema change. Added 2026-04-18 per `docs/decisions/v0.3-canonical-ir.md`.
+9. **Leaf-parent gate** (Fix #1) — TEXT/RECTANGLE/VECTOR/LINE nodes cannot have appendChild called on them.
 
 ---
 

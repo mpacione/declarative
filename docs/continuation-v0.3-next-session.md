@@ -72,7 +72,7 @@ Key decisions across conversation:
 - Verifier-as-agent emitting edit grammar
 - Synthetic tokens for cold start (clustering at extract time + universal defaults for zero-corpus)
 - Multi-target catalog schema extension (per-target JSON sub-objects, Code Connect pattern)
-- KDL as the syntactic substrate (LLM-friendly + technical-reader human-readable)
+- KDL v2 as the syntactic substrate for dd markup (file extension `.dd`; LLM-friendly + technical-reader human-readable). Name decided 2026-04-18: call our dialect **dd markup**, not a rebranded acronym — avoids SQL-DDL / UIML / XAML / DML collisions and doesn't pretend to be vanilla KDL.
 
 ### 5-reviewer audit
 
@@ -126,9 +126,44 @@ Five sonnet reviewers dispatched in parallel (2026-04-18) with distinct angles:
 
 ## 4. Next-session priorities
 
+### Priority 0 — The dual-representation question (architectural foundation)
+
+**The finding (raised 2026-04-18 by user, after reviewer audit):** we currently have TWO representations of the same ground truth:
+
+- **Round-trip path:** DB → dict IR (registry-driven, Python dict with conventions) → render walk → Figma
+- **v0.3 proposal:** **dd markup** (file extension `.dd`; KDL v2 as lexical substrate; our dialect per `architecture-v0.3.md` §2) for LLM-facing generation/editing, bridged to the dict IR
+
+This is the M×N problem (from `project_ir_purpose.md`) re-emerging at a higher layer. Every capability added has to land in both places — grammar schema AND dict IR schema — or the bridge leaks. Two validators, two emission gates, two places to add a new property. Architecturally ugly and guarantees drift.
+
+**The honest question:** is dd markup the canonical IR going forward, or is it a projection of the dict IR with a bidirectional bridge?
+
+**Two positions:**
+
+1. **Aggressive (unify):** dd markup becomes the canonical in-memory and on-wire IR. Extract emits parsed-dd AST. Renderers walk parsed-dd AST. Composition providers emit dd fragments. The registry/capabilities table constrains the dd schema — no second schema. One source of truth. The 7-verb edit grammar, density-per-node, named definitions, synthetic tokens are ALL first-class IR features, not LLM conveniences.
+
+2. **Conservative (bridge):** dd markup is a serialization/edit format layered over the existing dict IR. Bridge round-trippably between them. Faster to ship; preserves existing 204/204 investment. Bakes in dual-representation debt that will erode as features split-brain.
+
+**The proof gate (applies either way):** before any MVP feature code or synthetic generation, we must demonstrate dd-markup round-trip parity on the existing 204 corpus. Serialize each screen's current IR as `.dd`, re-parse, render through the existing pipeline, verify `is_parity=True` per ADR-007. If we can't clear that bar on known-good screens, the grammar is incomplete — and we'd rather discover that now than when it blurs with generation-quality failures on synthetic screens.
+
+**The investigation task:**
+
+1. Design a minimal dd-markup serde for the current dict IR: walk each IR field and decide (a) first-class dd node / attribute, (b) dd-addressable via underscore-field (see 1A), or (c) structural artifact that doesn't need to round-trip through the markup at all.
+2. Implement as a throwaway-quality prototype in a branch: `dd/markup.py::serialize_ir`, `parse_dd`. Target: make it work on ONE screen end-to-end.
+3. Run against all 204. Count parity wins/losses. Categorize losses by cause.
+4. Write a decision record: which position (aggressive / conservative) does the data support? What's the cost of aggressive's refactor? What drift-pressure does conservative accept?
+5. Update `docs/architecture-v0.3.md` with the answer — and with a fundamental invariant: dd-markup completeness is measured against the 204 corpus, not against synthetic distributions.
+
+**Relationship to Priorities 1A/1B:** Priority 0 reframes both. If dd markup IS the IR (position 1), then underscore fields get first-class grammar representation (1A becomes "add these to the grammar"), and grammar modes collapse to a single schema with a separate clustering-validity validator (1B becomes "one schema, clustering as a separate check"). If dd markup is a bridge (position 2), 1A and 1B stand as originally framed.
+
+**Output:** `docs/architecture-v0.3.md` §1.5 (new) — "The canonical IR question" with position taken, supporting evidence, and the 204-corpus parity number. Plus a decision record at `docs/decisions/v0.3-canonical-ir.md`.
+
+**Timing:** this investigation MUST run before 1A/1B/1C because it determines how those questions are framed.
+
+---
+
 ### Priority 1 — Resolve the three architectural critiques (Reviewers 1–3)
 
-**Not accept as truth. Investigate. Decide.** Each critique has a concrete investigation task below.
+**Not accept as truth. Investigate. Decide.** Each critique has a concrete investigation task below. **Read in light of Priority 0's answer.**
 
 #### 1A. Underscore field representation
 
@@ -144,7 +179,7 @@ Five sonnet reviewers dispatched in parallel (2026-04-18) with distinct angles:
 
 **The investigation task:**
 1. For each field, read the code at the sites consuming it (Reviewer 3 cites specific line numbers in their report). Understand the contract.
-2. Decide per-field: grammar-first-class (add KDL syntax) / bridge-time reconstructed (document logic) / opaque pass-through (document contract).
+2. Decide per-field: grammar-first-class (add dd-markup syntax) / bridge-time reconstructed (document logic) / opaque pass-through (document contract).
 3. Specifically for `_corpus_source_node_id`: does invariant 7 ("IR never holds raw values") need an exception, or does provenance need a different representation (e.g., as a token path like `{provenance.corpus.node-440}`)?
 4. Document the decision per-field in architecture-v0.3.md §2 (markup grammar) with explicit grammar rules or explicit bridge logic.
 
@@ -178,11 +213,54 @@ Five sonnet reviewers dispatched in parallel (2026-04-18) with distinct angles:
 
 - Fix `_UNIVERSAL_MODE3_TOKENS` duplicate keys (`dd/compose.py` lines 444+446 and 445+447). Trivial fix; do during investigation.
 
-### Priority 3 — Only after Priority 1 + 2 — MVP Stage 1
+### Priority 3 — Provider obsolescence audit (what v0.3 unwires)
 
-After Priority 1 + 2 resolve, proceed with MVP per `docs/continuation-v0.3-mvp.md`, Day 1.
+**The finding (raised 2026-04-18 by user):** `dd/composition/providers/*` contains code built for v0.2 Mode 3 composition (universal, ingested, project_ckr, corpus_retrieval) plus cascade/protocol/registry. Some of this is load-bearing for v0.3's CRAG 3-mode cascade; some is obsoleted by the new design; some needs rewriting. Building v0.3 on top of v0.2 scaffolding without an audit guarantees that we'll be discovering obsolescence mid-MVP — exactly the context-switching that makes refactors fail.
 
-**Do NOT start MVP Stage 1 before Priority 1 is resolved on paper.** Running MVP against unresolved architectural questions is the failure mode Reviewer 2's analysis is predicting.
+**Code-graph baseline:** 4 files in `dd/composition/providers/` (32 functions), 10 files in `dd/composition/` (29 functions). `resolve()` is a hot symbol — it's the protocol method each provider implements.
+
+**The investigation task:**
+
+1. For each file in `dd/composition/` and `dd/composition/providers/`, tag with one of:
+   - **SURVIVES** — load-bearing for v0.3 as-is (probably `cascade.py`, `protocol.py`, `registry.py`, `universal.py`)
+   - **REWRITES** — conceptually right, implementation needs update for new grammar (likely `ingested.py`, `project_ckr.py`)
+   - **OBSOLETED** — v0.3 design absorbs or eliminates (likely `corpus_retrieval.py` — subsumed by the CRAG COMPOSITION mode? — needs investigation)
+   - **UNCLEAR** — can't tell without Priority 0 resolved
+2. Extend the audit to `dd/compose.py` itself — `_UNIVERSAL_MODE3_TOKENS`, `build_template_visuals`, splice logic — what survives, what moves, what dies?
+3. Check `dd/ir.py::generate_ir` — this is the extract-side IR constructor. Does v0.3 keep it, replace it with a dd-markup parser, or make it emit dd markup directly?
+4. Check `dd/renderers/figma.py` — 1,800 lines, NOT to be refactored per §6. Which of the renderer's IR consumption sites need to change for Priority 0 position 1 (dd-markup AST instead of dict)? Enumerate the access patterns without editing.
+
+**Output:** `docs/decisions/v0.3-provider-audit.md` with a table: file / role / status / notes / risk-if-wrong. Feeds directly into MVP day-by-day sequencing.
+
+**Depends on:** Priority 0 resolved. "Obsoleted" vs "rewrites" depends on whether dd markup is the IR or bridges to it.
+
+### Priority 4 — Parity-gated branching strategy
+
+**The finding (raised 2026-04-18 by user):** the 204/204 round-trip parity is our foundational invariant (ADR-007). Any v0.3 work that silently breaks parity is worse than v0.3 work that doesn't ship. We need an explicit branching + CI strategy that makes parity loss impossible to merge, not a "we'll check at the end" approach.
+
+**The investigation task:**
+
+1. Decide the branch topology for v0.3:
+   - Single long-lived `v0.3` branch from `main`? (rebase nightmare vs `main` changes)
+   - Series of short-lived feature branches each green against `main`? (harder to integrate later)
+   - A `v0.3-kdl-ir` branch with mandatory 204/204 green before any squash-merge? (probably the right answer)
+2. Decide the CI gate:
+   - Does `render_batch/sweep.py --port 9231` become a blocking pre-commit check? (slow; infeasible)
+   - Does it become a pre-push / pre-PR hook? (more feasible, adds Figma-side dependency)
+   - Does it become a nightly cron with hard-fail and rollback? (catches regressions, but lets them land)
+   - Combination: a sampled 10-screen fast path on every PR + full 204 nightly?
+3. Decide the rollback protocol: if a v0.3 commit silently drops parity to 203/204, what's the revert trigger? How do we avoid a week's work compounding on top of one broken screen?
+4. Document in `docs/continuation-v0.3-mvp.md` §Pre-requisites (new) before any Day 1 work.
+
+**Output:** a short branching + CI strategy doc as a §Pre-requisites addition to the MVP plan.
+
+**Cost:** ~1 day to set up; pays back every commit afterwards.
+
+### Priority 5 — Only after Priorities 0–4 resolved — MVP Stage 1
+
+After Priorities 0–4 resolve, proceed with MVP per `docs/continuation-v0.3-mvp.md`, Day 1 (potentially rewritten by Priority 0's answer).
+
+**Do NOT start MVP Stage 1 before Priorities 0–1 are resolved on paper.** Running MVP against unresolved architectural questions is the failure mode Reviewer 2's analysis is predicting. Priorities 3–4 can land in parallel once Priority 0 is settled.
 
 ---
 
@@ -196,25 +274,40 @@ After Priority 1 + 2 resolve, proceed with MVP per `docs/continuation-v0.3-mvp.m
 4. Verify state: `python3 -m pytest tests/ -q [excludes]` — expect 1,950+ passing.
 5. Verify parity: `python3 render_batch/sweep.py --port 9231` — expect 204/204.
 
-### Then: start Priority 1A (underscore fields)
+### Then: start Priority 0 (canonical-IR question)
 
-- `grep -n "_node_id_map" dd/` — find all sites
-- `grep -n "_mode1_eligible" dd/` — find all sites
-- For each field, write a short "contract" doc: what sets it, what reads it, what's the semantics. These become the basis for the representation decision.
+**This is the reframing question and comes before 1A/1B/1C.**
 
-### Success criterion for Priority 1 resolution
+- Read `memory/project_ir_purpose.md` — original M×N problem statement.
+- Read `docs/architecture-v0.3.md` §2 — current grammar spec.
+- Use `code-graph-mcp overview dd/` to map current IR consumption sites.
+- Pick ONE screen (suggest a mid-complexity one, not the simplest) as the dd-markup serde prototype target.
+- Draft `dd/markup.py` throwaway prototype — serialize + parse. Measure round-trip parity for that one screen.
+- If the one-screen test passes, scale to all 204. Deliver parity count + loss taxonomy.
+- Output `docs/decisions/v0.3-canonical-ir.md` with position + evidence.
 
-A single document updated at `docs/architecture-v0.3.md` §2 (or a new `§2.X — Underscore-field contracts`) that:
-- Declares, per field, the representation choice (grammar / bridge / opaque)
-- Shows the grammar syntax if grammar-first
-- Shows the bridge reconstruction logic if bridge-time
-- Shows the contract if opaque
+### Then: Priority 1A (underscore fields) — framed by Priority 0's answer
 
-Plus invariant 7 updated to reflect the grammar-mode decision precisely.
+- `code-graph-mcp grep "_node_id_map" dd/` — find all sites with AST context
+- Repeat for `_mode1_eligible`, `_corpus_source_node_id`, `_original_name`, `_composition`
+- For each field, write a short "contract" doc: what sets it, what reads it, what's the semantics.
+- The representation decision is informed by Priority 0: grammar-first is easy if dd markup IS the IR; bridge logic is needed if it's a bridge.
 
-Plus continuation-v0.3-mvp.md §Stage 5 with explicit RenderReport migration plan.
+### Success criterion for all investigation priorities
 
-**Once this document exists and has been reviewed, MVP Stage 1 can begin.**
+All these artifacts exist before any MVP Stage 1 code lands:
+
+1. `docs/decisions/v0.3-canonical-ir.md` — Priority 0 position + 204-corpus parity number
+2. `docs/architecture-v0.3.md` §1.5 — canonical-IR invariant stated
+3. `docs/architecture-v0.3.md` §2.X — underscore-field contracts (representation choices)
+4. `docs/architecture-v0.3.md` §2 invariant 7 — grammar-mode decision reworded
+5. `docs/continuation-v0.3-mvp.md` §Stage 5 — RenderReport migration plan
+6. `docs/decisions/v0.3-provider-audit.md` — file-by-file fate of `dd/composition/*`
+7. `docs/continuation-v0.3-mvp.md` §Pre-requisites — branching + CI strategy
+8. `dd/compose.py` — `_UNIVERSAL_MODE3_TOKENS` duplicate keys fixed
+9. 204/204 parity green at the start AND end of each investigation (every artifact lands without parity loss — even throwaway prototypes get reverted, not merged)
+
+**Once these documents exist and have been reviewed, MVP Stage 1 can begin.**
 
 ---
 

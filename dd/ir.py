@@ -1405,8 +1405,16 @@ def generate_ir(
     Returns dict with 'spec' (the CompositionSpec dict) and 'json' (serialized).
     """
     import json as json_mod
+    import os
     data = query_screen_for_ir(conn, screen_id)
     spec = build_composition_spec(data)
+
+    # Priority 0 probe — when DD_MARKUP_ROUNDTRIP=1, pass the spec through
+    # the dd-markup serde before returning. Used to verify end-to-end
+    # pixel parity via the render sweep. Default off; no behavior change.
+    if os.environ.get("DD_MARKUP_ROUNDTRIP") == "1":
+        from dd.markup import parse_dd, serialize_ir
+        spec = parse_dd(serialize_ir(spec))
 
     if semantic:
         node_id_map = spec.get("_node_id_map", {})
