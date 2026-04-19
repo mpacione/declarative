@@ -222,7 +222,7 @@ Prompt / sketch ───→│   L0 ─ L1 ─ L2 ─ L3  │──→ Flutter 
 Priorities after foundation:
 
 1. **Synthetic generation** — the headline capability, decomposed into the four classes in §2 (screens / components / variations / style transfers). Same pipeline parameterized differently. Corresponds to v0.3 Stages 4–5 work (retrieval-augmented starting-IR selection + verifier-as-agent), gated on foundation completion.
-2. **React + HTML/CSS renderer** — validates cross-platform IR claim with a real second backend. Independent of v0.3 in principle (can start against dict IR today); couples naturally with v0.3 Stage 6 (multi-target catalog schema).
+2. **React + HTML/CSS renderer** — validates cross-platform IR claim with a real second backend. Same pattern as the Figma renderer: walks the L3 markup AST directly; resolves token / component / asset references against the React flavor of the catalog. Couples naturally with v0.3 Stage 6 (multi-target catalog schema).
 3. **Additional backends** — SwiftUI, Flutter. Same pattern as React; different per-backend value transforms (see `docs/cross-platform-value-formats.md`).
 4. **Additional extractors** — W3C DTCG tokens JSON (single-level import), Sketch / Penpot (variants of Figma extractor), React / SwiftUI parsers (reverse of renderers). Triggered by concrete pull.
 

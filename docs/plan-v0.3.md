@@ -13,25 +13,44 @@ This doc exists so that any session — human or AI — can pick up where we are
 ### Branch state
 
 ```
-* v0.3-integration              ← current; investigation closed, probe code preserved
+* v0.3-integration              ← current; Option A complete, pivoting to Option B
   v0.3-dd-markup-probe          ← preserved (original Priority 0 probe source)
   v0.3-stage-a-crag-scaffold    ← preserved but NOT merged (premature CRAG A+B)
   v0.3-stage-c-synthesis        ← preserved but NOT merged (premature CRAG C)
   v0.3-stage-d-composition      ← preserved but NOT merged (premature CRAG D)
-  main                          ← 204/204 parity anchor
-
-tag: pre-revert/stages-a-d-2026-04-18 → snapshot of pre-revert HEAD
+  main                          ← 204/204 parity anchor (pre-markup state, tagged)
 ```
 
-319 tests green on `v0.3-integration`. Tier 2 script-parity 204/204. All ADR-001 through ADR-008 invariants preserved.
+**Rollback tags** (applied 2026-04-18):
+- `pre-markup-baseline` — main's HEAD; clean dict-IR 204/204 state (used for Anthropic interview share).
+- `markup-compressor-mvp` — `c0102d5` on v0.3-integration; compressor MVP green, no decompressor.
+- `option-a-complete` — v0.3-integration HEAD at the Option B pivot.
+- `pre-revert/stages-a-d-2026-04-18` — pre-revert snapshot of CRAG A–D work (investigation-round archaeology).
+
+Forward strategy: Option B migration proceeds on `v0.3-integration`. No new branch. Tags are the rollback points. At M6 cutover, v0.3-integration merges to main with `--no-ff` preserving the full history; tags survive the merge unchanged.
+
+2,524 tests green on the full suite (target test surface: 163 across compressor + decompressor + markup + render pipeline + archetype). Tier 1 AST round-trip at 204/204. Tier 3 pixel parity currently 0/3 on the Option A markup-via-dict path (the finding that motivated the Option B pivot); Option B targets 204/204 at M4.
 
 ### What's on `v0.3-integration` today
 
-- Investigation closure (6 decision records in `docs/decisions/v0.3-*.md`)
-- Priority 0 markup serde probe (`dd/markup.py`, ~786 LOC) — **this is a mechanical dict-IR serializer, NOT the axis-polymorphic L3 grammar we need. It will be substantially rewritten against the spec produced by Plan A. Some infrastructure is reusable; the grammar surface is not.**
-- `_UNIVERSAL_MODE3_TOKENS` dup-key fix
-- Tier 2 script-parity pytest gate (`tests/test_script_parity.py`)
-- Markup hardening: typed errors with line/col, edge-case tests, Mode-E validator
+**Completed and staying:**
+- Grammar spec (`docs/spec-dd-markup-grammar.md`) and L0↔L3 spec (`docs/spec-l0-l3-relationship.md`) — Plan A output, closed all 20 open questions.
+- `dd/markup_l3.py` — full grammar parser + emitter + AST + semantic passes. Backbone of Option B.
+- `dd/compress_l3.py` — per-axis DB → L3 AST derivation. Renamed to `derive_markup` at M0, logic unchanged.
+- `dd/archetype_library/*.dd` — 12 archetypes migrated from JSON, parse + round-trip clean.
+- `tests/fixtures/markup/*.dd` — 3 reference-screen fixtures.
+- `tests/test_markup_l3.py`, `tests/test_compress_l3.py`, `tests/test_archetype_skeletons.py` — all retained.
+- Three rollback tags: `pre-markup-baseline`, `markup-compressor-mvp`, `option-a-complete`.
+
+**Built for Option A, deleted at M6 per `docs/DEPRECATION.md`:**
+- `dd/decompress_l3.py` — ~1100 LOC, 77 tests.
+- `tests/test_decompress_l3.py`, `tests/test_markup_render_pipeline.py`.
+- `$ext.nid` compile-time side-channel.
+- `--via-markup` CLI flag (becomes default after cutover).
+- `generate_ir` / `generate_figma_script` / `generate_screen` — replaced by `derive_markup` / `render_figma`.
+
+**Legacy state removed pre-session:**
+- `dd/markup.py` (original mechanical dict-IR serializer, pre-grammar-spec) was deleted during Plan A. Its Tier 2 harness pattern (`tests/test_script_parity.py`) survives as a reference for the migration-window A/B harness; itself deleted at M6.
 
 ### What lives in the archive
 
@@ -86,96 +105,62 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 
 ### Plan B — Execute Stage 1
 
-**Purpose:** implement the dd markup parser + emitter + L0↔L3 round-trip, matching the specs from Plan A.
-**Estimated duration:** 2–3 weeks after Plan A completes.
+**Purpose:** ship the dd markup grammar + parser + emitter + markup-native Figma renderer at 204/204 pixel parity.
+**Migration model (adopted 2026-04-18 late-late session):** Option B — markup is the canonical IR end-to-end; no dict-IR intermediate on the render path. See `docs/decisions/v0.3-option-b-cutover.md`.
 
-| Step | Deliverable | Depends on |
-|---|---|---|
-| 1.1 | Parser tests against S4 fixtures (red phase) | S2, S4 |
-| 1.2 | Parser implementation (green phase) | 1.1 |
-| 1.3 | Emitter tests: L0+L1+L2 → L3 fixtures (red phase) | S3, S4 |
-| 1.4 | Emitter (compression): per-axis derivation from dict IR | 1.3 |
-| 1.5 | Round-trip test: one fixture screen end-to-end (source Figma → extract → compress to markup → expand → render → pixel parity) | 1.2, 1.4 |
-| 1.6 | Round-trip test: 3 fixture screens | 1.5 |
-| 1.7 | Round-trip test: full 204 corpus | 1.6 |
+**Original Plan B stage numbering** (Stage 1.1–1.7, dict-IR Option A model) has been superseded by the milestone breakdown below. Commits that landed under the old numbering preserved in git history with their original labels — see §"What was built under Option A" below for the reconciliation.
 
-**Stage 1 success criteria:**
-- All 3 fixture screens round-trip at Tier 1 (dict equality), Tier 2 (script byte-parity), Tier 3 (pixel parity via Figma sweep)
-- Full 204 corpus round-trips at Tier 1 + Tier 2 (Tier 3 by sweep run)
-- Zero regressions in existing test suite
-- Existing `sweep.py` (without markup env var) continues to report 204/204 — markup path is purely additive
+#### Milestones (Option B)
 
-### Stage 1 progress as of 2026-04-18 evening
+| # | Milestone | Status | Evidence |
+|---|---|---|---|
+| M0 | Markup compressor (DB → L3 AST): parser + emitter + `compress_to_l3` green at 204/204 Tier 1 | ✅ | `tests/test_compress_l3.py::test_full_corpus_tier1_round_trip` |
+| M1 | Markup-native Figma renderer MVP — `render_figma(doc, conn) → JS` walker | 🔲 | Not started |
+| M2 | Script byte-parity with the pre-markup renderer on 3 reference fixtures (181 / 222 / 237) | 🔲 | Built + runs; A/B harness asserts identity |
+| M3 | Script byte-parity on full 204 corpus | 🔲 | `tests/test_script_parity_option_b.py` (new) |
+| M4 | Pixel-parity via Figma sweep on full 204 corpus | 🔲 | `render_batch/sweep.py` on markup-native path reports 204/204 `is_parity=True` |
+| M5 | Upstream consumer migration — `dd/compose.py`, providers, verifier consume `L3Document` | 🔲 | — |
+| M6 | Atomic cutover PR — switch production to markup-native path; delete Option A code per `DEPRECATION.md` | 🔲 | Single commit; 204/204 on markup path required to land |
+| M7+ | Stage 2 continuation (pattern expansion, `use`/import, cycle detection), Stage 3 (synthetic tokens), Stages 4–5 (synthetic generation) | 🔲 | Gated on M6 |
 
-| Step | Deliverable | Status |
-|---|---|---|
-| 1.1 | Parser tests against S4 fixtures (red) | ✅ |
-| 1.2 | Parser + emitter (green) | ✅ |
-| 1.3 | Emitter tests / golden snapshots | ✅ |
-| 1.4 | Compression — per-axis derivation from dict IR | ✅ **204/204 Tier 1** |
-| **1.5** | **Round-trip one fixture end-to-end** | ✅ **EFFECTIVELY COMPLETE** |
-| 1.5a | Expand — `ast_to_dict_ir` (decompressor) | ✅ |
-| 1.5b | Render step — decompressed IR → figma script (204 no-crash) | ✅ |
-| 1.5c | Tier 2 (script byte-parity) on 3 fixtures — ratios ≥ 0.977 | ✅ |
-| 1.5d | Tier 3 (pixel parity) on screen 181 via Figma sweep | ⏳ needs live bridge |
-| 1.6 | Round-trip 3 fixtures at Tier 1+2+3 | ⏳ Tier 1+2 ✅ / Tier 3 via sweep |
-| 1.7 | Full 204 corpus at Tier 2+3 | ⏳ Tier 1 ✅ / Tier 2 ratio-banded ✅ / Tier 3 via sweep |
+Commit prefix: `feat(option-b): Mk — <scope>` (e.g. `feat(option-b): M2 — render_figma byte-parity on screen 181`).
 
-**Stage 1.5c effectively complete** (commit `5a5bcd9`). The
-`$ext.nid` side-channel embeds DB node_ids on every element head
-so the decompressor-then-renderer pipeline produces a Figma script
-at ratio ≥ 0.95 against baseline on all 3 fixture screens.
+**Parity-protection during migration:** the Option A machinery (`dd/decompress_l3.py`, `ast_to_dict_ir`, `generate_figma_script`) stays operational in CI through M5. Both paths run per-commit; an A/B harness asserts byte-identical Figma script output on every screen. The M6 cutover PR is the one-shot deletion of Option A code.
 
-Measured ratios (decomp script / baseline):
-- screen 181: **0.981**
-- screen 222: **0.979**
-- screen 237: **0.977**
+**Rollback tags** (applied 2026-04-18):
+- `pre-markup-baseline` — `main` HEAD. Clean dict-IR 204/204 before markup work.
+- `markup-compressor-mvp` — `c0102d5`. Compressor MVP green; no decompressor yet.
+- `option-a-complete` — `v0.3-integration` HEAD at the Option B pivot. Archaeology of the full Option A elaboration.
 
-Corpus-wide Tier-2 gate (`test_render_pipeline_full_corpus_ratio_floor`)
-asserts every app_screen falls in `[0.85, 1.50]`. Passes on all 204
-screens — ready as a PR-gate regression test.
+#### Stage 1 success criteria (Option B)
 
-Residual ~2% divergence is cosmetic (element-key naming —
-`button-1` in baseline vs `instance-58` in round-trip because
-canonical-type classification isn't re-run on inflated nodes).
-Visual render should be identical since the render-critical
-fields (node_ids → visuals → fonts / vectorPaths / constraints)
-are now byte-identical.
+- All 3 fixture screens (181, 222, 237) pixel-parity through the markup-native path.
+- Full 204 corpus reports 204/204 `is_parity=True` on `render_batch/sweep.py` after M6 cutover.
+- AST-level round-trip `parse(emit(derive_markup(conn, sid))) == derive_markup(conn, sid)` holds on all 204 screens.
+- Stage 2 onwards built on markup-native infrastructure (no Option A dependencies).
 
-**Tier 3 (pixel parity) gate requires a live Figma bridge** —
-that's user-side work, not automatable in the test suite. Run:
+#### What was built under Option A (2026-04-18 session, before the late-late pivot)
 
-```
-python3 render_batch/sweep.py --port <bridge_port>
-```
+39 commits on `v0.3-integration` delivered the Option A elaboration:
+parser + emitter + compressor (all reusable for Option B), plus
+decompressor + render pipeline via dict-IR lowering (to be deleted at
+M6). The work demonstrated that the grammar captures the full
+information — Tier 1 AST round-trip holds at 204/204 — and surfaced
+the architectural cost that justified the Option B pivot.
 
-against a Figma instance with the walker extension connected.
-Compare the `is_parity` verdict across baseline-vs-markup paths.
+Tagged at `option-a-complete`. The commits stay in history.
 
-**Stage 1.5a internal decomposition** (commits labelled "1.5/1.6/1.7" at
-commit time, reconciled here as 1.5a sub-work — the expand half of 1.5):
+Key Option A commits for archaeology / reusable pieces:
 
-- **Skeleton** (`68eb49b`): basic AST→dict walk, type/layout/visual decode,
-  CompRef marking, 17 tests.
-- **Corpus sweep + wrapper re-expansion** (`bdcd988`): synthetic screen wrapper
-  inverse; 5 corpus sweeps (no-crash, count-parity, type, root-is-screen,
-  child-refs-resolve).
-- **Review cycle 6 fixes** (`7bc76c6`): direction default (absolute/stacked/
-  skip for compref), `_original_name` recovery, `$ext.*` pass-through.
-- **`_self_overrides` channel** (`14af0a3`): CompRef head PropAssigns captured
-  structurally; `_override_value_repr` for Literal_ / PropGroup /
-  FunctionCall / SizingValue.
-- **Review cycle 7 fixes** (`2345d8b`): absolute root direction, compref no
-  spurious direction, TokenRef/ComponentRefValue/PatternRefValue handlers,
-  SizingValue bounds, PathOverride capture, JSON serializability.
-- **DB column tagging** (`a8684d7`): `db_prop_type` + `db_prop_name` on every
-  `_self_overrides` entry, padding fans out per side, `width` polymorphism.
-- **Master-subtree expansion** (`1b30d95`): walk master's subtree via
-  recursive CTE when `conn` is supplied.
-- **Cycle 8 fidelity fixes** (`df9a791`): CKR NULL filter, slash-path cache,
-  sort_order, leaf-type direction, effects/stroke_align/per-corner radius.
-- **Nested CompRef recursion** (`2ceaa1c`): INSTANCE rows inside a master
-  subtree inflate their own master, cycle detection.
+- **Parser + emitter** (`bd48d7e`..`4e14d9b`): `dd/markup_l3.py`, full grammar coverage. **Preserved in Option B unchanged.**
+- **Compressor Stage 1.4** (`b871c1b` + follow-ups through `06bed72`): `dd/compress_l3.py` per-axis derivation. **Reused at M0 as `derive_markup` core.**
+- **Decompressor Stage 1.5a** (`68eb49b`..`2ceaa1c`): `dd/decompress_l3.py`, 77 tests. **Deleted at M6 per `DEPRECATION.md`.**
+- **`$ext.nid` side-channel** (`5a5bcd9`): compile-time bridge for dict-IR identity. **Removed at M6 — renderer looks up DB on demand in Option B.**
+- **Canonical-type classification** (`130288a`): applies sci classifications to spec types. **Concept reused in `derive_markup` at M0.**
+- **Archetype migration** (`247f7b0`, `eaebc06`): 12 `.dd` files + fail-open parser. **Preserved in Option B.**
+- **Render pipeline** (`b97bd3c`, `d89f96f`): `test_markup_render_pipeline.py`, `--via-markup` CLI flag, `generate_screen(via_markup=True)`. **Deleted at M6 — replaced by markup-native `render_figma`.**
+
+The lessons preserved in `docs/decisions/v0.3-option-b-cutover.md` §2 (Evidence from the Option A attempt).
 
 **Stage 1.5a test posture:** 66 decompressor tests + 72 compressor tests
 pass. 204/204 Tier 1 round-trip holds. JSON-serializability sweeps pass
@@ -213,44 +198,66 @@ impact or design-scope):
 ### Read first
 
 1. `docs/requirements.md` — Tier 0, the core claim and overall requirements
-2. `docs/requirements-v0.3.md` — Tier 1, v0.3-specific scope
-3. **This doc** — the plan and current state
-4. `docs/spec-dd-markup-grammar.md` — scaffold + open questions (Plan A.5 target)
-5. `docs/spec-l0-l3-relationship.md` — scaffold + open questions (Plan A.6 target)
-6. `memory/project_v0_3_plan.md` — memory-resident summary
+2. `docs/requirements-v0.3.md` — Tier 1, v0.3-specific scope (updated for Option B)
+3. `docs/decisions/v0.3-option-b-cutover.md` — current architectural stance
+4. **This doc** — plan and migration sequencing
+5. `docs/DEPRECATION.md` — what gets deleted at M6 cutover
+6. `docs/spec-l0-l3-relationship.md` — compression + expansion (expansion section rewritten for Option B)
+7. `docs/spec-dd-markup-grammar.md` — grammar (unchanged by the pivot)
+8. `memory/project_v0_3_plan.md` — session-boot summary
 
 ### Verify state
 
 ```bash
 git checkout v0.3-integration
 git status                                  # should be clean
-pytest tests/ -q                            # expect 319+ green
-pytest tests/test_script_parity.py -v       # expect 204/204 Tier 2
-python3 render_batch/sweep.py --port <N>    # optional: expect 204/204 Tier 3
+git tag -l | grep -E "pre-markup|option-a|markup-compressor"  # 3 rollback tags present
+pytest tests/test_compress_l3.py tests/test_markup_l3.py \
+       tests/test_archetype_skeletons.py -q   # core markup infra: 160+ green
+python3 render_batch/sweep.py --port <N>    # current state: 204/204 on pre-markup path (baseline)
 ```
 
-### Kickoff — Plan A remaining steps
+### Kickoff — M1 (markup-native Figma renderer MVP)
 
-**The next session starts with A.3.** The first 30 minutes:
+**Next session starts at M1.** The first hour:
 
-1. Pick 3 Dank reference screens at varying complexity:
-   - **Simple** — ~5–10 classified elements. Good candidate: an icon-definition or a simple mobile screen from the early IDs.
-   - **Medium** — ~15–25 classified elements. Good candidates: settings, login, or a feed screen.
-   - **Complex** — ~30+ classified elements with instances, overrides, gradients. Good candidates: a meme-feed or dashboard screen.
+1. **Create `dd/render_figma_ast.py`** (working filename) as the scaffolding for the markup-native renderer. Module exports `render_figma(doc: L3Document, conn: sqlite3.Connection) → (script: str, token_refs: list)`. Starts as a stub that walks `doc.top_level`, dispatches per `Node.head.type_or_path`, emits the minimum viable Figma JS for a single screen (just a frame with a background fill).
 
-   Use `sqlite3 Dank-EXP-02.declarative.db` and queries on `screens` + `screen_component_instances` to get candidates. Commit the chosen IDs to `tests/fixtures/markup/README.md`.
+2. **Target: round-trip screen 181 through Option B.** End-to-end: `derive_markup(conn, 181) → render_figma(doc, conn) → Figma JS`. Compare the JS byte-for-byte against `generate_figma_script(generate_ir(conn, 181)['spec'], ...)`. Build up feature coverage until byte-identity lands.
 
-2. For each selected screen, dump its L0+L1+L2 state:
-   - L0: `SELECT * FROM nodes WHERE screen_id = ?` — use `dd/ir.py::query_screen_for_ir`
-   - L1: `SELECT * FROM screen_component_instances WHERE screen_id = ?`
-   - L2: `SELECT * FROM node_token_bindings WHERE node_id IN (...)`
-   - Format as human-readable summaries (not raw SQL output). Save as `tests/fixtures/markup/NN-screen-name.l0-summary.md` for reference.
+3. **A/B harness at `tests/test_option_b_parity.py`:**
+   ```python
+   def test_m1_screen_181_byte_parity(db_conn):
+       # Option A baseline
+       ir = generate_ir(db_conn, 181)
+       script_a, refs_a = generate_figma_script(ir["spec"], ...)
+       # Option B path
+       doc = derive_markup(db_conn, 181)
+       script_b, refs_b = render_figma(doc, db_conn)
+       # MUST be byte-identical
+       assert script_a == script_b
+       assert refs_a == refs_b
+   ```
 
-3. Hand-author the first `.dd` fixture for the simple screen. Start at the LLM-friendly target density (~10 elements) with definitions + references sparingly. Full axis population (Structure + Content + Spatial + Visual + System) to exercise the whole grammar.
+4. **Fill feature coverage in order of render-critical priority:**
+   - Node creation (`figma.createFrame`, `createRectangle`, `createText`, `createInstance`, etc.)
+   - Sizing + position (Phase 1 `resize`, Phase 3 `x/y`)
+   - Fills + strokes
+   - Text properties (font, size, weight, content)
+   - Component instances via `createInstance` (Mode 1 path)
+   - Vector paths (from DB by node_id)
+   - Effects (shadow, blur)
+   - Constraints
+   - Variant / swap handling
 
-4. While authoring A.4, start drafting S2 (A.5) production rules. Every fixture construct needs a corresponding BNF production; every BNF production should parse at least one fixture construct.
+5. Each feature added = one byte-parity screen or more moving to green.
 
-5. Maintain a running "open questions" list as you author. Each question gets resolved before leaving Plan A.
+### Principles for M1–M3 execution
+
+- **Two paths in CI, every commit.** Pre-markup (Option A baseline) AND markup-native (Option B). Option A is the reference; Option B must byte-match.
+- **Per-feature A/B harness.** When adding a feature (e.g. vector paths), there's a test that runs both paths on one screen exercising that feature, and asserts byte-identical script output. Every feature has its own parity gate.
+- **Don't modify the Option A path.** The baseline IS the reference. Any change to `generate_figma_script` invalidates the A/B comparison.
+- **Per-backend reference resolution.** When the Figma renderer resolves `{color.brand.primary}` via token catalog, document the lookup clearly — this is the pattern React/SwiftUI/Flutter renderers will follow at their respective stages.
 
 ### Principles for Plan A authoring
 

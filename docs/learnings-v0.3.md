@@ -229,6 +229,29 @@ The single biggest meta-learning: **valuable architectural research exists in th
 
 Future-me: **when adding a feature, first grep the archive for whether it was already specified.** This session found the markup language design; the previous session found the classification pipeline; two for two on "the answer was in the archive."
 
+### Ship-risk compromises drift architectural principles (2026-04-18 late-late session)
+
+This session elaborated the markup compressor + decompressor to Option A (dict IR canonical on render path; markup lowers to dict IR). The rationale at the time was ship-risk minimization: rewriting the Figma renderer to walk markup AST would take 2-3 weeks with parity-recovery in the middle, vs. writing only the compressor and letting the existing 204/204 renderer consume the dict-IR output unchanged.
+
+The problem surfaced during a Figma sweep on the Option A path: 0/3 pixel parity on the smoke test. Root-cause analysis produced:
+1. Dict-IR identity drift (counter-based element keys diverge between baseline `generate_ir` and the decompressor's AST walk).
+2. Content drift (fill/bounds/effect mismatches from decompressor bugs).
+
+The fix for (1) was a compile-time side-channel (`$ext.spec_key`) pickling the dict-IR counter key into the markup so the decompressor could reproduce it. Working through it I noticed: this is **scaffolding for a system that's meant to be demolished**. Every Stage 2+ feature (pattern expansion, synthetic tokens, synthesis, multi-backend) would accrete dependencies on the dict-IR intermediate and the side channels preserving its identity.
+
+We then traced the architectural stance through the doc stack:
+- Tier 0 §6 lists L0-L3 as the MLIR levels. Dict IR is NOT listed.
+- `learnings-v0.3.md` Choice 1 says **"The markup is canonical; the JSON IR is a rendering of the markup for the existing Python machinery."**
+- `canonical-ir.md` mid-session revision said "dict IR remains canonical on the render path; markup lowers to dict IR."
+
+The three documents were pointing in different directions. The Choice 1 statement was the TRUE philosophical stance from the beginning. The canonical-ir mid-session revision was a ship-risk compromise that drifted from it.
+
+**Decision: pivot to Option B** (markup-native renderer). ~1 week additional work vs. continuing Option A, paid once against carrying scaffolding through every subsequent stage. Documented in `docs/decisions/v0.3-option-b-cutover.md`.
+
+Meta-learning: **when ship-risk compromises drift from the doc stack's stated philosophical principles, they accumulate hidden cost through every subsequent layer.** The tell in this case was the second `$ext.*` side-channel (one was arguably fine; two signaled a pattern). Grep-check: if the same flavor of workaround is about to be added twice, stop and re-read the principles.
+
+Related: the sweep-driven validation was ESSENTIAL. The Tier 2 script-size ratio of ~0.98 that we celebrated earlier masked real semantic divergence. Byte-parity is the spec claim; approximate parity doesn't count. **Ratio ≠ byte-parity. Script-size ≠ script-identity.** Every future parity claim needs to match the spec's actual criterion, not a near-miss approximation.
+
 ---
 
 ## Part 6 — The architecture spec (compressed)

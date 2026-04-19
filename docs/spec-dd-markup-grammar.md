@@ -479,8 +479,9 @@ auto_eid := <TypeKeyword> '-' <1-based-sibling-index-within-parent-of-same-type>
 ```
 
 Example: three `frame` children of a container with no `#eid` become
-`frame-1`, `frame-2`, `frame-3`. This matches the dict IR convention
-from `dd/ir.py::build_composition_spec` (see screen-1 → frame-1 →
+`frame-1`, `frame-2`, `frame-3`. Same convention historically used by
+`dd/ir.py::build_composition_spec` in the pre-markup dict IR (see
+screen-1 → frame-1 →
 container-1 pattern).
 
 Auto-ids are NOT stable across tree edits (inserting a new frame at
@@ -1461,9 +1462,10 @@ layout=absolute  // default; children use x=/y=
 
 ## 15. Implementation hook
 
-Once this spec is stable, `dd/markup.py` is rebuilt against it during
-Plan B Stage 1.2. The existing ~786 LOC of mechanical dict-IR serde
-shares these pieces with the new parser:
+This spec is stable as of Plan A completion. `dd/markup_l3.py`
+implements it in full (Plan B Stage 1.2, shipped). The pre-spec
+~786-LOC mechanical dict-IR serde (`dd/markup.py`, since deleted)
+shared these pieces:
 
 - Tokenizer primitives (keyword table, string-escape table, number
   parsing)

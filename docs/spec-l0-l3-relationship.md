@@ -475,57 +475,83 @@ both are valid, and Stage 3 closes the gap.
 
 ---
 
-## 3. Expansion — L3 → dict IR
+## 3. Rendering — L3 → backend output
 
-### 3.1 Pipeline overview
+### 3.1 Pipeline overview (Option B, adopted 2026-04-18 late-late session)
 
 ```
   .dd source text
        │
        ▼
-  parse_dd(source)                              // S2 grammar (Plan B 1.2)
+  parse_l3(source)                              // S2 grammar; `dd/markup_l3.py`
        │
        ▼
-  l3_ast
+  L3Document AST
        │
        ▼
-  resolve_namespace_imports(ast, context)       // NEW (Plan B 1.2)
+  resolve_namespace_imports(ast, context)       // M7+ (Stage 2 continuation)
        │
        ▼
-  expand_pattern_refs(ast)                      // NEW (Plan B 1.2)
+  expand_pattern_refs(ast)                      // M7+ (Stage 2 continuation)
        │
        ▼
-  resolve_token_refs(ast, context.tokens)       // NEW (Plan B 1.2)
+  resolve_token_refs(ast, context.tokens)       // M7+ (Stage 2 continuation)
        │
        ▼
-  fill_axis_defaults(ast, context.catalog)      // NEW (Plan B 1.2)
+  fill_axis_defaults(ast, context.catalog)      // M7+ (Stage 2 continuation)
        │
        ▼
-  ast_to_dict_ir(ast, context.ckr)              // NEW (Plan B 1.4)
+  render_figma(ast, conn)                       // M1: markup-native walker
        │
        ▼
-  dict IR  ─── hands off to ──▶  generate_figma_script(ir)   // existing
+  Figma JS script (figma_execute input)
 ```
 
-### 3.2 Option A vs Option B — DECISION: Option A
+The renderer walks the L3 AST directly. Per-node, it dispatches on
+`Node.head.type_or_path`, emits the corresponding Figma Plugin-API
+calls, and resolves references on demand from `conn` (CKR for
+components, token catalog for tokens, asset registry for vectors/
+images, `db_visuals` for per-node style overrides that weren't
+carried in the markup itself).
 
-**Option A (chosen)** — L3 → dict IR lowering; reuse existing renderer.
-- `ast_to_dict_ir` produces a dict with the same shape as
-  `build_composition_spec`'s output.
-- The existing `generate_figma_script(ir)` consumes it unchanged.
-- Only new code: the markup-side lowering step.
-- Zero risk to the 204/204 parity baseline.
+### 3.2 Option A vs Option B — DECISION: Option B
 
-**Option B (rejected for v0.3)** — L3-aware renderer.
-- A new renderer path walking the markup AST directly.
-- Potentially faster or better at preserving provenance in emitted JS.
-- Duplicates rendering machinery; introduces parity-risk surface.
-- Reserve for post-v0.3 if empirical evidence shows the dict-IR
-  intermediate loses semantic information the renderer could use.
+**Option B (adopted)** — L3-aware renderer.
+- `render_figma(doc: L3Document, conn) → JS` walks the AST directly.
+- No dict IR intermediate on the render path.
+- Reference resolution happens inside the renderer against backend-
+  specific catalogs. Token `{path}` → hex for Figma, CSS variable
+  for React, UIColor for SwiftUI, Color for Flutter — all via the
+  same capability table (ADR-001).
+- One identity model: `Node.head.eid` (grammar §2.3.1) written as
+  Figma pluginData. Read by verifier.
+- Synthesis (Stage 4+) emits markup directly; renderer path is
+  identical to extract-derived markup.
 
-Rationale per OQ-5: "Keep the 204/204 dict-IR renderer as ground truth;
-dd markup round-trip becomes 'markup → dict IR → existing renderer.'
-Only new code is the markup-to-dict-IR lowering."
+**Option A (superseded)** — L3 → dict IR lowering; reuse existing
+renderer.
+- Originally chosen 2026-04-18 mid-session on the rationale of
+  "zero risk to the 204/204 parity baseline."
+- Required compile-time side-channels (`$ext.nid`, proposed
+  `$ext.spec_key`) to preserve dict-IR identity across the lowering
+  boundary.
+- Content drift (fill_mismatch, bounds_mismatch, effect_missing)
+  in the decompressor step; Tier 3 sweep produced 0/3 pixel parity
+  on smoke test.
+- Architectural cost: scaffolding for a system being demolished
+  (Option B was always the post-v0.3 target). Scaffolding was
+  projected to grow through Stages 2–6.
+
+The ~1-week additional cost of Option B over Option A, paid once
+against carrying the scaffolding forward, motivated the pivot. Full
+rationale: `docs/decisions/v0.3-option-b-cutover.md`.
+
+**Historical Option A rationale** (retained as archaeology):
+
+> Rationale per OQ-5 mid-session: "Keep the 204/204 dict-IR renderer
+> as ground truth; dd markup round-trip becomes 'markup → dict IR →
+> existing renderer.' Only new code is the markup-to-dict-IR
+> lowering."
 
 ### 3.3 Namespace import resolution
 
@@ -595,41 +621,50 @@ If all four miss, the axis stays empty in the dict IR and the renderer
 uses its built-in platform defaults (Figma's `createFrame` defaults;
 see `feedback_figma_default_visibility`).
 
-### 3.8 From AST to dict IR
+### 3.8 Reference resolution at render time
 
-The `ast_to_dict_ir` transform walks the resolved AST and produces the
-dict shape compatible with `build_composition_spec`'s output:
+Under Option B there is NO `ast_to_dict_ir` transform. The renderer
+walks the L3 AST directly. Reference resolution happens at each
+reference-bearing node, pulling from `conn` as needed:
 
-```python
-{
-    "version": "1.0",
-    "root": "<root-eid>",
-    "elements": {
-        "<eid>": {
-            "type": "<type-keyword>",
-            "layout": {...},   # spatial axis
-            "visual": {...},   # visual axis
-            "children": ["<eid>", ...],
-            "_original_name": "<preserved-name>",
-            ...
-        },
-        ...
-    },
-    "tokens": {...},           # System axis
-    "_node_id_map": {...}      # populated only on extract-path
-}
-```
+**Token references `{color.surface.card}`:**
+- Renderer calls `resolve_token_value("color.surface.card",
+  context.tokens)`.
+- Backend-specific: Figma → hex, React → CSS var, SwiftUI → UIColor.
+- Catalog preference order (unchanged from Option A):
+  1. Project DB tokens (`tokens` table).
+  2. Synthetic tokens (Stage 3 output in `tokens` table).
+  3. Universal-catalog defaults (shadcn-flavored).
+  4. Built-in backend defaults if all four miss.
 
-Specific transforms:
-- `layout=horizontal gap=8 align=center padding={top=8 ...}` →
-  `{"direction": "horizontal", "gap": 8, "mainAxisAlignment": "center",
-    "crossAxisAlignment": "center", "padding": {"top": 8, ...}}`
-- `width=fill` → `{"sizing": {"width": "fill"}}`
-- `fill={color.surface.card}` → `{"fills": [{"type": "solid",
-  "color": <resolved-hex>, "token": "color.surface.card"}]}`
-- `fill=gradient-linear(#D9FF40, #9EFF85)` → `{"fills": [{"type":
-  "gradient-linear", "stops": [{"color": "#D9FF40", "position": 0.0},
-  {"color": "#9EFF85", "position": 1.0}]}]}`
+**Component references `-> nav/top-nav`:**
+- Renderer looks up `component_key_registry.name → figma_node_id`.
+- Emits `figma.getNodeByIdAsync(<id>).createInstance()` with the
+  element's `head.eid` as pluginData.
+- Override props on the head (e.g. `fill=#FF0000`) are applied via
+  the rendered-instance's `findOne` dispatch (same pattern as the
+  pre-markup dict-IR path used).
+
+**Asset references `image(asset=<40-hex>)`:**
+- Renderer looks up binary in the asset registry table.
+- Emits the Plugin-API image-paint dispatch.
+
+**Vector data:**
+- For vectors where the markup carries no explicit path, the
+  renderer queries `nodes.vector_paths` by the screen + eid matching.
+- Path-ideally: every vector in the markup carries either (a) enough
+  intrinsic data or (b) an asset-hash reference. DB lookups are a
+  fallback for the extract-derived case; LLM-emitted markup is
+  expected to use catalog component refs instead.
+
+**Per-node visual overrides (effects, constraints, stroke details):**
+- Renderer queries the `nodes` table directly for the screen_id +
+  eid resolution. This replaces the Option A pattern of pre-baking
+  `db_visuals` into the dict IR — now it's on-demand, per-node,
+  from the live conn.
+
+Element identity end-to-end: `Node.head.eid` → Figma pluginData →
+verifier comparison. No dict-IR counter keys anywhere.
 
 The full transform table is large; Plan B Stage 1.4 implements it
 against this spec and against a golden-output test suite.
@@ -644,42 +679,46 @@ subtree → verify `is_parity=True`.
 
 Three tiers of evidence, in order of cost:
 
-### 4.1 Tier 1 — Dict-level round-trip
+### 4.1 Tier 1 — AST-level round-trip
 
-**Claim:** `expand(compress(dict_ir)) == dict_ir` for every screen.
+**Claim:** `parse(emit(derive_markup(conn, sid))) == derive_markup(conn, sid)` for every screen.
 
-Comparison is **structural equality** on the dict, not byte equality.
-Missing `_original_name` or differing dict-key insertion order is
-acceptable at Tier 1.
+Comparison is **structural equality** on the `L3Document` AST.
+Warnings are compile-time diagnostics and are stripped before
+comparison (they don't round-trip through markup).
 
 - Cost: single-digit seconds per screen in memory.
-- Gate: Plan B Stage 1.5 (one fixture).
-- Full corpus (204 screens): Plan B Stage 1.7.
-- Per-commit in CI after Stage 1.7 green.
+- Gate: M0 (already achieved — `tests/test_compress_l3.py::test_full_corpus_tier1_round_trip`).
+- Per-commit in CI.
 
-### 4.2 Tier 2 — Script byte-parity
+### 4.2 Tier 2 — Script byte-parity (A/B harness during migration)
 
-**Claim:** `generate_figma_script(expand(compress(dict_ir)))` produces a
-byte-identical JS script to `generate_figma_script(dict_ir)` for every
-screen.
+**Claim:** `render_figma(derive_markup(conn, sid), conn)` produces a
+byte-identical JS script to `generate_figma_script(generate_ir(conn, sid)['spec'], ...)`
+(Option A baseline) for every screen.
 
-This is STRONGER than Tier 1: dict-key ordering and property
-serialization MUST be identical. Pattern identified on `v0.3-dd-markup-probe`
-branch's probe where the probe's mechanical serde was gated at Tier 2.
+This is STRONGER than Tier 1: Plugin-API call ordering + property
+serialization MUST be identical. The pre-markup (Option A) renderer
+IS the reference — the new markup-native renderer must byte-match it
+for the whole 204 corpus before the M6 cutover can land.
 
-- Cost: ~15s for the full 204 corpus (per existing
-  `tests/test_script_parity.py` runtime).
-- Gate: Plan B Stage 1.7, per-PR after Stage 1 ships.
+At M6 cutover the Option A path is deleted; Tier 2 then collapses
+into "Tier 1 + Tier 3 hold on the markup-native path." The A/B
+harness is the bridge through the migration window, not a
+permanent gate.
+
+- Cost: ~15s for the full 204 corpus (measured).
+- Gate: M3 (per-commit after it lands). Retired at M6 cutover.
 
 ### 4.3 Tier 3 — Pixel parity via Figma sweep
 
-**Claim:** `sweep.py` with markup-path enabled reports 204/204
+**Claim:** `sweep.py` on the markup-native path reports 204/204
 `is_parity=True`. Requires a live Figma bridge; this is the ultimate
 proof that the whole pipeline produces the same pixels.
 
 - Cost: ~450s for the full 204 corpus (per the current sweep runtime).
-- Gate: merge-to-main and nightly; matches
-  `docs/decisions/v0.3-branching-strategy.md`.
+- Gate: M4 (pre-cutover verification). Merge-to-main and nightly
+  after M6; matches `docs/decisions/v0.3-branching-strategy.md`.
 
 ### 4.4 CI cadence
 
