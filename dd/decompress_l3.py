@@ -1046,8 +1046,12 @@ def _decode_node(
     # Determine element type and whether this is a CompRef.
     is_compref = head.head_kind == "comp-ref"
     if is_compref:
-        # CompRef — type is `frame`, slash-path is informational.
-        type_kw = "frame"
+        # CompRef — matches `dd.ir.generate_ir`'s Mode-1-eligible
+        # INSTANCE shape (`type="instance"`, `_mode1_eligible=true`).
+        # Using `frame` here creates a Tier-2-script-parity gap
+        # because `generate_figma_script` dispatches on the `type`
+        # field (see `dd/renderers/figma.py:ir_to_figma_type`).
+        type_kw = "instance"
     else:
         type_kw = head.type_or_path
 

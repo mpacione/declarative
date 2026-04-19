@@ -351,7 +351,7 @@ class TestDefaultDirectionStacked:
         )),))
         el = ast_to_dict_ir(
             doc, reexpand_screen_wrapper=False,
-        )["elements"]["frame-1"]
+        )["elements"]["instance-1"]
         assert "direction" not in (el.get("layout") or {})
 
     def test_layout_vertical_prop_beats_stacked_default(self) -> None:
@@ -420,10 +420,12 @@ class TestDecompressCompRef:
             eid="top-nav",
             properties=(_p("width", _n("428")),),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         assert el["_mode1_eligible"] is True
         assert el["_master_slash_path"] == "nav/top-nav"
-        assert el["type"] == "frame"
+        # Matches `dd.ir.generate_ir`'s Mode-1-eligible INSTANCE shape
+        # — the renderer dispatches on this type field.
+        assert el["type"] == "instance"
 
 
 class TestCompRefSelfOverridesChannel:
@@ -445,7 +447,7 @@ class TestCompRefSelfOverridesChannel:
                 )),
             ),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el.get("_self_overrides") or []
         keys_values = {o["key"]: o["value"] for o in overrides}
         assert keys_values == {"width": 20, "height": 20, "opacity": 0.2}
@@ -468,7 +470,7 @@ class TestCompRefSelfOverridesChannel:
             eid="b",
             properties=(_p("width", SizingValue(size_kind="fill")),),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el["_self_overrides"]
         assert overrides[0]["db_prop_type"] == "LAYOUT_SIZING_H"
         assert overrides[0]["db_prop_name"] == ":self:layoutSizingH"
@@ -486,7 +488,7 @@ class TestCompRefSelfOverridesChannel:
                 _p("left", _n("10")),
             ))),),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el["_self_overrides"]
         # Two entries, one per side.
         assert len(overrides) == 2
@@ -515,7 +517,7 @@ class TestCompRefSelfOverridesChannel:
                 FuncArg(name="color", value=_hex("#00000040")),
             ))),),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el.get("_self_overrides") or []
         assert len(overrides) == 1
         assert overrides[0]["key"] == "shadow"
@@ -541,7 +543,7 @@ class TestCompRefSelfOverridesChannel:
                 _p("$ext.shadow_all_hidden", _bool(True)),
             ),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         keys = [o["key"] for o in el.get("_self_overrides") or []]
         assert "$ext.shadow_all_hidden" not in keys
         assert "width" in keys
@@ -571,7 +573,7 @@ class TestCompRefSelfOverridesChannel:
                 _p("fill", TokenRef(path="color.primary")),
             ),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el.get("_self_overrides") or []
         assert overrides[0]["key"] == "fill"
         assert overrides[0]["value"] == {"token": "color.primary"}
@@ -589,7 +591,7 @@ class TestCompRefSelfOverridesChannel:
                 _p("width", SizingValue(size_kind="fill", min=100.0, max=300.0)),
             ),
         )),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el.get("_self_overrides") or []
         assert overrides[0]["value"] == {
             "sizing": "fill", "min": 100.0, "max": 300.0,
@@ -613,7 +615,7 @@ class TestCompRefSelfOverridesChannel:
                 ),
             )),
         ),))
-        el = ast_to_dict_ir(doc)["elements"]["frame-1"]
+        el = ast_to_dict_ir(doc)["elements"]["instance-1"]
         overrides = el.get("_self_overrides") or []
         assert len(overrides) == 1
         assert overrides[0]["path"] == ";5749:82459:visible"
@@ -873,7 +875,7 @@ class TestStage17MasterSubtreeExpansion:
         )),))
         el = ast_to_dict_ir(
             doc, db_conn, reexpand_screen_wrapper=False,
-        )["elements"]["frame-1"]
+        )["elements"]["instance-1"]
         assert not el.get("children")
         assert el["_master_slash_path"] == "does/not/exist/anywhere"
 
