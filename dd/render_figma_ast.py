@@ -37,6 +37,7 @@ the decision record.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from typing import Any, Optional
 
@@ -45,6 +46,7 @@ from dd.renderers.figma import (
     MISSING_COMPONENT_PLACEHOLDER_BLOCK,
     _CONSTRAINT_MAP,
     _SIZING_MAP,
+    _build_text_finder,
     _collect_swap_targets_from_tree,
     _emit_layout,
     _emit_override_tree,
@@ -472,6 +474,22 @@ def _emit_phase1(
                 lines.append("")
                 continue
 
+        if is_db_instance:
+            err_eid = spec_key_map.get(eid, eid)
+            eid_lit = _escape_js(err_eid)
+            reason_parts: list[str] = []
+            if not component_key:
+                reason_parts.append("no component_key")
+            if not component_figma_id:
+                reason_parts.append("no component_figma_id")
+            if not instance_figma_node_id:
+                reason_parts.append("no instance_figma_node_id")
+            reason = _escape_js(", ".join(reason_parts) or "unknown")
+            lines.append(
+                f'__errors.push({{eid:"{eid_lit}", '
+                f'kind:"degraded_to_mode2", reason:"{reason}"}});'
+            )
+
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
 
@@ -656,11 +674,24 @@ def _emit_mode1_create(
     original_name = original_name_map.get(eid) or eid
     lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
-    override_tree = raw_visual.get("override_tree")
-    if override_tree:
-        _emit_override_tree(
-            override_tree, var, node_id_vars, lines,
-            deferred_lines=deferred_lines,
+    props = element.get("props") or {}
+    text_override = props.get("text", "")
+    if text_override:
+        text_target = props.get("text_target")
+        find_expr = _build_text_finder(var, text_target)
+        lines.append(
+            f'{{ const _t = {find_expr}; '
+            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(text_override)}"; }} }}'
+        )
+
+    subtitle_override = props.get("subtitle", "")
+    if subtitle_override:
+        sub_find = _build_text_finder(var, None, subtitle=True)
+        lines.append(
+            f'{{ const _t = {sub_find}; '
+            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
         )
 
     hidden_children = raw_visual.get("hidden_children") or []
@@ -670,6 +701,23 @@ def _emit_mode1_create(
             f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
             f'if (_h) _h.visible = false; }}'
         )
+
+    override_tree = raw_visual.get("override_tree")
+    if override_tree:
+        _emit_override_tree(
+            override_tree, var, node_id_vars, lines,
+            deferred_lines=deferred_lines,
+        )
+
+    inst_rotation = raw_visual.get("rotation")
+    if isinstance(inst_rotation, (int, float)) and inst_rotation != 0:
+        lines.append(f"{var}.rotation = {-math.degrees(inst_rotation)};")
+    inst_opacity = raw_visual.get("opacity")
+    if isinstance(inst_opacity, (int, float)) and inst_opacity < 1.0:
+        lines.append(f"{var}.opacity = {inst_opacity};")
+
+    if element.get("visible") is False:
+        lines.append(f"{var}.visible = false;")
 
     return lines, True
 
