@@ -410,7 +410,6 @@ def _run_seed_catalog(db_path: str) -> None:
 
 def _run_generate(
     db_path: str, screen_id: int, dry_run: bool = False,
-    via_markup: bool = False,
     canvas_x: float | None = None, canvas_y: float | None = None,
 ) -> None:
     if not Path(db_path).exists():
@@ -426,7 +425,6 @@ def _run_generate(
     conn = get_connection(db_path)
     result = generate_screen(
         conn, screen_id,
-        via_markup=via_markup,
         canvas_position=canvas_position,
     )
     conn.close()
@@ -437,10 +435,6 @@ def _run_generate(
         print(f"  Tokens:     {result['token_count']}")
         print(f"  Token refs: {len(result['token_refs'])}")
         print(f"  Script:     {len(result['structure_script'])} chars")
-        if via_markup:
-            print("  Route:      compress → emit → parse → decompress → render (deprecated)")
-        else:
-            print("  Route:      derive_markup → render_figma (Option B, default)")
     else:
         print(result["structure_script"])
 
@@ -1209,17 +1203,6 @@ def main(argv: list | None = None) -> None:
         help="Place the rendered screen's root frame at this y "
              "coordinate on the Figma canvas.",
     )
-    gen_parser.add_argument(
-        "--via-markup",
-        action="store_true",
-        help=(
-            "Route the IR through the v0.3 L3 markup round-trip "
-            "(compress → emit → parse → decompress) before rendering. "
-            "Exercises the Stage 1.5 decompressor path for Tier 3 "
-            "pixel parity."
-        ),
-    )
-
     supp_parser = subparsers.add_parser("extract-supplement", help="Extract Plugin API-only fields (componentKey, layoutPositioning, Grid)")
     supp_parser.add_argument("--db", help="Database path")
     supp_parser.add_argument("--port", type=int, default=9227, help="WebSocket port for PROXY_EXECUTE")
@@ -1343,7 +1326,6 @@ def main(argv: list | None = None) -> None:
         db_path = detect_db_path(args.db)
         _run_generate(
             db_path, int(args.screen), dry_run=args.dry_run,
-            via_markup=args.via_markup,
             canvas_x=args.canvas_x, canvas_y=args.canvas_y,
         )
     elif args.command == "extract-supplement":

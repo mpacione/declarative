@@ -2354,20 +2354,23 @@ def _emit_text_props(
 
 def generate_screen(
     conn: sqlite3.Connection, screen_id: int,
-    *, via_markup: bool = False,
-    canvas_position: Optional[tuple[float, float]] = None,
+    *, canvas_position: Optional[tuple[float, float]] = None,
 ) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
-    M5 default: routes the spec through the markup-native Option B
-    walker (``dd.render_figma_ast.render_figma``). This was gated
-    behind ``--via-option-b`` through M4 pixel-parity validation;
-    post-M4 it's the canonical path.
+    Post-M6 canonical path: dict-IR spec → markup-native Option B
+    walker (``dd.render_figma_ast.render_figma``). The Option A
+    decompressor branch (``via_markup=True``) and the ``--via-markup``
+    CLI flag were deleted at M6 per
+    ``docs/decisions/v0.3-option-b-cutover.md``; the 204/204 parity
+    sweep at M4 validated the walker against every Dank screen.
 
-    ``via_markup=True`` preserves the decompressor round-trip path
-    (compress → emit → parse → decompress → dict-IR render) for the
-    deprecated Option A pipeline. Scheduled for removal at M6 along
-    with ``dd.decompress_l3`` per ``docs/DEPRECATION.md``.
+    The spec-building step (``generate_ir``) remains as internal
+    plumbing through M6(b); it feeds both the compressor
+    (``compress_to_l3_with_maps``) and the ``_spec_elements`` shim
+    inside ``render_figma``. M6(b) eliminates both by rewriting
+    ``derive_markup`` to consume the DB directly and migrating the
+    renderer's intrinsic-property emission AST-native.
 
     Returns dict with:
       structure_script: JS string for figma_execute (Phase A — creates nodes)
@@ -2378,20 +2381,12 @@ def generate_screen(
     from dd.ir import generate_ir, query_screen_visuals
     from dd.rebind_prompt import query_token_variables
 
-    # Both paths use the semantic IR with system chrome preserved —
-    # per feedback_system_chrome_is_design.md.
+    # Semantic IR with system chrome preserved — per
+    # feedback_system_chrome_is_design.md.
     ir_result = generate_ir(
         conn, screen_id, semantic=True, filter_chrome=False,
     )
     spec = ir_result["spec"]
-    if via_markup:
-        from dd.compress_l3 import compress_to_l3
-        from dd.decompress_l3 import ast_to_dict_ir
-        from dd.markup_l3 import emit_l3, parse_l3
-        doc = compress_to_l3(spec, conn, screen_id=screen_id)
-        emitted = emit_l3(doc)
-        parsed = parse_l3(emitted)
-        spec = ast_to_dict_ir(parsed, conn, screen_id=screen_id)
     visuals = query_screen_visuals(conn, screen_id)
 
     # ADR-007 Session A: surface "CKR was not built" as a structured
@@ -2409,41 +2404,32 @@ def generate_screen(
     else:
         ckr_built = False
 
-    if via_markup:
-        # Deprecated Option A decompressor path — emits a dict-IR
-        # spec for the legacy ``generate_figma_script``. Kept until
-        # M6 deletes ``dd.decompress_l3`` entirely.
-        script, token_refs = generate_figma_script(
-            spec, db_visuals=visuals, ckr_built=ckr_built,
-            canvas_position=canvas_position,
+    # Markup-native Option B walker. Render path keeps the
+    # synthetic screen wrapper — Figma's native canvas has a
+    # screen-1/frame-1 double-frame shape that the baseline renderer
+    # preserved and the verifier expects. ``collapse_wrapper=False``
+    # matches M4 pixel-parity against baseline;
+    # ``collapse_wrapper=True`` is for grammar + round-trip tests
+    # only.
+    from dd.compress_l3 import compress_to_l3_with_maps
+    from dd.render_figma_ast import render_figma
+    doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+        compress_to_l3_with_maps(
+            spec, conn, screen_id=screen_id,
+            collapse_wrapper=False,
         )
-    else:
-        # Default: markup-native Option B walker. Render path keeps
-        # the synthetic screen wrapper — Figma's native canvas has a
-        # screen-1/frame-1 double-frame shape that the baseline
-        # renderer preserves and the verifier expects.
-        # ``collapse_wrapper=False`` matches M4 pixel-parity against
-        # baseline; ``collapse_wrapper=True`` is for grammar + round-
-        # trip tests only.
-        from dd.compress_l3 import compress_to_l3_with_maps
-        from dd.render_figma_ast import render_figma
-        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
-            compress_to_l3_with_maps(
-                spec, conn, screen_id=screen_id,
-                collapse_wrapper=False,
-            )
-        )
-        fonts = collect_fonts(spec, db_visuals=visuals)
-        script, token_refs = render_figma(
-            doc, conn, nid_map,
-            fonts=fonts,
-            spec_key_map=spec_key_map,
-            original_name_map=original_name_map,
-            db_visuals=visuals, ckr_built=ckr_built,
-            canvas_position=canvas_position,
-            _spec_elements=spec["elements"],
-            _spec_tokens=spec.get("tokens", {}),
-        )
+    )
+    fonts = collect_fonts(spec, db_visuals=visuals)
+    script, token_refs = render_figma(
+        doc, conn, nid_map,
+        fonts=fonts,
+        spec_key_map=spec_key_map,
+        original_name_map=original_name_map,
+        db_visuals=visuals, ckr_built=ckr_built,
+        canvas_position=canvas_position,
+        _spec_elements=spec["elements"],
+        _spec_tokens=spec.get("tokens", {}),
+    )
 
     return {
         "structure_script": script,

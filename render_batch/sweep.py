@@ -26,9 +26,6 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS = ROOT / "scripts"
 WALKS = ROOT / "walks"
 REPORTS = ROOT / "reports"
-SCRIPTS_MARKUP = ROOT / "scripts-markup"
-WALKS_MARKUP = ROOT / "walks-markup"
-REPORTS_MARKUP = ROOT / "reports-markup"
 DB_PATH = ROOT.parent / "Dank-EXP-02.declarative.db"
 WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
 # Default port; override via --port. The Desktop Bridge picks between
@@ -64,23 +61,11 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
 
 def process_screen(
     sid: int, name: str, skip_existing: bool, port: str,
-    via_markup: bool = False,
 ) -> dict:
-    # M5b default: sweep runs through the Option B markup-native
-    # renderer (``dd.render_figma_ast.render_figma``). The legacy
-    # ``scripts-option-b/`` / ``walks-option-b/`` / ``reports-option-b/``
-    # split from the M4 parity-gate era is gone — there's only one
-    # path now. ``--via-markup`` still writes to the segregated
-    # ``*-markup`` dirs so the deprecated Option A decompressor path
-    # is reproducible until M6 deletes it.
-    if via_markup:
-        scripts_dir = SCRIPTS_MARKUP
-        walks_dir = WALKS_MARKUP
-        reports_dir = REPORTS_MARKUP
-    else:
-        scripts_dir = SCRIPTS
-        walks_dir = WALKS
-        reports_dir = REPORTS
+    # Post-M6 canonical path: Option B markup-native renderer.
+    scripts_dir = SCRIPTS
+    walks_dir = WALKS
+    reports_dir = REPORTS
     script_p = scripts_dir / f"{sid}.js"
     walk_p = walks_dir / f"{sid}.json"
     report_p = reports_dir / f"{sid}.json"
@@ -109,8 +94,6 @@ def process_screen(
             "python3", "-m", "dd", "generate",
             "--db", str(DB_PATH), "--screen", str(sid),
         ]
-        if via_markup:
-            gen_cmd.append("--via-markup")
         code, out, err = run_step(
             gen_cmd,
             GENERATE_TIMEOUT,
@@ -206,24 +189,10 @@ def main() -> int:
                     help="Start at this screen id (for resume)")
     ap.add_argument("--port", default=BRIDGE_PORT_DEFAULT,
                     help="Desktop Bridge WebSocket port")
-    ap.add_argument(
-        "--via-markup", action="store_true",
-        help=(
-            "Route each screen through the deprecated v0.3 L3 markup "
-            "round-trip (compress → emit → parse → decompress) before "
-            "rendering. Deprecated Option A path — scheduled for "
-            "deletion at M6 along with dd.decompress_l3. Default "
-            "(no flag) is the markup-native Option B walker."
-        ),
-    )
     args = ap.parse_args()
 
-    # Create artefact directories for whichever path the sweep uses.
-    if args.via_markup:
-        target_dirs = (SCRIPTS_MARKUP, WALKS_MARKUP, REPORTS_MARKUP)
-    else:
-        target_dirs = (SCRIPTS, WALKS, REPORTS)
-    for p in target_dirs:
+    # Post-M6: single render path; single artefact layout.
+    for p in (SCRIPTS, WALKS, REPORTS):
         p.mkdir(parents=True, exist_ok=True)
 
     screens = list_app_screens(DB_PATH)
@@ -243,7 +212,6 @@ def main() -> int:
         t1 = time.time()
         row = process_screen(
             sid, name, args.skip_existing, args.port,
-            via_markup=args.via_markup,
         )
         elapsed = time.time() - t1
         status = (
@@ -264,10 +232,7 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    summary_name = (
-        "summary-markup.json" if args.via_markup else "summary.json"
-    )
-    (ROOT / summary_name).write_text(json.dumps(summary, indent=2))
+    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
     print(f"total:            {summary['total']}")
