@@ -410,7 +410,7 @@ def _run_seed_catalog(db_path: str) -> None:
 
 def _run_generate(
     db_path: str, screen_id: int, dry_run: bool = False,
-    via_markup: bool = False,
+    via_markup: bool = False, via_option_b: bool = False,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -419,7 +419,10 @@ def _run_generate(
     from dd.renderers.figma import generate_screen
 
     conn = get_connection(db_path)
-    result = generate_screen(conn, screen_id, via_markup=via_markup)
+    result = generate_screen(
+        conn, screen_id,
+        via_markup=via_markup, via_option_b=via_option_b,
+    )
     conn.close()
 
     if dry_run:
@@ -429,7 +432,9 @@ def _run_generate(
         print(f"  Token refs: {len(result['token_refs'])}")
         print(f"  Script:     {len(result['structure_script'])} chars")
         if via_markup:
-            print(f"  Route:      compress → emit → parse → decompress → render")
+            print("  Route:      compress → emit → parse → decompress → render")
+        elif via_option_b:
+            print("  Route:      derive_markup → render_figma (Option B)")
     else:
         print(result["structure_script"])
 
@@ -1188,6 +1193,15 @@ def main(argv: list | None = None) -> None:
     gen_parser.add_argument("--screen", required=True, help="Screen ID")
     gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
     gen_parser.add_argument(
+        "--via-option-b",
+        action="store_true",
+        help=(
+            "Render via the markup-native Option B walker "
+            "(dd.render_figma_ast.render_figma). M4 pixel-parity "
+            "sweep path. Mutually exclusive with --via-markup."
+        ),
+    )
+    gen_parser.add_argument(
         "--via-markup",
         action="store_true",
         help=(
@@ -1322,6 +1336,7 @@ def main(argv: list | None = None) -> None:
         _run_generate(
             db_path, int(args.screen), dry_run=args.dry_run,
             via_markup=args.via_markup,
+            via_option_b=args.via_option_b,
         )
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)

@@ -2354,14 +2354,18 @@ def _emit_text_props(
 
 def generate_screen(
     conn: sqlite3.Connection, screen_id: int,
-    *, via_markup: bool = False,
+    *, via_markup: bool = False, via_option_b: bool = False,
 ) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
     When `via_markup=True`, routes the spec through the v0.3 L3
     markup round-trip (compress → emit → parse → decompress) before
-    rendering. Exercises the Stage 1.5 decompressor pipeline end-
-    to-end for Tier 3 pixel-parity sweeps.
+    rendering via the dict-IR renderer. Exercises the Option A
+    Stage 1.5 decompressor pipeline end-to-end.
+
+    When `via_option_b=True`, renders via the markup-native walker
+    ``dd.render_figma_ast.render_figma``. Drives the M4 pixel-parity
+    sweep on the Option B path. Mutually exclusive with `via_markup`.
 
     Returns dict with:
       structure_script: JS string for figma_execute (Phase A — creates nodes)
@@ -2369,12 +2373,18 @@ def generate_screen(
       token_variables: dict mapping token_name → figma_variable_id
       element_count: number of elements in the spec
     """
+    if via_markup and via_option_b:
+        raise ValueError(
+            "via_markup and via_option_b are mutually exclusive"
+        )
+
     from dd.ir import generate_ir, query_screen_visuals
     from dd.rebind_prompt import query_token_variables
 
-    if via_markup:
-        # Compressor consumes semantic=True form with system chrome
-        # included (per feedback_system_chrome_is_design.md).
+    if via_markup or via_option_b:
+        # Both Option A (via_markup) and Option B (via_option_b) use
+        # the semantic IR with system chrome preserved — per
+        # feedback_system_chrome_is_design.md.
         ir_result = generate_ir(
             conn, screen_id, semantic=True, filter_chrome=False,
         )
@@ -2406,9 +2416,26 @@ def generate_screen(
     else:
         ckr_built = False
 
-    script, token_refs = generate_figma_script(
-        spec, db_visuals=visuals, ckr_built=ckr_built,
-    )
+    if via_option_b:
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.render_figma_ast import render_figma
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+            compress_to_l3_with_maps(spec, conn, screen_id=screen_id)
+        )
+        fonts = collect_fonts(spec, db_visuals=visuals)
+        script, token_refs = render_figma(
+            doc, conn, nid_map,
+            fonts=fonts,
+            spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=visuals, ckr_built=ckr_built,
+            _spec_elements=spec["elements"],
+            _spec_tokens=spec.get("tokens", {}),
+        )
+    else:
+        script, token_refs = generate_figma_script(
+            spec, db_visuals=visuals, ckr_built=ckr_built,
+        )
 
     return {
         "structure_script": script,
