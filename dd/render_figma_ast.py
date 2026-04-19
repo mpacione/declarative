@@ -163,15 +163,7 @@ def render_figma_preamble(
     else:
         preamble.append("")
 
-    needed_node_ids: set[str] = set()
-    if db_visuals is not None:
-        for _nid, vis in db_visuals.items():
-            figma_id = vis.get("component_figma_id")
-            if figma_id:
-                needed_node_ids.add(figma_id)
-            _collect_swap_targets_from_tree(
-                vis.get("override_tree"), needed_node_ids,
-            )
+    needed_node_ids = _collect_prefetch_ids(db_visuals)
 
     if needed_node_ids:
         preamble.append(
@@ -279,10 +271,12 @@ def render_figma(
             node.head.eid: f"n{idx}" for idx, (node, _p) in enumerate(walk)
         }
 
+    node_id_vars = _prefetch_var_map(db_visuals)
     phase1, uses_placeholder, phase1_refs, override_deferred = _emit_phase1(
         walk, var_map, spec_key_map, original_name_map,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements, spec_tokens=spec_tokens,
+        node_id_vars=node_id_vars,
     )
     preamble = render_figma_preamble(
         doc, conn, nid_map,
@@ -307,6 +301,44 @@ def render_figma(
     body_lines = phase1 + phase2 + phase3 + end
     script = preamble + "\n".join(body_lines)
     return script, phase1_refs
+
+
+def _collect_prefetch_ids(
+    db_visuals: Optional[dict[int, dict[str, Any]]],
+) -> set[str]:
+    """Build the set of Figma node IDs the preamble prefetches.
+
+    Matches baseline `generate_figma_script` line ~914: iterate every
+    `db_visuals[nid]`, collect `component_figma_id` plus every swap
+    target reachable through the override tree. Sorted at emission
+    time so `_p0`, `_p1`, ... assignments are deterministic.
+    """
+    needed: set[str] = set()
+    if db_visuals is None:
+        return needed
+    for _nid, vis in db_visuals.items():
+        figma_id = vis.get("component_figma_id")
+        if figma_id:
+            needed.add(figma_id)
+        _collect_swap_targets_from_tree(
+            vis.get("override_tree"), needed,
+        )
+    return needed
+
+
+def _prefetch_var_map(
+    db_visuals: Optional[dict[int, dict[str, Any]]],
+) -> dict[str, str]:
+    """Return `{figma_node_id: _pN}` matching the preamble's prefetch
+    variable assignments. `_emit_override_tree` looks up `instance_swap`
+    targets here and emits the prefetched local instead of re-issuing
+    `getNodeByIdAsync`.
+    """
+    needed = _collect_prefetch_ids(db_visuals)
+    return {
+        fid: f"_p{i}"
+        for i, fid in enumerate(sorted(needed))
+    }
 
 
 def _baseline_walk_indices(
@@ -363,6 +395,7 @@ def _emit_phase1(
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     spec_tokens: Optional[dict[str, Any]] = None,
+    node_id_vars: Optional[dict[str, str]] = None,
 ) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str]]:
     """Phase 1 — materialize nodes + set intrinsic properties.
 
@@ -382,6 +415,7 @@ def _emit_phase1(
     """
     spec_elements = spec_elements or {}
     spec_tokens = spec_tokens or {}
+    node_id_vars = node_id_vars or {}
     lines: list[str] = []
     lines.append(
         "// Phase 1: Materialize — create nodes, set intrinsic properties"
@@ -426,6 +460,7 @@ def _emit_phase1(
                 component_figma_id, instance_figma_node_id,
                 raw_visual, element,
                 deferred_lines=override_deferred,
+                node_id_vars=node_id_vars,
             )
             if mode1_ok:
                 lines.extend(emitted)
@@ -535,6 +570,7 @@ def _emit_mode1_create(
     element: dict[str, Any],
     *,
     deferred_lines: list[str],
+    node_id_vars: Optional[dict[str, str]] = None,
 ) -> tuple[list[str], bool]:
     """Emit the Mode 1 createInstance block for one node.
 
@@ -571,11 +607,17 @@ def _emit_mode1_create(
         f'{pw_js}, {ph_js}, "{eid_lit}")'
     )
 
+    node_id_vars = node_id_vars or {}
+
     if component_figma_id:
         id_lit = _escape_js(component_figma_id)
+        node_expr = node_id_vars.get(
+            component_figma_id,
+            f'await figma.getNodeByIdAsync("{id_lit}")',
+        )
         lines.append(
             f'const {var} = await (async () => {{ '
-            f'const __src = await figma.getNodeByIdAsync("{id_lit}"); '
+            f'const __src = {node_expr}; '
             f'if (!__src) {{ __errors.push({{eid:"{eid_lit}", '
             f'kind:"missing_component_node", id:"{id_lit}"}}); '
             f'return {fallback_js}; }} '
@@ -617,7 +659,8 @@ def _emit_mode1_create(
     override_tree = raw_visual.get("override_tree")
     if override_tree:
         _emit_override_tree(
-            override_tree, var, {}, lines, deferred_lines=deferred_lines,
+            override_tree, var, node_id_vars, lines,
+            deferred_lines=deferred_lines,
         )
 
     hidden_children = raw_visual.get("hidden_children") or []
