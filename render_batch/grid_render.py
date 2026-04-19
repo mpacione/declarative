@@ -111,12 +111,11 @@ def main() -> int:
 
         t1 = time.time()
 
-        # Generate via the Option B path + canvas position
+        # Generate (Option B is the default post-M5b)
         gen = subprocess.run(
             [
                 "python3", "-m", "dd", "generate",
                 "--db", str(DB_PATH), "--screen", str(sid),
-                "--via-option-b",
                 "--canvas-x", str(cx),
                 "--canvas-y", str(cy),
             ],

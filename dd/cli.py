@@ -410,7 +410,7 @@ def _run_seed_catalog(db_path: str) -> None:
 
 def _run_generate(
     db_path: str, screen_id: int, dry_run: bool = False,
-    via_markup: bool = False, via_option_b: bool = False,
+    via_markup: bool = False,
     canvas_x: float | None = None, canvas_y: float | None = None,
 ) -> None:
     if not Path(db_path).exists():
@@ -426,7 +426,7 @@ def _run_generate(
     conn = get_connection(db_path)
     result = generate_screen(
         conn, screen_id,
-        via_markup=via_markup, via_option_b=via_option_b,
+        via_markup=via_markup,
         canvas_position=canvas_position,
     )
     conn.close()
@@ -438,9 +438,9 @@ def _run_generate(
         print(f"  Token refs: {len(result['token_refs'])}")
         print(f"  Script:     {len(result['structure_script'])} chars")
         if via_markup:
-            print("  Route:      compress → emit → parse → decompress → render")
-        elif via_option_b:
-            print("  Route:      derive_markup → render_figma (Option B)")
+            print("  Route:      compress → emit → parse → decompress → render (deprecated)")
+        else:
+            print("  Route:      derive_markup → render_figma (Option B, default)")
     else:
         print(result["structure_script"])
 
@@ -1199,15 +1199,6 @@ def main(argv: list | None = None) -> None:
     gen_parser.add_argument("--screen", required=True, help="Screen ID")
     gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
     gen_parser.add_argument(
-        "--via-option-b",
-        action="store_true",
-        help=(
-            "Render via the markup-native Option B walker "
-            "(dd.render_figma_ast.render_figma). M4 pixel-parity "
-            "sweep path. Mutually exclusive with --via-markup."
-        ),
-    )
-    gen_parser.add_argument(
         "--canvas-x", type=float, default=None,
         help="Place the rendered screen's root frame at this x "
              "coordinate on the Figma canvas. Used by grid_render.py "
@@ -1353,7 +1344,6 @@ def main(argv: list | None = None) -> None:
         _run_generate(
             db_path, int(args.screen), dry_run=args.dry_run,
             via_markup=args.via_markup,
-            via_option_b=args.via_option_b,
             canvas_x=args.canvas_x, canvas_y=args.canvas_y,
         )
     elif args.command == "extract-supplement":

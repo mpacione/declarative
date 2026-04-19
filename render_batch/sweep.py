@@ -29,9 +29,6 @@ REPORTS = ROOT / "reports"
 SCRIPTS_MARKUP = ROOT / "scripts-markup"
 WALKS_MARKUP = ROOT / "walks-markup"
 REPORTS_MARKUP = ROOT / "reports-markup"
-SCRIPTS_OPTION_B = ROOT / "scripts-option-b"
-WALKS_OPTION_B = ROOT / "walks-option-b"
-REPORTS_OPTION_B = ROOT / "reports-option-b"
 DB_PATH = ROOT.parent / "Dank-EXP-02.declarative.db"
 WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
 # Default port; override via --port. The Desktop Bridge picks between
@@ -67,17 +64,16 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
 
 def process_screen(
     sid: int, name: str, skip_existing: bool, port: str,
-    via_markup: bool = False, via_option_b: bool = False,
+    via_markup: bool = False,
 ) -> dict:
-    # Separate artefact directories so baseline, Option A markup
-    # round-trip, and Option B markup-native paths don't clobber each
-    # other — lets the user run all three and compare is_parity
-    # verdicts side by side.
-    if via_option_b:
-        scripts_dir = SCRIPTS_OPTION_B
-        walks_dir = WALKS_OPTION_B
-        reports_dir = REPORTS_OPTION_B
-    elif via_markup:
+    # M5b default: sweep runs through the Option B markup-native
+    # renderer (``dd.render_figma_ast.render_figma``). The legacy
+    # ``scripts-option-b/`` / ``walks-option-b/`` / ``reports-option-b/``
+    # split from the M4 parity-gate era is gone — there's only one
+    # path now. ``--via-markup`` still writes to the segregated
+    # ``*-markup`` dirs so the deprecated Option A decompressor path
+    # is reproducible until M6 deletes it.
+    if via_markup:
         scripts_dir = SCRIPTS_MARKUP
         walks_dir = WALKS_MARKUP
         reports_dir = REPORTS_MARKUP
@@ -115,8 +111,6 @@ def process_screen(
         ]
         if via_markup:
             gen_cmd.append("--via-markup")
-        elif via_option_b:
-            gen_cmd.append("--via-option-b")
         code, out, err = run_step(
             gen_cmd,
             GENERATE_TIMEOUT,
@@ -215,27 +209,17 @@ def main() -> int:
     ap.add_argument(
         "--via-markup", action="store_true",
         help=(
-            "Route each screen through the v0.3 L3 markup round-trip "
-            "(compress → emit → parse → decompress) before rendering. "
-            "Tier 3 gate for the Option A Stage 1.5 decompressor path."
-        ),
-    )
-    ap.add_argument(
-        "--via-option-b", action="store_true",
-        help=(
-            "Render each screen via the markup-native Option B walker "
-            "(dd.render_figma_ast.render_figma). Tier 3 pixel-parity "
-            "gate for M4."
+            "Route each screen through the deprecated v0.3 L3 markup "
+            "round-trip (compress → emit → parse → decompress) before "
+            "rendering. Deprecated Option A path — scheduled for "
+            "deletion at M6 along with dd.decompress_l3. Default "
+            "(no flag) is the markup-native Option B walker."
         ),
     )
     args = ap.parse_args()
-    if args.via_markup and args.via_option_b:
-        ap.error("--via-markup and --via-option-b are mutually exclusive")
 
     # Create artefact directories for whichever path the sweep uses.
-    if args.via_option_b:
-        target_dirs = (SCRIPTS_OPTION_B, WALKS_OPTION_B, REPORTS_OPTION_B)
-    elif args.via_markup:
+    if args.via_markup:
         target_dirs = (SCRIPTS_MARKUP, WALKS_MARKUP, REPORTS_MARKUP)
     else:
         target_dirs = (SCRIPTS, WALKS, REPORTS)
@@ -260,7 +244,6 @@ def main() -> int:
         row = process_screen(
             sid, name, args.skip_existing, args.port,
             via_markup=args.via_markup,
-            via_option_b=args.via_option_b,
         )
         elapsed = time.time() - t1
         status = (
@@ -281,12 +264,9 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    if args.via_option_b:
-        summary_name = "summary-option-b.json"
-    elif args.via_markup:
-        summary_name = "summary-markup.json"
-    else:
-        summary_name = "summary.json"
+    summary_name = (
+        "summary-markup.json" if args.via_markup else "summary.json"
+    )
     (ROOT / summary_name).write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")

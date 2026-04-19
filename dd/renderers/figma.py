@@ -2354,19 +2354,20 @@ def _emit_text_props(
 
 def generate_screen(
     conn: sqlite3.Connection, screen_id: int,
-    *, via_markup: bool = False, via_option_b: bool = False,
+    *, via_markup: bool = False,
     canvas_position: Optional[tuple[float, float]] = None,
 ) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
-    When `via_markup=True`, routes the spec through the v0.3 L3
-    markup round-trip (compress → emit → parse → decompress) before
-    rendering via the dict-IR renderer. Exercises the Option A
-    Stage 1.5 decompressor pipeline end-to-end.
+    M5 default: routes the spec through the markup-native Option B
+    walker (``dd.render_figma_ast.render_figma``). This was gated
+    behind ``--via-option-b`` through M4 pixel-parity validation;
+    post-M4 it's the canonical path.
 
-    When `via_option_b=True`, renders via the markup-native walker
-    ``dd.render_figma_ast.render_figma``. Drives the M4 pixel-parity
-    sweep on the Option B path. Mutually exclusive with `via_markup`.
+    ``via_markup=True`` preserves the decompressor round-trip path
+    (compress → emit → parse → decompress → dict-IR render) for the
+    deprecated Option A pipeline. Scheduled for removal at M6 along
+    with ``dd.decompress_l3`` per ``docs/DEPRECATION.md``.
 
     Returns dict with:
       structure_script: JS string for figma_execute (Phase A — creates nodes)
@@ -2374,23 +2375,14 @@ def generate_screen(
       token_variables: dict mapping token_name → figma_variable_id
       element_count: number of elements in the spec
     """
-    if via_markup and via_option_b:
-        raise ValueError(
-            "via_markup and via_option_b are mutually exclusive"
-        )
-
     from dd.ir import generate_ir, query_screen_visuals
     from dd.rebind_prompt import query_token_variables
 
-    if via_markup or via_option_b:
-        # Both Option A (via_markup) and Option B (via_option_b) use
-        # the semantic IR with system chrome preserved — per
-        # feedback_system_chrome_is_design.md.
-        ir_result = generate_ir(
-            conn, screen_id, semantic=True, filter_chrome=False,
-        )
-    else:
-        ir_result = generate_ir(conn, screen_id)
+    # Both paths use the semantic IR with system chrome preserved —
+    # per feedback_system_chrome_is_design.md.
+    ir_result = generate_ir(
+        conn, screen_id, semantic=True, filter_chrome=False,
+    )
     spec = ir_result["spec"]
     if via_markup:
         from dd.compress_l3 import compress_to_l3
@@ -2417,15 +2409,24 @@ def generate_screen(
     else:
         ckr_built = False
 
-    if via_option_b:
+    if via_markup:
+        # Deprecated Option A decompressor path — emits a dict-IR
+        # spec for the legacy ``generate_figma_script``. Kept until
+        # M6 deletes ``dd.decompress_l3`` entirely.
+        script, token_refs = generate_figma_script(
+            spec, db_visuals=visuals, ckr_built=ckr_built,
+            canvas_position=canvas_position,
+        )
+    else:
+        # Default: markup-native Option B walker. Render path keeps
+        # the synthetic screen wrapper — Figma's native canvas has a
+        # screen-1/frame-1 double-frame shape that the baseline
+        # renderer preserves and the verifier expects.
+        # ``collapse_wrapper=False`` matches M4 pixel-parity against
+        # baseline; ``collapse_wrapper=True`` is for grammar + round-
+        # trip tests only.
         from dd.compress_l3 import compress_to_l3_with_maps
         from dd.render_figma_ast import render_figma
-        # Render path keeps the synthetic screen wrapper — Figma's
-        # native canvas has a screen-1/frame-1 double-frame shape that
-        # the baseline renderer preserves and the verifier expects.
-        # Collapse=True is the right default for grammar + round-trip
-        # tests (single canonical line); Collapse=False is correct for
-        # M4 pixel-parity against baseline.
         doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(
                 spec, conn, screen_id=screen_id,
@@ -2442,11 +2443,6 @@ def generate_screen(
             canvas_position=canvas_position,
             _spec_elements=spec["elements"],
             _spec_tokens=spec.get("tokens", {}),
-        )
-    else:
-        script, token_refs = generate_figma_script(
-            spec, db_visuals=visuals, ckr_built=ckr_built,
-            canvas_position=canvas_position,
         )
 
     return {
