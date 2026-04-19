@@ -1,30 +1,23 @@
 // Stage 2 pilot — `login` archetype skeleton migrated from
 // `login.json` to dd markup per `docs/spec-dd-markup-grammar.md` §6.1.
 //
-// Types map to the current `_TYPE_KEYWORDS` registry in
-// `dd/markup_l3.py:1333`. The original JSON used app-level types
-// (`icon_button`, `text_input`, `link`) that aren't yet in the
-// canonical catalog — each is replaced with its closest registered
-// base type + a `variant=` property that identifies the sub-kind.
-//
-// This is intentionally a lossless-with-annotation migration: every
-// semantic distinction in the JSON is preserved, but surfaced
-// through registry-legal primitives + properties. When the type
-// registry later expands to cover `icon-button` / `link` /
-// `text-input` natively, these nodes can promote to the richer
-// keyword forms without changing call-site meaning.
+// Uses the original JSON type names (`icon-button`, `text-input`,
+// `link`) — accepted by the parser's fail-open policy per §2.7
+// ("Parsers SHOULD warn on unknown type keywords but MUST NOT
+// hard-fail"). When the type registry later gains these as
+// first-class keywords, no markup changes required.
 
 define login() {
     header {
-        button variant=icon
+        icon-button
         text
     }
     card {
         heading
         text
-        input variant=text
-        input variant=password
-        text variant=link
+        text-input
+        text-input
+        link
         button variant=primary
     }
     button variant=secondary

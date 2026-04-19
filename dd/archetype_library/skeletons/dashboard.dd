@@ -1,0 +1,39 @@
+// Stage 2 archetype — migrated from dashboard.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define dashboard() {
+    header {
+        text
+        icon-button
+    }
+    tabs {
+        text
+        text
+        text
+    }
+    card {
+        heading
+        text
+        image
+    }
+    card {
+        heading
+        table {
+            text
+            text
+            list-item {
+                text
+                badge
+            }
+            list-item {
+                text
+                badge
+            }
+            list-item {
+                text
+                badge
+            }
+        }
+    }
+}

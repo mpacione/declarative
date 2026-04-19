@@ -1,0 +1,43 @@
+// Stage 2 archetype — migrated from settings.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define settings() {
+    header {
+        icon-button
+        text
+    }
+    card {
+        heading
+        avatar
+        text-input
+        text-input
+    }
+    card {
+        heading
+        toggle-group {
+            toggle
+            toggle
+            toggle
+            toggle
+        }
+    }
+    card {
+        heading
+        list {
+            navigation-row {
+                text
+                icon
+            }
+            navigation-row {
+                text
+                icon
+            }
+            navigation-row {
+                text
+                icon
+            }
+        }
+    }
+    button variant=primary
+}

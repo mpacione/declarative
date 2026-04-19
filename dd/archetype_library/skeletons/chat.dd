@@ -1,0 +1,37 @@
+// Stage 2 archetype — migrated from chat.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define chat() {
+    header {
+        icon-button
+        avatar
+        text
+        icon-button
+    }
+    list {
+        list-item {
+            avatar
+            text
+        }
+        list-item {
+            text
+        }
+        list-item {
+            avatar
+            text
+        }
+        list-item {
+            text
+        }
+        list-item {
+            avatar
+            text
+        }
+    }
+    card {
+        icon-button
+        text-input
+        icon-button
+    }
+}

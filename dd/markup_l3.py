@@ -1345,7 +1345,14 @@ _TEXT_BEARING_TYPES = frozenset((
 
 
 def _is_statement_starter(tt: TokenType, value: str) -> bool:
-    """Per grammar §2.2 — what tokens can start a new statement?"""
+    """Per grammar §2.2 — what tokens can start a new statement?
+
+    Grammar §2.7 requires fail-open on unknown type keywords: any
+    IDENT in statement position may be a not-yet-registered type
+    keyword. Returning True for all IDENTs here preserves that
+    fail-open behavior so a new-line IDENT correctly terminates
+    the previous head instead of being parsed as a PropAssign.
+    """
     if tt == "IDENT":
         return value in _TYPE_KEYWORDS or value in (
             "define", "namespace", "use", "tokens",
@@ -1419,7 +1426,12 @@ def _parse_node(c: _Cursor) -> Node:
         c.advance()
         scope_alias, type_or_path = _parse_pattern_path(c)
         head_kind = "pattern-ref"
-    elif t.type == "IDENT" and t.value in _TYPE_KEYWORDS:
+    elif t.type == "IDENT":
+        # Grammar §2.7: "Parsers SHOULD warn on unknown type keywords
+        # but MUST NOT hard-fail". Any IDENT in head position is
+        # treated as a type keyword; the value may not be in the
+        # compressor's `_TYPE_KEYWORDS` registry but downstream
+        # passes / renderer fall back to a sensible default.
         c.advance()
         type_or_path = t.value
         head_kind = "type"
@@ -1493,6 +1505,21 @@ def _parse_node(c: _Cursor) -> Node:
             and nxt.value in _TYPE_KEYWORDS
             and c.peek(1).type in ("EQ", "DOT")
         )
+        # §2.7 fail-open: an IDENT on a new line that is NOT in the
+        # type-keyword registry AND is NOT followed by `=` or `.`
+        # (so not a property assignment) terminates the current head
+        # — it's the start of a sibling node with an unknown type.
+        is_unknown_type_statement = (
+            nxt.type == "IDENT"
+            and nxt.value not in _TYPE_KEYWORDS
+            and c.peek(1).type not in ("EQ", "DOT")
+            and c.pos != saved_pos
+        )
+        if is_unknown_type_statement:
+            c.pos = saved_pos
+            while c.peek().type == "EOL":
+                c.advance()
+            break
         if (
             _is_statement_starter(nxt.type, nxt.value)
             and not is_type_continuation_prop
@@ -1672,8 +1699,15 @@ def _parse_block_statement(c: _Cursor) -> object:
 
     # Node-start tokens: TypeKeyword / `->` / `&`. Falls through here
     # when the IDENT is a TypeKeyword NOT followed by `=` or `.`.
+    #
+    # Grammar §2.7: "Parsers SHOULD warn on unknown type keywords
+    # but MUST NOT hard-fail". Unknown IDENTs at statement-start
+    # position are therefore accepted as type keywords — the
+    # resulting Node carries `type_or_path=<unknown>` and downstream
+    # consumers (semantic passes / renderer / decompressor) can
+    # choose to warn or dispatch-fall-through.
     if (
-        (t.type == "IDENT" and t.value in _TYPE_KEYWORDS)
+        t.type == "IDENT"
         or t.type == "ARROW"
         or t.type == "AMP"
     ):

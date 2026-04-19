@@ -1,0 +1,38 @@
+// Stage 2 archetype — migrated from detail.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define detail() {
+    header {
+        icon-button
+        text
+        icon-button
+    }
+    card {
+        image
+        heading
+        text
+        text
+    }
+    card {
+        heading
+        list {
+            list-item {
+                icon
+                text
+            }
+            list-item {
+                icon
+                text
+            }
+            list-item {
+                icon
+                text
+            }
+        }
+    }
+    button-group {
+        button variant=primary
+        button variant=secondary
+    }
+}

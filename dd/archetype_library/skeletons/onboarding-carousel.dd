@@ -1,0 +1,31 @@
+// Stage 2 archetype — migrated from onboarding-carousel.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define onboarding-carousel() {
+    header {
+        text
+    }
+    card {
+        image
+        heading
+        text
+    }
+    card {
+        image
+        heading
+        text
+    }
+    card {
+        image
+        heading
+        text
+    }
+    segmented-control {
+        text
+        text
+        text
+    }
+    button variant=primary
+    link
+}

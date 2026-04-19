@@ -1,0 +1,42 @@
+// Stage 2 archetype — migrated from feed.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define feed() {
+    header {
+        text
+        icon-button
+    }
+    list {
+        card {
+            avatar
+            text
+            image
+            text
+            button-group {
+                button
+                button
+            }
+        }
+        card {
+            avatar
+            text
+            image
+            text
+            button-group {
+                button
+                button
+            }
+        }
+        card {
+            avatar
+            text
+            image
+            text
+            button-group {
+                button
+                button
+            }
+        }
+    }
+}

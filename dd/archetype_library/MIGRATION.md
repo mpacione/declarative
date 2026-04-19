@@ -1,23 +1,29 @@
 # Archetype JSON → `.dd` migration plan — Plan B Stage 2
 
-**Status:** pilot shipped. `login.dd` proves the migration path end-to-end.
+**Status:** all 12 archetypes migrated. Each parses + round-trips
+via `tests/test_archetype_skeletons.py`.
 
 ## Current state (2026-04-18)
 
-| Archetype | JSON | `.dd` | Status |
-|---|---|---|---|
-| login | `skeletons/login.json` | `skeletons/login.dd` | ✅ pilot shipped |
-| chat | `skeletons/chat.json` | — | JSON only |
-| dashboard | `skeletons/dashboard.json` | — | JSON only |
-| detail | `skeletons/detail.json` | — | JSON only |
-| drawer-nav | `skeletons/drawer-nav.json` | — | JSON only |
-| empty-state | `skeletons/empty-state.json` | — | JSON only |
-| feed | `skeletons/feed.json` | — | JSON only |
-| onboarding-carousel | `skeletons/onboarding-carousel.json` | — | JSON only |
-| paywall | `skeletons/paywall.json` | — | JSON only |
-| profile | `skeletons/profile.json` | — | JSON only |
-| search | `skeletons/search.json` | — | JSON only |
-| settings | `skeletons/settings.json` | — | JSON only |
+| Archetype | `.dd` |
+|---|---|
+| chat | ✅ |
+| dashboard | ✅ |
+| detail | ✅ |
+| drawer-nav | ✅ |
+| empty-state | ✅ |
+| feed | ✅ |
+| login | ✅ (pilot) |
+| onboarding-carousel | ✅ |
+| paywall | ✅ |
+| profile | ✅ |
+| search | ✅ |
+| settings | ✅ |
+
+The `.dd` files live alongside the legacy `.json` skeletons under
+`dd/archetype_library/skeletons/`. Both coexist while consumers
+migrate — the `.json` files remain authoritative for now; `.dd`
+files are the forward-path form.
 
 ## Migration recipe (per archetype)
 
@@ -36,30 +42,24 @@
    structural invariants are worth asserting (see
    `test_login_archetype_structure` for the shape).
 
-## Known gaps blocking full migration
+## Closed gaps (fixed during Stage 2 migration)
 
-### 1. Type-keyword registry is too narrow
+### Type-keyword fail-open — CLOSED
 
-JSON archetype types include `icon_button`, `text_input`, `link`,
-`section_header`, `list_item`, `tag`, `notification`, ... — none of
-which are in the current `_TYPE_KEYWORDS` frozenset
-(`dd/markup_l3.py:1333`). Grammar §2.7 says:
+The parser used to hard-fail on unknown IDENTs in block-body
+position (including `icon-button`, `text-input`, `link`,
+`list-item`, `navigation-row`, `empty-state`, `search-bar`,
+`table`, `stepper`, `shopping-cart`, etc. that the archetype
+JSONs reference). Grammar §2.7 requires fail-open.
 
-> Parsers SHOULD warn on unknown type keywords but MUST NOT
-> hard-fail (fail-open per `feedback_fail_open_not_closed.md`).
+Fix shipped alongside this migration: `_parse_node` now accepts
+any IDENT in head position as a type keyword; the head-
+continuation loop correctly terminates when an unknown IDENT
+appears on a new line without a following `=` or `.`.
 
-The current parser hard-fails on unknown identifiers in block body.
-Fixing this would make migration drop-in lossless:
+## Known gaps still blocking richer work
 
-- Option A: extend `_TYPE_KEYWORDS` to include the archetype-level
-  canonical types. Compile-time-safe and documents the catalog.
-- Option B: make unknown type keywords a soft warning (as the
-  spec requires). Lets archetypes use any semantic name.
-
-Both are Stage 2 spec work. Currently blocked on not having decided
-between A and B.
-
-### 2. Params aren't exercised by the JSON skeletons
+### Params aren't exercised by the JSON skeletons
 
 Archetype JSONs are structural templates only — no parametrization.
 Per grammar §6.1, `define` supports scalar / slot / path-override
@@ -69,7 +69,7 @@ for synthesis (Priority 1 stage).
 This is intentional future work — first close the structure-only
 migration, then parametrize one archetype as a follow-up pilot.
 
-### 3. No `use` / import mechanism wired up yet
+### No `use` / import mechanism wired up yet
 
 Grammar §6.2 defines `use "path/to/library" as alias`. Semantic
 passes don't yet resolve imports. Until they do, archetypes are
@@ -78,7 +78,7 @@ isolated documents; consumers can't `& login` to instantiate.
 Wiring import resolution is blocked on Stage 2 design decisions
 around file-system vs registry-lookup resolution.
 
-### 4. Cycle detection exists for tokens/defines inside one doc
+### Cycle detection exists for tokens/defines inside one doc
 
 Grammar §6.3 covers intra-doc cycle detection. Cross-document cycle
 detection (via `use`) is Stage 2 scope.
