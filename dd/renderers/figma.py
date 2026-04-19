@@ -2419,8 +2419,17 @@ def generate_screen(
     if via_option_b:
         from dd.compress_l3 import compress_to_l3_with_maps
         from dd.render_figma_ast import render_figma
+        # Render path keeps the synthetic screen wrapper — Figma's
+        # native canvas has a screen-1/frame-1 double-frame shape that
+        # the baseline renderer preserves and the verifier expects.
+        # Collapse=True is the right default for grammar + round-trip
+        # tests (single canonical line); Collapse=False is correct for
+        # M4 pixel-parity against baseline.
         doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
-            compress_to_l3_with_maps(spec, conn, screen_id=screen_id)
+            compress_to_l3_with_maps(
+                spec, conn, screen_id=screen_id,
+                collapse_wrapper=False,
+            )
         )
         fonts = collect_fonts(spec, db_visuals=visuals)
         script, token_refs = render_figma(

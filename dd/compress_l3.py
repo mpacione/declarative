@@ -1526,6 +1526,7 @@ def compress_to_l3_with_nid_map(
 def compress_to_l3_with_maps(
     spec: dict, conn: Optional[sqlite3.Connection] = None,
     *, screen_id: Optional[int] = None,
+    collapse_wrapper: bool = True,
 ) -> tuple[
     L3Document,
     dict[str, int],
@@ -1557,7 +1558,8 @@ def compress_to_l3_with_maps(
     """
     if not isinstance(spec, dict):
         return L3Document(namespace=None), {}, {}, {}, {}
-    spec = _collapse_synthetic_screen_wrapper(spec)
+    if collapse_wrapper:
+        spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
         return L3Document(namespace=None), {}, {}, {}, {}
@@ -1608,6 +1610,7 @@ def compress_to_l3_with_maps(
     if root_node is None:
         return L3Document(namespace=None), {}, {}, {}, {}
 
+    pre_trailer_id = id(root_node)
     if screen_id is not None:
         attrs: tuple[tuple[str, Value], ...] = (
             ("src", _num_literal(screen_id)),
@@ -1634,25 +1637,21 @@ def compress_to_l3_with_maps(
         source_path=None,
     )
     if screen_id is not None and doc.top_level:
-        # Root node was rebuilt with a trailer above; re-register the new
-        # id() across all three id-keyed side-cars so walker lookups hit
-        # the current root object rather than the pre-trailer instance.
-        # `Node` is a frozen dataclass so the `Node(head=new_head,
-        # block=root_node.block)` reconstruction above always produces a
-        # fresh Python object — the guard below is always True when
-        # `screen_id is not None`, but kept as a conservative
-        # check-and-remap against any future code path that might
-        # legitimately re-use the pre-trailer root.
-        new_root = doc.top_level[0]
-        if id(new_root) != id(root_node):
-            if id(root_node) in node_nid:
-                node_nid[id(new_root)] = node_nid.pop(id(root_node))
-            if id(root_node) in node_spec_key:
-                node_spec_key[id(new_root)] = node_spec_key.pop(
-                    id(root_node),
+        # Root Node was rebuilt with a trailer above; migrate the
+        # id-keyed side-car entries from the pre-trailer Node object
+        # (captured into `pre_trailer_id` before the rebind) to the
+        # post-trailer root object so walker lookups via
+        # `id(doc.top_level[0])` hit populated entries.
+        new_root_id = id(doc.top_level[0])
+        if new_root_id != pre_trailer_id:
+            if pre_trailer_id in node_nid:
+                node_nid[new_root_id] = node_nid.pop(pre_trailer_id)
+            if pre_trailer_id in node_spec_key:
+                node_spec_key[new_root_id] = node_spec_key.pop(
+                    pre_trailer_id,
                 )
-            if id(root_node) in node_original_name:
-                node_original_name[id(new_root)] = node_original_name.pop(
-                    id(root_node),
+            if pre_trailer_id in node_original_name:
+                node_original_name[new_root_id] = (
+                    node_original_name.pop(pre_trailer_id)
                 )
     return doc, eid_to_nid, node_nid, node_spec_key, node_original_name

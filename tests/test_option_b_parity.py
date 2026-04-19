@@ -475,13 +475,22 @@ class TestM1dPipelineHealth:
         """The screen root's spec key appears in `M` — the walker's
         eid_map payload (at live render time) will include the root
         by this key, so the verifier can reach it.
+
+        Uses ``collapse_wrapper=False`` (M4 render-path configuration)
+        so that the AST preserves the synthetic screen-1/frame-1
+        wrapper and the walker emits both `M["screen-1"]` and
+        `M["frame-1"]` — matching baseline Phase 1 output the
+        verifier expects.
         """
         from dd.render_figma_ast import render_figma
 
         ir = generate_ir(db_conn, sid, semantic=True, filter_chrome=False)
         visuals = query_screen_visuals(db_conn, sid)
         doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
-            compress_to_l3_with_maps(ir["spec"], db_conn, screen_id=sid)
+            compress_to_l3_with_maps(
+                ir["spec"], db_conn, screen_id=sid,
+                collapse_wrapper=False,
+            )
         )
         fonts = collect_fonts(ir["spec"], db_visuals=visuals)
         script, _ = render_figma(
@@ -492,8 +501,9 @@ class TestM1dPipelineHealth:
             _spec_elements=ir["spec"]["elements"],
             _spec_tokens=ir["spec"].get("tokens", {}),
         )
-        root_eid = doc.top_level[0].head.eid
-        root_spec_key = spec_key_map.get(root_eid, root_eid)
+        root_spec_key = spec_key_map.get(
+            id(doc.top_level[0]), doc.top_level[0].head.eid,
+        )
         assert f'M["{root_spec_key}"]' in script, (
             f"screen {sid}: root spec_key {root_spec_key!r} not in M"
         )
