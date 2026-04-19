@@ -7,10 +7,24 @@ for round-trip validation; next: React + HTML/CSS). One IR, many
 frontends, many backends. The same structural trick LLVM uses for
 programming languages, applied to design artifacts.
 
-Round-trip parity on the test corpus is 204 / 204 app screens, verified
-at node granularity by a structured verifier.
-[`docs/roadmap.md`](docs/roadmap.md) has what's next; the headline items
-are a React renderer and synthetic screen generation.
+Round-trip parity on the test corpus is **204 / 204 app screens**,
+verified at node granularity by a structured verifier — and visually
+confirmed on a 61-screen side-by-side grid review.
+[`docs/roadmap.md`](docs/roadmap.md) has what's next; the active focus
+is **synthetic screen generation and editing** on top of the v0.3
+markup-native foundation.
+
+## v0.3 foundation — complete (2026-04-19)
+
+The **dd markup** L3 IR and its markup-native Figma renderer are
+operational end-to-end. Every render path in the system now walks the
+L3 AST directly — no dict-IR intermediate on the render path. The
+full migration (M0 compressor → M1 walker MVP → M2 byte parity →
+M3 full-corpus script parity → M4 pixel parity → M5 consumer migration
+→ M6(a) atomic cutover) is documented in
+[`docs/plan-v0.3.md`](docs/plan-v0.3.md). M6(a) deleted ~6,800 LOC of
+transitional Option A scaffolding in a single commit; the Option A
+reference is preserved at git tag `option-a-complete` for archaeology.
 
 ## What it does
 
@@ -19,13 +33,14 @@ are a React renderer and synthetic screen generation.
 | Extract a Figma file into a queryable SQLite database | Complete. ~87 K nodes × 77 properties per node extracted in ~220 s for the test corpus. |
 | Cluster raw property values into token proposals (colour, spacing, typography, radius, effects) | Complete. Proposals are conservative and benefit from human review before push. |
 | Curate, accept, rename, merge token proposals | CLI + batch accept-all. |
-| Render the IR back to a Figma Plugin script that rebuilds the file | Complete. Three-phase emit with progressive fallback from token refs to component instances to raw values. |
+| Derive the L3 markup AST from the DB (`compress_to_l3`) | Complete. Per-axis decomposition, canonical-type classification, override merging, component-key references. |
+| Render the L3 AST back to a Figma Plugin script | Complete (markup-native walker). Three-phase emit: materialize → wire tree → hydrate. |
 | Push curated tokens back to Figma as live variables plus rebound bindings | Complete. Two-phase manifest (create variables, then rebind). |
-| Generate a screen from a natural-language prompt | Operational end to end. Text becomes a component list, becomes IR, becomes Figma script. |
+| Generate a screen from a natural-language prompt | Operational end to end. Text → component list → L3 AST → Figma script. |
 | Verify a rendered subtree against the IR | Complete. Unified structured-error channel with per-node granularity. |
-| React + HTML/CSS renderer | Not started. Primary next target. |
-| SwiftUI, Flutter renderers | Not started. Same pattern, later. |
-| Synthetic screen generation from prompt, sketch, or image | Not started. Next major phase. |
+| React + HTML/CSS renderer | Not started. The L3 primitives are backend-neutral by design (e.g. `rotation` + `mirror` as decomposed head properties, not Figma matrices), so adding a backend is a new walker, not an IR change. |
+| SwiftUI, Flutter renderers | Not started. Same pattern. |
+| **Synthetic screen generation and editing** | **Active planning.** Use-case ladder (swap component → modify icon → add/move element → full screen from prompt) scoped in [`docs/plan-synthetic-gen.md`](docs/plan-synthetic-gen.md). |
 
 ## Install
 

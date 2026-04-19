@@ -1,10 +1,11 @@
 # Requirements — v0.3 Phase
 
-**Status:** Canonical for the v0.3 phase. Derives from `docs/requirements.md` (Tier 0). Every v0.3 spec and plan traces to this.
+**Status:** v0.3 foundation complete (2026-04-19). This document is preserved for reference against every requirement listed here; follow-on work (Priority 1 synthetic generation) has its own requirements doc.
 **Authored:** 2026-04-18.
+**Completed:** 2026-04-19 with `6377105` (M6(a) atomic cutover).
 **Scope:** internal tool, Dank Experimental corpus.
 
-v0.3 is **the foundation** — not one of many priorities but the prerequisite substrate that Priority 1 (synthetic generation) needs to begin. Its scope is narrow and load-bearing: complete dd markup as the shared-grammar substrate, and round-trip the Dank corpus through it at pixel parity.
+v0.3 is **the foundation** — not one of many priorities but the prerequisite substrate that Priority 1 (synthetic generation) needs to begin. Its scope is narrow and load-bearing: complete dd markup as the shared-grammar substrate, and round-trip the Dank corpus through it at pixel parity. **Both delivered.**
 
 ---
 
@@ -149,14 +150,15 @@ v0.3 is done when all the following hold:
 
 ## 4. Where we are vs where we're going
 
-### 4.1 Current state (end of 2026-04-18 late-late session)
+### 4.1 Current state (2026-04-19)
 
-- Branch: `v0.3-integration` is the active working branch. Tags: `pre-markup-baseline` (main's current state), `markup-compressor-mvp` (c0102d5, compressor MVP green), `option-a-complete` (end-of-Option-A state before the pivot).
-- **Option A path complete** — parser, emitter, compressor (`dd/compress_l3.py`), decompressor (`dd/decompress_l3.py`), 12 archetypes migrated to `.dd`. 163 targeted tests green across compressor + decompressor + markup + archetype suites. Tier 1 (AST round-trip) at 204/204. Tier 2 (script byte-parity) NOT achieved — ratios converged to ~0.98 but not byte-identical. Tier 3 (pixel parity) sweep attempted: 0/3 on smoke test.
-- **Option B pivot adopted** (2026-04-18 late-late) — `docs/decisions/v0.3-option-b-cutover.md`. Option A machinery stays in place as reference through the migration; deleted at M6 per `docs/DEPRECATION.md`.
-- `dd/markup_l3.py` — parser/emitter/AST classes/semantic passes — is the backbone of Option B. Preserved unchanged.
-- `dd/compress_l3.py` — per-axis derivation logic is reusable as the core of `derive_markup`; module renamed at M0.
-- 2,524 total tests passing on the full suite (55 pre-existing failures in unrelated test modules predate the session).
+- Branch: `v0.3-integration`. Tags: `pre-markup-baseline` (main pre-migration anchor), `markup-compressor-mvp` (c0102d5), `option-a-complete` (end-of-Option-A reference). Open v0.3-integration HEAD: `6377105` (M6(a) atomic cutover).
+- **Option B migration complete** — M0 through M6(a). All consumers are on the markup-native path. Tier 1 AST round-trip at 204/204, Tier 2 + Tier 3 (pixel parity) at 204/204 via `render_batch/sweep.py`. 61-screen grid review (2026-04-19) resolved 7 visual-defect classes (`visible=false` emission, GROUP coord normalization, rotation/mirror → relativeTransform matrix) in 3 fixes: commits `1faad8c`, `2fe5934`, `7d95190`.
+- **Option A deletion (M6(a)) — shipped.** ~6,800 LOC removed: `dd/decompress_l3.py`, 3 test files, `--via-markup` / `--via-option-b` flags, segregated `*-markup` / `*-option-b` artefact dirs, the `via_markup` branch in `generate_screen`. Preserved at git tag `option-a-complete` for archaeology.
+- **Option A internal plumbing (M6(b)) — pending, gated.** `generate_ir`, `build_composition_spec`, `query_screen_visuals`, `generate_figma_script`, `generate_screen`, and the `_spec_elements` shim inside `render_figma` remain as infrastructure the compressor + walker still consume. M6(b) rewrites them to an L3-native shape once the synthetic-gen prototype trigger hits.
+- `dd/markup_l3.py` — parser/emitter/AST/semantic passes — backbone of Option B. Unchanged.
+- `dd/compress_l3.py` — per-axis derivation. The compressor now emits `rotation` + `mirror` as decomposed L3 primitives (rather than matrices), keeping the AST backend-neutral.
+- 2,649+ tests passing (M4/M5/M6(a) added ~25 tests; grammar round-trip + compose + option-b-parity suites all green). 24 pre-existing v0.2 failures in unrelated test modules (semantic_tree, rebind, phase2/3 integration) predate this work and are orthogonal.
 
 ### 4.2 What was learned that informs v0.3
 
@@ -165,18 +167,17 @@ v0.3 is done when all the following hold:
 - **Script-size ratio ≠ byte parity.** The 0.977–0.981 script-size ratios that looked promising on Option A masked real semantic divergence (element-key counter drift, content drift). The Tier 2 spec claim is byte-identity, not near-identity — important lesson for how to measure parity going forward.
 - **Starting CRAG before Stage 1 was the diversion.** The MVP doc explicitly said "do not sneak in edit grammar or CRAG cascade — those are Stage 4." The current plan restores that ordering.
 
-### 4.3 What happens next
+### 4.3 What happened (M1 through M6(a))
 
-Per `docs/plan-v0.3.md` and `docs/decisions/v0.3-option-b-cutover.md`:
+All milestones from §4.3 above are **complete** as of 2026-04-19. For the historical breakdown of each milestone + the commit map, see `docs/plan-v0.3.md` §Status and the M6(a) progress table in `docs/DEPRECATION.md`.
 
-1. **M1 — Markup-native Figma renderer MVP.** `render_figma(doc: L3Document, conn, nid_map) → JS` walker. Built alongside `generate_figma_script`; both paths operational in CI. Four sub-milestones: M1a (eid↔nid side-car from `compress_to_l3`), M1b (preamble byte-parity), M1c (Phase 1 leaf-node byte-parity on a minimal fixture), M1d (full walker passing Stage 1.5b+1.5c-equivalent pipeline-health gate on 3 reference fixtures). See `docs/plan-v0.3.md` §Kickoff — M1 for the full breakdown.
-2. **M2–M3 — Byte-parity with baseline on reference fixtures, then full 204.** A/B harness asserts byte-identical script output. M2 is the first absolute-parity gate Option A never achieved (Option A landed at ratio 0.95–1.05, not byte-identity).
-3. **M4 — Pixel-parity sweep.** `render_batch/sweep.py` on the markup-native path reports 204/204 `is_parity=True`.
-4. **M5 — Upstream consumer migration.** `dd/compose.py` + providers consume `L3Document`.
-5. **M6 — Cutover.** Atomic PR: switch production to `render_figma`, delete Option A code per `DEPRECATION.md`.
-6. **M7+ — Stage 2 continuation, Stage 3, Stages 4–5.** Gated on M6.
+### 4.4 What happens next
 
-Stage 2 (definitions — archetypes already migrated 2026-04-18, pattern expansion / `use` import pending), Stage 3 (synthetic tokens), and Stages 4–5 (Priority 1 synthetic generation) all run on markup-native infrastructure post-M6.
+**Priority 1 — Synthetic screen generation + editing.** Active planning in `docs/plan-synthetic-gen.md` (use-case ladder, requirements, milestone breakdown). The L3 markup is now the substrate for an LLM decode target (constrained by the grammar spec) and for seven-verb edits (`set`, `add`, `remove`, `move`, `replace`, `wrap`, `unwrap` per §8 of `docs/spec-dd-markup-grammar.md`).
+
+**M6(b) — AST-native emission cutover.** Gated. Triggers when the synthetic-gen prototype runs end-to-end; at that point we'll know which intrinsic-property emission paths need the `_spec_elements` shim vs. which can go straight from the AST.
+
+**Priority 2 — React / HTML-CSS renderer.** Not scheduled. The L3 markup is backend-neutral by design; adding a renderer is a new walker and a per-backend reference-resolution policy, not an IR change. Ready to start whenever Priority 1 has a stable prototype.
 
 ---
 

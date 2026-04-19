@@ -1,8 +1,26 @@
 # Plan — v0.3 Phase
 
-**Status:** Canonical. The plan for completing the v0.3 foundation and positioning for Priority 1 (synthetic generation).
+**Status:** **v0.3 foundation complete (2026-04-19).** Preserved for reference. Active work has moved to `docs/plan-synthetic-gen.md` (Priority 1).
 **Authored:** 2026-04-18.
+**Completed:** 2026-04-19 with commit `6377105` (M6(a) atomic cutover).
 **Scope:** defines both Plan A (write the specs) and Plan B (execute against the specs for Stage 1).
+
+## Status at a glance (2026-04-19)
+
+| Milestone | Status | Evidence |
+|---|---|---|
+| Plan A (specs) | ✅ complete | `docs/spec-dd-markup-grammar.md`, `docs/spec-l0-l3-relationship.md` |
+| M0 — Compressor | ✅ complete | 204/204 Tier 1 AST round-trip |
+| M1a–d — Markup-native renderer MVP | ✅ complete | Full 3-phase walker in `dd/render_figma_ast.py` |
+| M2–M3 — Byte-parity on 204 corpus | ✅ complete | commits `65f5074` + follow-ons, ratio 0.977–0.997 |
+| M3.5 — Grid-review visual parity | ✅ complete | 61-screen grid, 7 defect classes fixed in 3 commits (`1faad8c`, `2fe5934`, `7d95190`) |
+| M4 — Pixel parity on full 204 | ✅ complete | 2026-04-19, 204/204 `is_parity=True`, ratio 1.0 |
+| M5a — `dd/compose.py` migration | ✅ complete | `21b7ad3` |
+| M5b — Option B as default | ✅ complete | `c31a568` |
+| M5c — Verifier audit | ✅ complete | No Option A imports; plumbing only via `generate_ir` which M6(b) removes |
+| M6(a) — Atomic cutover of user-visible surface | ✅ complete | `6377105` — -6,800 LOC |
+| M6(b) — AST-native emitters; delete `generate_ir` / `_spec_elements` shim | ⏳ gated on synthetic-gen prototype trigger | — |
+| M7+ — Synthetic generation | 🔲 active planning | `docs/plan-synthetic-gen.md` |
 
 This doc exists so that any session — human or AI — can pick up where we are and know exactly what to do next, in what order, with what dependencies.
 

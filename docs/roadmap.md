@@ -1,24 +1,36 @@
 # Roadmap
 
-## State of the project
+## State of the project (2026-04-19)
 
-The "round-trip foundation" phase is complete. Every app screen in the
-Dank Experimental corpus (204 / 204) extracts, re-generates, and
-re-renders at `is_parity = True` against a structured-error verifier.
-The IR, the Figma extractor, the Figma renderer, and the verification
-channel are load-bearing and tested under one real-world design file.
+**Round-trip foundation — complete.** Every app screen in the Dank
+Experimental corpus (204 / 204) extracts, re-generates, and re-renders
+at `is_parity = True`. The IR, the Figma extractor, the Figma
+renderer, and the verification channel are load-bearing and tested
+under one real-world design file.
 
-With that foundation paid for, the roadmap splits three ways:
+**v0.3 foundation — complete.** dd markup is the canonical L3 IR.
+The Figma renderer walks the L3 AST directly; no dict-IR intermediate
+on the render path. Visual parity confirmed on a 61-screen grid
+review. ~6,800 LOC of Option A scaffolding deleted at M6(a) cutover;
+Option A internal plumbing retained through M6(b) on a trigger.
 
-1. **Second renderer.** The IR's cross-platform claim is unverified
-   until there's a second backend. That's the top priority.
-2. **Additional extractors.** Lower priority — Figma is the hardest
+With both foundations paid for, the roadmap splits three ways:
+
+1. **Synthetic screen generation and editing.** **Top priority.** The
+   architecture was designed for this — the L3 markup is the LLM
+   decode target, seven-verb edit grammar is the mutation model, and
+   the renderer + verifier round-trip is the ground-truth harness.
+   Active planning in `docs/plan-synthetic-gen.md`.
+2. **Second renderer (React + HTML/CSS).** Unblocked. The L3
+   primitives are backend-neutral by construction (rotation + mirror
+   decomposed, token refs are the value-carrier convention, capability
+   gates live in the registry). Adding a backend is a new walker and
+   a per-backend reference-resolution policy, not an IR change.
+   Deferred behind Priority 1 to keep the focus narrow.
+3. **Additional extractors.** Lower priority — Figma is the hardest
    source shape and it's already covered. We'll add extractors when
    there's concrete pull for one, not because the matrix wants filling
    out.
-3. **Synthetic screen generation.** The next major phase. The
-   architecture was designed with this in mind; the commodity LLM
-   landscape is at the point where it's tractable.
 
 ## Priority 1 — React + HTML/CSS renderer
 

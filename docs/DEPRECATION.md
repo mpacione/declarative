@@ -3,13 +3,20 @@
 Files, functions, tests, and concepts marked for deletion as part of
 the **Option B migration** (see `docs/decisions/v0.3-option-b-cutover.md`).
 
-Nothing here is deleted yet — deletion happens at **Milestone M6
-(cutover)**, after the markup-native renderer (M1–M4) achieves 204/204
-byte-parity + pixel-parity with the Option A path, and upstream
-consumers (M5) have migrated.
+**Status (2026-04-19): M6(a) shipped.** The user-visible dual-path
+era is over. `--via-markup` / `--via-option-b` flags, segregated
+artefact dirs, the decompressor module, and three test files deleted
+in one commit. ~6,800 LOC removed.
 
-**Until cutover, both paths coexist in CI.** The Option A machinery
-stays operational so the 204/204 baseline is never violated.
+**M6(b) pending, gated on a concrete trigger.** The Option A *internal
+plumbing* (`generate_ir`, `build_composition_spec`,
+`query_screen_visuals`, `generate_figma_script`) remains as shim
+infrastructure the compressor + renderer still consume. M6(b)
+rewrites those out in favour of an L3-native `derive_markup(conn,
+sid) → L3Document` and AST-native intrinsic-property emitters inside
+`render_figma`. M6(b) starts once a synthetic-generation prototype
+runs end-to-end on the L3 path and reveals any remaining design gaps
+in AST-native emission.
 
 ---
 
@@ -137,10 +144,33 @@ These look related but are kept:
 
 ## Progress tracker
 
-Moved from "Pending" to "Deleted" as each item is removed at M6:
+### M6(a) — 2026-04-19
 
-| Date | Item | Commit |
-|---|---|---|
-| — | — | — |
+| Item | Commit |
+|---|---|
+| `dd/decompress_l3.py` (~1,723 LOC) | `6377105` |
+| `tests/test_decompress_l3.py` (77 tests, ~1,549 LOC) | `6377105` |
+| `tests/test_markup_render_pipeline.py` (round-trip tests) | `6377105` |
+| `tests/test_script_parity.py` (legacy `dd.markup` path) | `6377105` |
+| `render_batch/scripts-markup/`, `walks-markup/`, `reports-markup/` | `6377105` |
+| `render_batch/scripts-option-b/`, `walks-option-b/`, `reports-option-b/` | `6377105` |
+| `render_batch/summary-option-b.json` (M4 parity-gate artefact) | `6377105` |
+| `--via-markup` CLI flag | `6377105` |
+| `--via-markup` sweep flag | `6377105` |
+| `via_markup` branch + kwarg in `generate_screen` | `6377105` |
+| `via_option_b` flag (flipped to default in M5b) | `c31a568` |
 
-(Empty until M6 cutover PR lands.)
+### M6(b) — pending
+
+Gated on synthetic-gen prototype. Will delete:
+
+| Item | Replacement |
+|---|---|
+| `dd/ir.py::generate_ir()` | `derive_markup(conn, sid) → L3Document` (rewritten from `compress_to_l3`) |
+| `dd/ir.py::build_composition_spec()` | AST builders inside `derive_markup` |
+| `dd/ir.py::query_screen_visuals()` | Per-node `conn` lookups inside `render_figma` |
+| `dd/renderers/figma.py::generate_figma_script()` | Already unused in production; removed with `generate_screen` wrapper |
+| `dd/renderers/figma.py::generate_screen()` | Absorbed into `render_figma` |
+| `_spec_elements` / `_spec_tokens` shim kwargs on `render_figma` | AST-native intrinsic-property emitters |
+| `dd/compress_l3.py::_collapse_synthetic_screen_wrapper` | Folded into `derive_markup` |
+| `$ext.nid` compile-time side-channel emission | Removed; renderer resolves node ids on demand |
