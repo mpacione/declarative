@@ -498,9 +498,22 @@ def _emit_phase1(
         lines.append(f'{var}.name = "{name_js}";')
 
         if element:
-            visual = element.get("visual") or {}
+            visual = dict(element.get("visual") or {})
             layout = element.get("layout") or {}
             style = element.get("style") or {}
+
+            # Promote per-element DB fields that `build_composition_spec`
+            # doesn't copy into `element.visual`: `nodes.corner_radius`
+            # lives in the raw visual but not the IR visual, so `_emit_visual`
+            # would miss it without this augmentation. Matches baseline
+            # figma.py:1340 style-to-visual promotion pattern (though the
+            # source here is DB rather than IR style).
+            if (
+                "cornerRadius" not in visual
+                and isinstance(raw_visual.get("corner_radius"), (int, float))
+                and raw_visual["corner_radius"] > 0
+            ):
+                visual["cornerRadius"] = raw_visual["corner_radius"]
 
             if visual:
                 visual_lines, visual_refs = _emit_visual(
