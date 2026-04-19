@@ -11,6 +11,7 @@ from dd.classify import (
     classify_formal,
     link_parent_instances,
     run_classification,
+    truncate_classifications,
 )
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_rules import is_synthetic_node, is_system_chrome, parse_component_name
@@ -863,6 +864,102 @@ class TestRunClassification:
             "SELECT classification_source FROM screen_component_instances WHERE node_id = 3"
         )
         assert cursor.fetchone()[0] == "heuristic"
+
+
+class TestTruncateAndResume:
+    """M7.0.a infrastructure: truncate path + since-resume."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_full_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_truncate_clears_instances_and_skeletons(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        run_classification(db, file_id=1)
+        before_instances = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances"
+        ).fetchone()[0]
+        before_skeletons = db.execute(
+            "SELECT COUNT(*) FROM screen_skeletons"
+        ).fetchone()[0]
+        assert before_instances > 0
+        assert before_skeletons > 0
+
+        result = truncate_classifications(db)
+        assert result["instances_deleted"] == before_instances
+        assert result["skeletons_deleted"] == before_skeletons
+
+        after_instances = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances"
+        ).fetchone()[0]
+        after_skeletons = db.execute(
+            "SELECT COUNT(*) FROM screen_skeletons"
+        ).fetchone()[0]
+        assert after_instances == 0
+        assert after_skeletons == 0
+
+    def test_truncate_preserves_catalog_and_templates(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        """Truncate must NOT clear the catalog — vocabulary stays."""
+        run_classification(db, file_id=1)
+        catalog_before = db.execute(
+            "SELECT COUNT(*) FROM component_type_catalog"
+        ).fetchone()[0]
+        assert catalog_before > 0
+
+        truncate_classifications(db)
+        catalog_after = db.execute(
+            "SELECT COUNT(*) FROM component_type_catalog"
+        ).fetchone()[0]
+        assert catalog_after == catalog_before
+
+    def test_since_filter_skips_earlier_screens(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        # Seed a second screen with id=2 > 1.
+        db.execute(
+            "INSERT INTO screens "
+            "(id, file_id, figma_node_id, name, width, height) "
+            "VALUES (2, 1, 's2', 'Other', 428, 926)"
+        )
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+            "VALUES (99, 2, 'n99', 'button/primary', 'INSTANCE', 1, 0)"
+        )
+        db.commit()
+
+        result = run_classification(db, file_id=1, since_screen_id=2)
+        # Only screen 2 should have been processed; screen 1's nodes
+        # remain unclassified.
+        assert result["screens_processed"] == 1
+        row = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances "
+            "WHERE screen_id = 1"
+        ).fetchone()[0]
+        assert row == 0
+        row = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances "
+            "WHERE screen_id = 2 AND node_id = 99"
+        ).fetchone()[0]
+        assert row == 1
+
+    def test_progress_callback_fires_per_screen(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        calls: list[tuple[int, int, int]] = []
+        run_classification(
+            db, file_id=1,
+            progress_callback=lambda i, n, sid, _r: calls.append((i, n, sid)),
+        )
+        assert len(calls) == 1
+        i, n, sid = calls[0]
+        assert i == 1 and n == 1 and sid == 1
 
     def test_skeleton_generated(self, db: sqlite3.Connection):
         run_classification(db, file_id=1)

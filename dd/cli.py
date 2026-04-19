@@ -462,18 +462,35 @@ def _run_generate_ir(db_path: str, screen_arg: str) -> None:
     conn.close()
 
 
-def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False) -> None:
+def _run_classify(
+    db_path: str,
+    use_llm: bool = False,
+    use_vision: bool = False,
+    truncate: bool = False,
+    since: int | None = None,
+) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
     from dd.catalog import seed_catalog
-    from dd.classify import run_classification
+    from dd.classify import run_classification, truncate_classifications
 
     conn = get_connection(db_path)
 
     # Ensure catalog is seeded before classifying
     seed_catalog(conn)
+
+    if truncate:
+        # M7.0.a path: full-cascade rerun with updated prompts.
+        # Wipe the classification tables cleanly before starting.
+        # Catalog + CKR + component_templates are not touched.
+        result = truncate_classifications(conn)
+        print(
+            f"Truncated classifications: "
+            f"{result['instances_deleted']} instances, "
+            f"{result['skeletons_deleted']} skeletons."
+        )
 
     cursor = conn.execute("SELECT id, file_key FROM files LIMIT 1")
     row = cursor.fetchone()
@@ -495,15 +512,33 @@ def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False)
     if use_vision:
         fetch_screenshot = make_figma_screenshot_fetcher()
 
+    def _progress(i: int, n: int, sid: int, per_screen: dict) -> None:
+        parts = [
+            f"[{i}/{n}]", f"screen={sid}",
+            f"formal={per_screen.get('formal', 0)}",
+            f"heuristic={per_screen.get('heuristic', 0)}",
+        ]
+        if use_llm:
+            parts.append(f"llm={per_screen.get('llm', 0)}")
+        if use_vision and "vision" in per_screen:
+            v = per_screen["vision"]
+            parts.append(
+                f"vision={v['validated']} "
+                f"(✓{v['agreed']}/✗{v['disagreed']})"
+            )
+        print(" ".join(parts), flush=True)
+
     result = run_classification(
         conn, file_id,
         client=client,
         file_key=file_key if use_vision else None,
         fetch_screenshot=fetch_screenshot,
+        since_screen_id=since,
+        progress_callback=_progress,
     )
     conn.close()
 
-    print("Classification complete:")
+    print("\nClassification complete:")
     print(f"  Screens processed:     {result['screens_processed']}")
     print(f"  Formal classified:     {result['formal_classified']}")
     print(f"  Heuristic classified:  {result['heuristic_classified']}")
@@ -1183,6 +1218,24 @@ def main(argv: list | None = None) -> None:
     classify_parser.add_argument("--db", help="Database path")
     classify_parser.add_argument("--llm", action="store_true", help="Enable LLM classification (requires ANTHROPIC_API_KEY)")
     classify_parser.add_argument("--vision", action="store_true", help="Enable vision cross-validation (requires ANTHROPIC_API_KEY + FIGMA_ACCESS_TOKEN)")
+    classify_parser.add_argument(
+        "--truncate", action="store_true",
+        help=(
+            "Delete all rows from screen_component_instances and "
+            "screen_skeletons before reclassifying. Used by M7.0.a's "
+            "full-cascade rerun. Catalog + CKR + templates untouched."
+        ),
+    )
+    classify_parser.add_argument(
+        "--since", type=int, default=None,
+        help=(
+            "Resume from screen id >= SINCE. Crude but effective — "
+            "combined with per-row INSERT OR IGNORE, lets a crashed "
+            "run pick up near where it left off. Redoes the most "
+            "recent screen (cheap for formal/heuristic; incurs one "
+            "duplicate LLM batch for that screen)."
+        ),
+    )
 
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
@@ -1318,7 +1371,13 @@ def main(argv: list | None = None) -> None:
         _run_seed_catalog(db_path)
     elif args.command == "classify":
         db_path = detect_db_path(args.db)
-        _run_classify(db_path, use_llm=args.llm, use_vision=args.vision)
+        _run_classify(
+            db_path,
+            use_llm=args.llm,
+            use_vision=args.vision,
+            truncate=args.truncate,
+            since=args.since,
+        )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
         _run_generate_ir(db_path, args.screen)

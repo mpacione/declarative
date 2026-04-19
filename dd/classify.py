@@ -198,29 +198,72 @@ def link_parent_instances(conn: sqlite3.Connection, screen_id: int) -> dict[str,
     return {"linked": len(updates)}
 
 
+def truncate_classifications(conn: sqlite3.Connection) -> dict[str, int]:
+    """Delete every row from classification result tables.
+
+    Used by M7.0.a's full-cascade rerun (decision: ``(b) truncate
+    + full cascade rerun`` in the 2026-04-19 session). Leaves
+    ``component_type_catalog`` and ``component_key_registry``
+    intact — those are the vocabulary + master index, not
+    classifications.
+
+    Returns a dict reporting how many rows were deleted per table.
+    """
+    before_instances = conn.execute(
+        "SELECT COUNT(*) FROM screen_component_instances"
+    ).fetchone()[0]
+    before_skeletons = conn.execute(
+        "SELECT COUNT(*) FROM screen_skeletons"
+    ).fetchone()[0]
+    conn.execute("DELETE FROM screen_component_instances")
+    conn.execute("DELETE FROM screen_skeletons")
+    conn.commit()
+    return {
+        "instances_deleted": before_instances,
+        "skeletons_deleted": before_skeletons,
+    }
+
+
 def run_classification(
     conn: sqlite3.Connection,
     file_id: int,
     client: Any = None,
     file_key: str | None = None,
     fetch_screenshot: Any = None,
+    since_screen_id: int | None = None,
+    progress_callback: Any = None,
 ) -> dict[str, Any]:
     """Orchestrate the full classification cascade for all screens in a file.
 
     Runs: formal → heuristics → [LLM] → parent linkage → [vision] → skeleton.
-    LLM step runs only if client is provided.
-    Vision step runs only if client, file_key, and fetch_screenshot are provided.
-    Skips component_sheet screens.
+
+    - LLM step runs only if ``client`` is provided.
+    - Vision step runs only if ``client``, ``file_key``, and
+      ``fetch_screenshot`` are provided.
+    - Skips ``component_sheet`` screens.
+    - ``since_screen_id``: crude resume — skip screens with id < this
+      value. Combined with the existing per-row ``INSERT OR IGNORE``
+      semantics, lets a crashed run pick up roughly where it left
+      off without restarting from zero.
+    - ``progress_callback(i, n, screen_id, per_screen_result)``:
+      called after each screen completes. Used by the CLI to print
+      per-screen progress + by a future checkpoint layer to persist
+      run state.
     """
     from dd.classify_heuristics import classify_heuristics
     from dd.classify_skeleton import extract_skeleton
 
-    cursor = conn.execute(
+    query = (
         "SELECT id FROM screens WHERE file_id = ? "
-        "AND (device_class IS NULL OR device_class != 'component_sheet') "
-        "ORDER BY id",
-        (file_id,),
+        "AND (device_class IS NULL OR device_class != 'component_sheet')"
     )
+    params: list[Any] = [file_id]
+    if since_screen_id is not None:
+        query += " AND id >= ?"
+        params.append(since_screen_id)
+    query += " ORDER BY id"
+
+    cursor = conn.execute(query, params)
     screen_ids = [row[0] for row in cursor.fetchall()]
 
     total_formal = 0
@@ -230,20 +273,27 @@ def run_classification(
     total_vision = {"validated": 0, "agreed": 0, "disagreed": 0}
     total_skeletons = 0
 
-    for screen_id in screen_ids:
+    n = len(screen_ids)
+    for i, screen_id in enumerate(screen_ids, 1):
+        per_screen: dict[str, Any] = {"screen_id": screen_id}
+
         formal_result = classify_formal(conn, screen_id)
         total_formal += formal_result["classified"]
+        per_screen["formal"] = formal_result["classified"]
 
         heuristic_result = classify_heuristics(conn, screen_id)
         total_heuristic += heuristic_result["classified"]
+        per_screen["heuristic"] = heuristic_result["classified"]
 
         if client is not None:
             from dd.classify_llm import classify_llm
             llm_result = classify_llm(conn, screen_id, client)
             total_llm += llm_result["classified"]
+            per_screen["llm"] = llm_result["classified"]
 
         link_result = link_parent_instances(conn, screen_id)
         total_linked += link_result["linked"]
+        per_screen["linked"] = link_result["linked"]
 
         if client is not None and file_key is not None and fetch_screenshot is not None:
             from dd.classify_vision import cross_validate_vision
@@ -253,10 +303,15 @@ def run_classification(
             total_vision["validated"] += vision_result["validated"]
             total_vision["agreed"] += vision_result["agreed"]
             total_vision["disagreed"] += vision_result["disagreed"]
+            per_screen["vision"] = vision_result
 
         skeleton_result = extract_skeleton(conn, screen_id)
         if skeleton_result is not None:
             total_skeletons += 1
+            per_screen["skeleton"] = True
+
+        if progress_callback is not None:
+            progress_callback(i, n, screen_id, per_screen)
 
     return {
         "screens_processed": len(screen_ids),
