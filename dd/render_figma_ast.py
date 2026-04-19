@@ -53,6 +53,7 @@ from dd.renderers.figma import (
     _emit_visual,
     _escape_js,
     _resolve_layout_sizing,
+    _walk_elements,
 )
 
 
@@ -250,9 +251,33 @@ def render_figma(
     spec_tokens = _spec_tokens or {}
     walk = list(_walk_ast(doc))
 
-    var_map: dict[str, str] = {
-        node.head.eid: f"n{idx}" for idx, (node, _p) in enumerate(walk)
-    }
+    # Baseline assigns `n{idx}` where `idx` is the position in the full
+    # BFS walk of `spec["elements"]` — including Mode-1-absorbed
+    # descendants whose idx slot is "burned" but produces no
+    # var_map entry. My AST walk naturally excludes absorbed nodes, so
+    # a dense counter would diverge from baseline's gappy numbering.
+    # Match baseline by keying var names on the spec-walk index when
+    # the shim supplies `_spec_elements`; otherwise fall back to dense
+    # numbering (M1c synthetic fixtures only).
+    if spec_elements and doc.top_level:
+        root_spec_key = spec_key_map.get(
+            doc.top_level[0].head.eid, "",
+        )
+        baseline_walk_idx = _baseline_walk_indices(
+            spec_elements, root_spec_key,
+        )
+        var_map: dict[str, str] = {}
+        for _idx, (node, _p) in enumerate(walk):
+            eid = node.head.eid
+            spec_key = spec_key_map.get(eid, eid)
+            baseline_idx = baseline_walk_idx.get(spec_key)
+            if baseline_idx is None:
+                baseline_idx = _idx
+            var_map[eid] = f"n{baseline_idx}"
+    else:
+        var_map = {
+            node.head.eid: f"n{idx}" for idx, (node, _p) in enumerate(walk)
+        }
 
     phase1, uses_placeholder, phase1_refs, override_deferred = _emit_phase1(
         walk, var_map, spec_key_map, original_name_map,
@@ -282,6 +307,28 @@ def render_figma(
     body_lines = phase1 + phase2 + phase3 + end
     script = preamble + "\n".join(body_lines)
     return script, phase1_refs
+
+
+def _baseline_walk_indices(
+    spec_elements: dict[str, dict[str, Any]],
+    root_spec_key: str,
+) -> dict[str, int]:
+    """Return `{spec_element_key: baseline_walk_idx}` matching the
+    position assignment baseline's ``n{idx}`` counter produces.
+
+    Baseline `_walk_elements` is BFS from the root; the `idx` used for
+    variable naming is ``enumerate(walk_order)``, so Mode-1-absorbed
+    descendants consume an idx slot and leave a gap in the emitted
+    variable sequence. Using this map via ``spec_key_map`` lets the
+    Option B walker inherit baseline's variable-name assignment
+    without walking the dict-IR at render time.
+
+    M2 shim: removed alongside `_spec_elements` when the verifier
+    migrates to AST eids (M5).
+    """
+    spec = {"elements": spec_elements, "root": root_spec_key}
+    walk = _walk_elements(spec)
+    return {eid: idx for idx, (eid, _elem, _parent) in enumerate(walk)}
 
 
 def _walk_ast(doc: L3Document) -> list[tuple[Node, Optional[Node]]]:
