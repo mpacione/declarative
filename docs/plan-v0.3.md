@@ -128,7 +128,7 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 | — M2-bug | Key side-car maps on `id(Node)` (grammar §2.3.1 allows cousin-eid collisions that broke duplicate-free M[] emission) | ✅ `138e622` | Critical correctness fix surfaced during M2 profiling |
 | — M2e | Switch visual source from `element.get("visual")` to `build_visual_from_db(raw_visual)` — the same helper baseline calls at figma.py:1314 | ✅ `4f1dc24` | Single change closed stroke_weight / cornerRadius / opacity / effects gaps; ratio 0.91 → 0.98 |
 | M3 | Script ratio-parity ≥ 0.95 on full 204 corpus | ✅ | `TestM1dPipelineHealth::test_full_corpus_ratio_parity`; 204/204 in [0.977, 0.997], median 0.989, zero crashes |
-| M4 | Pixel-parity via Figma sweep on full 204 corpus | 🟡 infrastructure landed | `render_batch/sweep.py --via-option-b --port N` wired; validation requires a running Desktop Bridge (user-side) — sweep writes artefacts to `render_batch/scripts-option-b/`, `walks-option-b/`, `reports-option-b/`, `summary-option-b.json` |
+| M4 | Pixel-parity via Figma sweep on full 204 corpus | ✅ **204/204** at parity_ratio=1.0 | `render_batch/summary-option-b.json` — 0 walk failures, 0 generate failures, 0 errors; 536 s total on live Desktop Bridge |
 | M5 | Upstream consumer migration — `dd/compose.py`, providers, verifier consume `L3Document` | 🔲 | — |
 | M6 | Atomic cutover PR — switch production to markup-native path; delete Option A code per `DEPRECATION.md` | 🔲 | Single commit; 204/204 on markup path required to land |
 | M7+ | Stage 2 continuation (pattern expansion, `use`/import, cycle detection), Stage 3 (synthetic tokens), Stages 4–5 (synthetic generation) | 🔲 | Gated on M6 |
