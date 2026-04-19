@@ -2340,8 +2340,16 @@ def _emit_text_props(
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
+def generate_screen(
+    conn: sqlite3.Connection, screen_id: int,
+    *, via_markup: bool = False,
+) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
+
+    When `via_markup=True`, routes the spec through the v0.3 L3
+    markup round-trip (compress → emit → parse → decompress) before
+    rendering. Exercises the Stage 1.5 decompressor pipeline end-
+    to-end for Tier 3 pixel-parity sweeps.
 
     Returns dict with:
       structure_script: JS string for figma_execute (Phase A — creates nodes)
@@ -2352,8 +2360,23 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     from dd.ir import generate_ir, query_screen_visuals
     from dd.rebind_prompt import query_token_variables
 
-    ir_result = generate_ir(conn, screen_id)
+    if via_markup:
+        # Compressor consumes semantic=True form with system chrome
+        # included (per feedback_system_chrome_is_design.md).
+        ir_result = generate_ir(
+            conn, screen_id, semantic=True, filter_chrome=False,
+        )
+    else:
+        ir_result = generate_ir(conn, screen_id)
     spec = ir_result["spec"]
+    if via_markup:
+        from dd.compress_l3 import compress_to_l3
+        from dd.decompress_l3 import ast_to_dict_ir
+        from dd.markup_l3 import emit_l3, parse_l3
+        doc = compress_to_l3(spec, conn, screen_id=screen_id)
+        emitted = emit_l3(doc)
+        parsed = parse_l3(emitted)
+        spec = ast_to_dict_ir(parsed, conn, screen_id=screen_id)
     visuals = query_screen_visuals(conn, screen_id)
 
     # ADR-007 Session A: surface "CKR was not built" as a structured
@@ -2379,7 +2402,7 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
         "structure_script": script,
         "token_refs": token_refs,
         "token_variables": query_token_variables(conn),
-        "element_count": ir_result["element_count"],
+        "element_count": len(spec.get("elements", {})),
         "token_count": ir_result["token_count"],
     }
 

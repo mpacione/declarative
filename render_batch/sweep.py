@@ -26,6 +26,9 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS = ROOT / "scripts"
 WALKS = ROOT / "walks"
 REPORTS = ROOT / "reports"
+SCRIPTS_MARKUP = ROOT / "scripts-markup"
+WALKS_MARKUP = ROOT / "walks-markup"
+REPORTS_MARKUP = ROOT / "reports-markup"
 DB_PATH = ROOT.parent / "Dank-EXP-02.declarative.db"
 WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
 # Default port; override via --port. The Desktop Bridge picks between
@@ -59,10 +62,19 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
         return 125, "", f"EXCEPTION in {label}: {e!r}"
 
 
-def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
-    script_p = SCRIPTS / f"{sid}.js"
-    walk_p = WALKS / f"{sid}.json"
-    report_p = REPORTS / f"{sid}.json"
+def process_screen(
+    sid: int, name: str, skip_existing: bool, port: str,
+    via_markup: bool = False,
+) -> dict:
+    # Separate artefact directories so baseline and markup-path
+    # sweeps don't clobber each other — lets the user run both and
+    # compare is_parity verdicts side by side.
+    scripts_dir = SCRIPTS_MARKUP if via_markup else SCRIPTS
+    walks_dir = WALKS_MARKUP if via_markup else WALKS
+    reports_dir = REPORTS_MARKUP if via_markup else REPORTS
+    script_p = scripts_dir / f"{sid}.js"
+    walk_p = walks_dir / f"{sid}.json"
+    report_p = reports_dir / f"{sid}.json"
 
     row = {
         "screen_id": sid,
@@ -84,16 +96,19 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
     if skip_existing and script_p.exists() and script_p.stat().st_size > 0:
         row["generate_ok"] = True
     else:
+        gen_cmd = [
+            "python3", "-m", "dd", "generate",
+            "--db", str(DB_PATH), "--screen", str(sid),
+        ]
+        if via_markup:
+            gen_cmd.append("--via-markup")
         code, out, err = run_step(
-            [
-                "python3", "-m", "dd", "generate",
-                "--db", str(DB_PATH), "--screen", str(sid),
-            ],
+            gen_cmd,
             GENERATE_TIMEOUT,
             "generate",
         )
         if code != 0 or not out.strip():
-            (SCRIPTS / f"{sid}.stderr").write_text(err)
+            (scripts_dir / f"{sid}.stderr").write_text(err)
             row["failure"] = f"generate exit={code}: {err[:300]}"
             return row
         script_p.write_text(out)
@@ -113,7 +128,7 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
             "walk",
         )
         if code != 0 or not walk_p.exists():
-            (WALKS / f"{sid}.err").write_text((err or out)[:4000])
+            (walks_dir / f"{sid}.err").write_text((err or out)[:4000])
             row["failure"] = f"walk exit={code}: {(err or out)[:300]}"
             return row
         row["walk_ok"] = True
@@ -182,9 +197,23 @@ def main() -> int:
                     help="Start at this screen id (for resume)")
     ap.add_argument("--port", default=BRIDGE_PORT_DEFAULT,
                     help="Desktop Bridge WebSocket port")
+    ap.add_argument(
+        "--via-markup", action="store_true",
+        help=(
+            "Route each screen through the v0.3 L3 markup round-trip "
+            "(compress → emit → parse → decompress) before rendering. "
+            "Tier 3 gate for Stage 1.5 decompressor path."
+        ),
+    )
     args = ap.parse_args()
 
-    for p in (SCRIPTS, WALKS, REPORTS):
+    # Create artefact directories for whichever path the sweep uses.
+    target_dirs = (
+        (SCRIPTS_MARKUP, WALKS_MARKUP, REPORTS_MARKUP)
+        if args.via_markup
+        else (SCRIPTS, WALKS, REPORTS)
+    )
+    for p in target_dirs:
         p.mkdir(parents=True, exist_ok=True)
 
     screens = list_app_screens(DB_PATH)
@@ -202,7 +231,10 @@ def main() -> int:
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
-        row = process_screen(sid, name, args.skip_existing, args.port)
+        row = process_screen(
+            sid, name, args.skip_existing, args.port,
+            via_markup=args.via_markup,
+        )
         elapsed = time.time() - t1
         status = (
             "PARITY" if row["is_parity"] is True
@@ -222,7 +254,8 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2))
+    summary_name = "summary-markup.json" if args.via_markup else "summary.json"
+    (ROOT / summary_name).write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
     print(f"total:            {summary['total']}")

@@ -408,7 +408,10 @@ def _run_seed_catalog(db_path: str) -> None:
     print(f"Seeded {count} component types into catalog.")
 
 
-def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
+def _run_generate(
+    db_path: str, screen_id: int, dry_run: bool = False,
+    via_markup: bool = False,
+) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
@@ -416,7 +419,7 @@ def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
     from dd.renderers.figma import generate_screen
 
     conn = get_connection(db_path)
-    result = generate_screen(conn, screen_id)
+    result = generate_screen(conn, screen_id, via_markup=via_markup)
     conn.close()
 
     if dry_run:
@@ -425,6 +428,8 @@ def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
         print(f"  Tokens:     {result['token_count']}")
         print(f"  Token refs: {len(result['token_refs'])}")
         print(f"  Script:     {len(result['structure_script'])} chars")
+        if via_markup:
+            print(f"  Route:      compress → emit → parse → decompress → render")
     else:
         print(result["structure_script"])
 
@@ -1182,6 +1187,16 @@ def main(argv: list | None = None) -> None:
     gen_parser.add_argument("--db", help="Database path")
     gen_parser.add_argument("--screen", required=True, help="Screen ID")
     gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
+    gen_parser.add_argument(
+        "--via-markup",
+        action="store_true",
+        help=(
+            "Route the IR through the v0.3 L3 markup round-trip "
+            "(compress → emit → parse → decompress) before rendering. "
+            "Exercises the Stage 1.5 decompressor path for Tier 3 "
+            "pixel parity."
+        ),
+    )
 
     supp_parser = subparsers.add_parser("extract-supplement", help="Extract Plugin API-only fields (componentKey, layoutPositioning, Grid)")
     supp_parser.add_argument("--db", help="Database path")
@@ -1304,7 +1319,10 @@ def main(argv: list | None = None) -> None:
         _run_generate_ir(db_path, args.screen)
     elif args.command == "generate":
         db_path = detect_db_path(args.db)
-        _run_generate(db_path, int(args.screen), dry_run=args.dry_run)
+        _run_generate(
+            db_path, int(args.screen), dry_run=args.dry_run,
+            via_markup=args.via_markup,
+        )
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)
         _run_extract_supplement(db_path, args)
