@@ -47,12 +47,19 @@ def _roundtrip_spec(
     conn: sqlite3.Connection, screen_id: int,
 ) -> tuple[dict, dict]:
     """Compress → emit → parse → decompress. Returns
-    (baseline_spec, round_tripped_spec)."""
+    (baseline_spec, round_tripped_spec).
+
+    Passes `screen_id` to the decompressor so it can recover
+    `_node_id_map` entries by name-matching AST EIDs against the
+    screen's nodes table — lets `dd.renderers.figma.generate_figma_script`
+    look up `db_visuals` (fonts / images / variants) the same way
+    the baseline does.
+    """
     ir = generate_ir(conn, screen_id, semantic=True, filter_chrome=False)
     baseline = ir["spec"]
     doc = compress_to_l3(baseline, conn, screen_id=screen_id)
     parsed = parse_l3(emit_l3(doc))
-    round_tripped = ast_to_dict_ir(parsed, conn)
+    round_tripped = ast_to_dict_ir(parsed, conn, screen_id=screen_id)
     return baseline, round_tripped
 
 

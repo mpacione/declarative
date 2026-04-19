@@ -332,10 +332,25 @@ class _DecompressCtx:
     sibling-counter element keys (`frame-1`, `frame-2`, ...) and
     accumulates the elements dict."""
 
-    def __init__(self, conn: Optional[sqlite3.Connection] = None) -> None:
+    def __init__(
+        self,
+        conn: Optional[sqlite3.Connection] = None,
+        screen_id: Optional[int] = None,
+    ) -> None:
         self.elements: dict[str, dict] = {}
         self.type_counter: dict[str, int] = {}
         self.conn = conn
+        self.screen_id = screen_id
+        # element_key → node_id. Populated during walk when the node_id
+        # is known — directly for master-inflated subtrees, via name
+        # lookup against the screen's nodes table for AST-path elements
+        # when `screen_id` is supplied. `dd/renderers/figma.py` keys
+        # `db_visuals` by node_id, so without this map font / text-style
+        # lookups fall back to defaults and break Tier-2 parity.
+        self.node_id_map: dict[str, int] = {}
+        # screen_id → {sanitized_name: [node_ids]} — cached lookup table
+        # for AST-path name → node_id resolution.
+        self._screen_name_cache: Optional[dict[str, list[int]]] = None
         # slash_path → master root node_id, populated lazily on first
         # CompRef lookup. Avoids O(CKR × CompRefs) rescans across the
         # corpus sweep (129 CKR rows × ~100 CompRefs per screen × 204
@@ -376,6 +391,27 @@ class _DecompressCtx:
             self._ckr_key_cache = _build_ckr_key_cache(self.conn)
         return self._ckr_key_cache.get(component_key)
 
+    def lookup_screen_node_id(self, eid: str) -> Optional[int]:
+        """Resolve an AST EID to a node_id in the decompressor's
+        `screen_id`. Uses sanitized-name match via `normalize_to_eid`
+        so `"safari-bottom"` finds `"Safari - Bottom"` in the DB.
+
+        Returns None when:
+        - `screen_id` wasn't supplied to `ast_to_dict_ir`.
+        - No node in that screen sanitizes to the given EID.
+        - Multiple nodes collide (ambiguous) — caller can't pick.
+        """
+        if self.conn is None or self.screen_id is None or not eid:
+            return None
+        if self._screen_name_cache is None:
+            self._screen_name_cache = _build_screen_name_cache(
+                self.conn, self.screen_id,
+            )
+        candidates = self._screen_name_cache.get(eid) or []
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Master-subtree expansion — Stage 1.7
@@ -412,6 +448,28 @@ _LAYOUT_MODE_TO_SPEC_DIRECTION = {
     None: "stacked",
     "NONE": "stacked",
 }
+
+
+def _build_screen_name_cache(
+    conn: sqlite3.Connection, screen_id: int,
+) -> dict[str, list[int]]:
+    """Build a `{sanitized_name: [node_ids]}` map for every node in
+    the given screen. Lets the decompressor recover `node_id_map`
+    entries for AST-path elements."""
+    from dd.compress_l3 import normalize_to_eid
+    rows = conn.execute(
+        "SELECT id, name FROM nodes WHERE screen_id = ?",
+        (screen_id,),
+    ).fetchall()
+    cache: dict[str, list[int]] = {}
+    for nid, name in rows:
+        if not name:
+            continue
+        eid = normalize_to_eid(name)
+        if not eid:
+            continue
+        cache.setdefault(eid, []).append(int(nid))
+    return cache
 
 
 def _build_ckr_key_cache(
@@ -638,6 +696,35 @@ def _db_row_to_element(
     if isinstance(text, str) and text:
         element.setdefault("props", {})["text"] = text
 
+    # Typography — font family / weight / size are kept on an
+    # `element["style"]` dict matching `dd/ir.py`'s `_build_style`
+    # shape (grammar-spec §6 `style` axis). `dd/renderers/figma.py`
+    # reads these either from here or from `db_visuals`; having them
+    # on the element avoids relying exclusively on node_id resolution.
+    style: dict[str, Any] = {}
+    ff = row.get("font_family")
+    if isinstance(ff, str) and ff:
+        style["fontFamily"] = ff
+    fw = row.get("font_weight")
+    if isinstance(fw, (int, float)) and fw:
+        style["fontWeight"] = fw
+    fs = row.get("font_size")
+    if isinstance(fs, (int, float)) and fs:
+        style["fontSize"] = fs
+    if style:
+        element["style"] = style
+
+    # Vector paths — SVG-style path data for VECTOR / BOOLEAN_OPERATION
+    # nodes. `dd/ir.py` round-trips the raw JSON; so do we.
+    vp = row.get("vector_paths")
+    if vp:
+        try:
+            parsed_vp = json.loads(vp) if isinstance(vp, str) else vp
+        except (ValueError, TypeError):
+            parsed_vp = None
+        if parsed_vp:
+            element["vectorPaths"] = parsed_vp
+
     # Visibility (only when false).
     if row.get("visible") == 0:
         element["visible"] = False
@@ -717,7 +804,8 @@ _MASTER_COLS = (
     "id", "parent_id", "name", "node_type", "x", "y", "width", "height",
     "layout_mode", "fills", "strokes", "effects", "corner_radius",
     "opacity", "stroke_weight", "stroke_align", "text_content", "visible",
-    "sort_order", "component_key",
+    "sort_order", "component_key", "vector_paths", "font_family",
+    "font_weight", "font_size",
 )
 
 
@@ -769,6 +857,7 @@ def _expand_master_subtree(
 
     def walk(row: dict, parent_row: Optional[dict]) -> str:
         element = _db_row_to_element(row, parent_row)
+        nid = row.get("id")
         is_instance = (row.get("node_type") or "").upper() == "INSTANCE"
         if is_instance:
             element["_mode1_eligible"] = True
@@ -802,6 +891,8 @@ def _expand_master_subtree(
 
         if child_keys:
             element["children"] = child_keys
+        if isinstance(nid, int):
+            ctx.node_id_map[key] = nid
         ctx.elements[key] = element
         return key
 
@@ -848,6 +939,7 @@ def _expand_master_by_root_id(
 
     def walk_inner(row: dict, parent_row: Optional[dict]) -> str:
         element = _db_row_to_element(row, parent_row)
+        nid = row.get("id")
         is_inner_instance = (
             (row.get("node_type") or "").upper() == "INSTANCE"
         )
@@ -874,6 +966,8 @@ def _expand_master_by_root_id(
                         ctx.visiting_masters.discard(deeper_master_id)
         if child_keys:
             element["children"] = child_keys
+        if isinstance(nid, int):
+            ctx.node_id_map[key] = nid
         ctx.elements[key] = element
         return key
 
@@ -1104,6 +1198,13 @@ def _decode_node(
         # name) but reads back through `normalize_to_eid` identically,
         # so downstream key-preservation works.
         element["_original_name"] = head.eid
+        # Map the decompressed element key to the DB node_id when
+        # possible — lets `dd/renderers/figma.py` look up `db_visuals`
+        # (font / image / variant info) the same way `generate_ir`'s
+        # output does.
+        nid = ctx.lookup_screen_node_id(head.eid)
+        if nid is not None:
+            ctx.node_id_map[key] = nid
 
     _decode_layout(
         props, element,
@@ -1262,6 +1363,7 @@ def ast_to_dict_ir(
     doc: L3Document,
     conn: Optional[sqlite3.Connection] = None,
     *,
+    screen_id: Optional[int] = None,
     reexpand_screen_wrapper: bool = True,
 ) -> dict:
     """Decompress an `L3Document` AST into a CompositionSpec dict IR.
@@ -1301,16 +1403,18 @@ def ast_to_dict_ir(
     if not isinstance(root_node, Node):
         return empty_spec
 
-    ctx = _DecompressCtx(conn=conn)
+    ctx = _DecompressCtx(conn=conn, screen_id=screen_id)
     root_key = _decode_node(root_node, ctx)
     if root_key is None:
         return empty_spec
 
-    spec = {
+    spec: dict[str, Any] = {
         "version": "1.0",
         "root": root_key,
         "elements": ctx.elements,
     }
+    if ctx.node_id_map:
+        spec["_node_id_map"] = dict(ctx.node_id_map)
     if reexpand_screen_wrapper:
         spec = _reexpand_synthetic_wrapper(spec)
     return spec
