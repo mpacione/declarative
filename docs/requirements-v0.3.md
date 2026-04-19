@@ -169,8 +169,8 @@ v0.3 is done when all the following hold:
 
 Per `docs/plan-v0.3.md` and `docs/decisions/v0.3-option-b-cutover.md`:
 
-1. **M1 — Markup-native Figma renderer MVP.** `render_figma(doc: L3Document, conn) → JS` walker. Built alongside `generate_figma_script`; both paths operational in CI.
-2. **M2–M3 — Byte-parity with baseline on reference fixtures, then full 204.** A/B harness asserts byte-identical script output.
+1. **M1 — Markup-native Figma renderer MVP.** `render_figma(doc: L3Document, conn, nid_map) → JS` walker. Built alongside `generate_figma_script`; both paths operational in CI. Four sub-milestones: M1a (eid↔nid side-car from `compress_to_l3`), M1b (preamble byte-parity), M1c (Phase 1 leaf-node byte-parity on a minimal fixture), M1d (full walker passing Stage 1.5b+1.5c-equivalent pipeline-health gate on 3 reference fixtures). See `docs/plan-v0.3.md` §Kickoff — M1 for the full breakdown.
+2. **M2–M3 — Byte-parity with baseline on reference fixtures, then full 204.** A/B harness asserts byte-identical script output. M2 is the first absolute-parity gate Option A never achieved (Option A landed at ratio 0.95–1.05, not byte-identity).
 3. **M4 — Pixel-parity sweep.** `render_batch/sweep.py` on the markup-native path reports 204/204 `is_parity=True`.
 4. **M5 — Upstream consumer migration.** `dd/compose.py` + providers consume `L3Document`.
 5. **M6 — Cutover.** Atomic PR: switch production to `render_figma`, delete Option A code per `DEPRECATION.md`.

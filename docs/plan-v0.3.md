@@ -115,15 +115,21 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 | # | Milestone | Status | Evidence |
 |---|---|---|---|
 | M0 | Markup compressor (DB → L3 AST): parser + emitter + `compress_to_l3` green at 204/204 Tier 1 | ✅ | `tests/test_compress_l3.py::test_full_corpus_tier1_round_trip` |
-| M1 | Markup-native Figma renderer MVP — `render_figma(doc, conn) → JS` walker | 🔲 | Not started |
-| M2 | Script byte-parity with the pre-markup renderer on 3 reference fixtures (181 / 222 / 237) | 🔲 | Built + runs; A/B harness asserts identity |
+| **M1** | **Markup-native Figma renderer MVP** — `render_figma(doc, conn, nid_map) → JS` walker | 🔲 | Sub-milestones below |
+| — M1a | Extend `compress_to_l3` to return `(L3Document, eid_to_nid_map)`; document the side-car as the eid↔nid identity bridge replacing `_node_id_map` | 🔲 | Unit test: every eid in `doc.top_level`'s walk has a matching `nid` in the map |
+| — M1b | `render_figma_preamble(doc, conn, nid_map)` emits byte-identical preamble (font loads + `__errors` + `_rootPage` + prefetch) on 3 reference fixtures (181 / 222 / 237) | 🔲 | A/B harness regex-extracts preamble region from both paths and asserts `a == b` |
+| — M1c | Phase 1 leaf-node creation (createFrame / createRectangle / createText) byte-identical on a minimal fixture before tackling a full screen | 🔲 | Same A/B harness extended |
+| — M1d | Full `render_figma` walker: Stage 1.5b-equivalent gate — no crash, script > 1000 bytes, `eid_map` walkable — on 3 reference fixtures; script-size ratio 0.95–1.05 (Stage 1.5c-equivalent diagnostic) | 🔲 | A/B harness runs both paths; pipeline health gate, not identity gate |
+| M2 | Script byte-parity with the pre-markup renderer on 3 reference fixtures (181 / 222 / 237) | 🔲 | A/B harness asserts byte-identical; first absolute-parity gate Option A never achieved |
 | M3 | Script byte-parity on full 204 corpus | 🔲 | `tests/test_script_parity_option_b.py` (new) |
 | M4 | Pixel-parity via Figma sweep on full 204 corpus | 🔲 | `render_batch/sweep.py` on markup-native path reports 204/204 `is_parity=True` |
 | M5 | Upstream consumer migration — `dd/compose.py`, providers, verifier consume `L3Document` | 🔲 | — |
 | M6 | Atomic cutover PR — switch production to markup-native path; delete Option A code per `DEPRECATION.md` | 🔲 | Single commit; 204/204 on markup path required to land |
 | M7+ | Stage 2 continuation (pattern expansion, `use`/import, cycle detection), Stage 3 (synthetic tokens), Stages 4–5 (synthetic generation) | 🔲 | Gated on M6 |
 
-Commit prefix: `feat(option-b): Mk — <scope>` (e.g. `feat(option-b): M2 — render_figma byte-parity on screen 181`).
+Commit prefix: `feat(option-b): Mk — <scope>` (e.g. `feat(option-b): M1b — preamble byte-parity on 3 fixtures`, `feat(option-b): M2 — render_figma byte-parity on screen 181`).
+
+**Why M1 is split into 4 sub-milestones.** The pre-M1 research round (2026-04-18, evening) established that Option A never achieved byte-parity even at the preamble level — a font (`Inter Variable Regular`) was dropped across the AST round-trip on screen 181. So "byte-parity on screen 181" is a strictly tighter gate than what Option A hit (which was ratio 0.95–1.05 script-size and 0/3 at Tier 3 pixel parity). Breaking M1 into preamble → leaf nodes → full walker → ratio-parity gives four cheap, reversible A/B gates instead of one 2–3 week monolithic step. Each sub-milestone is individually commit-able; failure at M1b surfaces a bug in 1 day, not 14.
 
 **Parity-protection during migration:** the Option A machinery (`dd/decompress_l3.py`, `ast_to_dict_ir`, `generate_figma_script`) stays operational in CI through M5. Both paths run per-commit; an A/B harness asserts byte-identical Figma script output on every screen. The M6 cutover PR is the one-shot deletion of Option A code.
 
@@ -219,38 +225,98 @@ python3 render_batch/sweep.py --port <N>    # current state: 204/204 on pre-mark
 
 ### Kickoff — M1 (markup-native Figma renderer MVP)
 
-**Next session starts at M1.** The first hour:
+**Next session starts at M1a.** Work the sub-milestone ladder in order; each is committable and reversible. Don't build the full walker on day one.
 
-1. **Create `dd/render_figma_ast.py`** (working filename) as the scaffolding for the markup-native renderer. Module exports `render_figma(doc: L3Document, conn: sqlite3.Connection) → (script: str, token_refs: list)`. Starts as a stub that walks `doc.top_level`, dispatches per `Node.head.type_or_path`, emits the minimum viable Figma JS for a single screen (just a frame with a background fill).
+#### M1a — eid↔nid side-car
 
-2. **Target: round-trip screen 181 through Option B.** End-to-end: `derive_markup(conn, 181) → render_figma(doc, conn) → Figma JS`. Compare the JS byte-for-byte against `generate_figma_script(generate_ir(conn, 181)['spec'], ...)`. Build up feature coverage until byte-identity lands.
+Extend `compress_to_l3(spec, conn, *, screen_id) → L3Document` to also return the `eid → db_node_id` mapping that `_compress_element` already computes internally from `spec["_node_id_map"]`. Preferred signature:
 
-3. **A/B harness at `tests/test_option_b_parity.py`:**
-   ```python
-   def test_m1_screen_181_byte_parity(db_conn):
-       # Option A baseline
-       ir = generate_ir(db_conn, 181)
-       script_a, refs_a = generate_figma_script(ir["spec"], ...)
-       # Option B path
-       doc = derive_markup(db_conn, 181)
-       script_b, refs_b = render_figma(doc, db_conn)
-       # MUST be byte-identical
-       assert script_a == script_b
-       assert refs_a == refs_b
-   ```
+```python
+def compress_to_l3(
+    spec: dict, conn: Optional[sqlite3.Connection] = None,
+    *, screen_id: Optional[int] = None,
+) -> tuple[L3Document, dict[str, int]]:
+    ...
+```
 
-4. **Fill feature coverage in order of render-critical priority:**
-   - Node creation (`figma.createFrame`, `createRectangle`, `createText`, `createInstance`, etc.)
-   - Sizing + position (Phase 1 `resize`, Phase 3 `x/y`)
-   - Fills + strokes
-   - Text properties (font, size, weight, content)
-   - Component instances via `createInstance` (Mode 1 path)
-   - Vector paths (from DB by node_id)
-   - Effects (shadow, blur)
-   - Constraints
-   - Variant / swap handling
+Or a companion `derive_markup(conn, sid) → (doc, nid_map)` wrapper. The map is a side-car, NOT embedded in the grammar — that's the explicit difference from `$ext.nid` (which encoded the same information *inside* the markup and has been deprecated).
 
-5. Each feature added = one byte-parity screen or more moving to green.
+The map is what `render_figma` uses to resolve per-node DB lookups (`db_visuals[nid]`) without inventing a new identity scheme. Everything the renderer needs from the DB (fills, strokes, fonts, effects, vector paths, override trees, etc.) flows through this bridge.
+
+Update `tests/test_compress_l3.py` to cover the new return shape. No parity claims yet.
+
+#### M1b — preamble byte-parity
+
+Add `dd/render_figma_ast.py` with a first function:
+
+```python
+def render_figma_preamble(
+    doc: L3Document, conn: sqlite3.Connection, nid_map: dict[str, int],
+) -> str:
+    ...
+```
+
+It emits the preamble ONLY: font loads + `__errors` + `_rootPage` + prefetch. No Phase 1/2/3 yet.
+
+A/B harness at `tests/test_option_b_parity.py`:
+
+```python
+def _preamble_region(script: str) -> str:
+    """Extract the pre-Phase-1 prefix (everything up to the first
+    `// Phase 1:` comment emitted by generate_figma_script)."""
+    marker = "// Phase 1:"
+    idx = script.find(marker)
+    return script[:idx]
+
+@pytest.mark.parametrize("sid", [181, 222, 237])
+def test_m1b_preamble_byte_parity(db_conn, sid):
+    ir = generate_ir(db_conn, sid, semantic=True, filter_chrome=False)
+    visuals = query_screen_visuals(db_conn, sid)
+    script_a, _ = generate_figma_script(ir["spec"], db_visuals=visuals, ckr_built=True)
+
+    doc, nid_map = compress_to_l3(ir["spec"], db_conn, screen_id=sid)
+    preamble_b = render_figma_preamble(doc, db_conn, nid_map)
+
+    assert _preamble_region(script_a) == preamble_b
+```
+
+This gate catches font collection, prefetch target accuracy, and eid→nid map completeness in one shot. If it fails, the error is almost always one of: (a) `collect_fonts` walks text elements we haven't surfaced, (b) `nid_map` is missing entries for some nodes, (c) the sort order of the fonts set differs.
+
+#### M1c — Phase 1 leaf-node byte-parity
+
+Extend `render_figma_ast.py` with Phase 1 emit for `createFrame` / `createRectangle` / `createText` on a minimal synthetic fixture (one screen with one of each node type — no nesting, no instances). A/B harness asserts the full script is byte-identical for that fixture.
+
+This sub-milestone catches the dispatch + intrinsic-property emission paths without the compounding complexity of instance resolution, group deferral, text re-layout, or constraints.
+
+#### M1d — Full walker, pipeline-health gate
+
+Full Phase 1/2/3 walker over `doc.top_level` on 3 reference fixtures (181, 222, 237). Gates are deliberately loose:
+- No crash (no exceptions from the generated script or the renderer).
+- Script > 1000 bytes (non-empty).
+- `eid_map` produced by the walker has >= 1 entry per top-level node.
+- Script-size ratio against baseline within 0.95–1.05 (Stage 1.5c-equivalent diagnostic, not an identity assertion).
+
+This is the equivalent of `tests/test_markup_render_pipeline.py`'s existing gates but on the Option B path. Once M1d is green, we've proven the pipeline is healthy. Then M2 tightens to byte-identity.
+
+#### What the verifier does with eids (why Option B auto-resolves Option A's 48 missing_child)
+
+`dd/verify_figma.py` matches IR elements to rendered nodes via `rendered_ref["eid_map"][eid]`. The renderer builds `eid_map` in JS from `M[eid] = n0.id` assignments in Phase 1. The verifier never reads Figma `pluginData` — it reads the eid-keyed walk payload.
+
+Option A's 48 `missing_child` errors on screen 181 were counter-drift between the baseline `generate_ir`'s element keys (`button-5`) and the decompressor's AST walk counter (`button-16`). Each walk produced different eids for the same physical node. In Option B, the compressor and renderer walk the same AST in the same deterministic order, so the eids are identical by construction. This class of failure does not exist in Option B — **do not carry forward workarounds designed for it**.
+
+#### Feature coverage (M1d → M2), in order of render-critical priority
+
+- Node creation (`createFrame` / `createRectangle` / `createText` / `createInstance` / `createVector`)
+- Sizing + position (Phase 1 `resize`, Phase 3 `x/y`)
+- Fills + strokes
+- Text properties (font, size, weight, content)
+- Component instances via `createInstance` (Mode 1 path) + missing-component placeholder
+- Vector paths (from `conn` via `nid_map`)
+- Effects (shadow, blur)
+- Constraints
+- Variant / swap handling
+
+Each feature added = one more byte-parity screen moves to green.
 
 ### Principles for M1–M3 execution
 
