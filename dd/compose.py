@@ -17,7 +17,9 @@ import os
 import sqlite3
 from typing import Any
 
-from dd.renderers.figma import generate_figma_script
+from dd.compress_l3 import compress_to_l3_with_maps
+from dd.render_figma_ast import render_figma
+from dd.renderers.figma import collect_fonts
 from dd.templates import query_templates
 
 _DIRECTION_MAP = {
@@ -30,6 +32,26 @@ _SIZING_MAP = {
     "HUG": "hug",
     "FIXED": "fixed",
 }
+
+
+def _ckr_is_built(conn: sqlite3.Connection) -> bool:
+    """Return True iff `component_key_registry` exists and has rows.
+
+    Shared by `generate_from_prompt` and `dd.renderers.figma.
+    generate_screen`; both pipelines gate Mode-1 instance resolution
+    on CKR presence and need the same boolean to set the
+    `ckr_built` kwarg on the renderer.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='component_key_registry'"
+    ).fetchone()
+    if not exists:
+        return False
+    row = conn.execute(
+        "SELECT COUNT(*) FROM component_key_registry"
+    ).fetchone()
+    return bool(row and row[0] > 0)
 
 
 def _pick_best_template(
@@ -1256,9 +1278,11 @@ def generate_from_prompt(
 ) -> dict[str, Any]:
     """Generate Figma JS from a component list using templates.
 
-    Orchestrates: query_templates → validate → compose_screen → build_template_visuals
-    → generate_figma_script. Returns dict with structure_script and metadata.
-    When page_name is provided, the script creates a new Figma page.
+    Orchestrates: query_templates → validate → compose_screen →
+    build_template_visuals → compress_to_l3 → render_figma (markup-
+    native Option B path; see docs/decisions/v0.3-option-b-cutover.md).
+    Returns dict with structure_script and metadata. When page_name is
+    provided, the script creates a new Figma page.
 
     ``registry`` is an optional :class:`ProviderRegistry` for Mode-3
     composition — pass one from callers that have a DB connection
@@ -1277,7 +1301,29 @@ def generate_from_prompt(
     # Pass conn through so build_template_visuals can resolve IR-level
     # component_key refs against component_key_registry (ADR-008 Mode-3).
     visuals = build_template_visuals(spec, templates, conn=conn)
-    script, token_refs = generate_figma_script(spec, db_visuals=visuals, page_name=page_name)
+
+    # CKR gate for the Option B preamble — mirrors
+    # `dd.renderers.figma.generate_screen`. When CKR isn't built, the
+    # walker emits a structured `CKR_NOT_BUILT` diagnostic so
+    # downstream Mode-1 degradations trace back to the root cause
+    # instead of appearing as mysterious placeholder wireframes.
+    ckr_built = _ckr_is_built(conn)
+
+    doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+        compress_to_l3_with_maps(spec, conn, collapse_wrapper=False)
+    )
+    fonts = collect_fonts(spec, db_visuals=visuals)
+    script, token_refs = render_figma(
+        doc, conn, nid_map,
+        fonts=fonts,
+        spec_key_map=spec_key_map,
+        original_name_map=original_name_map,
+        db_visuals=visuals,
+        ckr_built=ckr_built,
+        page_name=page_name,
+        _spec_elements=spec["elements"],
+        _spec_tokens=spec.get("tokens", {}),
+    )
     template_rebind_entries = collect_template_rebind_entries(spec, visuals)
 
     return {

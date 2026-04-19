@@ -331,6 +331,67 @@ class TestM1cLeafNodeByteParity:
             "(10, 20)); got something else"
         )
 
+    def test_token_refs_passthrough_preserves_eid(self) -> None:
+        """``_emit_visual`` / ``_emit_layout`` return 3-tuples
+        ``(eid, prop, token_name)``. The walker must pass them
+        through to the caller's token_refs list unchanged — an
+        earlier iteration unpacked them as 2-tuples and rebuilt with
+        a local ``spec_key_for_emit``, which crashes with
+        ``ValueError: too many values to unpack``.
+
+        Dormant on the Dank corpus (DB-extracted specs have empty
+        ``_token_refs`` maps) — only surfaces on the
+        ``dd.compose.build_template_visuals`` path where templates
+        inject token refs. This pins the contract.
+        """
+        from dd.render_figma_ast import render_figma
+
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "frame",
+                    "_original_name": "test-screen",
+                    "children": ["rect-1"],
+                    "layout": {}, "visual": {}, "props": {}, "style": {},
+                },
+                "rect-1": {
+                    "type": "rectangle",
+                    "_original_name": "rect",
+                    "children": [],
+                    "layout": {},
+                    "visual": {
+                        "fills": [
+                            {"type": "solid", "color": "{color.primary}"},
+                        ],
+                    },
+                    "props": {}, "style": {},
+                },
+            },
+            "tokens": {"color.primary": "#FF0000"},
+            "_node_id_map": {"screen-1": 100, "rect-1": 101},
+        }
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+            compress_to_l3_with_maps(spec, conn=None)
+        )
+        _script, token_refs = render_figma(
+            doc, None, nid_map,
+            fonts=[], spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=None, ckr_built=True,
+            _spec_elements=spec["elements"],
+            _spec_tokens=spec.get("tokens", {}),
+        )
+        assert any(
+            isinstance(t, tuple) and len(t) == 3
+            and t[0] == "rect-1" and t[2] == "color.primary"
+            for t in token_refs
+        ), (
+            f"token_refs missing the rect's color.primary binding; "
+            f"got: {token_refs!r}"
+        )
+
     def test_full_script_byte_identical_root_only(self) -> None:
         """Screen-root with no children — exercises the Phase 2
         branch where `_emit_phase2` has no appendChild-from-parent

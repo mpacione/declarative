@@ -625,8 +625,14 @@ def _emit_phase1(
                     node_type=_FIGMA_NODE_TYPE.get(etype),
                 )
                 lines.extend(visual_lines)
-                for prop, token_name in visual_refs:
-                    token_refs.append((spec_key_for_emit, prop, token_name))
+                # `_emit_visual` returns pre-built ``(eid, prop,
+                # token_name)`` 3-tuples keyed on the eid it received
+                # (== ``spec_key_for_emit``). Pass through — rebuilding
+                # here was a shape-mismatch bug that happened to be
+                # dormant on the Dank corpus (DB-extracted specs have
+                # empty ``_token_refs`` maps) and only surfaced on the
+                # synthetic compose.py path.
+                token_refs.extend(visual_refs)
             elif etype == "frame":
                 lines.append(f"{var}.fills = [];")
                 lines.append(f"{var}.clipsContent = false;")
@@ -643,10 +649,7 @@ def _emit_phase1(
                     text_auto_resize=text_auto_resize, etype=etype,
                 )
                 lines.extend(layout_lines)
-                for prop, token_name in layout_refs:
-                    token_refs.append(
-                        (spec_key_for_emit, prop, token_name),
-                    )
+                token_refs.extend(layout_refs)
 
             if is_text:
                 db_font = raw_visual.get("font") or raw_visual
