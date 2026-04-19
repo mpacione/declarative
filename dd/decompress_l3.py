@@ -352,6 +352,14 @@ class _DecompressCtx:
         # screen_id → {sanitized_name: [node_ids]} — cached lookup table
         # for AST-path name → node_id resolution.
         self._screen_name_cache: Optional[dict[str, list[int]]] = None
+        # node_id → canonical_type from `screen_component_instances`.
+        # `dd.ir.generate_ir` applies the classifier's canonical types
+        # (icon / button / header / image / tabs / card / ...) to the
+        # spec's `element.type` field. Without this override, inflated
+        # elements keep raw node_types (`rectangle`, `instance`,
+        # `frame`) and the renderer counts them with different
+        # sibling-counter keys (`instance-58` vs `button-1`).
+        self._canonical_types: Optional[dict[int, str]] = None
         # slash_path → master root node_id, populated lazily on first
         # CompRef lookup. Avoids O(CKR × CompRefs) rescans across the
         # corpus sweep (129 CKR rows × ~100 CompRefs per screen × 204
@@ -391,6 +399,18 @@ class _DecompressCtx:
         if self._ckr_key_cache is None:
             self._ckr_key_cache = _build_ckr_key_cache(self.conn)
         return self._ckr_key_cache.get(component_key)
+
+    def canonical_type_for(self, node_id: int) -> Optional[str]:
+        """Return the classifier's canonical type for a node_id (or
+        None when the screen has no classification for it). Cached
+        per-screen on first call."""
+        if self.conn is None or self.screen_id is None:
+            return None
+        if self._canonical_types is None:
+            self._canonical_types = _build_canonical_type_cache(
+                self.conn, self.screen_id,
+            )
+        return self._canonical_types.get(node_id)
 
     def lookup_screen_node_id(
         self, eid: str,
@@ -555,6 +575,27 @@ def _split_eid_suffix(eid: str) -> tuple[Optional[str], Optional[int]]:
     if idx < 2:
         return None, None
     return base, idx
+
+
+def _build_canonical_type_cache(
+    conn: sqlite3.Connection, screen_id: int,
+) -> dict[int, str]:
+    """Build `{node_id: canonical_type}` for the screen's
+    classification entries. Mirrors the join `dd.ir.query_screen_for_ir`
+    uses to project `canonical_type` onto spec elements."""
+    # Guard: sci table may not exist in minimal test fixtures.
+    if not conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='screen_component_instances'"
+    ).fetchone():
+        return {}
+    rows = conn.execute(
+        "SELECT node_id, canonical_type "
+        "FROM screen_component_instances "
+        "WHERE screen_id = ? AND canonical_type IS NOT NULL",
+        (screen_id,),
+    ).fetchall()
+    return {int(nid): str(ct) for nid, ct in rows}
 
 
 def _build_screen_name_cache(
@@ -732,10 +773,24 @@ _LEAF_NODE_TYPES = frozenset({
 
 def _db_row_to_element(
     row: dict, parent_row: Optional[dict],
+    ctx: Optional["_DecompressCtx"] = None,
 ) -> dict[str, Any]:
-    """Translate a `nodes` table row into a spec-element dict."""
+    """Translate a `nodes` table row into a spec-element dict.
+
+    When `ctx` is supplied AND the node has a canonical_type in
+    `screen_component_instances`, the element's `type` is set to
+    the canonical form (icon / button / header / ...) matching
+    `dd.ir.generate_ir`'s output shape. Falls back to raw
+    lowercased `node_type` otherwise.
+    """
     raw_type = (row.get("node_type") or "frame").lower()
     element: dict[str, Any] = {"type": raw_type}
+    if ctx is not None:
+        nid = row.get("id")
+        if isinstance(nid, int):
+            canonical = ctx.canonical_type_for(nid)
+            if canonical:
+                element["type"] = canonical
     name = row.get("name")
     if name:
         element["_original_name"] = name
@@ -963,7 +1018,7 @@ def _expand_master_subtree(
             )
 
     def walk(row: dict, parent_row: Optional[dict]) -> str:
-        element = _db_row_to_element(row, parent_row)
+        element = _db_row_to_element(row, parent_row, ctx)
         nid = row.get("id")
         is_instance = (row.get("node_type") or "").upper() == "INSTANCE"
         if is_instance:
@@ -1052,7 +1107,7 @@ def _expand_screen_subtree(
             )
 
     def walk(row: dict, parent_row: Optional[dict]) -> str:
-        element = _db_row_to_element(row, parent_row)
+        element = _db_row_to_element(row, parent_row, ctx)
         nid = row.get("id")
         is_instance = (row.get("node_type") or "").upper() == "INSTANCE"
         if is_instance:
@@ -1110,7 +1165,7 @@ def _expand_master_by_root_id(
             )
 
     def walk_inner(row: dict, parent_row: Optional[dict]) -> str:
-        element = _db_row_to_element(row, parent_row)
+        element = _db_row_to_element(row, parent_row, ctx)
         nid = row.get("id")
         is_inner_instance = (
             (row.get("node_type") or "").upper() == "INSTANCE"
@@ -1329,11 +1384,40 @@ def _decode_node(
     else:
         type_kw = head.type_or_path
 
+    props = _props_by_key(head.properties)
+
+    # Resolve node_id + canonical type BEFORE allocating the sibling
+    # counter key — when a canonical type is available (e.g., `button`,
+    # `icon`), the counter key should be keyed by the canonical form
+    # to match `dd.ir.generate_ir`'s element-key shape.
+    resolved_nid: Optional[int] = None
+    if head.eid:
+        ext_nid = props.get("$ext.nid")
+        if ext_nid is not None and isinstance(ext_nid.value, Literal_):
+            py_val = ext_nid.value.py
+            if isinstance(py_val, int):
+                resolved_nid = py_val
+        if resolved_nid is None:
+            resolved_nid = ctx.lookup_screen_node_id(
+                head.eid,
+                parent_node_id=parent_node_id,
+                sibling_index=sibling_index,
+            )
+    # Canonical-type override — applies to BOTH inline elements and
+    # CompRefs. `dd.ir.generate_ir` puts the classifier's canonical
+    # type on Mode-1-eligible instances too (e.g. an INSTANCE of
+    # `button/large/translucent` has `type="button"` AND
+    # `_mode1_eligible=true`). The renderer's Mode-1 dispatch uses
+    # `_mode1_eligible` + `component_key`, not `type`, so the
+    # canonical replacement is safe for CompRefs.
+    if resolved_nid is not None:
+        canonical = ctx.canonical_type_for(resolved_nid)
+        if canonical:
+            type_kw = canonical
+
     # Element key — sibling-scoped counter. Prefer sanitized EID when
     # the caller cares about preserving it; for MVP we use the counter.
     key = ctx.next_key(type_kw)
-
-    props = _props_by_key(head.properties)
 
     element: dict[str, Any] = {"type": type_kw}
     if is_compref:
@@ -1378,28 +1462,11 @@ def _decode_node(
         # name) but reads back through `normalize_to_eid` identically,
         # so downstream key-preservation works.
         element["_original_name"] = head.eid
-        # `$ext.nid` side-channel (Stage 1.5c): the compressor embeds
-        # the DB node_id directly onto each element head so round-trip
-        # is exact — even for generic-name elements like `"Vector"`
-        # that name-based lookup can't disambiguate. Takes precedence
-        # over the fallback name lookup.
-        ext_nid = props.get("$ext.nid")
-        nid: Optional[int] = None
-        if ext_nid is not None and isinstance(ext_nid.value, Literal_):
-            py_val = ext_nid.value.py
-            if isinstance(py_val, int):
-                nid = py_val
-        if nid is None:
-            # Fallback: resolve by screen lookup (covers hand-authored
-            # markup AND outputs from older compressors without the
-            # `$ext.nid` channel).
-            nid = ctx.lookup_screen_node_id(
-                head.eid,
-                parent_node_id=parent_node_id,
-                sibling_index=sibling_index,
-            )
-        if nid is not None:
-            ctx.node_id_map[key] = nid
+        # node_id was resolved earlier (before key allocation so the
+        # canonical type could inform the counter). Record under the
+        # final key.
+        if resolved_nid is not None:
+            ctx.node_id_map[key] = resolved_nid
 
     _decode_layout(
         props, element,
