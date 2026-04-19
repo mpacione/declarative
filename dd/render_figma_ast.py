@@ -351,6 +351,24 @@ def _prefetch_var_map(
     }
 
 
+def _ast_prop_is_false(node: Node, key: str) -> bool:
+    """Return True iff the AST node's head has a property ``key`` whose
+    value is a boolean literal ``false``.
+
+    Reads straight from ``node.head.properties`` rather than the
+    dict-IR shim's ``element.get(key)``. This is the canonical
+    multi-backend-ready pattern: every backend walker consumes the
+    same L3 AST property and emits its native representation.
+    Candidate for generalization when a second property migrates off
+    the shim — currently a one-off for ``visible``.
+    """
+    for prop in node.head.properties:
+        if prop.key == key:
+            val = getattr(prop.value, "py", None)
+            return val is False
+    return False
+
+
 def _baseline_walk_indices(
     spec_elements: dict[str, dict[str, Any]],
     root_spec_key: str,
@@ -624,6 +642,23 @@ def _emit_phase1(
                     f"kind:\"text_set_failed\", "
                     f"error: String(__e && __e.message || __e)}}); }}"
                 )
+
+        # AST-property-driven `visible=false` emission — the first
+        # element-level property to migrate off the transitional
+        # `_spec_elements` shim onto direct AST reads. Read from the
+        # L3 AST, not the dict-IR shim, so every backend walker
+        # (Figma, React, SwiftUI, Flutter) consumes the same property
+        # and emits its native "hidden" form: Figma
+        # `node.visible = false`; React `style={{display: 'none'}}`;
+        # SwiftUI `.isHidden(true)`; Flutter
+        # `Visibility(visible: false)`. Missing this emission was the
+        # root cause of the visual-artifact cluster (Issues #1, #3,
+        # #4, #6, #7) where hidden overlays / modals / conditional
+        # content rendered on top of visible content across ~every
+        # Dank screen — a 85-node-per-screen gap on ipad-12.9-69.
+        # Applies to both shim and no-shim paths (reads AST only).
+        if _ast_prop_is_false(node, "visible"):
+            lines.append(f"{var}.visible = false;")
 
         m_key = spec_key_map.get(id(node), eid)
         lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')

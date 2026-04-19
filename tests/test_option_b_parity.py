@@ -248,6 +248,41 @@ class TestM1cLeafNodeByteParity:
         )
         assert refs_b == refs_a
 
+    def test_hidden_mode2_emits_visible_false(self) -> None:
+        """Hidden non-instance (Mode 2) nodes must emit `{var}.visible
+        = false;` — mirrors baseline figma.py:1430 and resolves the
+        class of visual artifact where hidden overlays / modals /
+        conditional content render on top of visible content.
+
+        The walker must read `visible` from the L3 AST's head
+        properties (compress_l3 emits it at line 730), not from the
+        dict-IR shim — this is the multi-backend-ready pattern.
+        """
+        from dd.render_figma_ast import render_figma
+
+        spec = _minimal_fixture()
+        spec["elements"]["rect-1"]["visible"] = False
+        spec["elements"]["text-1"]["visible"] = False
+
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+            compress_to_l3_with_maps(spec, conn=None)
+        )
+        fonts = collect_fonts(spec, db_visuals=None)
+        script, _ = render_figma(
+            doc, None, nid_map,
+            fonts=fonts, spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=None, ckr_built=True,
+        )
+        assert "n1.visible = false;" in script, (
+            "Option B Mode 2 walker dropped `visible = false` on a "
+            "hidden rectangle — renders on top of visible content"
+        )
+        assert "n2.visible = false;" in script, (
+            "Option B Mode 2 walker dropped `visible = false` on a "
+            "hidden text node"
+        )
+
     def test_full_script_byte_identical_root_only(self) -> None:
         """Screen-root with no children — exercises the Phase 2
         branch where `_emit_phase2` has no appendChild-from-parent
