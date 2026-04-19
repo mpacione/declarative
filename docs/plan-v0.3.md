@@ -105,6 +105,68 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 - Zero regressions in existing test suite
 - Existing `sweep.py` (without markup env var) continues to report 204/204 — markup path is purely additive
 
+### Stage 1 progress as of 2026-04-18 evening
+
+| Step | Deliverable | Status |
+|---|---|---|
+| 1.1 | Parser tests against S4 fixtures (red) | ✅ |
+| 1.2 | Parser + emitter (green) | ✅ |
+| 1.3 | Emitter tests / golden snapshots | ✅ |
+| 1.4 | Compression — per-axis derivation from dict IR | ✅ **204/204 Tier 1** |
+| **1.5** | **Round-trip one fixture end-to-end** | ⏳ **IN PROGRESS** |
+| 1.5a | Expand — `ast_to_dict_ir` (decompressor) | ✅ |
+| 1.5b | Render step — feed decompressed IR into existing renderer | ❌ **next up** |
+| 1.5c | Tier 2 (script byte-parity) on screen 181 | ❌ |
+| 1.5d | Tier 3 (pixel parity) on screen 181 via Figma sweep | ❌ |
+| 1.6 | Round-trip 3 fixtures at Tier 1+2+3 | ❌ |
+| 1.7 | Full 204 corpus at Tier 2+3 | ⏳ Tier 1 ✅ / Tier 2 ❌ / Tier 3 ❌ |
+
+**Stage 1.5a internal decomposition** (commits labelled "1.5/1.6/1.7" at
+commit time, reconciled here as 1.5a sub-work — the expand half of 1.5):
+
+- **Skeleton** (`68eb49b`): basic AST→dict walk, type/layout/visual decode,
+  CompRef marking, 17 tests.
+- **Corpus sweep + wrapper re-expansion** (`bdcd988`): synthetic screen wrapper
+  inverse; 5 corpus sweeps (no-crash, count-parity, type, root-is-screen,
+  child-refs-resolve).
+- **Review cycle 6 fixes** (`7bc76c6`): direction default (absolute/stacked/
+  skip for compref), `_original_name` recovery, `$ext.*` pass-through.
+- **`_self_overrides` channel** (`14af0a3`): CompRef head PropAssigns captured
+  structurally; `_override_value_repr` for Literal_ / PropGroup /
+  FunctionCall / SizingValue.
+- **Review cycle 7 fixes** (`2345d8b`): absolute root direction, compref no
+  spurious direction, TokenRef/ComponentRefValue/PatternRefValue handlers,
+  SizingValue bounds, PathOverride capture, JSON serializability.
+- **DB column tagging** (`a8684d7`): `db_prop_type` + `db_prop_name` on every
+  `_self_overrides` entry, padding fans out per side, `width` polymorphism.
+- **Master-subtree expansion** (`1b30d95`): walk master's subtree via
+  recursive CTE when `conn` is supplied.
+- **Cycle 8 fidelity fixes** (`df9a791`): CKR NULL filter, slash-path cache,
+  sort_order, leaf-type direction, effects/stroke_align/per-corner radius.
+- **Nested CompRef recursion** (`2ceaa1c`): INSTANCE rows inside a master
+  subtree inflate their own master, cycle detection.
+
+**Stage 1.5a test posture:** 66 decompressor tests + 72 compressor tests
+pass. 204/204 Tier 1 round-trip holds. JSON-serializability sweeps pass
+on both no-conn and with-conn paths.
+
+**Known blockers for closing 1.5b (render step):**
+1. **Canonical-type classification on inflated nodes.** Orig spec has
+   `button` / `icon` / `header` types derived from
+   `screen_component_instances`. Inflated nodes keep raw `instance` / `frame`.
+   Renderer dispatches on canonical type.
+2. **Integration point.** Wire decompressed IR into whatever consumes
+   `generate_ir` output today (`render_batch/`, `sweep.py`).
+
+**Non-blocking deferred items** (tracked in commit bodies, low corpus
+impact or design-scope):
+- CKR slash-path collisions (10 rows).
+- Gradient `handlePositions` / `gradientTransform` / stop `position`.
+- Compressor `:self:strokeAlign` (32 rows, single INSIDE value).
+- `$ext.fill_unsupported` for radial/angular/diamond gradients (0 corpus).
+- Stage 1.8 (not in plan yet): `_self_overrides` → `instance_overrides`
+  row re-materialization. Column tagging (`a8684d7`) is prep.
+
 ### Plan B — Stages 2–6 (deferred until Stage 1 ships + each stage's spec written)
 
 - **Stage 2:** definitions + references (`define` / `use` / `&`), cycle detection, pattern-suggestion Rule-of-Three pass. Archetype JSON skeletons migrate to `.dd` defines. Spec needed before code.
