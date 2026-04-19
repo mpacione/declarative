@@ -312,6 +312,123 @@ class TestDecompressSimpleNode:
         assert el["visible"] is False
 
 
+class TestEidSuffixSplit:
+    """`_split_eid_suffix` recovers the compressor's `-N` collision
+    disambiguation. `button-large-translucent-3` came from a DB name
+    that sanitized to `button-large-translucent` with two prior
+    same-sanitized siblings already consuming `-1` (implicit) and
+    `-2`."""
+
+    def test_unsuffixed_eid_returns_none_none(self) -> None:
+        from dd.decompress_l3 import _split_eid_suffix
+        assert _split_eid_suffix("button-large") == (None, None)
+
+    def test_suffix_2_or_higher_splits(self) -> None:
+        from dd.decompress_l3 import _split_eid_suffix
+        assert _split_eid_suffix("button-large-2") == ("button-large", 2)
+        assert _split_eid_suffix("safari-bottom-5") == ("safari-bottom", 5)
+
+    def test_suffix_1_is_part_of_name(self) -> None:
+        """`-1` suffix isn't emitted by the compressor (`-N` starts
+        at 2). If an EID happens to end in `-1`, it's part of the
+        name, not a collision suffix."""
+        from dd.decompress_l3 import _split_eid_suffix
+        assert _split_eid_suffix("safari-bottom-1") == (None, None)
+
+    def test_empty_eid_returns_none(self) -> None:
+        from dd.decompress_l3 import _split_eid_suffix
+        assert _split_eid_suffix("") == (None, None)
+
+
+class TestLookupScreenNodeId:
+    """Direct tests for `_DecompressCtx.lookup_screen_node_id`'s
+    three-way dispatch: screen-wide cache, parent-scoped DB query,
+    sibling-index disambiguation."""
+
+    def test_returns_none_without_conn(self) -> None:
+        from dd.decompress_l3 import _DecompressCtx
+        ctx = _DecompressCtx(conn=None, screen_id=None)
+        assert ctx.lookup_screen_node_id("any-eid") is None
+
+    def test_returns_none_without_screen_id(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        from dd.decompress_l3 import _DecompressCtx
+        ctx = _DecompressCtx(conn=db_conn, screen_id=None)
+        assert ctx.lookup_screen_node_id("safari-bottom") is None
+
+    def test_screen_wide_unique_match(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """A unique name in the screen → returns that node_id."""
+        from dd.decompress_l3 import _DecompressCtx
+        ctx = _DecompressCtx(conn=db_conn, screen_id=181)
+        # `iphone-13-pro-max-119` is the canvas root name — unique.
+        nid = ctx.lookup_screen_node_id("iphone-13-pro-max-119")
+        assert nid is not None
+
+    def test_screen_wide_collision_returns_none(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Without parent scope or sibling_index, an ambiguous name
+        returns None (refuses to guess)."""
+        from dd.decompress_l3 import _DecompressCtx
+        ctx = _DecompressCtx(conn=db_conn, screen_id=181)
+        # `vector` is typically ambiguous (many vectors named "Vector").
+        # Without parent context the lookup returns None.
+        nid = ctx.lookup_screen_node_id("vector")
+        # Either the screen has no "Vector" nodes at all (nid=None) OR
+        # multiple nodes collide (nid=None). Both valid outcomes;
+        # asserting no SILENT first-match pick.
+        if nid is not None:
+            # Check this is actually a unique match on screen 181.
+            rows = db_conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE screen_id=181 "
+                "AND LOWER(name) = 'vector'"
+            ).fetchone()
+            assert rows[0] == 1, (
+                "lookup returned a match for 'vector' but multiple "
+                "nodes exist; first-match bug"
+            )
+
+    def test_eid_suffix_sibling_index(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """`-N` suffix on the EID passes the same-name sibling-index
+        to parent-scoped lookup. `frame-350-2` should resolve to the
+        SECOND `frame-350` sibling under the parent in sort_order."""
+        from dd.decompress_l3 import _DecompressCtx
+        # Set up on screen 181 which has multiple `Frame 350` siblings
+        # (from orig spec snapshots: 3 at least).
+        ctx = _DecompressCtx(conn=db_conn, screen_id=181)
+        # Find a parent known to have multiple same-name children.
+        row = db_conn.execute(
+            "SELECT parent_id, LOWER(name), COUNT(*) FROM nodes "
+            "WHERE screen_id=181 AND name IS NOT NULL "
+            "GROUP BY parent_id, LOWER(name) HAVING COUNT(*) >= 2 "
+            "LIMIT 1"
+        ).fetchone()
+        if row is None:
+            pytest.skip("screen 181 has no same-name sibling pairs")
+        parent_id, name_lower, count = row
+        from dd.compress_l3 import normalize_to_eid
+        base_eid = normalize_to_eid(name_lower)
+        # First sibling — no suffix.
+        nid0 = ctx.lookup_screen_node_id(
+            base_eid, parent_node_id=parent_id, sibling_index=0,
+        )
+        # Second sibling — `-2` suffix embeds sibling_index=1.
+        nid1 = ctx.lookup_screen_node_id(
+            f"{base_eid}-2", parent_node_id=parent_id,
+        )
+        assert nid0 is not None
+        assert nid1 is not None
+        assert nid0 != nid1, (
+            "sibling_index didn't disambiguate: same nid for "
+            "positions 0 and 1"
+        )
+
+
 class TestDefaultDirectionStacked:
     """Direction defaults are context-dependent:
     - `screen` type root → `"absolute"` (matches generate_ir shape).
@@ -1092,6 +1209,48 @@ class TestDecompressReferenceScreens:
         assert decomp_root["layout"]["sizing"] == orig_root["layout"]["sizing"]
         # Both have exactly one child at the canvas layer.
         assert len(decomp_root["children"]) == len(orig_root["children"]) == 1
+
+    def test_node_id_map_populated_after_roundtrip(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Stage 1.5c: the decompressed spec must carry `_node_id_map`
+        when `conn` and `screen_id` are provided. The `$ext.nid` side
+        channel + name-based fallback together should resolve almost
+        every element."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        decomp = ast_to_dict_ir(doc, db_conn, screen_id=181)
+        nid_map = decomp.get("_node_id_map") or {}
+        assert nid_map, "_node_id_map missing from round-trip output"
+        # At least 95% of elements should have node_ids after
+        # Stage 1.5c (the $ext.nid side-channel makes this ~100%).
+        resolution_ratio = len(nid_map) / len(decomp["elements"])
+        assert resolution_ratio >= 0.95, (
+            f"node_id resolution ratio {resolution_ratio:.3f} "
+            f"below Stage-1.5c floor 0.95"
+        )
+
+    def test_node_id_map_absent_without_screen_id(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """Calling `ast_to_dict_ir` without `screen_id` preserves the
+        legacy behavior — no `_node_id_map` in output."""
+        spec = generate_ir(
+            db_conn, 181, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc = compress_to_l3(spec, db_conn, screen_id=181)
+        # conn supplied (enables master-subtree inflation) but not
+        # screen_id (so AST-path lookups don't fire).
+        decomp = ast_to_dict_ir(doc, db_conn)
+        # Master-subtree walker still populates node_ids for inflated
+        # elements, so `_node_id_map` may still exist — but it should
+        # be much sparser than the with-screen_id path.
+        decomp_full = ast_to_dict_ir(doc, db_conn, screen_id=181)
+        assert len(decomp.get("_node_id_map") or {}) < len(
+            decomp_full.get("_node_id_map") or {}
+        )
 
     def test_decompress_element_count_nonzero(
         self, db_conn: sqlite3.Connection,

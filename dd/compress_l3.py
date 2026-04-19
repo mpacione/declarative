@@ -785,6 +785,21 @@ def _compress_element(
             for override_prop in self_overrides[eid_key]:
                 props = _merge_override_prop(props, override_prop)
 
+    # `$ext.nid` side-channel (Stage 1.5c): emit the element's DB
+    # node_id onto every head when `_node_id_map` is populated. The
+    # decompressor reads it back into its own `node_id_map` so
+    # `dd/renderers/figma.py` can look up `db_visuals` (font / image /
+    # variant / vector_paths) without needing AST-EID → DB-name
+    # resolution. Closes the ~23KB `vectorPaths` gap on screen 181
+    # where outside-mode1 vectors have generic names that name-based
+    # lookup can't disambiguate.
+    node_id_map = spec.get("_node_id_map") or {}
+    nid = node_id_map.get(eid_key)
+    if isinstance(nid, int):
+        props.append(PropAssign(
+            key="$ext.nid", value=_num_literal(nid),
+        ))
+
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
     # Without this, the unsorted compressor output fails

@@ -112,15 +112,15 @@ def test_render_pipeline_round_trip_produces_script(
 def test_render_pipeline_scripts_have_similar_size(
     db_conn: sqlite3.Connection, sid: int,
 ) -> None:
-    """Gate the parity-gap: the round-tripped script must be within
-    2× the baseline script's size. A huge divergence (>2×) indicates
-    a structural bug (e.g., the decompressor produced a vastly
-    different element tree than orig) that would render incorrectly
-    regardless of byte parity.
+    """Tight parity gate for the 3 reference screens: ratio ≥ 0.95
+    after Stage 1.5c work (node_id_map + $ext.nid side-channel).
 
-    This is a SOFT baseline to tighten over Stage 1.5c as fidelity
-    gaps close. Current measured ratio on screen 181: ~0.9.
-    """
+    A regression dropping below 0.95 signals a real fidelity loss —
+    e.g., the `$ext.nid` channel broke and node_ids stopped flowing,
+    or the screen-subtree walker regressed.
+
+    Upper bound 1.05 catches a regression in the OTHER direction
+    (decompressor inflating elements baseline never emits)."""
     baseline, round_spec = _roundtrip_spec(db_conn, sid)
     visuals = query_screen_visuals(db_conn, sid)
     script_b, _ = generate_figma_script(
@@ -129,14 +129,62 @@ def test_render_pipeline_scripts_have_similar_size(
     script_r, _ = generate_figma_script(
         round_spec, db_visuals=visuals, ckr_built=True,
     )
-    # Ratio bounds — catches structural regressions without requiring
-    # byte-exact parity (which is Stage 1.5c).
     size_ratio = len(script_r) / len(script_b) if script_b else 0
-    assert 0.5 <= size_ratio <= 2.0, (
-        f"screen {sid}: round-trip script size ratio {size_ratio:.2f} "
+    assert 0.95 <= size_ratio <= 1.05, (
+        f"screen {sid}: script size ratio {size_ratio:.3f} "
         f"(baseline={len(script_b)}, round={len(script_r)}) — out of "
-        f"tolerance band [0.5, 2.0]"
+        f"tight Stage-1.5c band [0.95, 1.05]"
     )
+
+
+def test_render_pipeline_full_corpus_ratio_floor(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """Corpus-wide byte-parity regression gate (audit finding G1).
+    Every app_screen's decompressed-vs-baseline script-size ratio
+    must be ≥ 0.85. Catches:
+    - A regression in `$ext.nid` emission (node_ids stop flowing;
+      vectorPaths / fonts drop out; ratio tanks on vector-heavy
+      screens).
+    - A regression in the screen-subtree walker (element count
+      drops).
+    - An inflation explosion (some screen goes over 1.5× — catches
+      a master-subtree fallback bug).
+
+    Ratio floor is conservative (current mean across 3 fixtures is
+    ~0.98). A fidelity regression that drops a single screen to
+    0.8 fails this gate immediately."""
+    screens = [
+        r[0] for r in db_conn.execute(
+            "SELECT id FROM screens "
+            "WHERE screen_type='app_screen' "
+            "ORDER BY id"
+        ).fetchall()
+    ]
+    out_of_band: list[tuple[int, float]] = []
+    for sid in screens:
+        baseline, round_spec = _roundtrip_spec(db_conn, sid)
+        visuals = query_screen_visuals(db_conn, sid)
+        script_b, _ = generate_figma_script(
+            baseline, db_visuals=visuals, ckr_built=True,
+        )
+        script_r, _ = generate_figma_script(
+            round_spec, db_visuals=visuals, ckr_built=True,
+        )
+        if not script_b:
+            continue
+        ratio = len(script_r) / len(script_b)
+        if ratio < 0.85 or ratio > 1.50:
+            out_of_band.append((sid, ratio))
+    if out_of_band:
+        details = "\n".join(
+            f"  screen {sid}: ratio={r:.3f}"
+            for sid, r in out_of_band[:10]
+        )
+        pytest.fail(
+            f"{len(out_of_band)}/{len(screens)} screens out of "
+            f"Stage-1.5c corpus band [0.85, 1.50]:\n{details}"
+        )
 
 
 def test_render_pipeline_full_corpus_no_crash(

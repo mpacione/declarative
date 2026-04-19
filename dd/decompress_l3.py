@@ -35,6 +35,7 @@ DEFERRED (follow-up slices):
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any, Optional
 
@@ -400,6 +401,12 @@ class _DecompressCtx:
         `screen_id`. Uses sanitized-name match via `normalize_to_eid`
         so `"safari-bottom"` finds `"Safari - Bottom"` in the DB.
 
+        Strips the compressor's `-N` collision suffix (§2.3.1) from
+        the EID before matching — `button-large-translucent-3` comes
+        from a DB name that sanitizes to `button-large-translucent`,
+        and the `-3` suffix disambiguates siblings via
+        `sibling_index`, not via the name.
+
         When `parent_node_id` is supplied, restricts the match to
         children of that parent — critical disambiguation for
         generic names like `"Vector"` / `"Rectangle"` that would
@@ -418,9 +425,40 @@ class _DecompressCtx:
         """
         if self.conn is None or self.screen_id is None or not eid:
             return None
+        # Resolution strategy — `-N` numeric suffixes are ambiguous:
+        # the compressor adds `-2`, `-3`, ... for same-name-sibling
+        # disambiguation, but numeric tails are also legitimate in
+        # raw Figma names (e.g. `"iPhone 13 Pro Max - 119"` sanitizes
+        # to `"iphone-13-pro-max-119"`). Try the full EID first; only
+        # fall back to base+sibling when the full EID doesn't resolve
+        # to a single node.
+        resolved = self._lookup_eid_exact(
+            eid, parent_node_id=parent_node_id,
+            sibling_index=sibling_index,
+        )
+        if resolved is not None:
+            return resolved
+        # Strip collision suffix and retry with sibling_index derived
+        # from the numeric tail.
+        base_eid, suffix_index = _split_eid_suffix(eid)
+        if base_eid is not None and suffix_index is not None:
+            return self._lookup_eid_exact(
+                base_eid, parent_node_id=parent_node_id,
+                sibling_index=suffix_index - 1,
+            )
+        return None
+
+    def _lookup_eid_exact(
+        self, eid: str, *,
+        parent_node_id: Optional[int],
+        sibling_index: Optional[int],
+    ) -> Optional[int]:
+        """Inner lookup used by `lookup_screen_node_id` — compares
+        `normalize_to_eid(db.name)` against `eid` verbatim. Callers
+        handle the collision-suffix fallback."""
+        if self.conn is None or self.screen_id is None:
+            return None
         if parent_node_id is not None:
-            # Parent-scoped lookup — query the DB directly for the
-            # parent's named children.
             from dd.compress_l3 import normalize_to_eid
             rows = self.conn.execute(
                 "SELECT id, name, sort_order FROM nodes "
@@ -432,7 +470,7 @@ class _DecompressCtx:
             for nid, name, _ in rows:
                 if name and normalize_to_eid(name) == eid:
                     matching.append(int(nid))
-            if len(matching) == 1:
+            if len(matching) == 1 and sibling_index in (None, 0):
                 return matching[0]
             if (
                 sibling_index is not None
@@ -440,14 +478,18 @@ class _DecompressCtx:
             ):
                 return matching[sibling_index]
             return None
-        # Screen-wide fallback for top-level elements.
         if self._screen_name_cache is None:
             self._screen_name_cache = _build_screen_name_cache(
                 self.conn, self.screen_id,
             )
         candidates = self._screen_name_cache.get(eid) or []
-        if len(candidates) == 1:
+        if len(candidates) == 1 and sibling_index in (None, 0):
             return candidates[0]
+        if (
+            sibling_index is not None
+            and 0 <= sibling_index < len(candidates)
+        ):
+            return candidates[sibling_index]
         return None
 
 
@@ -486,6 +528,33 @@ _LAYOUT_MODE_TO_SPEC_DIRECTION = {
     None: "stacked",
     "NONE": "stacked",
 }
+
+
+_EID_SUFFIX_RE = re.compile(r"^(.+)-(\d+)$")
+
+
+def _split_eid_suffix(eid: str) -> tuple[Optional[str], Optional[int]]:
+    """Split an AST EID into `(base, index)` when it carries the
+    compressor's collision disambiguation suffix.
+
+    L0↔L3 §2.3.1: when `normalize_to_eid(original_name)` collides
+    with an existing sibling EID, the compressor appends `-2`,
+    `-3`, ... Fresh EIDs don't carry a suffix.
+
+    Returns `(None, None)` when the EID has no suffix OR the suffix
+    would be `-1` (the compressor never emits `-1`, so `-1` is a
+    legitimate part of the name).
+    """
+    if not eid:
+        return None, None
+    match = _EID_SUFFIX_RE.match(eid)
+    if match is None:
+        return None, None
+    base = match.group(1)
+    idx = int(match.group(2))
+    if idx < 2:
+        return None, None
+    return base, idx
 
 
 def _build_screen_name_cache(
@@ -1309,16 +1378,26 @@ def _decode_node(
         # name) but reads back through `normalize_to_eid` identically,
         # so downstream key-preservation works.
         element["_original_name"] = head.eid
-        # Map the decompressed element key to the DB node_id when
-        # possible — lets `dd/renderers/figma.py` look up `db_visuals`
-        # (font / image / variant info) the same way `generate_ir`'s
-        # output does. Parent-scoped lookup disambiguates generic names
-        # like "Vector" / "Rectangle" that collide screen-wide.
-        nid = ctx.lookup_screen_node_id(
-            head.eid,
-            parent_node_id=parent_node_id,
-            sibling_index=sibling_index,
-        )
+        # `$ext.nid` side-channel (Stage 1.5c): the compressor embeds
+        # the DB node_id directly onto each element head so round-trip
+        # is exact — even for generic-name elements like `"Vector"`
+        # that name-based lookup can't disambiguate. Takes precedence
+        # over the fallback name lookup.
+        ext_nid = props.get("$ext.nid")
+        nid: Optional[int] = None
+        if ext_nid is not None and isinstance(ext_nid.value, Literal_):
+            py_val = ext_nid.value.py
+            if isinstance(py_val, int):
+                nid = py_val
+        if nid is None:
+            # Fallback: resolve by screen lookup (covers hand-authored
+            # markup AND outputs from older compressors without the
+            # `$ext.nid` channel).
+            nid = ctx.lookup_screen_node_id(
+                head.eid,
+                parent_node_id=parent_node_id,
+                sibling_index=sibling_index,
+            )
         if nid is not None:
             ctx.node_id_map[key] = nid
 
@@ -1335,8 +1414,14 @@ def _decode_node(
     # `$ext.shadow_extra_count`). Preserve as a sub-dict on the
     # element so downstream tooling can read them; the sub-dict key
     # strips the `$ext.` prefix.
+    #
+    # `$ext.nid` is infrastructure — already consumed above to
+    # populate `ctx.node_id_map`. Omit it from the element's
+    # preserved ext channel.
     ext_props: dict = {}
     for key_, pa in props.items():
+        if key_ == "$ext.nid":
+            continue
         if key_.startswith("$ext."):
             ext_props[key_[len("$ext."):]] = _literal_py(pa.value)
     if ext_props:
@@ -1381,17 +1466,23 @@ def _decode_node(
     #
     # When `screen_id` is supplied AND we resolved the CompRef's
     # node_id in that screen, walk the SCREEN'S DB descendants under
-    # that instance (what generate_ir produces). This is the
-    # Tier-2-parity-compatible path.
+    # that instance — this is the Tier-2-parity-compatible path.
+    # The `generate_ir` baseline emits exactly this shape, including
+    # empty-child sets for leaf-Mode-1 instances.
     #
-    # Fallback: when screen_id is unknown or EID doesn't resolve in
-    # the screen, walk the MASTER component's canonical subtree via
-    # CKR resolution.
+    # Fallback to master-subtree inflation ONLY when we genuinely
+    # couldn't resolve the instance in the screen (missing screen_id
+    # OR the EID didn't map to a node). A resolved instance with no
+    # DB descendants is a LEGITIMATE leaf — don't double-inflate
+    # with master canonical children, that would add children
+    # generate_ir never emits.
     if is_compref and not child_keys and ctx.conn is not None:
         instance_nid = ctx.node_id_map.get(key)
         if instance_nid is not None and ctx.screen_id is not None:
             child_keys = _expand_screen_subtree(instance_nid, ctx)
-        if not child_keys:
+            # Screen resolved — trust its shape, including empty.
+        else:
+            # No screen resolution — fall back to master subtree.
             child_keys = _expand_master_subtree(head.type_or_path, ctx)
 
     if child_keys:
