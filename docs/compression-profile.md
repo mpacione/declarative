@@ -4,8 +4,44 @@
 the full 204-screen Dank Experimental corpus. Raw per-screen CSV at
 `render_batch/compression-profile.csv`.
 
-Answers the question: where does the compiler spend bytes, and where are
-the cheapest optimisation wins before M5/M6?
+Answers two questions:
+1. Is the new **dd markup** method better than the old **dict IR** method?
+2. Where are the cheapest optimisation wins before M5/M6?
+
+## Headline — dd markup vs dict IR
+
+These two representations are both losslessly round-trippable to the
+same rendered Figma output (204/204 pixel-parity, M4 gate). They
+differ drastically in compactness and human-authoring affordance.
+
+| Metric | dict IR (the old one) | **L3 markup (the new one)** | Delta |
+|---|---:|---:|---:|
+| Mean bytes / screen | 116 KB | **12.5 KB** | **9.2× smaller** |
+| Median bytes / screen | 124 KB | 13.5 KB | 9.2× smaller |
+| Max bytes / screen | 194 KB | **27 KB** | 7.2× smaller |
+| Min bytes / screen | — | 4.3 KB | — |
+| Full-corpus total (204 screens) | 23.6 MB | **2.56 MB** | 9.2× smaller |
+| Approx LLM tokens (mean) | ~30K | **~3.2K** | 9.4× smaller |
+| Human-readable | No (JSON tree) | **Yes** (axis-polymorphic markup) | markup |
+| Hand-authorable | Infeasible (hundreds of keys) | **Yes** (grammar §2) | markup |
+| Grammar-constrained decoding | No | **Yes** (EBNF, semantic passes) | markup |
+| Information preserved | All (raw values inline) | All (via refs + side-cars) | tie |
+
+**Rendered Figma script (downstream of both representations):**
+
+| Metric | Option A (dict-IR path) | **Option B (markup-native path)** | Delta |
+|---|---:|---:|---:|
+| Mean script bytes | 158 KB | 157 KB | 0.997× (identical) |
+| Max script bytes | 289 KB | 288 KB | 0.997× (identical) |
+| Pixel-parity on 204 corpus | 204/204 | **204/204** | parity |
+| Render script semantics | identical | identical | parity |
+
+**Takeaway:** L3 markup is **~9× smaller than dict IR** as an in-flight
+representation (storage, transmission, LLM context) and produces
+**identical render output** (M4 gate). There is no cost to moving from
+dict IR to L3 markup as the canonical form — and a dramatic savings in
+every context where a human reads it, an LLM generates it, or a
+checkpoint stores it.
 
 ## Pipeline byte sizes (204 screens, full corpus)
 

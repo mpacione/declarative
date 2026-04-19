@@ -23,7 +23,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT.parent / "Dank-EXP-02.declarative.db"
-WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
+# Use the non-wiping grid executor — walk_ref.js wipes the current
+# page on every invocation, which defeats the purpose of a
+# side-by-side grid. grid_exec.js persists all frames on a dedicated
+# "Option-B-Grid" page.
+GRID_EXECUTOR = ROOT.parent / "render_test" / "grid_exec.js"
 SCRIPTS_DIR = ROOT / "scripts-grid"
 WALKS_DIR = ROOT / "walks-grid"
 
@@ -115,10 +119,12 @@ def main() -> int:
             continue
         script_p.write_text(gen.stdout)
 
-        # Walk (renders into Figma at position cx,cy — leaves on page)
+        # Execute via non-wiping grid wrapper — frames persist on
+        # the "Option-B-Grid" page at the (cx, cy) the script
+        # encoded.
         walk = subprocess.run(
             [
-                "node", str(WALK_WRAPPER),
+                "node", str(GRID_EXECUTOR),
                 str(script_p), str(walk_p), args.port,
             ],
             capture_output=True, text=True, timeout=WALK_TIMEOUT,
