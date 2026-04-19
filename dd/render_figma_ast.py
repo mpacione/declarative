@@ -196,11 +196,11 @@ def render_figma_preamble(
 def render_figma(
     doc: L3Document,
     conn: Optional[sqlite3.Connection],
-    nid_map: dict[str, int],
+    nid_map: dict[int, int],
     *,
     fonts: list[tuple[str, str]],
-    spec_key_map: dict[str, str],
-    original_name_map: Optional[dict[str, str]] = None,
+    spec_key_map: dict[int, str],
+    original_name_map: Optional[dict[int, str]] = None,
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     ckr_built: bool = True,
     page_name: Optional[str] = None,
@@ -215,17 +215,19 @@ def render_figma(
     same shape baseline `generate_figma_script` produces for dict-IR
     input.
 
-    `spec_key_map` bridges AST eid → CompositionSpec element key. The
-    baseline renderer emits ``M["<spec_key>"] = nN.id;`` to track
-    node identity across the render/walk/verify round trip; this
-    walker must use the same keys for byte-parity. At M5 (verifier
-    migration) the scheme flips to AST eids and the bridge goes away.
+    `spec_key_map` and `original_name_map` and `nid_map` are keyed
+    on ``id(Node)`` — grammar §2.3.1 only scopes eid uniqueness to
+    siblings, so cousin subtrees can share an eid. Object identity
+    is the only unambiguous per-Node lookup key within one
+    compressor run. Produced by
+    ``dd.compress_l3.compress_to_l3_with_maps``.
 
-    `original_name_map` carries the raw ``_original_name`` from the
-    source Figma layer (e.g. ``"iPhone 13 Pro Max – 119"``) which
-    the baseline emits as ``<var>.name = "...";``. The AST's eid is
-    the sanitized form and would drift; the map is the lossless
-    bridge. When absent, falls back to eid.
+    `spec_key_map[id(node)]` resolves to the CompositionSpec element
+    key (``"screen-1"``, ``"button-3"``); the baseline renderer emits
+    ``M["<spec_key>"] = nN.id;`` and the verifier reads that M dict
+    to walk the rendered tree. `original_name_map[id(node)]` is the
+    raw Figma layer name (``"iPhone 13 Pro Max – 119"``) before
+    grammar sanitization. When absent, falls back to the AST eid.
 
     ``_spec_elements`` and ``_spec_tokens`` are transitional M1d
     shims: the ``spec["elements"]`` and ``spec["tokens"]`` dicts
@@ -253,24 +255,27 @@ def render_figma(
     # Match baseline by keying var names on the spec-walk index when
     # the shim supplies `_spec_elements`; otherwise fall back to dense
     # numbering (M1c synthetic fixtures only).
+    #
+    # Key on `id(node)` (Python object identity) rather than
+    # `node.head.eid` — grammar §2.3.1 only requires eid uniqueness
+    # within a Block, so cousin subtrees can collide on eid and clobber
+    # each other's var_map entries. Using object identity makes each
+    # Node's var lookup unambiguous regardless of eid collisions.
     if spec_elements and doc.top_level:
-        root_spec_key = spec_key_map.get(
-            doc.top_level[0].head.eid, "",
-        )
+        root_spec_key = spec_key_map.get(id(doc.top_level[0]), "")
         baseline_walk_idx = _baseline_walk_indices(
             spec_elements, root_spec_key,
         )
-        var_map: dict[str, str] = {}
+        var_map: dict[int, str] = {}
         for _idx, (node, _p) in enumerate(walk):
-            eid = node.head.eid
-            spec_key = spec_key_map.get(eid, eid)
+            spec_key = spec_key_map.get(id(node), node.head.eid)
             baseline_idx = baseline_walk_idx.get(spec_key)
             if baseline_idx is None:
                 baseline_idx = _idx
-            var_map[eid] = f"n{baseline_idx}"
+            var_map[id(node)] = f"n{baseline_idx}"
     else:
         var_map = {
-            node.head.eid: f"n{idx}" for idx, (node, _p) in enumerate(walk)
+            id(node): f"n{idx}" for idx, (node, _p) in enumerate(walk)
         }
 
     node_id_vars = _prefetch_var_map(db_visuals)
@@ -389,11 +394,11 @@ def _walk_ast(doc: L3Document) -> list[tuple[Node, Optional[Node]]]:
 
 def _emit_phase1(
     walk: list[tuple[Node, Optional[Node]]],
-    var_map: dict[str, str],
-    spec_key_map: dict[str, str],
-    original_name_map: dict[str, str],
+    var_map: dict[int, str],
+    spec_key_map: dict[int, str],
+    original_name_map: dict[int, str],
     *,
-    nid_map: dict[str, int],
+    nid_map: dict[int, int],
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     spec_tokens: Optional[dict[str, Any]] = None,
@@ -428,17 +433,17 @@ def _emit_phase1(
 
     for node, _parent in walk:
         eid = node.head.eid
-        var = var_map[eid]
+        var = var_map[id(node)]
         head_kind = node.head.head_kind
         etype = node.head.type_or_path if head_kind == "type" else ""
 
         raw_visual: dict[str, Any] = {}
         if db_visuals is not None:
-            nid = nid_map.get(eid)
+            nid = nid_map.get(id(node))
             if nid is not None:
                 raw_visual = db_visuals.get(nid, {}) or {}
 
-        spec_key = spec_key_map.get(eid, eid)
+        spec_key = spec_key_map.get(id(node), eid)
         element = spec_elements.get(spec_key, {}) if spec_elements else {}
 
         component_key = raw_visual.get("component_key")
@@ -458,7 +463,7 @@ def _emit_phase1(
 
         if use_mode1 and (component_figma_id or instance_figma_node_id):
             emitted, mode1_ok = _emit_mode1_create(
-                var, eid, spec_key_map, original_name_map,
+                var, node, spec_key_map, original_name_map,
                 component_figma_id, instance_figma_node_id,
                 raw_visual, element,
                 deferred_lines=override_deferred,
@@ -467,7 +472,7 @@ def _emit_phase1(
             if mode1_ok:
                 lines.extend(emitted)
                 uses_placeholder = True
-                m_key = spec_key_map.get(eid, eid)
+                m_key = spec_key_map.get(id(node), eid)
                 lines.append(
                     f'M["{_escape_js(m_key)}"] = {var}.id;'
                 )
@@ -475,7 +480,7 @@ def _emit_phase1(
                 continue
 
         if is_db_instance:
-            err_eid = spec_key_map.get(eid, eid)
+            err_eid = spec_key_map.get(id(node), eid)
             eid_lit = _escape_js(err_eid)
             reason_parts: list[str] = []
             if not component_key:
@@ -501,6 +506,7 @@ def _emit_phase1(
             visual = dict(element.get("visual") or {})
             layout = element.get("layout") or {}
             style = element.get("style") or {}
+            spec_key_for_emit = spec_key_map.get(id(node), eid)
 
             # Promote per-element DB fields that `build_composition_spec`
             # doesn't copy into `element.visual`: `nodes.corner_radius`
@@ -517,12 +523,12 @@ def _emit_phase1(
 
             if visual:
                 visual_lines, visual_refs = _emit_visual(
-                    var, spec_key, visual, spec_tokens,
+                    var, spec_key_for_emit, visual, spec_tokens,
                     node_type=_FIGMA_NODE_TYPE.get(etype),
                 )
                 lines.extend(visual_lines)
                 for prop, token_name in visual_refs:
-                    token_refs.append((spec_key, prop, token_name))
+                    token_refs.append((spec_key_for_emit, prop, token_name))
             elif etype == "frame":
                 lines.append(f"{var}.fills = [];")
                 lines.append(f"{var}.clipsContent = false;")
@@ -535,18 +541,20 @@ def _emit_phase1(
 
             if layout and not is_text:
                 layout_lines, layout_refs = _emit_layout(
-                    var, spec_key, layout, spec_tokens,
+                    var, spec_key_for_emit, layout, spec_tokens,
                     text_auto_resize=text_auto_resize, etype=etype,
                 )
                 lines.extend(layout_lines)
                 for prop, token_name in layout_refs:
-                    token_refs.append((spec_key, prop, token_name))
+                    token_refs.append(
+                        (spec_key_for_emit, prop, token_name),
+                    )
 
             if is_text:
                 db_font = raw_visual.get("font") or raw_visual
                 _emit_text_props(
                     var, element, style, spec_tokens, lines,
-                    db_font=db_font, eid=spec_key,
+                    db_font=db_font, eid=spec_key_for_emit,
                 )
             if etype in ("vector", "boolean_operation") and raw_visual:
                 _emit_vector_paths(var, raw_visual, lines)
@@ -561,7 +569,7 @@ def _emit_phase1(
                     f'{{family: "{_DEFAULT_TEXT_FONT_FAMILY}", '
                     f'style: "{_DEFAULT_TEXT_FONT_STYLE}"}}'
                 )
-                err_eid = spec_key_map.get(eid, eid)
+                err_eid = spec_key_map.get(id(node), eid)
                 err_eid_js = _escape_js(err_eid)
                 lines.append(
                     f"try {{ {var}.fontName = {font_js}; }} "
@@ -570,7 +578,7 @@ def _emit_phase1(
                     f"error: String(__e && __e.message || __e)}}); }}"
                 )
 
-        m_key = spec_key_map.get(eid, eid)
+        m_key = spec_key_map.get(id(node), eid)
         lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')
         lines.append("")
 
@@ -592,9 +600,9 @@ _FIGMA_NODE_TYPE: dict[str, str] = {
 
 def _emit_mode1_create(
     var: str,
-    eid: str,
-    spec_key_map: dict[str, str],
-    original_name_map: dict[str, str],
+    node: Node,
+    spec_key_map: dict[int, str],
+    original_name_map: dict[int, str],
     component_figma_id: Optional[str],
     instance_figma_node_id: Optional[str],
     raw_visual: dict[str, Any],
@@ -623,10 +631,11 @@ def _emit_mode1_create(
     Caller threads these into Phase 3.
     """
     lines: list[str] = []
-    err_eid = spec_key_map.get(eid, eid)
+    eid = node.head.eid
+    err_eid = spec_key_map.get(id(node), eid)
     eid_lit = _escape_js(err_eid)
 
-    name_for_placeholder = original_name_map.get(eid) or eid
+    name_for_placeholder = original_name_map.get(id(node)) or eid
     name_lit = _escape_js(name_for_placeholder)
     sizing = (element.get("layout") or {}).get("sizing") or {}
     pw = sizing.get("widthPixels") or sizing.get("width")
@@ -684,7 +693,7 @@ def _emit_mode1_create(
     else:
         return [], False
 
-    original_name = original_name_map.get(eid) or eid
+    original_name = original_name_map.get(id(node)) or eid
     lines.append(f'{var}.name = "{_escape_js(original_name)}";')
 
     props = element.get("props") or {}
@@ -737,17 +746,17 @@ def _emit_mode1_create(
 
 def _collect_text_chars(
     walk: list[tuple[Node, Optional[Node]]],
-    var_map: dict[str, str],
-) -> dict[str, tuple[str, str]]:
-    """Map eid → (var, escaped_text) for every text-typed node with a
-    positional literal value. Baseline emits these in Phase 2 after
-    each node's `appendChild`.
+    var_map: dict[int, str],
+) -> dict[int, tuple[str, str]]:
+    """Map node-object-id → (var, escaped_text) for every text-typed
+    node with a positional literal value. Baseline emits these in
+    Phase 2 after each node's `appendChild`.
 
-    All `_TEXT_TYPES` (text / heading / link) are included — all three
-    dispatch to `figma.createText()`, and any of them can carry a
-    positional text literal.
+    Keyed on `id(node)` rather than eid because grammar §2.3.1 allows
+    eid collisions across scopes (cousin subtrees can share an eid);
+    see var_map keying in `render_figma`.
     """
-    out: dict[str, tuple[str, str]] = {}
+    out: dict[int, tuple[str, str]] = {}
     for node, _parent in walk:
         if node.head.type_or_path not in _TEXT_TYPES:
             continue
@@ -757,20 +766,19 @@ def _collect_text_chars(
         py_value = getattr(pos, "py", None)
         if not isinstance(py_value, str) or not py_value:
             continue
-        eid = node.head.eid
-        out[eid] = (var_map[eid], _escape_js(py_value))
+        out[id(node)] = (var_map[id(node)], _escape_js(py_value))
     return out
 
 
 def _emit_phase2(
     walk: list[tuple[Node, Optional[Node]]],
-    var_map: dict[str, str],
-    text_chars: dict[str, tuple[str, str]],
-    spec_key_map: dict[str, str],
+    var_map: dict[int, str],
+    text_chars: dict[int, tuple[str, str]],
+    spec_key_map: dict[int, str],
     doc: L3Document,
     page_name: Optional[str],
     *,
-    nid_map: Optional[dict[str, int]] = None,
+    nid_map: Optional[dict[int, int]] = None,
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
 ) -> list[str]:
@@ -795,10 +803,10 @@ def _emit_phase2(
         if parent is None:
             continue
         eid = node.head.eid
-        if eid not in var_map:
+        if id(node) not in var_map:
             continue
         parent_eid = parent.head.eid
-        if parent_eid not in var_map:
+        if id(parent) not in var_map:
             continue
         parent_head_kind = parent.head.head_kind
         parent_etype = (
@@ -818,12 +826,12 @@ def _emit_phase2(
                 f'child_eid:"{_escape_js(eid)}"}});'
             )
             continue
-        child_var = var_map[eid]
-        parent_var = var_map[parent_eid]
+        child_var = var_map[id(node)]
+        parent_var = var_map[id(parent)]
         lines.append(f"{parent_var}.appendChild({child_var});")
-        if eid in text_chars:
-            var, escaped = text_chars[eid]
-            err_eid = spec_key_map.get(eid, eid)
+        if id(node) in text_chars:
+            var, escaped = text_chars[id(node)]
+            err_eid = spec_key_map.get(id(node), eid)
             err_eid_js = _escape_js(err_eid)
             lines.append(
                 f'try {{ {var}.characters = "{escaped}"; }} '
@@ -834,8 +842,8 @@ def _emit_phase2(
 
         etype = node.head.type_or_path if node.head.head_kind == "type" else ""
         is_text = etype in _TEXT_TYPES
-        spec_key = spec_key_map.get(eid, eid)
-        parent_spec_key = spec_key_map.get(parent_eid, parent_eid)
+        spec_key = spec_key_map.get(id(node), eid)
+        parent_spec_key = spec_key_map.get(id(parent), parent_eid)
         parent_element = spec_elements.get(parent_spec_key, {})
         parent_direction = (
             parent_element.get("layout", {}).get("direction", "")
@@ -845,10 +853,10 @@ def _emit_phase2(
         if parent_is_autolayout:
             element = spec_elements.get(spec_key, {})
             elem_sizing = element.get("layout", {}).get("sizing", {})
-            db_sizing_h = None
-            db_sizing_v = None
+            db_sizing_h = nv_sh = None
+            db_sizing_v = nv_sv = None
             text_auto_resize = None
-            nid = nid_map.get(eid)
+            nid = nid_map.get(id(node))
             if db_visuals is not None and nid is not None:
                 nv = db_visuals.get(nid, {}) or {}
                 db_sizing_h = nv.get("layout_sizing_h")
@@ -861,17 +869,17 @@ def _emit_phase2(
             if sizing_h:
                 figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
                 lines.append(
-                    f'{var_map[eid]}.layoutSizingHorizontal = "{figma_h}";'
+                    f'{child_var}.layoutSizingHorizontal = "{figma_h}";'
                 )
             if sizing_v:
                 figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
                 lines.append(
-                    f'{var_map[eid]}.layoutSizingVertical = "{figma_v}";'
+                    f'{child_var}.layoutSizingVertical = "{figma_v}";'
                 )
 
     if doc.top_level:
-        root_eid = doc.top_level[0].head.eid
-        root_var = var_map.get(root_eid)
+        root_node = doc.top_level[0]
+        root_var = var_map.get(id(root_node))
         if root_var is not None:
             if page_name:
                 esc_name = _escape_js(page_name)
@@ -893,10 +901,10 @@ def _emit_phase2(
 
 def _emit_phase3(
     walk: list[tuple[Node, Optional[Node]]],
-    var_map: dict[str, str],
-    spec_key_map: dict[str, str],
+    var_map: dict[int, str],
+    spec_key_map: dict[int, str],
     *,
-    nid_map: dict[str, int],
+    nid_map: dict[int, int],
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     override_deferred: Optional[list[str]] = None,
@@ -910,23 +918,23 @@ def _emit_phase3(
     spec_elements = spec_elements or {}
     override_deferred = override_deferred or []
     ops: list[str] = list(override_deferred)
-    parent_by_eid: dict[str, Optional[Node]] = {
-        n.head.eid: p for n, p in walk
+    parent_by_node_id: dict[int, Optional[Node]] = {
+        id(n): p for n, p in walk
     }
 
     for node, _parent in walk:
         eid = node.head.eid
-        if eid not in var_map:
+        if id(node) not in var_map:
             continue
-        var = var_map[eid]
-        err_eid = _escape_js(spec_key_map.get(eid, eid))
-        spec_key = spec_key_map.get(eid, eid)
+        var = var_map[id(node)]
+        spec_key = spec_key_map.get(id(node), eid)
+        err_eid = _escape_js(spec_key)
         element = spec_elements.get(spec_key, {})
-        parent_node = parent_by_eid.get(eid)
+        parent_node = parent_by_node_id.get(id(node))
         parent_element = {}
         if parent_node is not None:
             parent_spec_key = spec_key_map.get(
-                parent_node.head.eid, parent_node.head.eid,
+                id(parent_node), parent_node.head.eid,
             )
             parent_element = spec_elements.get(parent_spec_key, {})
         parent_direction = (
@@ -934,7 +942,7 @@ def _emit_phase3(
         )
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
 
-        nid = nid_map.get(eid)
+        nid = nid_map.get(id(node))
         visual = (
             db_visuals.get(nid, {}) or {}
             if db_visuals is not None and nid is not None

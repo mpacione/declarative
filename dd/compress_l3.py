@@ -661,8 +661,9 @@ def _compress_element(
     visiting: frozenset[str] = frozenset(),
     *,
     eid_to_nid_out: Optional[dict[str, int]] = None,
-    eid_to_spec_key_out: Optional[dict[str, str]] = None,
-    eid_to_original_name_out: Optional[dict[str, str]] = None,
+    node_nid_out: Optional[dict[int, int]] = None,
+    node_spec_key_out: Optional[dict[int, str]] = None,
+    node_original_name_out: Optional[dict[int, str]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -805,10 +806,6 @@ def _compress_element(
         ))
         if eid_to_nid_out is not None:
             eid_to_nid_out[eid] = nid
-    if eid_to_spec_key_out is not None:
-        eid_to_spec_key_out[eid] = eid_key
-    if eid_to_original_name_out is not None and original_name:
-        eid_to_original_name_out[eid] = original_name
 
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
@@ -857,8 +854,9 @@ def _compress_element(
                 comp_names, self_overrides, radius_map, bounds_map,
                 swap_paths, suppress_keys, visiting=next_visiting,
                 eid_to_nid_out=eid_to_nid_out,
-                eid_to_spec_key_out=eid_to_spec_key_out,
-                eid_to_original_name_out=eid_to_original_name_out,
+                node_nid_out=node_nid_out,
+                node_spec_key_out=node_spec_key_out,
+                node_original_name_out=node_original_name_out,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -867,7 +865,21 @@ def _compress_element(
     if child_nodes:
         block = Block(statements=tuple(child_nodes))
 
-    return Node(head=head, block=block)
+    ret_node = Node(head=head, block=block)
+    # Populate the id(Node)-keyed side-cars now that the final Node
+    # object exists. These are the load-bearing keys for the
+    # markup-native renderer, which must distinguish cousin nodes
+    # that share an eid (grammar §2.3.1 allows within-Block-only
+    # uniqueness; a str-keyed `spec_key_map` would clobber entries
+    # for 3 cousin "frame-353" AST nodes that each came from a
+    # different `CompositionSpec` element).
+    if node_nid_out is not None and isinstance(nid, int):
+        node_nid_out[id(ret_node)] = nid
+    if node_spec_key_out is not None:
+        node_spec_key_out[id(ret_node)] = eid_key
+    if node_original_name_out is not None and original_name:
+        node_original_name_out[id(ret_node)] = original_name
+    return ret_node
 
 
 # ---------------------------------------------------------------------------
@@ -1499,52 +1511,59 @@ def compress_to_l3_with_nid_map(
     side-car metadata is the full fix.
 
     Thin wrapper over ``compress_to_l3_with_maps`` — discards the
-    renderer-specific side-cars (``spec_key_map``,
-    ``original_name_map``) since those bridges are only needed at M1c+.
+    id(Node)-keyed renderer side-cars (which use object identity to
+    distinguish cousin AST nodes that share an eid). M1a tests and
+    callers use the eid-keyed form since the synthetic fixtures
+    don't have cousin-eid collisions; on real Dank corpus screens
+    this form silently drops colliding entries (last-wins).
     """
-    doc, nid_map, _spec_key_map, _original_name_map = (
+    doc, eid_nid, _node_nid, _node_spec_key, _node_original_name = (
         compress_to_l3_with_maps(spec, conn, screen_id=screen_id)
     )
-    return doc, nid_map
+    return doc, eid_nid
 
 
 def compress_to_l3_with_maps(
     spec: dict, conn: Optional[sqlite3.Connection] = None,
     *, screen_id: Optional[int] = None,
-) -> tuple[L3Document, dict[str, int], dict[str, str], dict[str, str]]:
-    """Compress + return three side-car maps:
+) -> tuple[
+    L3Document,
+    dict[str, int],
+    dict[int, int],
+    dict[int, str],
+    dict[int, str],
+]:
+    """Compress + return four side-car maps:
 
-      - ``eid → figma_node_id`` (``nid_map``) — identical to
-        ``compress_to_l3_with_nid_map``'s second return.
-      - ``eid → CompositionSpec element key`` (``spec_key_map``) —
-        M1c addition: the markup-native renderer emits
-        ``M["<spec_key>"] = nN.id;`` keyed on the spec element key
-        (``"screen-1"``, ``"button-3"``) for byte-parity with the
-        baseline, which drives the walker's ``eid_map`` and the
-        verifier's cross-reference to the IR.
-      - ``eid → _original_name`` (``original_name_map``) — M1d
-        addition: the baseline emits ``<var>.name =
-        "<original_name>";`` using the raw Figma display name, which
-        may contain spaces, slashes, and case the grammar strips
-        (e.g. ``"iPhone 13 Pro Max"`` → eid ``"iphone-13-pro-max"``).
-        Preserving the display name is lossless via this side-car.
-        Entries are only populated for elements with a non-empty
-        ``_original_name`` — auto-id nodes (no source name) are
-        absent so the renderer falls back to the eid.
+      - ``eid → figma_node_id`` (``eid_nid_map``) — M1a-era str-keyed
+        form. Backward-compatible with ``compress_to_l3_with_nid_map``.
+        Silently drops entries when cousin subtrees share an eid.
+      - ``id(Node) → figma_node_id`` (``node_nid_map``)
+      - ``id(Node) → CompositionSpec element key`` (``spec_key_map``)
+      - ``id(Node) → _original_name`` (``original_name_map``)
 
-    Once the verifier migrates to AST eids (M5), the
-    ``eid → spec_key`` map is obsolete; post-M6,
-    ``compress_to_l3_with_nid_map`` becomes redundant.
+    The last three are keyed on Python object identity to avoid the
+    grammar §2.3.1 eid-collision issue: cousin subtrees can
+    legitimately share an eid (e.g. three different containers each
+    called ``frame-353``). A str-keyed map would clobber entries,
+    and the renderer would emit duplicated
+    ``M["<spec_key>"] = nN.id;`` lines for every colliding eid.
+    Object identity is stable across a compressor run and
+    unambiguous per Node.
+
+    Once the verifier migrates to AST eids (M5),
+    ``compress_to_l3_with_nid_map`` and the eid-keyed bridge become
+    redundant.
     """
     if not isinstance(spec, dict):
-        return L3Document(namespace=None), {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}
     spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
-        return L3Document(namespace=None), {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}
     root_key = spec.get("root")
     if not root_key or root_key not in elements:
-        return L3Document(namespace=None), {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
@@ -1574,18 +1593,20 @@ def compress_to_l3_with_maps(
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
     bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
     eid_to_nid: dict[str, int] = {}
-    eid_to_spec_key: dict[str, str] = {}
-    eid_to_original_name: dict[str, str] = {}
+    node_nid: dict[int, int] = {}
+    node_spec_key: dict[int, str] = {}
+    node_original_name: dict[int, str] = {}
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
         comp_names, self_overrides, radius_map, bounds_map, swap_paths,
         suppress_keys,
         eid_to_nid_out=eid_to_nid,
-        eid_to_spec_key_out=eid_to_spec_key,
-        eid_to_original_name_out=eid_to_original_name,
+        node_nid_out=node_nid,
+        node_spec_key_out=node_spec_key,
+        node_original_name_out=node_original_name,
     )
     if root_node is None:
-        return L3Document(namespace=None), {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}
 
     if screen_id is not None:
         attrs: tuple[tuple[str, Value], ...] = (
@@ -1612,4 +1633,20 @@ def compress_to_l3_with_maps(
         warnings=tuple(swap_warnings),
         source_path=None,
     )
-    return doc, eid_to_nid, eid_to_spec_key, eid_to_original_name
+    if screen_id is not None and doc.top_level:
+        # Root node was rebuilt with a trailer above; re-register the new
+        # id() across all three id-keyed side-cars so walker lookups hit
+        # the current root object rather than the pre-trailer instance.
+        new_root = doc.top_level[0]
+        if id(new_root) != id(root_node):
+            if id(root_node) in node_nid:
+                node_nid[id(new_root)] = node_nid.pop(id(root_node))
+            if id(root_node) in node_spec_key:
+                node_spec_key[id(new_root)] = node_spec_key.pop(
+                    id(root_node),
+                )
+            if id(root_node) in node_original_name:
+                node_original_name[id(new_root)] = node_original_name.pop(
+                    id(root_node),
+                )
+    return doc, eid_to_nid, node_nid, node_spec_key, node_original_name

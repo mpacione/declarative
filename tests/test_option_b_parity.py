@@ -231,7 +231,7 @@ class TestM1cLeafNodeByteParity:
             spec, db_visuals=None, ckr_built=True,
         )
 
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(spec, conn=None)
         )
         fonts = collect_fonts(spec, db_visuals=None)
@@ -273,7 +273,7 @@ class TestM1cLeafNodeByteParity:
         script_a, refs_a = generate_figma_script(
             spec, db_visuals=None, ckr_built=True,
         )
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(spec, conn=None)
         )
         fonts = collect_fonts(spec, db_visuals=None)
@@ -322,7 +322,7 @@ class TestM1dPipelineHealth:
 
         ir = generate_ir(db_conn, sid, semantic=True, filter_chrome=False)
         visuals = query_screen_visuals(db_conn, sid)
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(ir["spec"], db_conn, screen_id=sid)
         )
         fonts = collect_fonts(ir["spec"], db_visuals=visuals)
@@ -371,7 +371,7 @@ class TestM1dPipelineHealth:
             ir["spec"], db_visuals=visuals, ckr_built=True,
         )
 
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(ir["spec"], db_conn, screen_id=sid)
         )
         fonts = collect_fonts(ir["spec"], db_visuals=visuals)
@@ -402,7 +402,7 @@ class TestM1dPipelineHealth:
 
         ir = generate_ir(db_conn, sid, semantic=True, filter_chrome=False)
         visuals = query_screen_visuals(db_conn, sid)
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(ir["spec"], db_conn, screen_id=sid)
         )
         fonts = collect_fonts(ir["spec"], db_visuals=visuals)
@@ -438,38 +438,42 @@ class TestCompressToL3WithMaps:
 
     def test_spec_key_map_values_are_spec_keys_on_minimal(self) -> None:
         spec = _minimal_fixture()
-        doc, _nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, _nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(spec, conn=None)
         )
-        assert spec_key_map["test-screen"] == "screen-1"
-        assert spec_key_map["rect"] == "rect-1"
-        assert spec_key_map["hello"] == "text-1"
-        assert doc.top_level[0].head.eid == "test-screen"
-        assert original_name_map["test-screen"] == "test-screen"
-        assert original_name_map["rect"] == "rect"
-        assert original_name_map["hello"] == "hello"
+        root = doc.top_level[0]
+        children = [s for s in (root.block.statements if root.block else ())]
+        assert root.head.eid == "test-screen"
+        assert spec_key_map[id(root)] == "screen-1"
+        assert spec_key_map[id(children[0])] == "rect-1"
+        assert spec_key_map[id(children[1])] == "text-1"
+        assert original_name_map[id(root)] == "test-screen"
+        assert original_name_map[id(children[0])] == "rect"
+        assert original_name_map[id(children[1])] == "hello"
 
     @pytest.mark.parametrize("sid", REFERENCE_SCREENS)
     def test_spec_key_map_keys_match_nid_map_keys(
         self, db_conn: sqlite3.Connection, sid: int,
     ) -> None:
-        """Every eid that resolved to a DB node_id also has a
+        """Every id(Node) that resolved to a DB node_id also has a
         spec_key bridge — absence of one without the other signals
         the compressor populated one map and not the other, a drift
-        class we want to detect mechanically.
+        class we want to detect mechanically. Both maps are keyed on
+        object identity after M2 bug fix (eid-keying lost entries on
+        cousin-eid collisions).
         """
         ir = generate_ir(
             db_conn, sid, semantic=True, filter_chrome=False,
         )
-        _doc, nid_map, spec_key_map, _original_name_map = (
+        _doc, _eid_nid, nid_map, spec_key_map, _original_name_map = (
             compress_to_l3_with_maps(
                 ir["spec"], db_conn, screen_id=sid,
             )
         )
         missing_spec = set(nid_map.keys()) - set(spec_key_map.keys())
         assert not missing_spec, (
-            f"screen {sid}: eids in nid_map but not spec_key_map: "
-            f"{sorted(missing_spec)[:10]}"
+            f"screen {sid}: Node ids in nid_map but not spec_key_map: "
+            f"{len(missing_spec)} entries"
         )
 
     def test_spec_key_map_covers_all_ast_eids_when_nid_map_partial(
@@ -482,14 +486,14 @@ class TestCompressToL3WithMaps:
         """
         spec = _minimal_fixture()
         spec["_node_id_map"] = {"screen-1": 100}
-        doc, nid_map, spec_key_map, original_name_map = (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
             compress_to_l3_with_maps(spec, conn=None)
         )
 
-        emitted: set[str] = set()
+        emitted_ids: set[int] = set()
 
         def _collect(n):
-            emitted.add(n.head.eid)
+            emitted_ids.add(id(n))
             if n.block is not None:
                 for stmt in n.block.statements:
                     if hasattr(stmt, "head"):
@@ -498,6 +502,6 @@ class TestCompressToL3WithMaps:
         for top in doc.top_level:
             _collect(top)
 
-        assert set(spec_key_map.keys()) >= emitted
-        assert set(nid_map.keys()) <= emitted
+        assert set(spec_key_map.keys()) >= emitted_ids
+        assert set(nid_map.keys()) <= emitted_ids
         assert len(nid_map) == 1
