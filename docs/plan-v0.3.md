@@ -115,11 +115,33 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 | 1.4 | Compression — per-axis derivation from dict IR | ✅ **204/204 Tier 1** |
 | **1.5** | **Round-trip one fixture end-to-end** | ⏳ **IN PROGRESS** |
 | 1.5a | Expand — `ast_to_dict_ir` (decompressor) | ✅ |
-| 1.5b | Render step — feed decompressed IR into existing renderer | ❌ **next up** |
-| 1.5c | Tier 2 (script byte-parity) on screen 181 | ❌ |
+| 1.5b | Render step — decompressed IR → figma script (204 no-crash) | ✅ |
+| 1.5c | Tier 2 (script byte-parity) on screen 181 | ⏳ ratio 0.648 |
 | 1.5d | Tier 3 (pixel parity) on screen 181 via Figma sweep | ❌ |
 | 1.6 | Round-trip 3 fixtures at Tier 1+2+3 | ❌ |
 | 1.7 | Full 204 corpus at Tier 2+3 | ⏳ Tier 1 ✅ / Tier 2 ❌ / Tier 3 ❌ |
+
+**Stage 1.5b closed.** `tests/test_markup_render_pipeline.py`
+(10 tests) wires compress → emit → parse → decompress → render
+on 3 reference screens + all 204 corpus screens. Script-size
+ratios pass the 0.5–2.0 tolerance band on the three fixtures.
+
+**Stage 1.5c in progress.** Parity ratios on 3 fixtures
+(decompressed script / baseline script):
+- screen 181: 0.648
+- screen 222: 0.943
+- screen 237: 0.900
+
+Remaining gaps toward full Tier-2 byte-parity:
+- Outside-mode1 vectors without resolvable node_ids (22/23 on
+  screen 181) lose `vectorPaths = [...]` emission. Requires either
+  structural EID matching beyond parent-scoped lookup or threading
+  `figma_node_id` through the AST at compress time.
+- Canonical-type classification (button/icon/header/image) not
+  applied to inflated subtree elements — they stay as raw Figma
+  types. Renderer dispatches differently on canonical types.
+- Master-subtree vs screen-subtree inflation can produce different
+  shapes when overrides mutated descendants in the screen.
 
 **Stage 1.5a internal decomposition** (commits labelled "1.5/1.6/1.7" at
 commit time, reconciled here as 1.5a sub-work — the expand half of 1.5):
