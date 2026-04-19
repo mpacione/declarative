@@ -537,6 +537,8 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     vision_type           TEXT,                        -- vision classifier result
     vision_agrees         INTEGER,                     -- 1=agree, 0=disagree with structural
     flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
+    classification_reason TEXT,                        -- M7.0.a: LLM/heuristic one-sentence evidence
+    vision_reason         TEXT,                        -- M7.0.a: vision pass's evidence paragraph
     created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, node_id)
 );

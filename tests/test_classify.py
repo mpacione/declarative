@@ -47,6 +47,9 @@ class TestClassificationSchema:
             "canonical_type", "confidence", "classification_source",
             "parent_instance_id", "slot_name",
             "vision_type", "vision_agrees", "flagged_for_review",
+            # M7.0.a additions: LLM + vision reasons persisted for
+            # spot-check / quality audit (Alexander force-resolution).
+            "classification_reason", "vision_reason",
             "created_at",
         }
         assert columns == expected

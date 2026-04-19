@@ -468,6 +468,7 @@ def _run_classify(
     use_vision: bool = False,
     truncate: bool = False,
     since: int | None = None,
+    limit: int | None = None,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -534,6 +535,7 @@ def _run_classify(
         file_key=file_key if use_vision else None,
         fetch_screenshot=fetch_screenshot,
         since_screen_id=since,
+        limit=limit,
         progress_callback=_progress,
     )
     conn.close()
@@ -1236,6 +1238,14 @@ def main(argv: list | None = None) -> None:
             "duplicate LLM batch for that screen)."
         ),
     )
+    classify_parser.add_argument(
+        "--limit", type=int, default=None,
+        help=(
+            "Stop after processing this many screens. Useful for "
+            "dry-runs (--limit 1 probes a single screen before "
+            "committing token budget to the full corpus)."
+        ),
+    )
 
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
@@ -1377,6 +1387,7 @@ def main(argv: list | None = None) -> None:
             use_vision=args.vision,
             truncate=args.truncate,
             since=args.since,
+            limit=args.limit,
         )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)

@@ -228,6 +228,7 @@ def cross_validate_vision(
             continue
 
         vision_type = result.get("canonical_type")
+        vision_reason = result.get("reason")
         if not isinstance(vision_type, str):
             continue
 
@@ -237,9 +238,12 @@ def cross_validate_vision(
 
         conn.execute(
             "UPDATE screen_component_instances "
-            "SET vision_type = ?, vision_agrees = ?, flagged_for_review = ? "
+            "SET vision_type = ?, vision_agrees = ?, flagged_for_review = ?, "
+            "vision_reason = ? "
             "WHERE id = ?",
-            (vision_type, agrees, flagged, instance["sci_id"]),
+            (vision_type, agrees, flagged,
+             vision_reason if isinstance(vision_reason, str) else None,
+             instance["sci_id"]),
         )
 
         validated += 1

@@ -231,6 +231,7 @@ def run_classification(
     file_key: str | None = None,
     fetch_screenshot: Any = None,
     since_screen_id: int | None = None,
+    limit: int | None = None,
     progress_callback: Any = None,
 ) -> dict[str, Any]:
     """Orchestrate the full classification cascade for all screens in a file.
@@ -245,6 +246,9 @@ def run_classification(
       value. Combined with the existing per-row ``INSERT OR IGNORE``
       semantics, lets a crashed run pick up roughly where it left
       off without restarting from zero.
+    - ``limit``: stop after processing this many screens. Useful for
+      dry-runs (``--limit 1`` probes a single screen before
+      committing token budget to the full corpus).
     - ``progress_callback(i, n, screen_id, per_screen_result)``:
       called after each screen completes. Used by the CLI to print
       per-screen progress + by a future checkpoint layer to persist
@@ -262,6 +266,9 @@ def run_classification(
         query += " AND id >= ?"
         params.append(since_screen_id)
     query += " ORDER BY id"
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
 
     cursor = conn.execute(query, params)
     screen_ids = [row[0] for row in cursor.fetchall()]

@@ -367,6 +367,7 @@ def classify_llm(
         nid = r.get("node_id")
         ctype = r.get("canonical_type")
         confidence = r.get("confidence", _DEFAULT_LLM_CONFIDENCE)
+        reason = r.get("reason")
         if nid not in node_id_set:
             continue
         if not isinstance(ctype, str):
@@ -387,14 +388,15 @@ def classify_llm(
         inserts.append((
             screen_id, nid, catalog_id, ctype,
             float(confidence), "llm",
+            reason if isinstance(reason, str) else None,
         ))
 
     if inserts:
         conn.executemany(
             "INSERT OR IGNORE INTO screen_component_instances "
             "(screen_id, node_id, catalog_type_id, canonical_type, "
-            " confidence, classification_source) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            " confidence, classification_source, classification_reason) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             inserts,
         )
         conn.commit()
