@@ -499,7 +499,7 @@ def _emit_phase1(
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
 
-        original_name = original_name_map.get(eid) or eid
+        original_name = original_name_map.get(id(node)) or eid
         name_js = _escape_js(original_name)
         lines.append(f'{var}.name = "{name_js}";')
 
@@ -577,6 +577,32 @@ def _emit_phase1(
                 )
             if etype in ("vector", "boolean_operation") and raw_visual:
                 _emit_vector_paths(var, raw_visual, lines)
+
+            # Clear default fills on non-text nodes when the DB row
+            # has no fills — matches baseline figma.py:1401–1402. Any
+            # `figma.createRectangle / createVector / createFrame`
+            # ships with a default white fill, which has to be cleared
+            # explicitly when the DB says the node is unfilled.
+            if not is_text and not visual.get("fills"):
+                lines.append(f"{var}.fills = [];")
+
+            # Clear default stroke on vector / line — `createVector()`
+            # and `createLine()` ship with a 1px black stroke that
+            # must be cleared when the DB row has no strokes. Matches
+            # baseline figma.py:1404–1413.
+            if etype in ("vector", "line") and not visual.get("strokes"):
+                lines.append(f"{var}.strokes = [];")
+
+            # Clear default `clipsContent=true` on frames when the DB
+            # value is NULL / falsy. Matches baseline
+            # figma.py:1424–1428 — `createFrame()` ships with
+            # clipsContent=true and that value clobbers overflow visual
+            # when the DB intends no clipping.
+            if (
+                etype == "frame"
+                and not visual.get("clipsContent")
+            ):
+                lines.append(f"{var}.clipsContent = false;")
         else:
             if etype == "frame":
                 lines.append(f"{var}.fills = [];")

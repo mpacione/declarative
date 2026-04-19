@@ -1637,6 +1637,12 @@ def compress_to_l3_with_maps(
         # Root node was rebuilt with a trailer above; re-register the new
         # id() across all three id-keyed side-cars so walker lookups hit
         # the current root object rather than the pre-trailer instance.
+        # `Node` is a frozen dataclass so the `Node(head=new_head,
+        # block=root_node.block)` reconstruction above always produces a
+        # fresh Python object — the guard below is always True when
+        # `screen_id is not None`, but kept as a conservative
+        # check-and-remap against any future code path that might
+        # legitimately re-use the pre-trailer root.
         new_root = doc.top_level[0]
         if id(new_root) != id(root_node):
             if id(root_node) in node_nid:
