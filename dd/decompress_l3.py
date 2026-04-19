@@ -902,6 +902,71 @@ def _expand_master_subtree(
     return result_keys
 
 
+def _expand_screen_subtree(
+    instance_node_id: int, ctx: _DecompressCtx,
+) -> list[str]:
+    """Inflate the SCREEN's DB descendants under an instance node as
+    its children (matches `dd.ir.generate_ir`'s shape). Returns the
+    direct-child element keys.
+
+    This is the Tier-2-parity-compatible path — `generate_ir` emits
+    the screen's own instance-subtree, NOT the canonical master
+    subtree, because screen-level overrides materialize onto the
+    screen's copies of those nodes.
+    """
+    conn = ctx.conn
+    if conn is None or ctx.screen_id is None:
+        return []
+    cols = ", ".join(_MASTER_COLS)
+    rows = conn.execute(
+        f"WITH RECURSIVE sub(id) AS ("
+        f"  SELECT ? UNION ALL "
+        f"  SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
+        f") "
+        f"SELECT {cols} FROM nodes "
+        f"WHERE id IN (SELECT id FROM sub) AND screen_id = ? "
+        f"ORDER BY parent_id, sort_order, id",
+        (instance_node_id, ctx.screen_id),
+    ).fetchall()
+    if not rows:
+        return []
+    by_id: dict[int, dict] = {
+        row[0]: dict(zip(_MASTER_COLS, row)) for row in rows
+    }
+    instance_row = by_id.get(instance_node_id)
+    if instance_row is None:
+        return []
+    children_by_parent: dict[int, list[dict]] = {}
+    for row in rows:
+        pid = row[1]
+        if pid is not None and pid in by_id:
+            children_by_parent.setdefault(pid, []).append(
+                dict(zip(_MASTER_COLS, row))
+            )
+
+    def walk(row: dict, parent_row: Optional[dict]) -> str:
+        element = _db_row_to_element(row, parent_row)
+        nid = row.get("id")
+        is_instance = (row.get("node_type") or "").upper() == "INSTANCE"
+        if is_instance:
+            element["_mode1_eligible"] = True
+        key = ctx.next_key(element["type"])
+        child_keys: list[str] = []
+        for crow in children_by_parent.get(row["id"], []):
+            child_keys.append(walk(crow, row))
+        if child_keys:
+            element["children"] = child_keys
+        if isinstance(nid, int):
+            ctx.node_id_map[key] = nid
+        ctx.elements[key] = element
+        return key
+
+    result_keys: list[str] = []
+    for crow in children_by_parent.get(instance_node_id, []):
+        result_keys.append(walk(crow, instance_row))
+    return result_keys
+
+
 def _expand_master_by_root_id(
     master_root_id: int, ctx: _DecompressCtx,
 ) -> list[str]:
@@ -1249,12 +1314,23 @@ def _decode_node(
                 if child_key is not None:
                     child_keys.append(child_key)
 
-    # Stage 1.7 — CompRef master-subtree expansion. When a DB conn is
-    # available, inflate the master component's direct children as
-    # children of this CompRef element. Matches `dd.ir.generate_ir`'s
-    # output shape where Mode-1 instances carry their full subtree.
+    # Stage 1.7 — CompRef subtree inflation. Matches `dd.ir.generate_ir`'s
+    # shape where Mode-1 instances carry their full subtree.
+    #
+    # When `screen_id` is supplied AND we resolved the CompRef's
+    # node_id in that screen, walk the SCREEN'S DB descendants under
+    # that instance (what generate_ir produces). This is the
+    # Tier-2-parity-compatible path.
+    #
+    # Fallback: when screen_id is unknown or EID doesn't resolve in
+    # the screen, walk the MASTER component's canonical subtree via
+    # CKR resolution.
     if is_compref and not child_keys and ctx.conn is not None:
-        child_keys = _expand_master_subtree(head.type_or_path, ctx)
+        instance_nid = ctx.node_id_map.get(key)
+        if instance_nid is not None and ctx.screen_id is not None:
+            child_keys = _expand_screen_subtree(instance_nid, ctx)
+        if not child_keys:
+            child_keys = _expand_master_subtree(head.type_or_path, ctx)
 
     if child_keys:
         element["children"] = child_keys
