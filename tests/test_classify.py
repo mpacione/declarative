@@ -421,6 +421,121 @@ class TestFormalMatching:
         assert row[0] is not None  # should be set to the button's catalog ID
 
 
+class TestFormalMatchingViaComponentKey:
+    """Verify classify_formal() can classify an INSTANCE via its
+    ``component_key`` lookup into ``component_key_registry`` when the
+    node's own ``name`` doesn't match any canonical type.
+
+    This closes the gap the archived T5 plan specified but was never
+    implemented — 27K+ INSTANCE nodes in the Dank corpus carry a
+    ``component_key`` that resolves to a canonical master name, and
+    the existing formal stage was leaving them un-classified when the
+    designer had overridden the instance name.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Home', 428, 926)"
+        )
+        # CKR is created lazily by `build_component_key_registry` in
+        # production. For this isolated unit test we materialize it
+        # directly — matches the schema emitted by dd/templates.py.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, ?, ?, ?)",
+            ("mkey-button-primary", "master-1", "button/primary/lg", 42),
+        )
+        # Node whose name is designer-overridden and doesn't match any
+        # canonical. Its component_key resolves to the CKR entry above.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (1, 1, 'n1', 'Call to Action', 'INSTANCE', 1, 0, 'mkey-button-primary')"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_classifies_via_ckr_when_name_is_overridden(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        result = classify_formal(db, screen_id=1)
+        assert result["classified"] == 1, (
+            f"Expected 1 classification via CKR lookup, got {result['classified']}"
+        )
+        cursor = db.execute(
+            "SELECT canonical_type, classification_source, confidence "
+            "FROM screen_component_instances WHERE node_id = 1"
+        )
+        row = cursor.fetchone()
+        assert row is not None, "No classification was recorded"
+        assert row[0] == "button", f"Expected canonical_type=button, got {row[0]!r}"
+        assert row[1] == "formal"
+        assert row[2] == 1.0
+
+    def test_node_name_still_preferred_when_both_match(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        """If the node's name already matches a canonical, use it.
+        Only fall back to CKR when the name doesn't match.
+        """
+        # Second node whose name DOES match. component_key points to a
+        # DIFFERENT registered name, to catch a bug where CKR would
+        # override a perfectly-good name match.
+        db.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, ?, ?, ?)",
+            ("mkey-icon-back", "master-2", "icon/back", 10),
+        )
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (2, 1, 'n2', 'card/sheet', 'INSTANCE', 1, 1, 'mkey-icon-back')"
+        )
+        db.commit()
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 2"
+        )
+        # Node's own name 'card/sheet' matches 'card' — should win over
+        # the CKR-registered 'icon/back'.
+        assert cursor.fetchone()[0] == "card"
+
+    def test_missing_ckr_entry_falls_through(self, db: sqlite3.Connection) -> None:
+        """A component_key that isn't in CKR shouldn't cause errors —
+        the node just falls through to the LLM stage (unclassified
+        from the formal stage's perspective).
+        """
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (3, 1, 'n3', 'My Button', 'INSTANCE', 1, 2, 'mkey-unregistered')"
+        )
+        db.commit()
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT id FROM screen_component_instances WHERE node_id = 3"
+        )
+        assert cursor.fetchone() is None, (
+            "Node with unregistered component_key should remain unclassified "
+            "by the formal stage"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Step 4: Structural heuristics tests
 # ---------------------------------------------------------------------------

@@ -41,17 +41,56 @@ def build_alias_index(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     return index
 
 
-def classify_formal(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
-    """Step 1: Classify nodes by matching name prefixes to the catalog.
+def _ckr_name_lookup(conn: sqlite3.Connection) -> dict[str, str]:
+    """Build a ``component_key → registered_name`` map from CKR.
 
-    Processes INSTANCE and FRAME nodes that aren't already classified.
-    Uses INSERT OR IGNORE so re-runs are idempotent.
+    When an INSTANCE node's own ``name`` is designer-overridden and
+    doesn't match any canonical type, we fall back to the master
+    component's registered name via the node's ``component_key``.
+    The registered name typically carries a canonical path
+    (``button/primary/lg``) which `parse_component_name` resolves
+    longest-first against the alias index.
+
+    Returns an empty map when CKR doesn't exist (pre-CKR corpus /
+    fresh test DB). Callers treat missing entries as "no CKR signal,
+    fall through to LLM stage."
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='component_key_registry'"
+    ).fetchone()
+    if not exists:
+        return {}
+    rows = conn.execute(
+        "SELECT component_key, name FROM component_key_registry"
+    ).fetchall()
+    return {ck: nm for ck, nm in rows}
+
+
+def classify_formal(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
+    """Step 1: Classify nodes by matching against the catalog.
+
+    Two paths, checked in order:
+
+    1. **Node name** — the node's own ``name`` field, split by ``/``
+       and resolved longest-first against the alias index. Handles
+       the common case where the designer did not override the
+       master component's name on the instance.
+    2. **CKR fallback** — the master component's registered name
+       looked up via ``nodes.component_key`` ↔ ``component_key_registry.
+       component_key``. Handles designer-overridden instance names
+       (``"Call to Action"`` for a ``button/primary/lg`` instance,
+       etc.). Archived T5 plan specified this; previously missing.
+
+    Processes INSTANCE / FRAME / COMPONENT nodes that aren't already
+    classified. Uses INSERT OR IGNORE so re-runs are idempotent.
     Returns dict with classified count.
     """
     alias_index = build_alias_index(conn)
+    ckr_names = _ckr_name_lookup(conn)
 
     cursor = conn.execute(
-        "SELECT n.id, n.name, n.node_type "
+        "SELECT n.id, n.name, n.node_type, n.component_key "
         "FROM nodes n "
         "LEFT JOIN screen_component_instances sci "
         "  ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
@@ -63,19 +102,27 @@ def classify_formal(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     nodes = cursor.fetchall()
 
     inserts = []
-    for node_id, name, node_type in nodes:
+    for node_id, name, node_type, component_key in nodes:
         if is_system_chrome(name):
             continue
 
-        candidates = parse_component_name(name)
-        if not candidates:
-            continue
-
+        # Path 1: node name lookup.
         match = None
-        for candidate in candidates:
+        for candidate in parse_component_name(name):
             match = alias_index.get(candidate)
             if match is not None:
                 break
+
+        # Path 2: CKR fallback when name didn't match. Uses the master
+        # component's registered name from `component_key_registry`.
+        if match is None and component_key:
+            ckr_name = ckr_names.get(component_key)
+            if ckr_name:
+                for candidate in parse_component_name(ckr_name):
+                    match = alias_index.get(candidate)
+                    if match is not None:
+                        break
+
         if match is None:
             continue
 
