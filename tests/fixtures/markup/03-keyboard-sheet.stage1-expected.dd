@@ -3,7 +3,7 @@ screen #iphone-13-pro-max-79 width=428 height=926 fill=#F6F6F6 $ext.nid=37826 (e
     container #frame-359 width=394 height=hug layout=horizontal gap=190 mainAxis=space-between crossAxis=center $ext.nid=37828 {
       text #field-title "Meme-00001" width=hug height=hug fill=#000000 $ext.nid=37829
       container #frame-367 width=231 height=hug layout=horizontal gap=8 mainAxis=end crossAxis=center $ext.nid=37830 {
-        -> icon/more #icon-more width=20 height=20 opacity=0.2 $ext.nid=37831
+        -> icon/more #icon-more width=20 height=20 rotation=-90 opacity=0.2 $ext.nid=37831
         text #field-title "1024 x 1024 px @72 dpi" width=hug height=hug fill=#000000 $ext.nid=37836
       }
     }

@@ -356,17 +356,76 @@ def _ast_prop_is_false(node: Node, key: str) -> bool:
     value is a boolean literal ``false``.
 
     Reads straight from ``node.head.properties`` rather than the
-    dict-IR shim's ``element.get(key)``. This is the canonical
-    multi-backend-ready pattern: every backend walker consumes the
-    same L3 AST property and emits its native representation.
-    Candidate for generalization when a second property migrates off
-    the shim — currently a one-off for ``visible``.
+    dict-IR shim's ``element.get(key)``. Canonical multi-backend-ready
+    pattern: every backend walker consumes the same L3 AST property
+    and emits its native representation.
     """
     for prop in node.head.properties:
         if prop.key == key:
             val = getattr(prop.value, "py", None)
             return val is False
     return False
+
+
+def _ast_prop_py(node: Node, key: str) -> Any:
+    """Return the Python value of AST property ``key`` on the node's
+    head, or ``None`` when absent. Companion to
+    ``_ast_prop_is_false`` — same canonical read path, different
+    return contract (scalar vs boolean-false-probe).
+    """
+    for prop in node.head.properties:
+        if prop.key == key:
+            return getattr(prop.value, "py", None)
+    return None
+
+
+def _reconstruct_relative_transform(
+    x: float,
+    y: float,
+    rotation_deg: float,
+    mirror_axis: Optional[str],
+) -> list[list[float]]:
+    """Reconstruct a Figma 2×3 ``relativeTransform`` from L3 primitives.
+
+    Inverse of ``dd.compress_l3._decompose_rt``:
+
+    - No mirror: rotation matrix ``[[cos, -sin, tx], [sin, cos, ty]]``.
+    - ``mirror="horizontal"``: negate the first column of that rotation
+      matrix (the decomposer builds ``u`` by negating column 0 and
+      requires ``u`` to be a pure rotation; we undo that).
+    - ``mirror="vertical"``: negate the second column.
+
+    Multi-backend-neutral L3 intent: Figma reconstructs the matrix;
+    React/SwiftUI/Flutter use native ``transform: rotate() scaleX()``,
+    ``.rotationEffect().scaleEffect(x:-1)``, ``Transform.rotate`` +
+    scale negation respectively. Every backend consumes the same two
+    AST primitives.
+    """
+    rot_rad = math.radians(rotation_deg)
+    c = math.cos(rot_rad)
+    s = math.sin(rot_rad)
+    m00, m01 = c, -s
+    m10, m11 = s, c
+    if mirror_axis == "horizontal":
+        m00 = -m00
+        m10 = -m10
+    elif mirror_axis == "vertical":
+        m01 = -m01
+        m11 = -m11
+    return [[m00, m01, x], [m10, m11, y]]
+
+
+def _matrix_cell(v: float) -> str:
+    """Format a matrix cell with enough precision for round-trip
+    parity while keeping trig-epsilon values readable. Mirrors the
+    baseline renderer's inline formatting.
+    """
+    if abs(v) < 1e-12:
+        return "0"
+    rounded = round(v, 9)
+    if rounded == int(rounded):
+        return f"{int(rounded)}"
+    return f"{rounded}"
 
 
 def _baseline_walk_indices(
@@ -813,9 +872,22 @@ def _emit_mode1_create(
             deferred_lines=deferred_lines,
         )
 
-    inst_rotation = raw_visual.get("rotation")
-    if isinstance(inst_rotation, (int, float)) and inst_rotation != 0:
-        lines.append(f"{var}.rotation = {-math.degrees(inst_rotation)};")
+    # Scalar rotation only when AST carries no transform primitives
+    # (``rotation`` / ``mirror``). When either is present, Phase 3
+    # emits a full ``relativeTransform`` matrix that subsumes both
+    # rotation and translation; emitting scalar ``rotation`` here
+    # would race the matrix and leave an ambiguous pivot.
+    ast_rotation = _ast_prop_py(node, "rotation")
+    ast_mirror = _ast_prop_py(node, "mirror")
+    has_ast_transform = (
+        isinstance(ast_rotation, (int, float)) and ast_rotation != 0
+    ) or isinstance(ast_mirror, str)
+    if not has_ast_transform:
+        inst_rotation = raw_visual.get("rotation")
+        if isinstance(inst_rotation, (int, float)) and inst_rotation != 0:
+            lines.append(
+                f"{var}.rotation = {-math.degrees(inst_rotation)};"
+            )
     inst_opacity = raw_visual.get("opacity")
     if isinstance(inst_opacity, (int, float)) and inst_opacity < 1.0:
         lines.append(f"{var}.opacity = {inst_opacity};")
@@ -1037,6 +1109,12 @@ def _emit_phase3(
             else {}
         )
 
+        rotation_deg = _ast_prop_py(node, "rotation")
+        mirror_axis = _ast_prop_py(node, "mirror")
+        has_transform = (
+            isinstance(rotation_deg, (int, float)) and rotation_deg != 0
+        ) or isinstance(mirror_axis, str)
+
         if not parent_is_autolayout and element:
             elem_sizing = element.get("layout", {}).get("sizing", {})
             pw = elem_sizing.get("widthPixels")
@@ -1049,7 +1127,7 @@ def _emit_phase3(
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
             position = element.get("layout", {}).get("position")
-            if position:
+            if position and not has_transform:
                 x_val = position.get("x", 0)
                 y_val = position.get("y", 0)
                 ops.append(
@@ -1064,6 +1142,47 @@ def _emit_phase3(
                     f'kind:"position_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+
+        # Transform emission is driven by AST primitives and runs
+        # independent of the shim path — this is what every future
+        # backend walker (React / SwiftUI / Flutter) will consume
+        # once the dict-IR shim is retired at M5. Reads x/y from the
+        # AST as well, falling back to any shim-supplied position
+        # only when the AST omits them (rare: M0 compressor emits
+        # x/y for every non-origin child).
+        if has_transform and not parent_is_autolayout:
+            ast_x = _ast_prop_py(node, "x")
+            ast_y = _ast_prop_py(node, "y")
+            if not isinstance(ast_x, (int, float)):
+                ast_x = (
+                    element.get("layout", {}).get("position", {}).get("x", 0)
+                    if element else 0
+                )
+            if not isinstance(ast_y, (int, float)):
+                ast_y = (
+                    element.get("layout", {}).get("position", {}).get("y", 0)
+                    if element else 0
+                )
+            rot_deg = (
+                float(rotation_deg)
+                if isinstance(rotation_deg, (int, float)) else 0.0
+            )
+            axis = mirror_axis if isinstance(mirror_axis, str) else None
+            rt = _reconstruct_relative_transform(
+                float(ast_x), float(ast_y), rot_deg, axis,
+            )
+            ops.append(
+                f'try {{ {var}.relativeTransform = '
+                f'[[{_matrix_cell(rt[0][0])},'
+                f'{_matrix_cell(rt[0][1])},'
+                f'{_matrix_cell(rt[0][2])}],'
+                f'[{_matrix_cell(rt[1][0])},'
+                f'{_matrix_cell(rt[1][1])},'
+                f'{_matrix_cell(rt[1][2])}]]; }} '
+                f'catch (__e) {{ __errors.push({{eid:"{err_eid}", '
+                f'kind:"position_failed", '
+                f'error: String(__e && __e.message || __e)}}); }}'
+            )
 
         c_h = visual.get("constraint_h")
         c_v = visual.get("constraint_v")

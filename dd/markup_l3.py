@@ -2685,6 +2685,7 @@ _PROP_ORDER_CONTENT = (
 _PROP_ORDER_SPATIAL = (
     "x", "y", "width", "height",
     "min-width", "max-width", "min-height", "max-height",
+    "rotation", "mirror",
     "layout", "gap", "padding",
     "mainAxis", "crossAxis", "align", "constraints",
 )

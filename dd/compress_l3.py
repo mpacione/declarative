@@ -46,6 +46,120 @@ import re
 import sqlite3
 from typing import Any, Optional
 
+
+def _decompose_rt(
+    rt: list[list[float]],
+) -> tuple[Optional[float], Optional[str]]:
+    """Decompose a 2×3 Figma ``relativeTransform`` matrix into
+    ``(rotation_radians, mirror)``:
+
+      rt = [[m00, m01, tx], [m10, m11, ty]]
+
+    - ``det(2×2) = +1``: pure rotation. Return ``(atan2(m10, m00),
+      None)``.
+    - ``det(2×2) = -1``: reflection, optionally composed with a
+      rotation. Detect the axis of reflection (horizontal if m00≈-1,
+      m11≈+1 with the canonical complementary rotation) and return
+      ``(rotation_radians, 'horizontal'|'vertical')``.
+
+    Canonical L3 form: expose ``rotation`` and ``mirror`` as separate
+    primitives so every backend (Figma, React, SwiftUI, Flutter) can
+    emit its native representation. Figma backend reconstructs the
+    2×3 matrix; other backends use native mirror + rotation ops.
+
+    Returns ``(None, None)`` when the 2×2 is identity (no transform
+    to emit).
+    """
+    m00, m01 = rt[0][0], rt[0][1]
+    m10, m11 = rt[1][0], rt[1][1]
+
+    # Identity shortcut
+    if (
+        abs(m00 - 1) < 1e-9 and abs(m01) < 1e-9
+        and abs(m10) < 1e-9 and abs(m11 - 1) < 1e-9
+    ):
+        return None, None
+
+    det = m00 * m11 - m01 * m10
+
+    if det > 0:
+        # Pure rotation (det = +1 for a rigid rotation)
+        rot = math.atan2(m10, m00)
+        if abs(rot) < 1e-9:
+            return None, None
+        return rot, None
+
+    # det < 0 → reflection. Decompose as horizontal mirror first (flip
+    # the sign of m00 and m01) and test whether the result is a pure
+    # rotation. If yes: mirror=horizontal + that rotation. Otherwise
+    # try vertical mirror (flip m10 and m11). Only the two canonical
+    # axes are supported — synthetic Dank illustrations use horizontal
+    # flips; SwiftUI / React have symmetric modifiers for vertical.
+    # Try horizontal: undo the horizontal flip by negating the first
+    # column.
+    u00, u10 = -m00, -m10
+    u01, u11 = m01, m11
+    if (
+        abs(u00 * u11 - u01 * u10 - 1) < 1e-6
+        and abs(u00 - u11) < 1e-6
+        and abs(u01 + u10) < 1e-6
+    ):
+        rot = math.atan2(u10, u00)
+        return (rot if abs(rot) >= 1e-9 else 0.0), "horizontal"
+
+    # Try vertical: undo by negating the second column.
+    v00, v10 = m00, m10
+    v01, v11 = -m01, -m11
+    if (
+        abs(v00 * v11 - v01 * v10 - 1) < 1e-6
+        and abs(v00 - v11) < 1e-6
+        and abs(v01 + v10) < 1e-6
+    ):
+        rot = math.atan2(v10, v00)
+        return (rot if abs(rot) >= 1e-9 else 0.0), "vertical"
+
+    # Non-canonical (shear or skew); emit horizontal mirror + best-
+    # effort rotation. Acceptable degradation — synthetic output goes
+    # through the canonical decomposition path above.
+    return math.atan2(m10, m00), "horizontal"
+
+
+def _fetch_relative_transform_map(
+    conn: Optional[sqlite3.Connection],
+    node_id_map: dict[str, int],
+) -> dict[str, list[list[float]]]:
+    """Batch-load `nodes.relative_transform` for every element whose
+    spec key has a DB node_id. Returns ``{eid_key: rt_matrix}`` where
+    the matrix is a parsed 2×3 list (``[[m00, m01, tx], [m10, m11,
+    ty]]``). Missing or identity transforms are omitted.
+    """
+    out: dict[str, list[list[float]]] = {}
+    if conn is None or not node_id_map:
+        return out
+    rows = conn.execute(
+        "SELECT id, relative_transform FROM nodes "
+        "WHERE id IN (" + ",".join(
+            "?" * sum(1 for v in node_id_map.values() if isinstance(v, int))
+        ) + ")",
+        tuple(v for v in node_id_map.values() if isinstance(v, int)),
+    ).fetchall()
+    by_nid: dict[int, list[list[float]]] = {}
+    for row in rows:
+        nid = row[0]
+        rt_json = row[1]
+        if not rt_json:
+            continue
+        try:
+            rt = json.loads(rt_json) if isinstance(rt_json, str) else rt_json
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(rt, list) and len(rt) == 2:
+            by_nid[nid] = rt
+    for eid_key, nid in node_id_map.items():
+        if isinstance(nid, int) and nid in by_nid:
+            out[eid_key] = by_nid[nid]
+    return out
+
 from dd.markup_l3 import (
     Block,
     FuncArg,
@@ -544,6 +658,7 @@ _PROP_RANK_CONTENT = (
 _PROP_RANK_SPATIAL = (
     "x", "y", "width", "height",
     "min-width", "max-width", "min-height", "max-height",
+    "rotation", "mirror",
     "layout", "gap", "padding",
     "mainAxis", "crossAxis", "align", "constraints",
 )
@@ -665,6 +780,7 @@ def _compress_element(
     node_spec_key_out: Optional[dict[int, str]] = None,
     node_original_name_out: Optional[dict[int, str]] = None,
     parent_group_offset: Optional[tuple[float, float]] = None,
+    rt_map: Optional[dict[str, list[list[float]]]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -765,6 +881,27 @@ def _compress_element(
         layout_for_props,
         bounds=bounds_map.get(eid_key),
     ))
+
+    # Canonical L3 transform primitives: decompose the Plugin-API
+    # `relative_transform` (authoritative ground truth) into
+    # `rotation` + `mirror`. The REST-derived `rotation` scalar is
+    # lossy — it can't express reflections (det = -1). Emitting
+    # decomposed primitives lets every backend reconstruct the full
+    # 2×3 affine natively: Figma emits `relativeTransform = [...]`;
+    # React emits `transform: scaleX(-1) rotate(Ndeg)`; SwiftUI emits
+    # `.scaleEffect(x: -1, y: 1).rotationEffect(.degrees(N))`.
+    if rt_map is not None and eid_key in rt_map:
+        rot_rad, mirror_axis = _decompose_rt(rt_map[eid_key])
+        if rot_rad is not None and abs(rot_rad) > 1e-9:
+            props.append(PropAssign(
+                key="rotation",
+                value=_num_literal(round(math.degrees(rot_rad), 4)),
+            ))
+        if mirror_axis is not None:
+            props.append(PropAssign(
+                key="mirror",
+                value=_enum_literal(mirror_axis),
+            ))
     props.extend(_visual_props(element.get("visual") or {}))
     # cornerRadius isn't in the CompositionSpec; pull from our batched
     # DB lookup. Value is either a scalar float (uniform) or a dict
@@ -895,6 +1032,7 @@ def _compress_element(
                 node_spec_key_out=node_spec_key_out,
                 node_original_name_out=node_original_name_out,
                 parent_group_offset=children_group_offset,
+                rt_map=rt_map,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -1632,6 +1770,7 @@ def compress_to_l3_with_maps(
             ))
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
     bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
+    rt_map = _fetch_relative_transform_map(conn, node_id_map)
     eid_to_nid: dict[str, int] = {}
     node_nid: dict[int, int] = {}
     node_spec_key: dict[int, str] = {}
@@ -1644,6 +1783,7 @@ def compress_to_l3_with_maps(
         node_nid_out=node_nid,
         node_spec_key_out=node_spec_key,
         node_original_name_out=node_original_name,
+        rt_map=rt_map,
     )
     if root_node is None:
         return L3Document(namespace=None), {}, {}, {}, {}

@@ -283,6 +283,54 @@ class TestM1cLeafNodeByteParity:
             "hidden text node"
         )
 
+    def test_mirror_emits_relative_transform_matrix(self) -> None:
+        """When an AST node carries `mirror=horizontal`, the walker
+        reconstructs a full 2×3 ``relativeTransform`` matrix in Phase
+        3 rather than emitting a scalar ``.rotation = X`` that can't
+        represent reflection. The x/y scalar emission is suppressed so
+        the matrix's translation column isn't overwritten.
+
+        Multi-backend-neutral L3: every backend reads the same
+        ``rotation`` + ``mirror`` primitives; Figma reconstructs the
+        matrix, React emits ``transform: rotate() scaleX(-1)``,
+        SwiftUI emits ``.rotationEffect().scaleEffect(x:-1)``.
+        Resolves Issue #5 from the grid review — five mirrored screens
+        (171–176, 181–185) lost their flip when the walker stopped at
+        scalar rotation.
+        """
+        from dd.markup_l3 import parse_l3
+        from dd.render_figma_ast import render_figma
+
+        markup = (
+            "screen #screen-1 width=100 height=100 $ext.nid=100 {\n"
+            "  rectangle #rect-1 x=10 y=20 width=30 height=40 "
+            "mirror=horizontal $ext.nid=101\n"
+            "}\n"
+        )
+        doc = parse_l3(markup)
+        nid_map = {
+            id(doc.top_level[0]): 100,
+            id(doc.top_level[0].block.statements[0]): 101,
+        }
+        script, _ = render_figma(
+            doc, None, nid_map,
+            fonts=[], spec_key_map={},
+            db_visuals=None, ckr_built=True,
+        )
+        assert "relativeTransform" in script, (
+            "Option B walker dropped mirror transform — horizontally "
+            "mirrored node rendered as a plain positioned rectangle"
+        )
+        assert "n1.x = 10" not in script, (
+            "Scalar x= emitted alongside relativeTransform — matrix's "
+            "translation column will be overwritten"
+        )
+        assert "[[-1,0,10],[0,1,20]]" in script, (
+            "Horizontal-mirror matrix should be "
+            "[[-1,0,10],[0,1,20]] (negate first column, translate to "
+            "(10, 20)); got something else"
+        )
+
     def test_full_script_byte_identical_root_only(self) -> None:
         """Screen-root with no children — exercises the Phase 2
         branch where `_emit_phase2` has no appendChild-from-parent
