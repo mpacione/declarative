@@ -57,6 +57,7 @@ from dd.renderers.figma import (
     _resolve_layout_sizing,
     _walk_elements,
 )
+from dd.visual import build_visual_from_db
 
 
 # Baseline createText defaults when the AST carries no typography
@@ -503,23 +504,41 @@ def _emit_phase1(
         lines.append(f'{var}.name = "{name_js}";')
 
         if element:
-            visual = dict(element.get("visual") or {})
+            # Build visual from raw DB data — matches baseline Phase 1
+            # line ~1314. `element.get("visual")` is the sparse IR
+            # visual that build_composition_spec produces; the DB
+            # `raw_visual` (from query_screen_visuals) carries the
+            # full rendered-tree shape that baseline consumes via
+            # build_visual_from_db. Using the sparse IR visual at
+            # this call site was the root of my strokeWeight /
+            # cornerRadius / effects ratio gap.
+            if raw_visual:
+                visual = build_visual_from_db(raw_visual)
+            else:
+                visual = dict(element.get("visual") or {})
             layout = element.get("layout") or {}
             style = element.get("style") or {}
             spec_key_for_emit = spec_key_map.get(id(node), eid)
 
-            # Promote per-element DB fields that `build_composition_spec`
-            # doesn't copy into `element.visual`: `nodes.corner_radius`
-            # lives in the raw visual but not the IR visual, so `_emit_visual`
-            # would miss it without this augmentation. Matches baseline
-            # figma.py:1340 style-to-visual promotion pattern (though the
-            # source here is DB rather than IR style).
-            if (
-                "cornerRadius" not in visual
-                and isinstance(raw_visual.get("corner_radius"), (int, float))
-                and raw_visual["corner_radius"] > 0
-            ):
-                visual["cornerRadius"] = raw_visual["corner_radius"]
+            # Overlay IR-style fill / stroke / cornerRadius when
+            # `visual` is empty (synthetic IR elements without DB
+            # node_ids). Matches baseline figma.py:1327–1343.
+            ir_fill_ref = style.get("fill")
+            if ir_fill_ref and not visual.get("fills"):
+                visual["fills"] = [{"type": "solid", "color": ir_fill_ref}]
+            if not is_text:
+                ir_stroke_ref = style.get("stroke")
+                if ir_stroke_ref and not visual.get("strokes"):
+                    visual["strokes"] = [
+                        {"type": "solid", "color": ir_stroke_ref},
+                    ]
+                ir_radius_ref = style.get("radius")
+                if (
+                    ir_radius_ref is not None
+                    and "cornerRadius" not in visual
+                    and isinstance(ir_radius_ref, (int, float))
+                ):
+                    visual["cornerRadius"] = ir_radius_ref
 
             if visual:
                 visual_lines, visual_refs = _emit_visual(
