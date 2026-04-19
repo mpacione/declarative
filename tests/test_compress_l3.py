@@ -1465,6 +1465,78 @@ class TestCompressToL3WithNidMap:
             f"(compressor populated but didn't emit): {sorted(strays)[:10]}"
         )
 
+    def test_group_children_positions_normalized_to_group_local(
+        self,
+    ) -> None:
+        """When a node's parent is a `group`, its DB-stored position
+        (in grandparent-frame coords per Figma's transparent-group
+        convention) is normalized to group-local at the L3 layer.
+
+        This is the canonical L3 invariant: child.x/y is always
+        relative to its direct parent, regardless of source-API
+        quirks. Every backend (Figma / React / SwiftUI / Flutter)
+        reads group-local child coords from L3 and emits its native
+        container + positioned-child representation without needing
+        to know about Figma's transparent-group rule.
+        """
+        # Synthetic spec: screen → group at (100, 100) → rect at
+        # (130, 140) in screen-frame coords (grandparent-local per
+        # Figma's convention for group children).
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "frame",
+                    "_original_name": "screen",
+                    "children": ["group-1"],
+                    "layout": {"position": {"x": 0, "y": 0}},
+                    "visual": {}, "props": {}, "style": {},
+                },
+                "group-1": {
+                    "type": "group",
+                    "_original_name": "Group",
+                    "children": ["rect-1"],
+                    "layout": {"position": {"x": 100, "y": 100}},
+                    "visual": {}, "props": {}, "style": {},
+                },
+                "rect-1": {
+                    "type": "rectangle",
+                    "_original_name": "rect",
+                    "children": [],
+                    "layout": {"position": {"x": 130, "y": 140}},
+                    "visual": {}, "props": {}, "style": {},
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {
+                "screen-1": 1, "group-1": 2, "rect-1": 3,
+            },
+        }
+        doc = compress_to_l3(spec, conn=None)
+
+        root = doc.top_level[0]
+        group_node = root.block.statements[0]
+        rect_node = group_node.block.statements[0]
+
+        assert group_node.head.type_or_path == "group"
+        assert rect_node.head.type_or_path == "rectangle"
+
+        group_props = {p.key: p.value.py for p in group_node.head.properties}
+        rect_props = {p.key: p.value.py for p in rect_node.head.properties}
+
+        # Group keeps its own parent-local position (unchanged: it's
+        # a direct child of a non-group frame).
+        assert group_props.get("x") == 100
+        assert group_props.get("y") == 100
+
+        # Rect is normalized: (130 - 100, 140 - 100) = (30, 40).
+        # Before this fix, rect kept its DB (130, 140) which Figma
+        # interprets as grandparent-local — placing the rect
+        # visually OUTSIDE the group's 0-wide-at-origin bounds.
+        assert rect_props.get("x") == 30
+        assert rect_props.get("y") == 40
+
     def test_nid_map_omits_eids_missing_from_node_id_map(self) -> None:
         """When `_node_id_map` omits a spec element, the corresponding
         AST eid is absent from `nid_map`. Documents the gate in

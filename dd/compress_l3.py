@@ -664,6 +664,7 @@ def _compress_element(
     node_nid_out: Optional[dict[int, int]] = None,
     node_spec_key_out: Optional[dict[int, str]] = None,
     node_original_name_out: Optional[dict[int, str]] = None,
+    parent_group_offset: Optional[tuple[float, float]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -736,10 +737,32 @@ def _compress_element(
             value=Literal_(lit_kind="bool", raw="false", py=False),
         ))
 
-    # Build property list — canonical order handled by emitter
+    # Build property list — canonical order handled by emitter.
+    # When this node's direct parent is a GROUP, Figma's
+    # transparent-group convention stores child positions in the
+    # group's parent's coord space (NOT group-local). Normalize to
+    # group-local at the L3 layer so every backend reads canonical
+    # parent-relative coordinates. The parent passed its own
+    # (unnormalized) position via `parent_group_offset`; we subtract
+    # it from our stored position before emission.
+    layout_for_props = element.get("layout") or {}
+    if parent_group_offset is not None:
+        src_position = layout_for_props.get("position") or {}
+        if isinstance(src_position, dict) and (
+            src_position.get("x") is not None
+            or src_position.get("y") is not None
+        ):
+            adjusted_position = {
+                "x": (src_position.get("x") or 0) - parent_group_offset[0],
+                "y": (src_position.get("y") or 0) - parent_group_offset[1],
+            }
+            layout_for_props = {
+                **layout_for_props,
+                "position": adjusted_position,
+            }
     props: list[PropAssign] = []
     props.extend(_spatial_props(
-        element.get("layout") or {},
+        layout_for_props,
         bounds=bounds_map.get(eid_key),
     ))
     props.extend(_visual_props(element.get("visual") or {}))
@@ -848,6 +871,20 @@ def _compress_element(
         child_counter: dict[str, int] = {}
         child_used_eids: set[str] = set()     # per-Block scope
         next_visiting = visiting | {eid_key}
+        # When I'm a GROUP, my children need their DB positions
+        # normalized to group-local — pass my ORIGINAL (un-normalized,
+        # group's-parent-local) position so they can subtract it.
+        # Only depth-1 handling; Dank corpus has zero nested groups
+        # (verified 2026-04-19). If nested groups appear the
+        # accumulation logic will need a cumulative-offset pass.
+        children_group_offset: Optional[tuple[float, float]] = None
+        if type_str == "group":
+            orig_pos = (element.get("layout") or {}).get("position") or {}
+            if isinstance(orig_pos, dict):
+                children_group_offset = (
+                    orig_pos.get("x") or 0,
+                    orig_pos.get("y") or 0,
+                )
         for child_id in child_ids:
             child_node = _compress_element(
                 child_id, spec, child_counter, child_used_eids,
@@ -857,6 +894,7 @@ def _compress_element(
                 node_nid_out=node_nid_out,
                 node_spec_key_out=node_spec_key_out,
                 node_original_name_out=node_original_name_out,
+                parent_group_offset=children_group_offset,
             )
             if child_node is not None:
                 child_nodes.append(child_node)

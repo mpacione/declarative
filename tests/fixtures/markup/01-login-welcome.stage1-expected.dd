@@ -42,28 +42,28 @@ screen #iphone-13-pro-max-119 width=428 height=926 fill=#F6F6F6 $ext.nid=21615 (
   }
   -> button/large/translucent #button-large-translucent x=15 y=300 width=397 height=52 layout=horizontal gap=10 padding={right=14 left=14} align=center fill=gradient-linear(#D9FF40, #9EFF85) radius=10 $ext.nid=21790
   group #group x=130 y=130 width=168.167 height=140.9998 $ext.nid=21798 {
-    vector #vector x=130 y=152.597 width=168.167 height=118.4031 fill=#DADADA $ext.nid=21799
-    vector #vector-2 x=140.1808 y=162.7872 width=147.7724 height=98.0211 fill=#DADADA $ext.nid=21800
-    vector #vector-3 x=161.7605 y=162.7895 width=3.6715 height=98.0189 fill=#DADADA $ext.nid=21801
-    vector #vector-4 x=146.0605 y=205.0531 width=13.4961 height=13.4961 fill=#DADADA $ext.nid=21802
-    vector #vector-5 x=151.1988 y=189.3023 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21803
-    vector #vector-6 x=151.1988 y=223.7272 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21804
-    vector #vector-7 x=151.1988 y=171.518 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21805
-    vector #vector-8 x=151.1988 y=241.5115 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21806
-    vector #vector-9 x=161.756 y=227.2284 width=47.0197 height=33.5801 fill=#DADADA $ext.nid=21807
-    vector #vector-10 x=197.9774 y=217.433 width=89.983 height=23.8935 fill=#DADADA $ext.nid=21808
-    vector #vector-11 x=173.8397 y=211.0242 width=36.9668 height=26.9493 fill=#DADADA $ext.nid=21809
-    vector #vector-12 x=201.2089 y=201.5428 width=49.6417 height=32.4414 fill=#DADADA $ext.nid=21810
-    vector #vector-13 x=177.5541 y=196.1228 width=15.7471 height=9.1586 fill=#DADADA $ext.nid=21811
-    vector #vector-14 x=201.0829 y=198.23 width=15.7502 height=9.1586 fill=#DADADA $ext.nid=21812
-    vector #vector-15 x=252.4387 y=189.0465 width=19.8734 height=17.6963 fill=#DADADA $ext.nid=21813
-    vector #vector-16 x=252.4462 y=203.0613 width=19.8735 height=12.8515 fill=#DADADA $ext.nid=21814
-    vector #vector-17 x=260.5434 y=212.2343 width=3.6715 height=14.5097 fill=#DADADA $ext.nid=21815
-    vector #vector-18 x=224.6498 y=236.7766 width=63.3106 height=24.0391 fill=#DADADA $ext.nid=21816
-    vector #vector-19 x=234.2017 y=130 width=42.6814 height=58.3404 fill=#DADADA $ext.nid=21817
-    vector #vector-20 x=233.8094 y=177.9373 width=15.7427 height=17.8364 fill=#DADADA $ext.nid=21818
-    vector #vector-21 x=256.5244 y=139.244 width=15.3491 height=10.423 fill=#DADADA $ext.nid=21819
-    vector #vector-22 x=239.9736 y=167.9099 width=15.3578 height=10.4157 fill=#DADADA $ext.nid=21820
-    vector #vector-23 x=180.4395 y=172.062 width=30.6567 height=18.8493 fill=#DADADA $ext.nid=21821
+    vector #vector x=0 y=22.597 width=168.167 height=118.4031 fill=#DADADA $ext.nid=21799
+    vector #vector-2 x=10.1808 y=32.7872 width=147.7724 height=98.0211 fill=#DADADA $ext.nid=21800
+    vector #vector-3 x=31.7605 y=32.7895 width=3.6715 height=98.0189 fill=#DADADA $ext.nid=21801
+    vector #vector-4 x=16.0605 y=75.0531 width=13.4961 height=13.4961 fill=#DADADA $ext.nid=21802
+    vector #vector-5 x=21.1988 y=59.3023 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21803
+    vector #vector-6 x=21.1988 y=93.7272 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21804
+    vector #vector-7 x=21.1988 y=41.518 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21805
+    vector #vector-8 x=21.1988 y=111.5115 width=3.6715 height=10.5592 fill=#DADADA $ext.nid=21806
+    vector #vector-9 x=31.756 y=97.2284 width=47.0197 height=33.5801 fill=#DADADA $ext.nid=21807
+    vector #vector-10 x=67.9774 y=87.433 width=89.983 height=23.8935 fill=#DADADA $ext.nid=21808
+    vector #vector-11 x=43.8397 y=81.0242 width=36.9668 height=26.9493 fill=#DADADA $ext.nid=21809
+    vector #vector-12 x=71.2089 y=71.5428 width=49.6417 height=32.4414 fill=#DADADA $ext.nid=21810
+    vector #vector-13 x=47.5541 y=66.1228 width=15.7471 height=9.1586 fill=#DADADA $ext.nid=21811
+    vector #vector-14 x=71.0829 y=68.23 width=15.7502 height=9.1586 fill=#DADADA $ext.nid=21812
+    vector #vector-15 x=122.4387 y=59.0465 width=19.8734 height=17.6963 fill=#DADADA $ext.nid=21813
+    vector #vector-16 x=122.4462 y=73.0613 width=19.8735 height=12.8515 fill=#DADADA $ext.nid=21814
+    vector #vector-17 x=130.5434 y=82.2343 width=3.6715 height=14.5097 fill=#DADADA $ext.nid=21815
+    vector #vector-18 x=94.6498 y=106.7766 width=63.3106 height=24.0391 fill=#DADADA $ext.nid=21816
+    vector #vector-19 x=104.2017 y=0 width=42.6814 height=58.3404 fill=#DADADA $ext.nid=21817
+    vector #vector-20 x=103.8094 y=47.9373 width=15.7427 height=17.8364 fill=#DADADA $ext.nid=21818
+    vector #vector-21 x=126.5244 y=9.244 width=15.3491 height=10.423 fill=#DADADA $ext.nid=21819
+    vector #vector-22 x=109.9736 y=37.9099 width=15.3578 height=10.4157 fill=#DADADA $ext.nid=21820
+    vector #vector-23 x=50.4395 y=42.062 width=30.6567 height=18.8493 fill=#DADADA $ext.nid=21821
   }
 }
