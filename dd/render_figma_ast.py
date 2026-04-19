@@ -205,6 +205,7 @@ def render_figma(
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     ckr_built: bool = True,
     page_name: Optional[str] = None,
+    canvas_position: Optional[tuple[float, float]] = None,
     _spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     _spec_tokens: Optional[dict[str, Any]] = None,
 ) -> tuple[str, list[tuple[str, str, str]]]:
@@ -294,6 +295,7 @@ def render_figma(
     text_chars = _collect_text_chars(walk, var_map)
     phase2 = _emit_phase2(
         walk, var_map, text_chars, spec_key_map, doc, page_name,
+        canvas_position=canvas_position,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
     )
@@ -823,6 +825,7 @@ def _emit_phase2(
     doc: L3Document,
     page_name: Optional[str],
     *,
+    canvas_position: Optional[tuple[float, float]] = None,
     nid_map: Optional[dict[int, int]] = None,
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
@@ -940,6 +943,11 @@ def _emit_phase2(
                 lines.append("await figma.setCurrentPageAsync(_page);")
             else:
                 lines.append(f"_rootPage.appendChild({root_var});")
+
+            if canvas_position is not None:
+                cx, cy = canvas_position
+                lines.append(f"{root_var}.x = {cx};")
+                lines.append(f"{root_var}.y = {cy};")
 
     return lines
 

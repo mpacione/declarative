@@ -411,6 +411,7 @@ def _run_seed_catalog(db_path: str) -> None:
 def _run_generate(
     db_path: str, screen_id: int, dry_run: bool = False,
     via_markup: bool = False, via_option_b: bool = False,
+    canvas_x: float | None = None, canvas_y: float | None = None,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -418,10 +419,15 @@ def _run_generate(
 
     from dd.renderers.figma import generate_screen
 
+    canvas_position = None
+    if canvas_x is not None or canvas_y is not None:
+        canvas_position = (canvas_x or 0.0, canvas_y or 0.0)
+
     conn = get_connection(db_path)
     result = generate_screen(
         conn, screen_id,
         via_markup=via_markup, via_option_b=via_option_b,
+        canvas_position=canvas_position,
     )
     conn.close()
 
@@ -1202,6 +1208,17 @@ def main(argv: list | None = None) -> None:
         ),
     )
     gen_parser.add_argument(
+        "--canvas-x", type=float, default=None,
+        help="Place the rendered screen's root frame at this x "
+             "coordinate on the Figma canvas. Used by grid_render.py "
+             "to lay multiple screens out side-by-side.",
+    )
+    gen_parser.add_argument(
+        "--canvas-y", type=float, default=None,
+        help="Place the rendered screen's root frame at this y "
+             "coordinate on the Figma canvas.",
+    )
+    gen_parser.add_argument(
         "--via-markup",
         action="store_true",
         help=(
@@ -1337,6 +1354,7 @@ def main(argv: list | None = None) -> None:
             db_path, int(args.screen), dry_run=args.dry_run,
             via_markup=args.via_markup,
             via_option_b=args.via_option_b,
+            canvas_x=args.canvas_x, canvas_y=args.canvas_y,
         )
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)
