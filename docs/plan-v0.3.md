@@ -115,11 +115,11 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 | # | Milestone | Status | Evidence |
 |---|---|---|---|
 | M0 | Markup compressor (DB → L3 AST): parser + emitter + `compress_to_l3` green at 204/204 Tier 1 | ✅ | `tests/test_compress_l3.py::test_full_corpus_tier1_round_trip` |
-| **M1** | **Markup-native Figma renderer MVP** — `render_figma(doc, conn, nid_map) → JS` walker | 🔲 | Sub-milestones below |
-| — M1a | Extend `compress_to_l3` to return `(L3Document, eid_to_nid_map)`; document the side-car as the eid↔nid identity bridge replacing `_node_id_map` | 🔲 | Unit test: every eid in `doc.top_level`'s walk has a matching `nid` in the map |
-| — M1b | `render_figma_preamble(doc, conn, nid_map)` emits byte-identical preamble (font loads + `__errors` + `_rootPage` + prefetch) on 3 reference fixtures (181 / 222 / 237) | 🔲 | A/B harness regex-extracts preamble region from both paths and asserts `a == b` |
-| — M1c | Phase 1 leaf-node creation (createFrame / createRectangle / createText) byte-identical on a minimal fixture before tackling a full screen | 🔲 | Same A/B harness extended |
-| — M1d | Full `render_figma` walker: Stage 1.5b-equivalent gate — no crash, script > 1000 bytes, `eid_map` walkable — on 3 reference fixtures; script-size ratio 0.95–1.05 (Stage 1.5c-equivalent diagnostic) | 🔲 | A/B harness runs both paths; pipeline health gate, not identity gate |
+| **M1** | **Markup-native Figma renderer MVP** — `render_figma(doc, conn, nid_map) → JS` walker | 🟡 in progress | Sub-milestones below |
+| — M1a | Extend `compress_to_l3` to return `(L3Document, eid_to_nid_map)`; `compress_to_l3_with_maps` also returns `eid_to_spec_key_map` | ✅ `df5aaa0` | `TestCompressToL3WithNidMap` (19 tests) |
+| — M1b | `render_figma_preamble(doc, conn, nid_map, fonts, db_visuals, ckr_built, uses_placeholder) → str` emits byte-identical preamble on 3 reference fixtures (181 / 222 / 237) | ✅ `df5aaa0` | `TestM1bPreambleByteParity` (7 tests) |
+| — M1c | Full `render_figma(...)` walker on a minimal synthetic fixture: dispatch + intrinsic properties for frame/rectangle/text + Phase 2 appendChild chain + end-wrapper. Walk order is BFS (matching baseline). Unsupported types fall through to `createFrame()`. | ✅ this commit | `TestM1cLeafNodeByteParity` (2 tests) + `TestCompressToL3WithMaps` (3 tests) |
+| — M1d | Full walker on real Dank fixtures: `_original_name` side-car, AST-native font collection, leaf-parent append guard, Phase 3 plumbing, Mode-1 createInstance, per-type fill/stroke/effect emission. Stage 1.5b-equivalent gate — no crash, script > 1000 bytes, `eid_map` walkable — on 3 reference fixtures; script-size ratio 0.95–1.05 diagnostic | 🔲 | A/B harness runs both paths; pipeline health gate, not identity gate |
 | M2 | Script byte-parity with the pre-markup renderer on 3 reference fixtures (181 / 222 / 237) | 🔲 | A/B harness asserts byte-identical; first absolute-parity gate Option A never achieved |
 | M3 | Script byte-parity on full 204 corpus | 🔲 | `tests/test_script_parity_option_b.py` (new) |
 | M4 | Pixel-parity via Figma sweep on full 204 corpus | 🔲 | `render_batch/sweep.py` on markup-native path reports 204/204 `is_parity=True` |

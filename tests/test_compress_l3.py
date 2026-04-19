@@ -1464,3 +1464,39 @@ class TestCompressToL3WithNidMap:
             f"nid_map has stray entries on screen {sid} "
             f"(compressor populated but didn't emit): {sorted(strays)[:10]}"
         )
+
+    def test_nid_map_omits_eids_missing_from_node_id_map(self) -> None:
+        """When `_node_id_map` omits a spec element, the corresponding
+        AST eid is absent from `nid_map`. Documents the gate in
+        `_compress_element` at the `isinstance(nid, int)` guard:
+        missing/None node_ids filter out of the map before population.
+        Renderer callers check `eid in nid_map` rather than comparing
+        against `None`.
+        """
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "frame",
+                    "_original_name": "screen",
+                    "children": ["rect-1"],
+                    "layout": {}, "visual": {},
+                    "props": {}, "style": {},
+                },
+                "rect-1": {
+                    "type": "rectangle",
+                    "_original_name": "rect",
+                    "children": [],
+                    "layout": {}, "visual": {},
+                    "props": {}, "style": {},
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {"screen-1": 100},
+        }
+        _doc, nid_map = compress_to_l3_with_nid_map(spec, conn=None)
+        assert "screen" in nid_map
+        assert nid_map["screen"] == 100
+        assert "rect" not in nid_map
+        assert len(nid_map) == 1

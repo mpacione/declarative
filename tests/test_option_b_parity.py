@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from dd.compress_l3 import compress_to_l3_with_nid_map
+from dd.compress_l3 import compress_to_l3_with_maps, compress_to_l3_with_nid_map
 from dd.ir import generate_ir, query_screen_visuals
 from dd.render_figma_ast import render_figma_preamble
 from dd.renderers.figma import collect_fonts, generate_figma_script
@@ -170,3 +170,198 @@ class TestM1bPreambleByteParity:
             fonts=fonts, db_visuals=visuals, ckr_built=False,
         )
         assert 'kind:"ckr_unbuilt"' in preamble
+
+
+# ---------------------------------------------------------------------------
+# M1c — Phase 1 leaf-node byte-parity on synthetic minimal fixture
+# ---------------------------------------------------------------------------
+
+
+def _minimal_fixture() -> dict:
+    """Synthetic spec: one screen frame with one rectangle and one
+    text child. No nesting beyond direct children, no instances, no
+    layout/position, no tokens, no overrides. The simplest possible
+    shape that exercises dispatch across the 3 primitive types.
+    """
+    return {
+        "version": "1.0",
+        "root": "screen-1",
+        "elements": {
+            "screen-1": {
+                "type": "frame",
+                "_original_name": "test-screen",
+                "children": ["rect-1", "text-1"],
+                "layout": {}, "visual": {}, "props": {}, "style": {},
+            },
+            "rect-1": {
+                "type": "rectangle",
+                "_original_name": "rect",
+                "children": [],
+                "layout": {}, "visual": {}, "props": {}, "style": {},
+            },
+            "text-1": {
+                "type": "text",
+                "_original_name": "hello",
+                "children": [],
+                "layout": {}, "visual": {}, "props": {"text": "Hello"},
+                "style": {},
+            },
+        },
+        "tokens": {},
+        "_node_id_map": {"screen-1": 100, "rect-1": 101, "text-1": 102},
+    }
+
+
+class TestM1cLeafNodeByteParity:
+    """The full `render_figma` walker produces byte-identical script
+    output to `generate_figma_script` on the minimal synthetic fixture.
+
+    M1c's scope is dispatch + intrinsic property emission for the 3
+    primitive types (frame / rectangle / text) plus the Phase 2
+    appendChild chain and the end-of-script wrapper. Real Dank
+    corpus complexity (instances, overrides, layout, position,
+    constraints, vector paths, effects) is M1d scope.
+    """
+
+    def test_full_script_byte_identical(self) -> None:
+        from dd.render_figma_ast import render_figma
+
+        spec = _minimal_fixture()
+        script_a, refs_a = generate_figma_script(
+            spec, db_visuals=None, ckr_built=True,
+        )
+
+        doc, nid_map, spec_key_map = compress_to_l3_with_maps(
+            spec, conn=None,
+        )
+        fonts = collect_fonts(spec, db_visuals=None)
+        script_b, refs_b = render_figma(
+            doc, None, nid_map,
+            fonts=fonts, spec_key_map=spec_key_map,
+            db_visuals=None, ckr_built=True,
+        )
+
+        assert script_b == script_a, (
+            f"full-script byte divergence on minimal fixture "
+            f"(len A={len(script_a)}, B={len(script_b)}):\n"
+            + _first_diff(script_a, script_b)
+        )
+        assert refs_b == refs_a
+
+    def test_full_script_byte_identical_root_only(self) -> None:
+        """Screen-root with no children — exercises the Phase 2
+        branch where `_emit_phase2` has no appendChild-from-parent
+        calls, only the final `_rootPage.appendChild(root)`.
+        """
+        from dd.render_figma_ast import render_figma
+
+        spec = {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": {
+                "screen-1": {
+                    "type": "frame",
+                    "_original_name": "bare-screen",
+                    "children": [],
+                    "layout": {}, "visual": {},
+                    "props": {}, "style": {},
+                },
+            },
+            "tokens": {},
+            "_node_id_map": {"screen-1": 100},
+        }
+        script_a, refs_a = generate_figma_script(
+            spec, db_visuals=None, ckr_built=True,
+        )
+        doc, nid_map, spec_key_map = compress_to_l3_with_maps(
+            spec, conn=None,
+        )
+        fonts = collect_fonts(spec, db_visuals=None)
+        script_b, refs_b = render_figma(
+            doc, None, nid_map,
+            fonts=fonts, spec_key_map=spec_key_map,
+            db_visuals=None, ckr_built=True,
+        )
+        assert script_b == script_a, (
+            f"root-only divergence "
+            f"(len A={len(script_a)}, B={len(script_b)}):\n"
+            + _first_diff(script_a, script_b)
+        )
+        assert refs_b == refs_a
+
+
+# ---------------------------------------------------------------------------
+# M1a additions — spec_key_map side-car direct coverage
+# ---------------------------------------------------------------------------
+
+
+class TestCompressToL3WithMaps:
+    """Direct assertions on the `spec_key_map` third return value of
+    `compress_to_l3_with_maps`. Shape invariants:
+
+    - Values are CompositionSpec element keys (``"screen-1"``,
+      ``"button-3"``), NOT sanitized AST eids.
+    - Keys align 1:1 with `nid_map` keys for any element whose spec
+      path had a resolvable DB node_id.
+    """
+
+    def test_spec_key_map_values_are_spec_keys_on_minimal(self) -> None:
+        spec = _minimal_fixture()
+        doc, _nid_map, spec_key_map = compress_to_l3_with_maps(
+            spec, conn=None,
+        )
+        assert spec_key_map["test-screen"] == "screen-1"
+        assert spec_key_map["rect"] == "rect-1"
+        assert spec_key_map["hello"] == "text-1"
+        assert doc.top_level[0].head.eid == "test-screen"
+
+    @pytest.mark.parametrize("sid", REFERENCE_SCREENS)
+    def test_spec_key_map_keys_match_nid_map_keys(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """Every eid that resolved to a DB node_id also has a
+        spec_key bridge — absence of one without the other signals
+        the compressor populated one map and not the other, a drift
+        class we want to detect mechanically.
+        """
+        ir = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )
+        _doc, nid_map, spec_key_map = compress_to_l3_with_maps(
+            ir["spec"], db_conn, screen_id=sid,
+        )
+        missing_spec = set(nid_map.keys()) - set(spec_key_map.keys())
+        assert not missing_spec, (
+            f"screen {sid}: eids in nid_map but not spec_key_map: "
+            f"{sorted(missing_spec)[:10]}"
+        )
+
+    def test_spec_key_map_covers_all_ast_eids_when_nid_map_partial(
+        self,
+    ) -> None:
+        """When `_node_id_map` omits some spec elements, the
+        `nid_map` under-covers the AST walk BUT `spec_key_map` must
+        still carry every eid — spec_key is always available during
+        the compressor walk, independent of node_id resolution.
+        """
+        spec = _minimal_fixture()
+        spec["_node_id_map"] = {"screen-1": 100}
+        doc, nid_map, spec_key_map = compress_to_l3_with_maps(
+            spec, conn=None,
+        )
+
+        emitted: set[str] = set()
+
+        def _collect(n):
+            emitted.add(n.head.eid)
+            if n.block is not None:
+                for stmt in n.block.statements:
+                    if hasattr(stmt, "head"):
+                        _collect(stmt)
+
+        for top in doc.top_level:
+            _collect(top)
+
+        assert set(spec_key_map.keys()) >= emitted
+        assert set(nid_map.keys()) <= emitted
+        assert len(nid_map) == 1

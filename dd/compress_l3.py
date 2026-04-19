@@ -661,6 +661,7 @@ def _compress_element(
     visiting: frozenset[str] = frozenset(),
     *,
     eid_to_nid_out: Optional[dict[str, int]] = None,
+    eid_to_spec_key_out: Optional[dict[str, str]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -803,6 +804,8 @@ def _compress_element(
         ))
         if eid_to_nid_out is not None:
             eid_to_nid_out[eid] = nid
+    if eid_to_spec_key_out is not None:
+        eid_to_spec_key_out[eid] = eid_key
 
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
@@ -851,6 +854,7 @@ def _compress_element(
                 comp_names, self_overrides, radius_map, bounds_map,
                 swap_paths, suppress_keys, visiting=next_visiting,
                 eid_to_nid_out=eid_to_nid_out,
+                eid_to_spec_key_out=eid_to_spec_key_out,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -1483,37 +1487,53 @@ def compress_to_l3_with_nid_map(
 ) -> tuple[L3Document, dict[str, int]]:
     """Compress + return the ``eid → figma_node_id`` side-car map.
 
-    The companion to ``compress_to_l3``. Returns the same
-    ``L3Document`` paired with a mapping from every emitted AST eid to
-    the DB ``figma_node_id`` (``nodes.id``) that element corresponds
-    to, for every element whose spec path had a resolvable node-id.
+    The M1a output used by the markup-native Figma renderer to
+    resolve per-node DB lookups — fills / strokes / fonts / effects /
+    vector paths / override trees / etc. Without this map the
+    renderer would reinvent identity, which is what the deprecated
+    ``$ext.nid`` channel did in-grammar. Keeping the map as
+    side-car metadata is the full fix.
 
-    The map is the M1a output that the markup-native Figma renderer
-    uses to resolve per-node DB lookups — fills / strokes / fonts /
-    effects / vector paths / override trees / etc. Without it the
-    renderer cannot reach ``db_visuals[nid]`` without reinventing
-    identity, which is exactly what the deprecated ``$ext.nid``
-    channel was doing (in-grammar). Keeping the map as side-car
-    metadata is the full fix.
-
-    CompRef descendants are absent from the map — the renderer
-    synthesizes those nodes from the master component, not from DB
-    lookups on the instance's descendants.
+    Thin wrapper over ``compress_to_l3_with_maps`` — discards the
+    ``eid → spec_key`` map since that bridge is only needed by the
+    renderer for ``M[eid_key] = n.id`` script emission at M1c+.
     """
-    # Defensive guards — bad input shouldn't crash with AttributeError.
+    doc, nid_map, _spec_key_map = compress_to_l3_with_maps(
+        spec, conn, screen_id=screen_id,
+    )
+    return doc, nid_map
+
+
+def compress_to_l3_with_maps(
+    spec: dict, conn: Optional[sqlite3.Connection] = None,
+    *, screen_id: Optional[int] = None,
+) -> tuple[L3Document, dict[str, int], dict[str, str]]:
+    """Compress + return both side-car maps:
+
+      - ``eid → figma_node_id`` (``nid_map``) — identical to
+        ``compress_to_l3_with_nid_map``'s second return.
+      - ``eid → CompositionSpec element key`` (``spec_key_map``) —
+        M1c addition: needed by the markup-native renderer to emit
+        ``M["<spec_key>"] = nN.id;`` lines byte-identical against
+        the baseline renderer, which keys ``M`` on the spec
+        element key (``"screen-1"``, ``"button-3"``) and not the
+        grammar-§2.3.1 sanitized AST eid (``"test-screen"``,
+        ``"confirm-order"``). Baseline's M dict drives the walker's
+        ``eid_map`` and the verifier's cross-reference to the IR.
+
+    Once the verifier migrates to AST eids (M5), the
+    ``eid → spec_key`` map is obsolete; at that point
+    ``compress_to_l3_with_nid_map`` becomes redundant as well.
+    """
     if not isinstance(spec, dict):
-        return L3Document(namespace=None), {}
-    # Collapse the synthetic `screen` wrapper around the real Figma
-    # canvas frame before any property collection runs — downstream
-    # lookups (CKR, overrides, radius, bounds) key off the screen's
-    # remapped node-id.
+        return L3Document(namespace=None), {}, {}
     spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
-        return L3Document(namespace=None), {}
+        return L3Document(namespace=None), {}, {}
     root_key = spec.get("root")
     if not root_key or root_key not in elements:
-        return L3Document(namespace=None), {}
+        return L3Document(namespace=None), {}, {}
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
@@ -1543,14 +1563,16 @@ def compress_to_l3_with_nid_map(
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
     bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
     eid_to_nid: dict[str, int] = {}
+    eid_to_spec_key: dict[str, str] = {}
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
         comp_names, self_overrides, radius_map, bounds_map, swap_paths,
         suppress_keys,
         eid_to_nid_out=eid_to_nid,
+        eid_to_spec_key_out=eid_to_spec_key,
     )
     if root_node is None:
-        return L3Document(namespace=None), {}
+        return L3Document(namespace=None), {}, {}
 
     if screen_id is not None:
         attrs: tuple[tuple[str, Value], ...] = (
@@ -1577,4 +1599,4 @@ def compress_to_l3_with_nid_map(
         warnings=tuple(swap_warnings),
         source_path=None,
     )
-    return doc, eid_to_nid
+    return doc, eid_to_nid, eid_to_spec_key
