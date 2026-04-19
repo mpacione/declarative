@@ -1457,11 +1457,18 @@ def _decode_node(
         if self_overrides:
             element["_self_overrides"] = self_overrides
     if head.eid:
-        # Approximate `_original_name` from the AST EID. Lossy (EID
-        # is the sanitized, lowercased IDENT form — not the raw Figma
-        # name) but reads back through `normalize_to_eid` identically,
-        # so downstream key-preservation works.
-        element["_original_name"] = head.eid
+        # `_original_name` — for CompRefs, the master's slash-path
+        # name survives in `head.type_or_path` with slashes preserved
+        # (`"button/large/translucent"` vs the sanitized EID
+        # `"button-large-translucent"`). Use it so the renderer's
+        # missing-component placeholder emits the same label string
+        # as `dd.ir.generate_ir` would.
+        # For inline elements, fall back to the sanitized EID (lossy
+        # but bounded — round-trips through `normalize_to_eid`).
+        if is_compref and head.type_or_path:
+            element["_original_name"] = head.type_or_path
+        else:
+            element["_original_name"] = head.eid
         # node_id was resolved earlier (before key allocation so the
         # canonical type could inform the counter). Record under the
         # final key.
