@@ -54,6 +54,10 @@ def main() -> int:
     ap.add_argument("--sequential", action="store_true",
                     help="Take the first N screens in id order "
                          "instead of a random sample")
+    ap.add_argument("--skip-existing", action="store_true",
+                    help="Skip screens that already have a walk-grid "
+                         "output (successful previous render). Used to "
+                         "retry only the failures from an earlier sweep.")
     args = ap.parse_args()
 
     SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,6 +99,15 @@ def main() -> int:
 
         script_p = SCRIPTS_DIR / f"{sid}.js"
         walk_p = WALKS_DIR / f"{sid}.json"
+
+        if args.skip_existing and walk_p.exists() and walk_p.stat().st_size > 0:
+            ok += 1
+            print(
+                f"[{i}/{len(sample)}] sid={sid:3d} SKIP       "
+                f"@({cx},{cy})  (already rendered)",
+                flush=True,
+            )
+            continue
 
         t1 = time.time()
 
