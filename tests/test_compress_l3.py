@@ -19,7 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from dd.compress_l3 import compress_to_l3, derive_comp_slash_path, normalize_to_eid
+from dd.compress_l3 import (
+    compress_to_l3,
+    compress_to_l3_with_nid_map,
+    derive_comp_slash_path,
+    normalize_to_eid,
+)
 from dd.ir import generate_ir
 from dd.markup_l3 import (
     Block,
@@ -1309,4 +1314,153 @@ def test_stage1_expected_snapshot(
             f"snapshot drift on screen {screen_id} ({slug}):\n" +
             "\n".join(diff) +
             "\n(run with COMPRESS_L3_UPDATE_SNAPSHOTS=1 to accept)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# M1a — eid→nid side-car companion
+# ---------------------------------------------------------------------------
+
+
+def _walk_eids(doc: L3Document) -> set[str]:
+    """Collect every emitted eid in the AST (no CompRef descendants
+    since those come from the master at render time)."""
+    seen: set[str] = set()
+
+    def _recurse(node: Node) -> None:
+        seen.add(node.head.eid)
+        if node.block is not None:
+            for stmt in node.block.statements:
+                if isinstance(stmt, Node):
+                    _recurse(stmt)
+
+    for top in doc.top_level:
+        _recurse(top)
+    return seen
+
+
+class TestCompressToL3WithNidMap:
+    """The `compress_to_l3_with_nid_map` companion is M1a's output —
+    a side-car `eid → figma_node_id` map that the markup-native Figma
+    renderer (M1b onward) uses to resolve per-node DB lookups without
+    reinventing eid↔nid identity.
+
+    Design invariants:
+    - The AST returned by the tuple matches what `compress_to_l3`
+      returns when called with the same args (no compression
+      divergence from the side effect of building the map).
+    - Every emitted eid that had a resolvable DB node_id at
+      compression time is in the map; CompRef descendants are absent
+      (they're synthesized from the master at render time).
+    - Missing entries surface as absent keys, not `None` values —
+      callers dispatch on `eid in nid_map`.
+    """
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_returns_doc_and_nid_map_tuple(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        result = compress_to_l3_with_nid_map(spec, db_conn, screen_id=sid)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        doc, nid_map = result
+        assert isinstance(doc, L3Document)
+        assert isinstance(nid_map, dict)
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_doc_identical_to_compress_to_l3(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """Building the nid_map does not alter the compressor output."""
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc_solo = compress_to_l3(spec, db_conn, screen_id=sid)
+        doc_pair, _ = compress_to_l3_with_nid_map(
+            spec, db_conn, screen_id=sid,
+        )
+        assert doc_pair == doc_solo
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_nid_map_values_are_ints(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        _, nid_map = compress_to_l3_with_nid_map(
+            spec, db_conn, screen_id=sid,
+        )
+        assert len(nid_map) > 0
+        for eid, nid in nid_map.items():
+            assert isinstance(eid, str), f"non-str key {eid!r}"
+            assert isinstance(nid, int), (
+                f"non-int value for {eid!r}: {nid!r} ({type(nid).__name__})"
+            )
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_root_eid_present_in_nid_map(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """The screen's top-level node always has a DB figma_node_id
+        — it's the canonical extraction root."""
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc, nid_map = compress_to_l3_with_nid_map(
+            spec, db_conn, screen_id=sid,
+        )
+        root_eid = doc.top_level[0].head.eid
+        assert root_eid in nid_map
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_every_emitted_eid_is_in_nid_map(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """The map contains every eid the compressor emits. The
+        renderer will key DB lookups on the eids it walks in the AST,
+        so every one of those lookups must have a destination.
+
+        CompRef descendants are legitimately absent from both the AST
+        walk AND the map — they don't exist as emitted eids because
+        the master provides them at render time.
+        """
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc, nid_map = compress_to_l3_with_nid_map(
+            spec, db_conn, screen_id=sid,
+        )
+        emitted = _walk_eids(doc)
+        missing = emitted - set(nid_map.keys())
+        assert not missing, (
+            f"nid_map coverage gap on screen {sid}: emitted={len(emitted)} "
+            f"eids, map has {len(nid_map)}, missing={sorted(missing)[:10]}"
+        )
+
+    @pytest.mark.parametrize("sid", [181, 222, 237])
+    def test_nid_map_has_no_stray_entries(
+        self, db_conn: sqlite3.Connection, sid: int,
+    ) -> None:
+        """The map should not contain eids that aren't in the AST walk.
+        A stray entry signals the compressor populated the map for an
+        element it then chose not to emit — a divergence between the
+        side-car and the canonical AST, which is the Option A failure
+        mode we're trying to avoid structurally.
+        """
+        spec = generate_ir(
+            db_conn, sid, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc, nid_map = compress_to_l3_with_nid_map(
+            spec, db_conn, screen_id=sid,
+        )
+        emitted = _walk_eids(doc)
+        strays = set(nid_map.keys()) - emitted
+        assert not strays, (
+            f"nid_map has stray entries on screen {sid} "
+            f"(compressor populated but didn't emit): {sorted(strays)[:10]}"
         )

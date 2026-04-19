@@ -659,6 +659,8 @@ def _compress_element(
     swap_paths: dict[str, str],
     suppress_keys: dict[str, set[str]],
     visiting: frozenset[str] = frozenset(),
+    *,
+    eid_to_nid_out: Optional[dict[str, int]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -799,6 +801,8 @@ def _compress_element(
         props.append(PropAssign(
             key="$ext.nid", value=_num_literal(nid),
         ))
+        if eid_to_nid_out is not None:
+            eid_to_nid_out[eid] = nid
 
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
@@ -846,6 +850,7 @@ def _compress_element(
                 child_id, spec, child_counter, child_used_eids,
                 comp_names, self_overrides, radius_map, bounds_map,
                 swap_paths, suppress_keys, visiting=next_visiting,
+                eid_to_nid_out=eid_to_nid_out,
             )
             if child_node is not None:
                 child_nodes.append(child_node)
@@ -1459,10 +1464,45 @@ def compress_to_l3(
     `screen_id` is used to populate the node-level `(extracted src=...)`
     trailer when present; optional because the spec dict doesn't carry
     it explicitly.
+
+    Thin wrapper over ``compress_to_l3_with_nid_map``; discards the
+    side-car map. Callers that need the ``eid → figma_node_id`` bridge
+    (notably the markup-native Figma renderer) should use the richer
+    function directly — that side-car is what replaces the deprecated
+    ``$ext.nid`` in-grammar channel. See M1a in `docs/plan-v0.3.md`.
+    """
+    doc, _ = compress_to_l3_with_nid_map(
+        spec, conn, screen_id=screen_id,
+    )
+    return doc
+
+
+def compress_to_l3_with_nid_map(
+    spec: dict, conn: Optional[sqlite3.Connection] = None,
+    *, screen_id: Optional[int] = None,
+) -> tuple[L3Document, dict[str, int]]:
+    """Compress + return the ``eid → figma_node_id`` side-car map.
+
+    The companion to ``compress_to_l3``. Returns the same
+    ``L3Document`` paired with a mapping from every emitted AST eid to
+    the DB ``figma_node_id`` (``nodes.id``) that element corresponds
+    to, for every element whose spec path had a resolvable node-id.
+
+    The map is the M1a output that the markup-native Figma renderer
+    uses to resolve per-node DB lookups — fills / strokes / fonts /
+    effects / vector paths / override trees / etc. Without it the
+    renderer cannot reach ``db_visuals[nid]`` without reinventing
+    identity, which is exactly what the deprecated ``$ext.nid``
+    channel was doing (in-grammar). Keeping the map as side-car
+    metadata is the full fix.
+
+    CompRef descendants are absent from the map — the renderer
+    synthesizes those nodes from the master component, not from DB
+    lookups on the instance's descendants.
     """
     # Defensive guards — bad input shouldn't crash with AttributeError.
     if not isinstance(spec, dict):
-        return L3Document(namespace=None)
+        return L3Document(namespace=None), {}
     # Collapse the synthetic `screen` wrapper around the real Figma
     # canvas frame before any property collection runs — downstream
     # lookups (CKR, overrides, radius, bounds) key off the screen's
@@ -1470,25 +1510,19 @@ def compress_to_l3(
     spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
-        return L3Document(namespace=None)
+        return L3Document(namespace=None), {}
     root_key = spec.get("root")
     if not root_key or root_key not in elements:
-        return L3Document(namespace=None)
+        return L3Document(namespace=None), {}
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
     node_id_map = spec.get("_node_id_map") or {}
     comp_names = _build_comp_names_map(spec, conn)
-    # Eligible EIDs for override lookup = those that will emit as
-    # CompRefs (Mode-1 + CKR resolved).
     eligible_eids = list(comp_names.keys())
     self_overrides, swap_keys, suppress_keys = _fetch_self_overrides(
         conn, node_id_map, eligible_eids,
     )
-    # Resolve INSTANCE_SWAP replacement figma_node_ids → names via CKR.
-    # Unresolved swaps (replacement node absent from CKR) surface as
-    # `KIND_SWAP_UNRESOLVED` warnings so downstream tooling can
-    # distinguish "swap resolved" from "swap silently dropped".
     swap_names = _resolve_swap_component_name(
         conn, list(set(swap_keys.values())),
     )
@@ -1506,19 +1540,18 @@ def compress_to_l3(
                     f"keeping original master"
                 ),
             ))
-    # cornerRadius + min/max bounds live in the nodes table — neither
-    # is copied into the CompositionSpec. Both require a batched query.
     radius_map = _fetch_corner_radius_map(conn, node_id_map)
     bounds_map = _fetch_sizing_bounds_map(conn, node_id_map)
+    eid_to_nid: dict[str, int] = {}
     root_node = _compress_element(
         root_key, spec, root_counter, used_eids,
         comp_names, self_overrides, radius_map, bounds_map, swap_paths,
         suppress_keys,
+        eid_to_nid_out=eid_to_nid,
     )
     if root_node is None:
-        return L3Document(namespace=None)
+        return L3Document(namespace=None), {}
 
-    # Attach provenance trailer
     if screen_id is not None:
         attrs: tuple[tuple[str, Value], ...] = (
             ("src", _num_literal(screen_id)),
@@ -1536,7 +1569,7 @@ def compress_to_l3(
         )
         root_node = Node(head=new_head, block=root_node.block)
 
-    return L3Document(
+    doc = L3Document(
         namespace=None,
         uses=(),
         tokens=(),
@@ -1544,3 +1577,4 @@ def compress_to_l3(
         warnings=tuple(swap_warnings),
         source_path=None,
     )
+    return doc, eid_to_nid
