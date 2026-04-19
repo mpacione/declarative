@@ -391,18 +391,56 @@ class _DecompressCtx:
             self._ckr_key_cache = _build_ckr_key_cache(self.conn)
         return self._ckr_key_cache.get(component_key)
 
-    def lookup_screen_node_id(self, eid: str) -> Optional[int]:
+    def lookup_screen_node_id(
+        self, eid: str,
+        *, parent_node_id: Optional[int] = None,
+        sibling_index: Optional[int] = None,
+    ) -> Optional[int]:
         """Resolve an AST EID to a node_id in the decompressor's
         `screen_id`. Uses sanitized-name match via `normalize_to_eid`
         so `"safari-bottom"` finds `"Safari - Bottom"` in the DB.
 
+        When `parent_node_id` is supplied, restricts the match to
+        children of that parent — critical disambiguation for
+        generic names like `"Vector"` / `"Rectangle"` that would
+        otherwise collide with ~hundreds of other nodes in the same
+        screen.
+
+        `sibling_index` (0-based position among resolved same-name
+        siblings in the AST walk) disambiguates when a parent has
+        multiple children with the same sanitized name — the Nth
+        AST child maps to the Nth DB child in sort_order.
+
         Returns None when:
         - `screen_id` wasn't supplied to `ast_to_dict_ir`.
-        - No node in that screen sanitizes to the given EID.
-        - Multiple nodes collide (ambiguous) — caller can't pick.
+        - No node matches the name (with parent constraint if given).
+        - Multiple matches AND `sibling_index` didn't pick one out.
         """
         if self.conn is None or self.screen_id is None or not eid:
             return None
+        if parent_node_id is not None:
+            # Parent-scoped lookup — query the DB directly for the
+            # parent's named children.
+            from dd.compress_l3 import normalize_to_eid
+            rows = self.conn.execute(
+                "SELECT id, name, sort_order FROM nodes "
+                "WHERE parent_id = ? AND screen_id = ? "
+                "ORDER BY sort_order, id",
+                (parent_node_id, self.screen_id),
+            ).fetchall()
+            matching: list[int] = []
+            for nid, name, _ in rows:
+                if name and normalize_to_eid(name) == eid:
+                    matching.append(int(nid))
+            if len(matching) == 1:
+                return matching[0]
+            if (
+                sibling_index is not None
+                and 0 <= sibling_index < len(matching)
+            ):
+                return matching[sibling_index]
+            return None
+        # Screen-wide fallback for top-level elements.
         if self._screen_name_cache is None:
             self._screen_name_cache = _build_screen_name_cache(
                 self.conn, self.screen_id,
@@ -1197,9 +1235,17 @@ def _decode_visual(
 
 def _decode_node(
     node: Node, ctx: _DecompressCtx,
+    *,
+    parent_node_id: Optional[int] = None,
+    sibling_index: Optional[int] = None,
 ) -> Optional[str]:
     """Recursively decompress a Node into an element dict, register
-    it in `ctx.elements`, and return its element key."""
+    it in `ctx.elements`, and return its element key.
+
+    `parent_node_id` and `sibling_index` scope the AST→node_id
+    lookup to the parent's children, disambiguating generic names
+    like "Vector" / "Rectangle" that collide screen-wide.
+    """
     head = node.head
 
     # Determine element type and whether this is a CompRef.
@@ -1266,8 +1312,13 @@ def _decode_node(
         # Map the decompressed element key to the DB node_id when
         # possible — lets `dd/renderers/figma.py` look up `db_visuals`
         # (font / image / variant info) the same way `generate_ir`'s
-        # output does.
-        nid = ctx.lookup_screen_node_id(head.eid)
+        # output does. Parent-scoped lookup disambiguates generic names
+        # like "Vector" / "Rectangle" that collide screen-wide.
+        nid = ctx.lookup_screen_node_id(
+            head.eid,
+            parent_node_id=parent_node_id,
+            sibling_index=sibling_index,
+        )
         if nid is not None:
             ctx.node_id_map[key] = nid
 
@@ -1305,12 +1356,23 @@ def _decode_node(
         ):
             element.setdefault("props", {})["text"] = head.positional.py
 
-    # Children
+    # Children. Pass this element's node_id + per-name sibling index
+    # so children with generic names ("Vector") can be disambiguated
+    # within their parent's scope.
     child_keys: list[str] = []
+    this_nid = ctx.node_id_map.get(key)
+    child_sibling_counter: dict[str, int] = {}
     if node.block is not None:
         for stmt in node.block.statements:
             if isinstance(stmt, Node):
-                child_key = _decode_node(stmt, ctx)
+                child_eid = stmt.head.eid or ""
+                sib_idx = child_sibling_counter.get(child_eid, 0)
+                child_sibling_counter[child_eid] = sib_idx + 1
+                child_key = _decode_node(
+                    stmt, ctx,
+                    parent_node_id=this_nid,
+                    sibling_index=sib_idx,
+                )
                 if child_key is not None:
                     child_keys.append(child_key)
 
