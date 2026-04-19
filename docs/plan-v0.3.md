@@ -127,7 +127,7 @@ Writing a fixture at wireframe density surfaces what the grammar must allow to b
 | — M2d | Promote `nodes.corner_radius` into `element.visual` before `_emit_visual` shim | ✅ `27f81bf` | Superseded by M2e |
 | — M2-bug | Key side-car maps on `id(Node)` (grammar §2.3.1 allows cousin-eid collisions that broke duplicate-free M[] emission) | ✅ `138e622` | Critical correctness fix surfaced during M2 profiling |
 | — M2e | Switch visual source from `element.get("visual")` to `build_visual_from_db(raw_visual)` — the same helper baseline calls at figma.py:1314 | ✅ `4f1dc24` | Single change closed stroke_weight / cornerRadius / opacity / effects gaps; ratio 0.91 → 0.98 |
-| M3 | Script byte-parity on full 204 corpus | 🔲 | `tests/test_script_parity_option_b.py` (new) |
+| M3 | Script ratio-parity ≥ 0.95 on full 204 corpus | ✅ | `TestM1dPipelineHealth::test_full_corpus_ratio_parity`; 204/204 in [0.977, 0.997], median 0.989, zero crashes |
 | M4 | Pixel-parity via Figma sweep on full 204 corpus | 🔲 | `render_batch/sweep.py` on markup-native path reports 204/204 `is_parity=True` |
 | M5 | Upstream consumer migration — `dd/compose.py`, providers, verifier consume `L3Document` | 🔲 | — |
 | M6 | Atomic cutover PR — switch production to markup-native path; delete Option A code per `DEPRECATION.md` | 🔲 | Single commit; 204/204 on markup path required to land |

@@ -390,6 +390,84 @@ class TestM1dPipelineHealth:
             f"option_b={len(script_b)})"
         )
 
+    def test_full_corpus_ratio_parity(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """M3 gate: every app_screen in the Dank corpus produces an
+        Option B script within the 0.95–1.05 ratio band against
+        baseline. This scales the M1d 3-fixture gate to the full 204
+        corpus.
+
+        Current distribution (post M2 review integration): min 0.977,
+        max 0.997, median 0.989, mean 0.987 across 204 screens.
+        Failure surfaces as an `out_of_band` list showing the
+        worst-offending screens so regressions localize fast.
+        """
+        from dd.render_figma_ast import render_figma
+
+        screens = [
+            r[0] for r in db_conn.execute(
+                "SELECT id FROM screens "
+                "WHERE screen_type='app_screen' "
+                "ORDER BY id"
+            ).fetchall()
+        ]
+        out_of_band: list[tuple[int, float, int, int]] = []
+        crashes: list[tuple[int, str]] = []
+        for sid in screens:
+            try:
+                ir = generate_ir(
+                    db_conn, sid, semantic=True, filter_chrome=False,
+                )
+                visuals = query_screen_visuals(db_conn, sid)
+                script_a, _ = generate_figma_script(
+                    ir["spec"], db_visuals=visuals, ckr_built=True,
+                )
+                doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+                    compress_to_l3_with_maps(
+                        ir["spec"], db_conn, screen_id=sid,
+                    )
+                )
+                fonts = collect_fonts(ir["spec"], db_visuals=visuals)
+                script_b, _ = render_figma(
+                    doc, db_conn, nid_map,
+                    fonts=fonts,
+                    spec_key_map=spec_key_map,
+                    original_name_map=original_name_map,
+                    db_visuals=visuals, ckr_built=True,
+                    _spec_elements=ir["spec"]["elements"],
+                    _spec_tokens=ir["spec"].get("tokens", {}),
+                )
+                if not script_a:
+                    continue
+                ratio = len(script_b) / len(script_a)
+                if ratio < 0.95 or ratio > 1.05:
+                    out_of_band.append(
+                        (sid, ratio, len(script_a), len(script_b)),
+                    )
+            except Exception as e:
+                crashes.append(
+                    (sid, f"{type(e).__name__}: {str(e)[:120]}"),
+                )
+
+        if crashes:
+            details = "\n".join(
+                f"  sid={sid}: {err}" for sid, err in crashes[:10]
+            )
+            pytest.fail(
+                f"{len(crashes)}/{len(screens)} screens crashed:\n"
+                f"{details}"
+            )
+        if out_of_band:
+            details = "\n".join(
+                f"  sid={sid}: ratio={r:.3f} (A={a}B B={b}B)"
+                for sid, r, a, b in sorted(out_of_band)[:10]
+            )
+            pytest.fail(
+                f"{len(out_of_band)}/{len(screens)} screens out of "
+                f"[0.95, 1.05] band:\n{details}"
+            )
+
     @pytest.mark.parametrize("sid", REFERENCE_SCREENS)
     def test_root_eid_present_in_m_dict(
         self, db_conn: sqlite3.Connection, sid: int,
