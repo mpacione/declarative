@@ -469,10 +469,19 @@ def _run_classify(
     truncate: bool = False,
     since: int | None = None,
     limit: int | None = None,
+    three_source: bool = False,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
+
+    if three_source:
+        # Three-source mode requires both the LLM and vision stages —
+        # vision PS + CS classify the LLM's candidate set. Flip both
+        # flags on so downstream wiring (client + fetch_screenshot)
+        # follows the same path it would take with --llm --vision.
+        use_llm = True
+        use_vision = True
 
     from dd.catalog import seed_catalog
     from dd.classify import run_classification, truncate_classifications
@@ -527,6 +536,8 @@ def _run_classify(
                 f"vision={v['validated']} "
                 f"(✓{v['agreed']}/✗{v['disagreed']})"
             )
+        if three_source and "vision_ps" in per_screen:
+            parts.append(f"ps={per_screen['vision_ps']}")
         print(" ".join(parts), flush=True)
 
     result = run_classification(
@@ -537,6 +548,7 @@ def _run_classify(
         since_screen_id=since,
         limit=limit,
         progress_callback=_progress,
+        three_source=three_source,
     )
     conn.close()
 
@@ -547,9 +559,17 @@ def _run_classify(
     if use_llm:
         print(f"  LLM classified:        {result['llm_classified']}")
     print(f"  Parent links:          {result['parent_links']}")
-    if use_vision:
+    if use_vision and not three_source:
         v = result["vision"]
         print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
+    if three_source:
+        print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
+        print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
+        consensus = result.get("consensus") or {}
+        if consensus:
+            print(f"  Consensus breakdown:")
+            for method in sorted(consensus.keys()):
+                print(f"    {method:<28} {consensus[method]}")
     print(f"  Skeletons generated:   {result['skeletons_generated']}")
 
 
@@ -1246,6 +1266,19 @@ def main(argv: list | None = None) -> None:
             "committing token budget to the full corpus)."
         ),
     )
+    classify_parser.add_argument(
+        "--three-source", action="store_true",
+        help=(
+            "Run the three-source cascade (M7.0.a): formal/heuristic/"
+            "LLM produce the primary verdict, then vision per-screen "
+            "(PS) and vision cross-screen (CS) run on the same LLM "
+            "candidate set, then consensus rule v1 votes. All three "
+            "verdicts are persisted; canonical_type becomes the "
+            "computed consensus. Implies --llm + --vision (both are "
+            "required to produce the three sources). Budget: ~$35 "
+            "on the full 204-screen Dank corpus."
+        ),
+    )
 
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
@@ -1388,6 +1421,7 @@ def main(argv: list | None = None) -> None:
             truncate=args.truncate,
             since=args.since,
             limit=args.limit,
+            three_source=args.three_source,
         )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)

@@ -1147,6 +1147,69 @@ class TestClassifyCLI:
         conn = sqlite3.connect(db_path)
         cursor = conn.execute("SELECT COUNT(*) FROM screen_component_instances")
         assert cursor.fetchone()[0] > 0
+
+    def test_three_source_flag_forwards_to_orchestrator(
+        self, tmp_path, monkeypatch,
+    ):
+        """`--three-source` passes through `_run_classify` into
+        `run_classification(three_source=True)`.
+        """
+        db_path = str(tmp_path / "three_source.declarative.db")
+        conn = init_db(db_path)
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) "
+            "VALUES (1, 'fk', 'F')"
+        )
+        conn.commit()
+        conn.close()
+
+        captured: dict = {}
+
+        def fake_run_classification(*args, **kwargs):
+            captured.update(kwargs)
+            return {
+                "screens_processed": 0,
+                "formal_classified": 0,
+                "heuristic_classified": 0,
+                "llm_classified": 0,
+                "parent_links": 0,
+                "vision": {"validated": 0, "agreed": 0, "disagreed": 0},
+                "skeletons_generated": 0,
+                "vision_ps_applied": 0,
+                "vision_cs_applied": 0,
+                "consensus": {},
+            }
+
+        import dd.classify as classify_mod
+        monkeypatch.setattr(
+            classify_mod, "run_classification", fake_run_classification,
+        )
+
+        # Patch the Anthropic client + screenshot fetcher so the CLI
+        # doesn't actually try to hit a live API.
+        import dd.cli as cli_mod
+
+        class _FakeAnthropic:
+            def __init__(self, *a, **k): ...
+
+        import types
+        fake_anthropic = types.SimpleNamespace(Anthropic=_FakeAnthropic)
+        monkeypatch.setitem(
+            __import__("sys").modules, "anthropic", fake_anthropic,
+        )
+        monkeypatch.setattr(
+            cli_mod, "make_figma_screenshot_fetcher",
+            lambda *a, **k: (lambda *x, **y: None),
+        )
+
+        from dd.cli import main
+        main([
+            "classify", "--db", db_path,
+            "--llm", "--vision", "--three-source",
+        ])
+
+        assert captured.get("three_source") is True
         conn.close()
 
 
