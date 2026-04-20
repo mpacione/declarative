@@ -23,6 +23,7 @@ from dd.classify_review import (
     fetch_flagged_rows,
     format_figma_deep_link,
     record_review_decision,
+    render_review_index_html,
     run_review_tui,
 )
 from dd.db import init_db
@@ -348,6 +349,102 @@ class TestRunReviewTUI:
 # ---------------------------------------------------------------------------
 # detect_terminal_image_support
 # ---------------------------------------------------------------------------
+
+class TestRenderReviewIndexHTML:
+    """The HTML companion dumps every flagged row as a card the user
+    scrolls through while driving the CLI TUI. Self-contained (inline
+    CSS, base64-embedded screenshots), no external resources — the
+    user opens it in a browser and it works offline.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        _seed_flagged_row(conn, sci_id=1, node_id=10)
+        _seed_flagged_row(conn, sci_id=2, node_id=11)
+        yield conn
+        conn.close()
+
+    def test_contains_basic_html_scaffolding(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        html = render_review_index_html(db, file_key="fk")
+        assert "<!doctype html>" in html.lower()
+        assert "<html" in html
+        assert "</html>" in html
+        assert "<style" in html
+        assert "M7.0.a" in html or "review" in html.lower()
+
+    def test_emits_one_card_per_flagged_row(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        html = render_review_index_html(db, file_key="fk")
+        # Each row gets a `class="review-card"` wrapper. Count the
+        # occurrences — 2 rows seeded.
+        assert html.count('class="review-card"') == 2
+
+    def test_cards_include_all_three_source_types_and_reasons(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        html = render_review_index_html(db, file_key="fk")
+        # seed_flagged_row uses: button / card / container + reasons.
+        assert "button" in html
+        assert "card" in html
+        assert "container" in html
+        assert "Rounded rectangle" in html
+        assert "Bounded rectangular" in html
+        assert "Structural grouping" in html
+
+    def test_includes_figma_deep_link_per_row(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        html = render_review_index_html(db, file_key="my-file-key")
+        assert "figma://file/my-file-key" in html
+        assert html.count("figma://file/my-file-key") >= 2
+
+    def test_screen_filter(self, db: sqlite3.Connection):
+        # Add a row on screen 2 so we can verify filtering works.
+        _seed_flagged_row(db, sci_id=3, screen_id=2, node_id=20)
+        html_all = render_review_index_html(db, file_key="fk")
+        html_one = render_review_index_html(
+            db, file_key="fk", screen_id=1,
+        )
+        assert html_all.count('class="review-card"') == 3
+        assert html_one.count('class="review-card"') == 2
+
+    def test_embeds_screenshots_as_data_uri_when_fetcher_provided(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        # Minimal PNG bytes.
+        import base64
+        tiny_png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+            "AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+
+        def fetch(file_key, figma_node_id):
+            return tiny_png
+
+        html = render_review_index_html(
+            db, file_key="fk", fetch_screenshot=fetch,
+        )
+        # Data URI shape: data:image/png;base64,...
+        assert "data:image/png;base64," in html
+        assert html.count("data:image/png;base64,") == 2
+
+    def test_missing_screenshot_doesnt_crash(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        def fetch(*a, **kw):
+            return None
+        html = render_review_index_html(
+            db, file_key="fk", fetch_screenshot=fetch,
+        )
+        # Still two cards; just no <img src="data:...">.
+        assert html.count('class="review-card"') == 2
+        assert "data:image/png;base64," not in html
+
 
 class TestDetectTerminalImageSupport:
     """Inline-image escape support is detected from environment vars.

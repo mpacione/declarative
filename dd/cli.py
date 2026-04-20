@@ -629,6 +629,59 @@ def _run_classify_review(
         print(f"  {decision_type:<15} {count}")
 
 
+def _run_classify_review_index(
+    db_path: str,
+    *,
+    out: str,
+    screen_id: int | None = None,
+    limit: int | None = None,
+    no_screenshots: bool = False,
+) -> None:
+    """Render the static HTML companion page.
+
+    Opens alongside `dd classify-review` — the terminal drives
+    decisions, the browser shows the visual context.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_review import render_review_index_html
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_screenshots:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            print(
+                f"  (screenshots disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    html_output = render_review_index_html(
+        conn,
+        file_key=file_key,
+        screen_id=screen_id,
+        limit=limit,
+        fetch_screenshot=fetch_screenshot,
+    )
+    conn.close()
+
+    out_path = Path(out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html_output, encoding="utf-8")
+    print(f"Wrote review index: {out_path}")
+
+
 def make_figma_screenshot_fetcher(
     session=None,
     token: str | None = None,
@@ -1363,6 +1416,40 @@ def main(argv: list | None = None) -> None:
         ),
     )
 
+    classify_review_index_parser = subparsers.add_parser(
+        "classify-review-index",
+        help=(
+            "Dump a scrollable HTML companion page listing every "
+            "flagged row with screenshot + three-source verdicts + "
+            "Figma deep-link. Self-contained; open in a browser "
+            "while driving classify-review in the terminal."
+        ),
+    )
+    classify_review_index_parser.add_argument("--db", help="Database path")
+    classify_review_index_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to render (defaults to all flagged screens)",
+    )
+    classify_review_index_parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Stop after N rows",
+    )
+    classify_review_index_parser.add_argument(
+        "--out", default="render_batch/m7_review_index.html",
+        help=(
+            "Output HTML path (default: "
+            "render_batch/m7_review_index.html)."
+        ),
+    )
+    classify_review_index_parser.add_argument(
+        "--no-screenshots", action="store_true",
+        help=(
+            "Skip fetching node screenshots — faster, but no visual "
+            "context. Useful for offline triage or when Figma REST "
+            "is rate-limited."
+        ),
+    )
+
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
     ir_parser.add_argument("--screen", required=True, help="Screen ID or 'all'")
@@ -1513,6 +1600,15 @@ def main(argv: list | None = None) -> None:
             screen_id=args.screen,
             limit=args.limit,
             no_preview=args.no_preview,
+        )
+    elif args.command == "classify-review-index":
+        db_path = detect_db_path(args.db)
+        _run_classify_review_index(
+            db_path,
+            out=args.out,
+            screen_id=args.screen,
+            limit=args.limit,
+            no_screenshots=args.no_screenshots,
         )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)

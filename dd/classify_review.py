@@ -23,6 +23,8 @@ callables so test cases drive it with a deterministic input queue.
 
 from __future__ import annotations
 
+import base64
+import html
 import os
 import sqlite3
 import subprocess
@@ -351,3 +353,171 @@ def run_review_tui(
             continue
 
     return summary
+
+
+# ---------------------------------------------------------------------------
+# HTML companion (static review index)
+# ---------------------------------------------------------------------------
+
+
+_HTML_CSS = """
+body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+       background: #f8f9fa; margin: 0; padding: 24px; color: #1f2937; }
+h1 { font-size: 20px; margin-bottom: 4px; }
+.summary { color: #6b7280; margin-bottom: 24px; }
+.review-card { background: white; border: 1px solid #e5e7eb;
+               border-radius: 8px; margin-bottom: 16px; padding: 16px;
+               display: grid; grid-template-columns: 280px 1fr;
+               gap: 16px; align-items: start; }
+.review-card img { max-width: 280px; max-height: 280px; border-radius: 4px;
+                   background: #f3f4f6; }
+.review-card .no-preview { width: 280px; height: 160px; background: #f3f4f6;
+                           border-radius: 4px; display: flex;
+                           align-items: center; justify-content: center;
+                           color: #9ca3af; font-size: 12px; }
+.meta { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+.meta code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+.sources { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+           margin: 12px 0; }
+.source { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px;
+          background: #fafafa; }
+.source .label { font-weight: 600; color: #4b5563; font-size: 11px;
+                 text-transform: uppercase; letter-spacing: 0.05em; }
+.source .type { font-size: 16px; font-weight: 600; margin: 4px 0; }
+.source .confidence { color: #6b7280; font-size: 11px; }
+.source .reason { margin-top: 6px; color: #374151; font-size: 12px; }
+.actions { margin-top: 8px; font-size: 12px; }
+.actions a { color: #2563eb; text-decoration: none; }
+.actions a:hover { text-decoration: underline; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
+         background: #fef3c7; color: #92400e; font-size: 11px; }
+"""
+
+
+def _source_card(
+    label: str,
+    ctype: str | None,
+    confidence: float | None,
+    reason: str | None,
+) -> str:
+    ctype = ctype if ctype is not None else "—"
+    conf = f"{confidence:.2f}" if confidence is not None else "—"
+    reason_html = (
+        f'<div class="reason">{html.escape(reason)}</div>'
+        if reason else ""
+    )
+    return (
+        f'<div class="source">'
+        f'<div class="label">{label}</div>'
+        f'<div class="type">{html.escape(ctype)}</div>'
+        f'<div class="confidence">confidence: {conf}</div>'
+        f'{reason_html}'
+        f'</div>'
+    )
+
+
+def _preview_block(
+    fetch_screenshot: Callable | None,
+    file_key: str,
+    figma_node_id: str,
+) -> str:
+    if fetch_screenshot is None:
+        return '<div class="no-preview">(preview disabled)</div>'
+    try:
+        data = fetch_screenshot(file_key, figma_node_id)
+    except Exception:
+        return '<div class="no-preview">(fetch failed)</div>'
+    if not isinstance(data, (bytes, bytearray)):
+        return '<div class="no-preview">(no screenshot)</div>'
+    b64 = base64.b64encode(bytes(data)).decode("ascii")
+    return f'<img src="data:image/png;base64,{b64}" alt="screenshot" />'
+
+
+def _row_card(
+    row: dict[str, Any],
+    file_key: str,
+    fetch_screenshot: Callable | None,
+) -> str:
+    preview = _preview_block(
+        fetch_screenshot, file_key, row["figma_node_id"]
+    )
+    sources = (
+        _source_card(
+            "LLM", row["llm_type"],
+            row["llm_confidence"], row["llm_reason"],
+        )
+        + _source_card(
+            "Vision PS", row["vision_ps_type"],
+            row["vision_ps_confidence"], row["vision_ps_reason"],
+        )
+        + _source_card(
+            "Vision CS", row["vision_cs_type"],
+            row["vision_cs_confidence"], row["vision_cs_reason"],
+        )
+    )
+    deep_link = format_figma_deep_link(file_key, row["figma_node_id"])
+    return (
+        f'<div class="review-card">'
+        f'<div>{preview}</div>'
+        f'<div>'
+        f'<div class="meta">'
+        f'<span class="badge">{html.escape(row["consensus_method"] or "unknown")}</span> '
+        f'sci_id=<code>{row["sci_id"]}</code> '
+        f'screen=<code>{row["screen_id"]}</code> '
+        f'({html.escape(row["screen_name"] or "")}) '
+        f'node=<code>{html.escape(row["figma_node_id"])}</code> '
+        f'name=<code>{html.escape(row["node_name"] or "")}</code>'
+        f'</div>'
+        f'<div class="sources">{sources}</div>'
+        f'<div class="actions">'
+        f'<a href="{html.escape(deep_link)}">Open in Figma Desktop</a>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def render_review_index_html(
+    conn: sqlite3.Connection,
+    *,
+    file_key: str,
+    screen_id: int | None = None,
+    limit: int | None = None,
+    fetch_screenshot: Callable | None = None,
+) -> str:
+    """Render an HTML page listing every flagged row as a card with
+    screenshot + three-source verdicts + Figma deep-link.
+
+    Self-contained: inline CSS, base64 data URI screenshots, no JS
+    dependencies. Caller typically writes the output to
+    `render_batch/m7_review_index.html` and opens it in a browser
+    while driving the CLI TUI.
+    """
+    rows = fetch_flagged_rows(
+        conn, screen_id=screen_id, limit=limit,
+    )
+    cards = "\n".join(
+        _row_card(r, file_key, fetch_screenshot) for r in rows
+    )
+    header = (
+        f"<h1>M7.0.a classification review index</h1>"
+        f'<div class="summary">'
+        f'{len(rows)} flagged row(s). '
+        f'Drive decisions via <code>dd classify-review</code>; '
+        f'this page is the scrollable visual companion.'
+        f'</div>'
+    )
+    return (
+        f"<!doctype html>\n"
+        f"<html lang=\"en\">\n"
+        f"<head>\n"
+        f"<meta charset=\"utf-8\" />\n"
+        f"<title>M7.0.a review — {html.escape(file_key)}</title>\n"
+        f"<style>{_HTML_CSS}</style>\n"
+        f"</head>\n"
+        f"<body>\n"
+        f"{header}\n"
+        f"{cards}\n"
+        f"</body>\n"
+        f"</html>\n"
+    )
