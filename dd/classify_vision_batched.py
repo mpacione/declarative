@@ -195,9 +195,8 @@ def build_batched_vision_prompt(
 
 You are seeing {n} screens from the same design system grouped by device class and skeleton type. Use them together:
 
-- If the same visual element appears on multiple screens (e.g., a shared header pattern), classify it consistently across them and cite `cross_screen_evidence` with `relation="same_component"` or `"same_variant_family"`.
-- If the same *slot* hosts visually different elements across screens (a CTA that's primary on one screen and secondary on another), cite with `relation="contrasting_variant"` or `"structural_analogue"`.
-- If a node looks inconsistent with the rest of the batch — different style, unusual layout — cite with `relation="outlier"` and lower the confidence.
+- **Cross-screen signal REINFORCES a specific classification, it does NOT downgrade.** If a header pattern appears on multiple screens, that confirms `header` — not `container`. Cross-screen similarity is evidence FOR specificity, not against it.
+- Cite `cross_screen_evidence` with `relation="same_component"` / `"same_variant_family"` for shared patterns, `"contrasting_variant"` / `"structural_analogue"` for parallel slots filled differently, `"outlier"` for nodes inconsistent with the rest (and lower confidence in that case).
 - Cross-screen evidence is **optional**. Leave the array empty when nothing in other screens clarifies this classification.
 """.format(n=len(batch))
 
@@ -214,10 +213,23 @@ Use the behavioral description to disambiguate. The UI component that matches th
 
 ## Rules
 
-1. **Pick one canonical type per node** from the list above. `container` and `unsure` are valid but prefer a specific type when evidence supports it.
-2. **Confidence is calibrated.** 0.95+ = unambiguous. 0.85–0.94 = strong signal + minor ambiguity. 0.70–0.84 = real evidence but a plausible alternative. Below 0.70 → prefer `unsure`.
-3. **Reasons are evidence-based.** Cite visual signals (shape, content, affordances) AND any structural context from the node description (parent type, sample text, layout). "Looks like a button" is bad; "Rounded rectangle with centered 'Sign in' label, sits in a form-like vertical stack under text inputs" is good.
-4. **Every (screen_id, node_id) in the input must appear in the output exactly once.** {n_classifications_expected} nodes total across the batch.{cross_rules}
+1. **Pick one canonical type per node.** `container` and `unsure` are valid but prefer a specific type when evidence supports it.
+
+2. **Confidence is calibrated.**
+   - **0.95+** — unambiguous (visual + structural both point to one type).
+   - **0.85–0.94** — strong signal + minor alternative.
+   - **0.75–0.84** — real evidence + plausible alternative. Use the specific type at this band.
+   - **Below 0.75** — **prefer `unsure`** with a reason rather than a low-confidence specific type. Hedging with "container at 0.70" loses more information than an honest `unsure`.
+
+3. **Don't regress to `container` when a specific type has evidence.** `container` is for *truly generic layout frames with no identity signals*. If the node has ANY specific signal (distinctive name, characteristic children, sample text, known pattern, distinctive visual affordance in the screenshot), classify it specifically. A `button_group` is more useful downstream than a `container` with 3 button children. Visual evidence from the screenshot ALWAYS trumps structural ambiguity.
+
+4. **Empty-frame grid pattern.** Multiple identical frames (same size, same parent, no children, no text) arranged in a grid → `skeleton` (loading placeholder). Only call it `image` when the frame visibly contains image content in the screenshot.
+
+5. **Decorative-child pattern.** A small frame with N identical decorative children (3 ellipses → grabber/dots, 2 chevrons → toggle indicator) is typically a single semantic `icon`, not a `container` of N independent things. Use the screenshot to confirm the glyph-like appearance.
+
+6. **Reasons are evidence-based.** Cite visual signals (shape, content, affordances) AND structural context (parent, sample text, layout, child count). "Structural grouping of controls" is a weak reason — if the children are all buttons in the screenshot, say `button_group` and cite the buttons.
+
+7. **Every (screen_id, node_id) in the input must appear in the output exactly once.** {n_classifications_expected} nodes total across the batch.{cross_rules}
 
 ## Screens + nodes to classify
 
