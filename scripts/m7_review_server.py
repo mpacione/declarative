@@ -451,6 +451,7 @@ def _render_index(rows: list[dict[str, Any]], catalog: list[str]) -> str:
     color: #16a34a; font-weight: 600; font-size: 13px;
   }}
   .review-card.done .saved-badge {{ display: inline; }}
+  .review-card.novel .saved-badge {{ color: #7c3aed; font-size: 12px; }}
   .badge {{
     display: inline-block; padding: 2px 8px; border-radius: 10px;
     background: #fef3c7; color: #92400e; font-size: 11px;
@@ -491,47 +492,27 @@ function sciIdsFor(card) {{
   catch (e) {{ return [parseInt(card.dataset.sci, 10)]; }}
 }}
 
-function update(card, decisionType, sourceAccepted, canonicalType, notes, acceptNew) {{
+function update(card, decisionType, sourceAccepted, canonicalType, notes) {{
   const sciIds = sciIdsFor(card);
   const body = {{sci_ids: sciIds, decision_type: decisionType}};
   if (sourceAccepted) body.source_accepted = sourceAccepted;
   if (canonicalType) body.decision_canonical_type = canonicalType;
   if (notes) body.notes = notes;
-  if (acceptNew) body.accept_new = true;
   return fetch('/api/review', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify(body),
-  }}).then(async r => {{
-    const res = await r.json();
-    // 409: novel type — not in the catalog. May or may not have
-    // close matches.
-    if (r.status === 409 && res.error === 'novel_type') {{
-      const typed = res.typed;
-      const suggestions = res.suggestions || [];
-      let msg;
-      if (suggestions.length > 0) {{
-        msg = `"${{typed}}" isn't in the catalog.\n\n`
-            + `Did you mean: ${{suggestions.join(', ')}}?\n\n`
-            + `OK → use "${{suggestions[0]}}"\n`
-            + `Cancel → create new "${{typed}}"`;
-      }} else {{
-        msg = `"${{typed}}" isn't in the catalog.\n\n`
-            + `No close matches found.\n\n`
-            + `OK → create new "${{typed}}" (logged for review)\n`
-            + `Cancel → abort and pick from catalog`;
-      }}
-      const picked = confirm(msg);
-      if (picked && suggestions.length > 0) {{
-        return update(card, decisionType, sourceAccepted, suggestions[0], notes, false);
-      }} else if (picked) {{
-        return update(card, decisionType, sourceAccepted, typed, notes, true);
-      }}
-      // Cancel: no save.
-      return;
-    }}
+  }}).then(r => r.json()).then(res => {{
     if (res.ok) {{
       card.classList.add('done');
+      if (res.is_novel) {{
+        card.classList.add('novel');
+        const badge = card.querySelector('.saved-badge');
+        if (badge) {{
+          const sim = (res.similar_existing || []).join(', ');
+          badge.textContent = '✨ saved (new type' + (sim ? ` — similar: ${{sim}}` : '') + ')';
+        }}
+      }}
       done += sciIds.length;
       document.getElementById('progress-done').textContent = done;
     }} else {{
@@ -751,48 +732,39 @@ class _Handler(BaseHTTPRequestHandler):
         # of `list_item`. Pattern: difflib.get_close_matches cutoff
         # 0.7 per the annotation-tooling research (Unilexicon,
         # Smartlogic, PoolParty all use this shape).
-        if decision_type == "override" and not body.get("accept_new"):
+        # Vocabulary-drift tracking: novel override types get logged
+        # for periodic catalog review. No interruption — the datalist
+        # on the input already shows existing types as a pre-emptive
+        # suggestion while typing; if the reviewer commits anyway,
+        # trust them. Client gets back `is_novel: true` in the
+        # response so the UI can mark the card visually.
+        is_novel = False
+        similar_existing: list[str] = []
+        if (
+            decision_type == "override"
+            and isinstance(canonical_type, str)
+        ):
             conn = get_connection(DB_PATH)
             catalog = _load_catalog_types(conn)
             conn.close()
-            if (
-                isinstance(canonical_type, str)
-                and canonical_type not in catalog
-            ):
-                # Novel type — always warn. Offer close matches when
-                # difflib finds any (cutoff 0.5 catches kebab-vs-snake
-                # patterns like `list-row` ↔ `list_item`; higher
-                # cutoffs miss these even though token overlap is 50%).
+            if canonical_type not in catalog:
+                is_novel = True
                 import difflib
-                matches = difflib.get_close_matches(
+                similar_existing = difflib.get_close_matches(
                     canonical_type, catalog, n=3, cutoff=0.5,
                 )
-                self._send_json(409, {
-                    "ok": False,
-                    "error": "novel_type",
-                    "typed": canonical_type,
-                    "suggestions": matches,  # may be empty
-                })
-                return
-
-        # If accepting a novel type (no catalog match + accept_new=true),
-        # log it for periodic catalog review.
-        if (
-            decision_type == "override"
-            and body.get("accept_new")
-            and isinstance(canonical_type, str)
-        ):
-            try:
-                with open(
-                    "render_batch/proposed_types.jsonl", "a",
-                ) as f:
-                    f.write(json.dumps({
-                        "typed": canonical_type,
-                        "sci_ids": sci_ids,
-                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    }) + "\n")
-            except Exception:
-                pass
+                try:
+                    with open(
+                        "render_batch/proposed_types.jsonl", "a",
+                    ) as f:
+                        f.write(json.dumps({
+                            "typed": canonical_type,
+                            "sci_ids": sci_ids,
+                            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "similar_existing": similar_existing,
+                        }) + "\n")
+                except Exception:
+                    pass
 
         try:
             conn = get_connection(DB_PATH)
@@ -812,7 +784,12 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self._send_json(500, {"ok": False, "error": str(e)})
             return
-        self._send_json(200, {"ok": True, "applied": len(sci_ids)})
+        self._send_json(200, {
+            "ok": True,
+            "applied": len(sci_ids),
+            "is_novel": is_novel,
+            "similar_existing": similar_existing,
+        })
 
 
 def main(argv: list[str] | None = None) -> int:
