@@ -470,16 +470,16 @@ def _run_classify(
     since: int | None = None,
     limit: int | None = None,
     three_source: bool = False,
+    classifier_v2: bool = False,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    if three_source:
-        # Three-source mode requires both the LLM and vision stages —
-        # vision PS + CS classify the LLM's candidate set. Flip both
-        # flags on so downstream wiring (client + fetch_screenshot)
-        # follows the same path it would take with --llm --vision.
+    if three_source or classifier_v2:
+        # Both three-source and classifier-v2 require both LLM +
+        # vision stages. Flip both flags so downstream wiring
+        # (client + fetch_screenshot) follows the normal path.
         use_llm = True
         use_vision = True
 
@@ -540,16 +540,27 @@ def _run_classify(
             parts.append(f"ps={per_screen['vision_ps']}")
         print(" ".join(parts), flush=True)
 
-    result = run_classification(
-        conn, file_id,
-        client=client,
-        file_key=file_key if use_vision else None,
-        fetch_screenshot=fetch_screenshot,
-        since_screen_id=since,
-        limit=limit,
-        progress_callback=_progress,
-        three_source=three_source,
-    )
+    if classifier_v2:
+        from dd.classify_v2 import run_classification_v2
+        result = run_classification_v2(
+            conn, file_id,
+            client=client,
+            file_key=file_key,
+            fetch_screenshot=fetch_screenshot,
+            since_screen_id=since,
+            limit=limit,
+        )
+    else:
+        result = run_classification(
+            conn, file_id,
+            client=client,
+            file_key=file_key if use_vision else None,
+            fetch_screenshot=fetch_screenshot,
+            since_screen_id=since,
+            limit=limit,
+            progress_callback=_progress,
+            three_source=three_source,
+        )
     conn.close()
 
     print("\nClassification complete:")
@@ -563,6 +574,17 @@ def _run_classify(
         v = result["vision"]
         print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
     if three_source:
+        print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
+        print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
+        consensus = result.get("consensus") or {}
+        if consensus:
+            print(f"  Consensus breakdown:")
+            for method in sorted(consensus.keys()):
+                print(f"    {method:<28} {consensus[method]}")
+    if classifier_v2:
+        print(f"  Dedup candidates:      {result.get('dedup_candidates', 0)}")
+        print(f"  Dedup groups:          {result.get('dedup_groups', 0)}")
+        print(f"  LLM inserts:           {result.get('llm_inserts', 0)}")
         print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
         print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
         consensus = result.get("consensus") or {}
@@ -1438,6 +1460,17 @@ def main(argv: list | None = None) -> None:
             "on the full 204-screen Dank corpus."
         ),
     )
+    classify_parser.add_argument(
+        "--classifier-v2", action="store_true",
+        help=(
+            "Classifier v2 (M7.0.a step 11): corpus-wide dedup by "
+            "structural signature + full-screen node filter + per-"
+            "node spotlight crops to the vision model. Expected "
+            "5-8x fewer API calls, higher accuracy on small-bbox "
+            "nodes. Implies --llm + --vision. See "
+            "docs/plan-classifier-v2.md."
+        ),
+    )
 
     classify_review_parser = subparsers.add_parser(
         "classify-review",
@@ -1674,6 +1707,7 @@ def main(argv: list | None = None) -> None:
             since=args.since,
             limit=args.limit,
             three_source=args.three_source,
+            classifier_v2=args.classifier_v2,
         )
     elif args.command == "classify-review":
         db_path = detect_db_path(args.db)
