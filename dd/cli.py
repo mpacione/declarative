@@ -573,6 +573,62 @@ def _run_classify(
     print(f"  Skeletons generated:   {result['skeletons_generated']}")
 
 
+def _run_classify_review(
+    db_path: str,
+    *,
+    screen_id: int | None = None,
+    limit: int | None = None,
+    no_preview: bool = False,
+) -> None:
+    """CLI entrypoint for the Tier 1.5 interactive review loop.
+
+    Walks flagged rows on the given screen (or all flagged screens
+    when no --screen is given), shows LLM/PS/CS verdicts + reasons +
+    Figma deep-link, and records the human decision into
+    `classification_reviews`.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_review import run_review_tui
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_preview:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            # Screenshot previews are optional — don't block review
+            # when Figma auth is misconfigured.
+            print(
+                f"  (preview disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    summary = run_review_tui(
+        conn,
+        file_key=file_key,
+        screen_id=screen_id,
+        limit=limit,
+        fetch_screenshot=fetch_screenshot,
+    )
+
+    conn.close()
+
+    print("\nReview complete:")
+    for decision_type, count in sorted(summary.items()):
+        print(f"  {decision_type:<15} {count}")
+
+
 def make_figma_screenshot_fetcher(
     session=None,
     token: str | None = None,
@@ -1280,6 +1336,33 @@ def main(argv: list | None = None) -> None:
         ),
     )
 
+    classify_review_parser = subparsers.add_parser(
+        "classify-review",
+        help=(
+            "Interactively review flagged classification rows "
+            "(M7.0.a Tier 1.5). Walks consensus-flagged rows on a "
+            "screen, shows LLM/PS/CS verdicts + reasons + Figma "
+            "deep-link, records the human decision."
+        ),
+    )
+    classify_review_parser.add_argument("--db", help="Database path")
+    classify_review_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to review (defaults to all flagged screens)",
+    )
+    classify_review_parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Stop after reviewing this many rows",
+    )
+    classify_review_parser.add_argument(
+        "--no-preview", action="store_true",
+        help=(
+            "Skip fetching + opening the local PNG preview. Useful "
+            "when Figma REST is rate-limited or when triaging "
+            "offline."
+        ),
+    )
+
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
     ir_parser.add_argument("--screen", required=True, help="Screen ID or 'all'")
@@ -1422,6 +1505,14 @@ def main(argv: list | None = None) -> None:
             since=args.since,
             limit=args.limit,
             three_source=args.three_source,
+        )
+    elif args.command == "classify-review":
+        db_path = detect_db_path(args.db)
+        _run_classify_review(
+            db_path,
+            screen_id=args.screen,
+            limit=args.limit,
+            no_preview=args.no_preview,
         )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
