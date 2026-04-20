@@ -542,6 +542,221 @@ def classify_batch(
     return results
 
 
+# ---------------------------------------------------------------------------
+# Classifier v2 — per-node crops batched into a single tool-use call.
+# ---------------------------------------------------------------------------
+# v1 sent one screen image + a list of (node_id, bbox) pairs, making
+# the vision model do visual attention mapping from a 1.6-megapixel
+# image to a 16×16 region. v2 sends one spotlighted crop per node
+# plus a compact text prompt; model just looks at each image.
+
+
+CLASSIFY_CROPS_TOOL_SCHEMA = {
+    "name": "classify_nodes_from_crops",
+    "description": (
+        "Return one classification entry per node. Each node is "
+        "shown as a cropped image with its bbox outlined in "
+        "magenta; the region outside the bbox is dimmed. Every "
+        "(screen_id, node_id) in the input must appear in the "
+        "output exactly once."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "classifications": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "screen_id": {"type": "integer"},
+                        "node_id": {"type": "integer"},
+                        "canonical_type": {"type": "string"},
+                        "confidence": {
+                            "type": "number",
+                            "minimum": 0.0, "maximum": 1.0,
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": (
+                                "One short sentence citing visual "
+                                "signals (shape, content, "
+                                "affordances in the cropped region) "
+                                "AND structural context (parent, "
+                                "siblings, sample text). Evidence-"
+                                "based; no speculation."
+                            ),
+                        },
+                    },
+                    "required": [
+                        "screen_id", "node_id", "canonical_type",
+                        "confidence", "reason",
+                    ],
+                },
+            },
+        },
+        "required": ["classifications"],
+    },
+}
+
+
+def _describe_candidate_compact(c: dict[str, Any]) -> str:
+    """Short one-line description paired with each crop in the prompt."""
+    parts = [
+        f"node_id={c['node_id']}",
+        f"screen_id={c['screen_id']}",
+        f'name="{c["name"]}"',
+        f"type={c['node_type']}",
+    ]
+    total = c.get("total_children")
+    if total:
+        dist = c.get("child_type_dist") or {}
+        parts.append(
+            f"children={total}"
+            f" ({', '.join(f'{k}:{v}' for k, v in dist.items())})"
+        )
+    if c.get("sample_text"):
+        t = str(c["sample_text"])[:60]
+        parts.append(f'sample_text="{t}"')
+    if c.get("parent_classified_as"):
+        parts.append(f"parent={c['parent_classified_as']}")
+    if c.get("ckr_registered_name"):
+        parts.append(f'component_key="{c["ckr_registered_name"]}"')
+    return "  - " + "; ".join(parts)
+
+
+def build_crops_batch_prompt(
+    candidates: list[dict[str, Any]],
+    catalog: list[dict[str, Any]],
+) -> str:
+    """Render the prompt for a batched-crops vision call.
+
+    Each candidate gets one image (the spotlight-cropped region) AND
+    one short text descriptor matched by `node_id`. The model looks
+    at the image + reads the descriptor + picks a canonical type.
+    """
+    catalog_block = _format_catalog_for_prompt(catalog)
+    node_descriptions = "\n".join(
+        _describe_candidate_compact(c) for c in candidates
+    )
+    n = len(candidates)
+    return f"""You are classifying UI nodes. Each node is shown as a spotlighted CROP — the target region is at full brightness with its bbox outlined in magenta; surrounding context is dimmed. Classify each node against a fixed catalog. This feeds a design-system compiler — accuracy matters, and "unsure" is a valid answer.
+
+## Canonical types (pick exactly one per node)
+
+Use the behavioral description to disambiguate. The UI component that matches the *function* shown in the cropped region wins, not one that merely looks similar.
+{catalog_block}
+
+## Rules
+
+1. **One canonical type per node.** `container` and `unsure` are valid; prefer a specific type when evidence supports it.
+
+2. **Confidence is calibrated.**
+   - **0.95+** — unambiguous.
+   - **0.85–0.94** — strong signal + minor alternative.
+   - **0.75–0.84** — real evidence + plausible alternative.
+   - **Below 0.75** — prefer `unsure` with a reason.
+
+3. **Trust the crop.** The bbox outline shows exactly what to classify. Surrounding dimmed context is for reference, not the target. Don't over-weight context.
+
+4. **Don't regress to `container` when specific evidence exists.** Distinctive name, characteristic glyph, sample text, known pattern → classify specifically.
+
+5. **Empty-frame grid → `skeleton`.** Decorative-child pattern (3 ellipses, 2 chevrons, 4 dots) → single `icon`.
+
+6. **Reasons are evidence-based.** Cite visual signals (shape, content, affordances in the crop) AND structural context (parent, sample text, layout, child count).
+
+7. **Every (screen_id, node_id) in the input must appear in the output exactly once.** {n} nodes total.
+
+## Nodes to classify
+
+Each node below is paired with ONE image block, in the same order.
+
+{node_descriptions}
+
+Return your classifications via the `classify_nodes_from_crops` tool."""
+
+
+def _extract_crops_classifications(response: Any) -> list[dict[str, Any]]:
+    """Pull the `classifications` array from a v2 tool-use response."""
+    if response is None or not getattr(response, "content", None):
+        return []
+    for block in response.content:
+        if getattr(block, "type", None) != "tool_use":
+            continue
+        if getattr(block, "name", None) != CLASSIFY_CROPS_TOOL_SCHEMA["name"]:
+            continue
+        inp = getattr(block, "input", None)
+        if isinstance(inp, dict):
+            classifications = inp.get("classifications")
+            if isinstance(classifications, list):
+                return [c for c in classifications if isinstance(c, dict)]
+        return []
+    return []
+
+
+def classify_crops_batch(
+    candidates: list[dict[str, Any]],
+    crops: dict[tuple[int, int], bytes],
+    client: Any,
+    *,
+    catalog: Optional[list[dict[str, Any]]] = None,
+    model: str = DEFAULT_MODEL,
+    max_tokens: int = 32768,
+) -> list[dict[str, Any]]:
+    """Classify a batch of pre-cropped nodes via a single tool-use call.
+
+    ``candidates`` is a list of node dicts (from
+    ``_fetch_unclassified_for_screen`` + screen_id merged). ``crops``
+    maps ``(screen_id, node_id)`` to PNG bytes. Candidates without a
+    crop are skipped (caller should log).
+
+    Returns the raw list of classification dicts. Caller attaches
+    them back to the sci rows via screen_id + node_id.
+    """
+    if catalog is None:
+        catalog = []
+    # Keep only candidates with a matching crop.
+    paired: list[tuple[dict[str, Any], bytes]] = []
+    for c in candidates:
+        key = (c["screen_id"], c["node_id"])
+        img_bytes = crops.get(key)
+        if img_bytes is not None:
+            paired.append((c, img_bytes))
+    if not paired:
+        return []
+
+    prompt = build_crops_batch_prompt([c for c, _ in paired], catalog)
+
+    # Content list: one image content block per candidate, then the
+    # text prompt. Anthropic's messages API accepts any interleaving;
+    # we put images first (order-correlated with the node descriptors
+    # in the prompt) then text last.
+    content: list[dict[str, Any]] = []
+    for _, img_bytes in paired:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.b64encode(img_bytes).decode("utf-8"),
+            },
+        })
+    content.append({"type": "text", "text": prompt})
+
+    with client.messages.stream(
+        model=model,
+        max_tokens=max_tokens,
+        tools=[CLASSIFY_CROPS_TOOL_SCHEMA],
+        tool_choice={
+            "type": "tool",
+            "name": CLASSIFY_CROPS_TOOL_SCHEMA["name"],
+        },
+        messages=[{"role": "user", "content": content}],
+    ) as stream:
+        response = stream.get_final_message()
+
+    return _extract_crops_classifications(response)
+
+
 def group_screens_by_skeleton_and_device(
     conn: sqlite3.Connection,
     screen_ids: list[int],
