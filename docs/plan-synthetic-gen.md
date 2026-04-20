@@ -279,18 +279,78 @@ Shipped commits, in order:
 2. `7c5da22` — LLM + vision stages rewritten with tool-use
 3. `46dee2d` — truncate + since-resume + progress_callback
 4. `18f6b12` — `--limit` flag + `classification_reason` persistence
-5. `c-vision-batch` (pending commit) — cross-screen batched vision + bake-off infrastructure
+5. `4e9d293` — cross-screen batched vision + bake-off infrastructure + dry-run reports
 6. `b083243` — prompt tightening v1 + bake-off v2 results
+7. `a2820fa` — M7.0.a decisions captured in this section
 
-Infrastructure NOT yet built:
+Infrastructure NOT yet built (pending next session):
 - Migration 012 (three-source storage columns + `classification_reviews` table)
 - Orchestrator update (run all three sources per screen)
 - Consensus computation (rule v1)
-- `dd classify-review` CLI
+- `dd classify-review` CLI (Tier 1.5 TUI + visual refs)
 - `dd classify-review-index` HTML companion
 - `dd classify-audit` spot-check
 
 Full-corpus 204-screen run: pending the above.
+
+### 5.1.b Next-session M7.0.a build plan (TDD, concrete steps)
+
+Step-by-step execution plan for the next session. Assume a fresh Claude session starts here; each step is independently testable and commits cleanly.
+
+**Step 1 — Migration 012 (schema extension).** File: `migrations/012_three_source_classification.sql`. Adds to `screen_component_instances`:
+
+```sql
+ALTER TABLE screen_component_instances ADD COLUMN vision_ps_type TEXT;
+ALTER TABLE screen_component_instances ADD COLUMN vision_ps_confidence REAL;
+ALTER TABLE screen_component_instances ADD COLUMN vision_ps_reason TEXT;
+ALTER TABLE screen_component_instances ADD COLUMN vision_cs_type TEXT;
+ALTER TABLE screen_component_instances ADD COLUMN vision_cs_confidence REAL;
+ALTER TABLE screen_component_instances ADD COLUMN vision_cs_reason TEXT;
+ALTER TABLE screen_component_instances ADD COLUMN vision_cs_evidence_json TEXT;
+ALTER TABLE screen_component_instances ADD COLUMN consensus_method TEXT;
+```
+
+Creates `classification_reviews` table:
+
+```sql
+CREATE TABLE IF NOT EXISTS classification_reviews (
+  id INTEGER PRIMARY KEY,
+  sci_id INTEGER NOT NULL REFERENCES screen_component_instances(id) ON DELETE CASCADE,
+  decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  decided_by TEXT NOT NULL DEFAULT 'human',
+  decision_type TEXT NOT NULL CHECK(decision_type IN ('accept_source','override','unsure','skip')),
+  decision_canonical_type TEXT,
+  source_accepted TEXT CHECK(source_accepted IN ('llm','vision_ps','vision_cs','formal','heuristic')),
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_sci ON classification_reviews(sci_id);
+```
+
+Update `schema.sql` to match. Apply to Dank DB. Tests: schema matches, reviews table constraints enforce.
+
+**Step 2 — Rename `classification_reason` → `llm_reason` (semantic clarification).** The column today holds the LLM's reason specifically. With per-source columns landing, rename to avoid ambiguity. Migration preserves data. Update `dd/classify_llm.py` insert + tests.
+
+**Step 3 — Consensus computation module (`dd/classify_consensus.py`).** Pure function: `compute_consensus(row: SCIRow) → (canonical_type, consensus_method)`. Rule v1 as in §5.1.a. Unit tests: every branch of the decision tree (3/3 agree, 2/3 agree, all differ, any `unsure`, any `None` for missing sources).
+
+**Step 4 — Three-source orchestrator update.** `dd/classify.py::run_classification` gains per-screen flow: formal → heuristic → LLM → vision_ps → vision_cs → compute_consensus → set canonical_type + consensus_method + flagged_for_review. Existing `classify_llm` writes to `llm_*` columns (not `canonical_type` directly). New helper `apply_vision_ps_results` + `apply_vision_cs_results`. Tests: full cascade on in-memory DB produces expected consensus + flag state.
+
+**Step 5 — CLI flags for three-source mode.** `dd classify --three-source` (or make it the default with `--single-source` as override). Integrates streaming + progress callback. Tests: CLI handler passes through to orchestrator.
+
+**Step 6 — `dd classify-review` CLI (Tier 1.5).** Interactive TUI. Walks flagged rows on a screen. Visual refs: Figma deep-link (printed URL) + local PNG (subprocess `open`) + inline terminal image (detect iTerm2/Kitty/Ghostty via `TERM_PROGRAM`). Records decisions in `classification_reviews`. Tests: record-and-rollback roundtrip; stubbed user input.
+
+**Step 7 — `dd classify-review-index` HTML.** Static HTML page per screen with screenshot cards + classifications. Tests: output is valid HTML; contains expected screen count; per-row cards visible.
+
+**Step 8 — `dd classify-audit` spot-check.** `--sample N` randomly samples N unflagged rows, prompts user same UX as review. Writes decisions to `classification_reviews` with `decision_type='audit'`. Tests: sampling is uniform, decisions recorded.
+
+**Step 9 — Full 204-screen cascade run.** Command: `.venv/bin/python3 -m dd classify --truncate --llm --vision --three-source`. Budget: ~$35 in tokens, ~30–60 min wall time. Produces all three source columns + consensus + flagged rows. Log per-screen progress.
+
+**Step 10 — Disagreement report.** `scripts/m7_disagreement_report.py` queries the DB, emits a markdown report: total flagged count, per-source-pair disagreement heat map, top-50 3-way-disagreement rows with all three reasons, cluster the flags by pattern (e.g., "cross-screen says container; LLM + PS say X"). This report is the input to rule v2 design.
+
+**Step 11 — Manual review sprint** (user-facing). Work through the `dd classify-review` queue across screens. Record overrides. Overrides become the canonical `canonical_type` via the consensus view's join against the latest review.
+
+**Step 12 — Rule v2 design** (based on real data). Look at override patterns: when humans consistently pick the specific type over cross-screen's container → encode "discount cross-screen-alone container" override. Apply, re-run consensus (data is persisted), measure flagged-row reduction.
+
+Each step is independent + TDD + commits cleanly. Steps 1–8 are pure code (no API costs). Step 9 incurs the $35. Steps 10–12 iterate on the data.
 
 ## 6. Architectural constraints (non-negotiable)
 

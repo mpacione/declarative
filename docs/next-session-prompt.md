@@ -1,110 +1,86 @@
 # Continuation prompt — next session
 
-Copy the section below into a fresh Claude conversation to resume.
+Copy the section below into a fresh Claude conversation to resume M7.0.a (library population) execution.
 
 ---
 
-I'm continuing work on the declarative-build design compiler. Last
-chapter drove all 204 app_screens in the Dank file through the full
-ADR-007 unified verification channel, resulting in five commits that
-close entire defect classes:
+I'm continuing work on the declarative-build design compiler. We're in the middle of **M7.0.a** — the library-population milestone of the M7 synthetic-generation plan (M7 is Priority 1 after the v0.3 Option B cutover completed 2026-04-19).
 
-- `KIND_MISSING_ASSET` — VECTOR / BOOLEAN_OPERATION rendered without
-  path geometry now surfaces per-eid.
-- `KIND_FONT_LOAD_FAILED` — one unlicensed trial font no longer
-  aborts the whole script.
-- Registry-driven whitelists in `dd/extract_screens.py` — adding a
-  new property to the registry auto-extends parse + insert filters.
-- Vector-path extraction — three compounding silent bugs (wrong JSON
-  key, invalid separator, Figma-parser-strictness) that collapsed
-  26,050 vectors into 10 empty assets. Now 256 distinct content-
-  addressed assets, every vector renders.
-- Post-sweep: **204/204 app_screens reach is_parity=True** on the
-  fresh walker+verifier combo. 0 drift, 0 walk_failed, 0
-  generate_failed, 0 error_kinds in the summary.
+## Read these first, in order
 
-Read these to get oriented:
+1. **`docs/plan-synthetic-gen.md` §5.1.a + §5.1.b** — M7.0.a deep-dive with all decisions locked, and the 12-step execution plan for this session. **§5.1.b is your task list.**
+2. **`memory/project_m7_0a_classification.md`** — session-boot summary; cross-references the plan doc.
+3. **`memory/project_v0_3_plan.md`** — v0.3 state (complete; M6(a) shipped).
+4. **`memory/project_system_overview.md`** — system overview.
+5. **`CLAUDE.md`** — TDD non-negotiable; no production code without a failing test.
 
-- `~/.claude/projects/-Users-mattpacione-declarative-build/memory/MEMORY.md` —
-  index. Read first.
-- `docs/architecture-decisions.md` — ADR-001..007 plus two chapter
-  epilogues (2026-04-15 pt 1 + pt 2). The pt 2 epilogue lists the
-  commits and outstanding seeds for this chapter.
-- `~/.claude/projects/-Users-mattpacione-declarative-build/memory/project_t5_progress.md` —
-  round-trip state, defect-class table.
-- `~/.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_verifier_blind_to_visual_loss.md` —
-  the pattern for growing verifier vocabulary.
-- `~/.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_figma_vector_path_roundtrip.md` —
-  Figma's Plugin API vector output doesn't round-trip through its
-  own vectorPaths setter.
+## What's decided (do NOT re-litigate)
 
-## What I want to do this session
+The 2026-04-19 session made these decisions; they're locked:
 
-Continue the pattern: sweep the corpus, find a new defect class, add
-a `kind` that attributes it per-eid, add the walker signal if needed,
-add the verifier check, fix the data/renderer layer that caused it.
-Each cycle adds one vocabulary entry to the structured-error channel
-and drops one visual-loss class.
+- **Three-source classification architecture** (option c2). Formal + heuristic rules → LLM text (Haiku 4.5, tool-use) → vision per-screen (Sonnet 4.6, full-screen image + bboxes) → vision cross-screen (Sonnet 4.6, N=5 screens batched by `(device_class, skeleton_type)`).
+- **All three sources persisted permanently.** `canonical_type` becomes a *computed consensus*, not a primary signal.
+- **Consensus rule v1**: majority + `unsure` catch-all. Rule v2 bias-aware overrides deferred until real disagreement data exists.
+- **Decode stack**: Claude tool-use for all LLM/vision work. Grammar-constrained decoding deferred to M7.5+.
+- **Review workflow**: Tier 1.5 — CLI TUI for input + three visual layers (Figma deep-link, local PNG via `open`, inline terminal image if iTerm2/Kitty/Ghostty) + HTML companion page.
+- **Spot-check audit** separate from review (`dd classify-audit --sample N`).
+- **Cost envelope**: ~$35 for full 204-screen three-source cascade. Cheap enough that info loss from single-source collapse is the real cost.
+- **Prompt rules v1 locked** (2026-04-19): `unsure` below 0.75; no `container`-regression when specific evidence exists; empty-grid → `skeleton`; decorative-child → `icon`.
 
-Pre-identified seeds from the pt 2 epilogue:
+## Where we are
 
-1. **Icon variant drift** (screen 175 Community modal-row icon
-   resolves to the wrong master). The verifier can't catch this by
-   IR↔rendered comparison — needs IR-vs-SOURCE drift detection via
-   `ResourceProbe` (ADR-006). Likely ties into `dd drift` output.
-2. **Color / fill / effect drift**: a rendered node with the wrong
-   solid fill (e.g. the renderer picked a variant that uses
-   `#FF0000` when IR says `#00FF00`) still reports is_parity=True.
-   Candidate kinds: `KIND_FILL_MISMATCH`, `KIND_EFFECT_MISSING`,
-   `KIND_STROKE_MISMATCH`.
-3. **Mixed-winding paths**: a single asset currently stores ONE
-   windingRule but real Figma paths sometimes mix NONZERO + EVENODD
-   sub-paths. Low frequency; split into multiple VectorPath
-   entries when it's the right time.
-4. **Remaining non-parity screens** (if any remain after the pt 2
-   sweep): each one's failure mode is a candidate new `kind`. Run
-   `python3 render_batch/sweep.py` as the first step and diagnose
-   whatever drift remains.
+**Shipped in the 2026-04-19 session:**
+- `62be113` — component_key formal-match fallback
+- `7c5da22` — LLM + vision stages rewritten with tool-use
+- `46dee2d` — truncate / since-resume / progress_callback / `--limit` on `dd classify`
+- `18f6b12` — `classification_reason` persistence (migration 011)
+- `4e9d293` — cross-screen batched vision (`dd/classify_vision_batched.py`) + bake-off infrastructure + dry-run reports
+- `b083243` — prompt tightening v1 + bake-off v2 (v1 74.4% → v2 76.9% agreement on 10 screens)
+- `a2820fa` — M7.0.a decisions captured in plan §5.1.a
 
-## Workflow notes
+**Tests:** 107/107 classify tests pass. 204/204 corpus parity on v0.3 Option B walker.
 
-- Figma Desktop Bridge runs on whatever port
-  `mcp__figma-console__figma_get_status` reports (9228 as of
-  session end).
-- `render_test/walk_ref.js` is the canonical walker (replaces the
-  scratch /tmp/gen_175_walk.js). It captures per-eid type + text +
-  geometry counts. Passing port + paths as CLI args.
-- `render_batch/sweep.py` is the corpus driver. Generates scripts
-  + walks + verifies + aggregates kind histograms into
-  `render_batch/summary.json`. Scripts + walks + reports are
-  gitignored; only the driver is in the repo.
-- `dd verify --db ... --screen N --rendered-ref ... [--json]` is
-  the per-screen CLI. Exit nonzero on `is_parity != True`.
-- `dd extract_targeted --mode vector-geometry --port <bridge>`
-  populates fill_geometry/stroke_geometry from the live Plugin
-  API. Re-run this whenever the DB's geometry is stale.
-- `python3 -c "from dd.extract_assets import process_vector_geometry;
-  import sqlite3; c=sqlite3.connect('Dank-EXP-02.declarative.db');
-  c.execute('DELETE FROM node_asset_refs'); c.execute('DELETE FROM assets');
-  c.commit(); process_vector_geometry(c)"` re-processes geometry
-  into content-addressed assets after a data change.
+## What you build this session
 
-## Suggested kickoff
+Follow `docs/plan-synthetic-gen.md` §5.1.b step-by-step. Twelve steps, TDD per CLAUDE.md, commits per-step. Rough order:
 
-Start by re-running `render_batch/sweep.py` to see what current state
-looks like, then dig into the first screen that reports drift. Every
-new failure mode is an opportunity for a new `kind`.
+1. **Migration 012** — schema extension: three-source columns on `screen_component_instances` + `classification_reviews` table. Update `schema.sql`. Apply to Dank DB.
+2. **Rename** `classification_reason` → `llm_reason` for clarity (migration preserves data).
+3. **`dd/classify_consensus.py`** — pure-function consensus computation with rule v1. Unit tests cover every branch.
+4. **Orchestrator update** — `dd/classify.py::run_classification` runs all three sources per screen, applies consensus, flags divergences.
+5. **CLI flags** — `dd classify --three-source` wiring.
+6. **`dd classify-review` CLI** — interactive TUI + three visual-reference layers.
+7. **`dd classify-review-index` HTML** — scrollable companion page.
+8. **`dd classify-audit`** — spot-check for all-agree rows.
+9. **Full 204-screen cascade run** (~$35 budget). Log per-screen progress.
+10. **`scripts/m7_disagreement_report.py`** — markdown report with disagreement patterns.
+11. **Manual review sprint** — user works through flagged queue.
+12. **Rule v2 design** — encode bias-aware overrides from override patterns.
 
-Look at `docs/architecture-decisions.md` chapter epilogue pt 2
-for the full list of outstanding seeds and the pattern for addressing
-them.
+Steps 1–8 are pure code, TDD, no API costs. Step 9 is the big run. Steps 10–12 iterate on data.
 
-TDD is mandatory per the global CLAUDE.md. Failing test first, then
-implementation, then refactor. Commits: only when explicitly asked,
-OR after each meaningful defect-class fix lands cleanly. Match the
-commit-message style from the recent history (specific symptom →
-root cause → fix shape → verification).
+## Infrastructure reminders
 
-If you find a defect class that doesn't fit any existing `kind` in
-`dd/boundary.py`, **add a new constant** rather than forcing it into
-an existing one. The vocabulary is meant to grow.
+- `.env` at repo root has `ANTHROPIC_API_KEY` + `FIGMA_ACCESS_TOKEN`. Scripts load via direct assignment (not `setdefault`) — shell `ANTHROPIC_API_KEY=""` overrides otherwise.
+- Python: `/Users/mattpacione/declarative-build/.venv/bin/python3` (has `anthropic`, `pytest`, etc.).
+- DB: `Dank-EXP-02.declarative.db` at repo root.
+- Figma Desktop Bridge on port 9228 for screen rendering + screenshots.
+- Existing bake-off infrastructure: `scripts/m7_vision_bakeoff.py`, `scripts/m7_dry_run_10.py`, `scripts/preview_llm_classify_prompt.py`. Useful for probing tweaks.
+- Vision calls use streaming (`max_tokens=32768`); SDK's long-request gate otherwise trips. See `dd/classify_vision_batched.py::classify_batch`.
+
+## Cadence
+
+User cadence preference: **B+D** — autonomous parallel execution with check-ins at judgment points. User is generally async but available for specific design decisions. Surface questions inline when you hit a real fork (prompt shape, migration schema, ambiguous rules, etc.). Don't ask for permission to do obvious work.
+
+## Non-negotiables
+
+- TDD per CLAUDE.md. Failing test first, always.
+- All three sources persisted. Never collapse raw verdicts.
+- Consensus recomputes from persisted data. Iterating on rule v2 must not require re-classification.
+- 204/204 corpus parity preserved.
+
+If you hit an unknown, surface it rather than guess. Start by reading the plan doc + memory; after that, begin Step 1.
+
+---
+
+Previous continuation material (pre-M7) is in `docs/continuation.md`. For the v0.3 Option B cutover thread specifically, see `memory/project_v0_3_plan.md` and commit `6377105`.
