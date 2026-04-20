@@ -175,7 +175,7 @@ Milestones continue the v0.3 M0–M6(a) numbering. **Ordering: library-first.** 
 
 | Sub | Scope | Approach |
 |---|---|---|
-| **M7.0.a** | Full classification cascade re-run from scratch. Formal → heuristic → LLM → vision. Records per-instance confidence + cascade-stage provenance. | Runs on all candidate component-like subtrees across 338 screens. Truncates + repopulates `screen_component_instances`. |
+| **M7.0.a** | Full classification cascade re-run from scratch. Formal → heuristic → LLM → vision per-screen → vision cross-screen. Records per-source confidence + reason + provenance. **See §5.1.a for full decisions.** | Runs on all candidate component-like subtrees across 338 screens. Truncates + repopulates `screen_component_instances`. |
 | **M7.0.b** | Slot-definition derivation per canonical_type. | For each canonical_type with ≥N instances, auto-cluster children by role/position; Claude labels each cluster's slot purpose. Populates `component_slots`. |
 | **M7.0.c** | Variant-family derivation. | Auto-cluster instances by structural/visual similarity; Claude labels variant names + purposes. Populates `component_variants`. |
 | **M7.0.d** | Forces/context per-instance LLM label. | Claude labels each instance's compositional role (e.g., "main-cta in login-form"). Alexander's overfitting guard. Adds a column to `screen_component_instances`. |
@@ -185,6 +185,112 @@ Milestones continue the v0.3 M0–M6(a) numbering. **Ordering: library-first.** 
 **Approach decided:** auto-cluster (A) + LLM label (C), worth the tokens.
 **Accuracy threshold:** 80% on spot-check gate before M7.0 progresses to M7.1.
 **Decode stack:** Claude tool-use via structured outputs for all M7.0 labeling work. Grammar-native decode deferred to M7.5+.
+
+### 5.1.a M7.0.a deep-dive — classification cascade decisions (2026-04-19 session)
+
+The classification cascade (M7.0.a) received a full design-and-prototype pass during the 2026-04-19 long session. Recording all the decisions here so future sessions don't re-litigate.
+
+#### Three-source architecture (option c2)
+
+The cascade runs **three independent classification sources** per node. All three verdicts are persisted; a consensus rule computes the canonical_type for downstream use, but the raw data is never collapsed.
+
+| Source | Role | Model | Trigger |
+|---|---|---|---|
+| **Formal** | Exact-match via node name + CKR `component_key` fallback | none (rule-based) | always |
+| **Heuristic** | 5 structural rules (header/footer/text/container position + size) | none (rule-based) | always on unclassified |
+| **LLM text** | Structural classification from node description + catalog + parent/child/sample-text context, no image | Claude Haiku 4.5 | always on remaining unclassified |
+| **Vision per-screen (PS)** | Full-screen image + per-node bbox. Independent per-node reasoning | Claude Sonnet 4.6 | always on candidates after LLM |
+| **Vision cross-screen (CS)** | N=5 screens batched per call, grouped by `(device_class, skeleton_type)`. Explicit cross-screen consistency signal via `cross_screen_evidence` | Claude Sonnet 4.6 | always on same candidates |
+
+All three LLM/vision stages use Claude tool-use (structured output) per Decision 10. Grammar-constrained decode deferred to M7.5+.
+
+#### Model + cost envelope
+
+- LLM text stage: **Claude Haiku 4.5** via tool-use. ~$0.02–$0.05 per screen at production batch sizes.
+- Vision stages (PS + CS): **Claude Sonnet 4.6** via tool-use + streaming (`max_tokens=32768`, long-request gate). ~$5–$15 per stage across the 204-screen corpus.
+- **Full-corpus three-source cascade: ~$35** (cheap enough that information loss from single-source collapse is the real cost to minimize).
+
+#### Batching
+
+- **Vision per-screen (PS):** one API call per screen. All unclassified nodes on that screen classified in one tool call. Rationale: preserves max visual fidelity, simplest to reason about.
+- **Vision cross-screen (CS):** batched by `(device_class, skeleton_type)`, target size 5 screens per call. Smaller groups emitted at natural size; larger groups split into consecutive chunks. Rationale: gives the model explicit cross-screen signal for consistency/variant/outlier detection; found during the bake-off to catch patterns per-screen missed (skeleton tiles in content grids) while systematically regressing specifics to `container` on isolated cases.
+
+#### Prompt rules (v1, locked 2026-04-19)
+
+Both the LLM text prompt and the vision batched prompt share these rules:
+
+1. Pick one canonical type per node; `container` and `unsure` are valid.
+2. Confidence calibrated: 0.95+ unambiguous, 0.85–0.94 strong+minor-alt, 0.75–0.84 real-evidence+plausible-alt, **below 0.75 → prefer `unsure` with reason**.
+3. Don't regress to `container` when a specific type has evidence. Distinctive names (`grabber`, `wordmark`), characteristic children (3 ellipses, 2 chevrons), sample text, or known patterns get specific types.
+4. Parent/sibling context informs classification (nodes in a `bottom_nav` are navigation_rows; text nodes at the top of a `card` are headings).
+5. Sample text is a strong signal ("Sign in" → button, "9:41" → text in status bar).
+6. Empty-frame grid pattern → `skeleton`; decorative-child pattern → `icon`.
+7. Reasons are evidence-based, not speculation.
+
+Vision-specific additional rules (cross-screen):
+- Cross-screen signal REINFORCES specificity, does NOT downgrade to `container`. Repetition across screens is evidence FOR the specific type, not against it.
+- `cross_screen_evidence` citations use enum relations: `same_component`, `same_variant_family`, `contrasting_variant`, `structural_analogue`, `outlier`.
+
+#### Persistence model
+
+**Schema**: `screen_component_instances` is extended with per-source columns:
+- `classification_reason` (exists, migration 011) — LLM/heuristic reason
+- `vision_reason` (exists, migration 011) — vision per-screen reason
+- Planned migration 012 adds: `vision_ps_type`, `vision_ps_confidence`, `vision_cs_type`, `vision_cs_confidence`, `vision_cs_reason`, `vision_cs_evidence_json`, `consensus_method`
+
+Current `canonical_type` column becomes the **computed consensus** (not the primary signal). The `classification_source` column still records the source that produced the consensus.
+
+**New table `classification_reviews`**: one row per human decision. Columns: `sci_id`, `decided_at`, `decided_by`, `decision_type` (`accept_source` / `override` / `unsure` / `skip`), `decision_canonical_type`, `notes`. Reviews are additive and reversible; the consensus view joins against the most-recent review row per sci_id.
+
+#### Consensus rule v1 (naive majority + unsure catch-all)
+
+```
+if all three agree → commit, consensus_method = "unanimous"
+elif any source returned `unsure` → `unsure`, "any_unsure"
+elif 2/3 agree → commit majority, "majority"
+else (all differ) → `unsure`, "three_way_disagreement" (flag)
+```
+
+Rule v1 is the shipping rule. Rule v2 bias-aware overrides (ignore cross-screen-alone container, honor cross-screen-alone skeleton on empty grids, confidence-tiebreaker) will be ratcheted in after the full corpus run produces real disagreement data. Resolution is recomputed from persisted sources — no re-classification needed to change the rule.
+
+#### Review workflow — Tier 1.5
+
+Flagged rows (`flagged_for_review = 1` where consensus_method ∈ `{three_way_disagreement, any_unsure}`) get reviewed via:
+
+- **`dd classify-review --screen <sid>`** — CLI interactive TUI. Per row shows all three classifications + reasons, prompts `[1] / [2] / [3] / [o] other / [u] unsure / [s] skip / [q] quit`. Decisions write to `classification_reviews`.
+- **Visual reference layers** (auto-detected):
+  - Figma deep-link (`figma://` URL) printed — jumps to exact node in Figma Desktop on Cmd+click.
+  - Local PNG fetched from Figma REST and opened via `open` on macOS.
+  - Inline terminal image (iTerm2 / Kitty / Ghostty / compatible) — rendered above prompt.
+- **`dd classify-review-index --screen <sid> --html <out>`** — one-shot HTML companion page. Each flagged row as a card with node screenshot + three classifications + reasons side-by-side. Scan in browser while CLI handles decisions.
+
+Separate from review: **`dd classify-audit --sample N`** runs a periodic quality check on *unflagged* rows (agreements that may all be wrong together). Same UX.
+
+#### Bake-off outcomes (2026-04-19)
+
+- **v1 (initial prompts):** 74.4% agreement between PS and CS on screens 150–159.
+- **v2 (tightened prompts):** 76.9% agreement — +2.5 points. Major convergence on skeleton (12→24/24) and button_group (5→24/25). Cross-screen container-drift on header/status-bar nodes persists.
+- **Conclusion:** the divergence is structural to cross-screen framing, not a prompt-quality issue. Three-source consensus is the right answer — preserve the biases as signal rather than try to collapse them.
+
+#### Operational state (as of 2026-04-19 late session)
+
+Shipped commits, in order:
+1. `62be113` — component_key formal-match fallback
+2. `7c5da22` — LLM + vision stages rewritten with tool-use
+3. `46dee2d` — truncate + since-resume + progress_callback
+4. `18f6b12` — `--limit` flag + `classification_reason` persistence
+5. `c-vision-batch` (pending commit) — cross-screen batched vision + bake-off infrastructure
+6. `b083243` — prompt tightening v1 + bake-off v2 results
+
+Infrastructure NOT yet built:
+- Migration 012 (three-source storage columns + `classification_reviews` table)
+- Orchestrator update (run all three sources per screen)
+- Consensus computation (rule v1)
+- `dd classify-review` CLI
+- `dd classify-review-index` HTML companion
+- `dd classify-audit` spot-check
+
+Full-corpus 204-screen run: pending the above.
 
 ## 6. Architectural constraints (non-negotiable)
 
