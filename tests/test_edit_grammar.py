@@ -943,3 +943,110 @@ class TestApplySwap:
         # but carries the user-set fill forward as an override.
         assert node.head.head_kind == "comp-ref"
         assert node.head.get_prop("fill") is not None
+
+
+# ---------------------------------------------------------------------------
+# Pass 9: integration tests — multi-verb sequences + corpus parity
+# ---------------------------------------------------------------------------
+
+class TestApplyEditsIntegration:
+    """Multi-verb sequences + strict mode + the empty-edits invariant."""
+
+    def test_three_different_verbs_compose(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl}\n"
+            "delete @card-2\n"
+            "append to=@card-1 {\n  text #footer \"footer\"\n}\n"
+        ))
+        result = apply_edits(doc)
+        # set landed
+        card1 = _find_node_by_eid(result, "card-1")
+        assert card1.head.get_prop("radius").value.path == "radius.xl"
+        # delete landed
+        assert _find_node_by_eid(result, "card-2") is None
+        # append landed
+        assert _find_node_by_eid(result, "footer") is not None
+
+    def test_partial_failure_strict_false_collects_errors(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl}\n"
+            "delete @nope\n"
+            "append to=@card-1 {\n  text #later \"later\"\n}\n"
+        ))
+        result = apply_edits(doc, strict=False)
+        # First + third edits applied; middle edit became a warning.
+        card1 = _find_node_by_eid(result, "card-1")
+        assert card1.head.get_prop("radius").value.path == "radius.xl"
+        assert _find_node_by_eid(result, "later") is not None
+        kinds = [w.kind for w in result.warnings]
+        assert "KIND_EID_NOT_FOUND" in kinds
+
+    def test_partial_failure_strict_true_raises_on_first(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl}\n"
+            "delete @nope\n"
+            "append to=@card-1 {\n  text #later \"later\"\n}\n"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc, strict=True)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_kind_edit_conflict_on_delete_then_set(self):
+        doc = parse_l3(_doc(
+            "delete @card-1\n"
+            "set @card-1 radius={radius.xl}\n"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc, strict=True)
+        assert exc.value.kind == "KIND_EDIT_CONFLICT"
+
+    def test_kind_edit_conflict_on_delete_then_append(self):
+        doc = parse_l3(_doc(
+            "delete @card-1\n"
+            "append to=@card-1 {\n  text \"x\"\n}\n"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc, strict=True)
+        assert exc.value.kind == "KIND_EDIT_CONFLICT"
+
+    def test_kind_edit_conflict_on_delete_then_move(self):
+        doc = parse_l3(_doc(
+            "delete @card-1\n"
+            "move @card-1 to=@s position=first\n"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc, strict=True)
+        assert exc.value.kind == "KIND_EDIT_CONFLICT"
+
+    def test_empty_edits_returns_input_unchanged(self):
+        doc = parse_l3(_doc(""))
+        # No edits in the doc → apply_edits returns the same object.
+        result = apply_edits(doc)
+        assert result is doc
+
+    def test_empty_explicit_edits_returns_input_unchanged(self):
+        doc = parse_l3(_doc(""))
+        result = apply_edits(doc, [])
+        assert result is doc
+
+
+class TestApplyEditsFixtureIdentity:
+    """For each existing .dd fixture, apply_edits([]) must return a
+    document equal to the input. Validates the immutable-rebuild
+    pattern doesn't accidentally alter the tree.
+    """
+
+    @pytest.mark.parametrize("fixture", [
+        "tests/fixtures/markup/01-login-welcome.dd",
+        "tests/fixtures/markup/02-card-sheet.dd",
+        "tests/fixtures/markup/03-keyboard-sheet.dd",
+    ])
+    def test_apply_edits_empty_is_identity(self, fixture):
+        from pathlib import Path
+        path = Path(fixture)
+        if not path.exists():
+            pytest.skip(f"fixture not present: {fixture}")
+        src = path.read_text()
+        doc = parse_l3(src)
+        result = apply_edits(doc, [])
+        assert result is doc
