@@ -629,6 +629,56 @@ def _run_classify_review(
         print(f"  {decision_type:<15} {count}")
 
 
+def _run_classify_audit(
+    db_path: str,
+    *,
+    sample: int,
+    screen_id: int | None = None,
+    seed: int | None = None,
+    no_preview: bool = False,
+) -> None:
+    """CLI entrypoint for the audit spot-check loop."""
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_audit import run_audit_tui
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_preview:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            print(
+                f"  (preview disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    summary = run_audit_tui(
+        conn,
+        n=sample,
+        file_key=file_key,
+        seed=seed,
+        screen_id=screen_id,
+        fetch_screenshot=fetch_screenshot,
+    )
+
+    conn.close()
+
+    print("\nAudit complete:")
+    for action, count in sorted(summary.items()):
+        print(f"  {action:<15} {count}")
+
+
 def _run_classify_review_index(
     db_path: str,
     *,
@@ -1416,6 +1466,38 @@ def main(argv: list | None = None) -> None:
         ),
     )
 
+    classify_audit_parser = subparsers.add_parser(
+        "classify-audit",
+        help=(
+            "Spot-check unflagged classification rows (M7.0.a "
+            "Step 8). Catches systematic errors where all three "
+            "sources agreed on the wrong answer. Samples N "
+            "unflagged + unreviewed rows; decisions record "
+            "decision_type='audit' in classification_reviews."
+        ),
+    )
+    classify_audit_parser.add_argument("--db", help="Database path")
+    classify_audit_parser.add_argument(
+        "--sample", type=int, default=25,
+        help="Number of rows to sample (default: 25).",
+    )
+    classify_audit_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to sample from (defaults to all screens).",
+    )
+    classify_audit_parser.add_argument(
+        "--seed", type=int, default=None,
+        help=(
+            "Seed for deterministic sampling. When set, rerunning "
+            "with the same seed returns the same rows — useful for "
+            "picking up a paused audit pass."
+        ),
+    )
+    classify_audit_parser.add_argument(
+        "--no-preview", action="store_true",
+        help="Skip opening the local PNG preview.",
+    )
+
     classify_review_index_parser = subparsers.add_parser(
         "classify-review-index",
         help=(
@@ -1609,6 +1691,15 @@ def main(argv: list | None = None) -> None:
             screen_id=args.screen,
             limit=args.limit,
             no_screenshots=args.no_screenshots,
+        )
+    elif args.command == "classify-audit":
+        db_path = detect_db_path(args.db)
+        _run_classify_audit(
+            db_path,
+            sample=args.sample,
+            screen_id=args.screen,
+            seed=args.seed,
+            no_preview=args.no_preview,
         )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
