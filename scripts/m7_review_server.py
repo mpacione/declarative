@@ -38,41 +38,327 @@ from dd.db import get_connection
 
 DB_PATH: str = ""  # set in main()
 FILE_KEY: str = ""  # set in main()
-_SCREENSHOT_CACHE: dict[str, bytes | None] = {}
+# Only successful fetches cached; None results are NOT cached so the
+# next request retries. This lets a user refresh-and-rescroll to
+# recover from Figma rate-limit bursts.
+_SCREENSHOT_CACHE: dict[str, bytes] = {}
 _CACHE_LOCK = threading.Lock()
+# Cap concurrent Figma REST calls so the browser's parallel image
+# loader doesn't burst-overrun the 60-req/min rate limit. 3 is
+# empirical — enough throughput to keep up with lazy-load scroll
+# speed, low enough to avoid 429 storms.
+_FETCH_SEMAPHORE = threading.BoundedSemaphore(3)
+_FETCHER_INSTANCE: Any = None
+
+
+def _get_fetcher():
+    """Build the Figma fetcher once per process; reuse the underlying
+    requests.Session for connection pooling.
+    """
+    global _FETCHER_INSTANCE
+    if _FETCHER_INSTANCE is None:
+        from dd.cli import make_figma_screenshot_fetcher
+        _FETCHER_INSTANCE = make_figma_screenshot_fetcher()
+    return _FETCHER_INSTANCE
+
+
+def _find_screen_figma_id(figma_node_id: str) -> str | None:
+    """Look up the screen ancestor's figma_node_id for fallback.
+
+    Figma REST can't render deep descendant frames (e.g. 16×16
+    child nodes inside component masters); it returns null. For
+    those, we render the SCREEN instead so the user has SOMETHING
+    visual to ground the decision.
+    """
+    conn = get_connection(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT s.figma_node_id
+            FROM nodes n
+            JOIN screens s ON s.id = n.screen_id
+            WHERE n.figma_node_id = ?
+            LIMIT 1
+            """,
+            (figma_node_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row else None
+
+
+def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float, float] | None:
+    """Look up crop metadata for a flagged sci row.
+
+    Node x/y are stored in ABSOLUTE Figma canvas coords; to crop
+    against the screen image we subtract the screen root node's
+    own (x, y) origin.
+
+    Returns (screen_figma_id, node_x_in_screen, node_y_in_screen,
+    node_width, node_height, screen_width, screen_height) — all in
+    Figma canvas pixels. Returns None if row missing / bbox null.
+    """
+    conn = get_connection(DB_PATH)
+    try:
+        row = conn.execute(
+            """
+            SELECT s.figma_node_id, s.width, s.height,
+                   n.x, n.y, n.width, n.height,
+                   root.x AS root_x, root.y AS root_y
+            FROM screen_component_instances sci
+            JOIN nodes n ON n.id = sci.node_id
+            JOIN screens s ON s.id = sci.screen_id
+            LEFT JOIN nodes root
+              ON root.screen_id = s.id AND root.parent_id IS NULL
+            WHERE sci.id = ?
+            """,
+            (sci_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    fig_id, sw, sh, nx, ny, nw, nh, rx, ry = row
+    if None in (fig_id, sw, sh, nx, ny, nw, nh):
+        return None
+    rx = float(rx) if rx is not None else 0.0
+    ry = float(ry) if ry is not None else 0.0
+    return (fig_id, float(nx) - rx, float(ny) - ry, float(nw),
+            float(nh), float(sw), float(sh))
+
+
+def _crop_to_bbox(
+    screen_png: bytes,
+    node_x: float, node_y: float, node_width: float, node_height: float,
+    screen_width: float, screen_height: float,
+    *,
+    padding_px: int = 40,
+) -> bytes:
+    """Crop the screen PNG to the node's bbox + padding, AND draw a
+    colored rectangle outline on the node's actual bbox so the
+    reviewer can see exactly what region is the classification
+    target vs the surrounding context.
+
+    Figma bbox is in canvas-pixel coords; the REST image may be at
+    a different pixel density (iPads ship 2×). We scale the bbox
+    by the actual/canvas ratio.
+
+    Padding is 40px (in canvas units) — enough to see a bit of
+    context around tiny nodes. The outline is magenta 3px-stroke
+    inside a 1px white halo (so it's visible on any background).
+    """
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+
+    img = Image.open(BytesIO(screen_png)).convert("RGBA")
+    iw, ih = img.size
+    scale_x = iw / screen_width if screen_width > 0 else 1.0
+    scale_y = ih / screen_height if screen_height > 0 else 1.0
+
+    # Node bbox in actual-image pixels.
+    node_left_img = node_x * scale_x
+    node_top_img = node_y * scale_y
+    node_right_img = (node_x + node_width) * scale_x
+    node_bottom_img = (node_y + node_height) * scale_y
+
+    # Crop bounds (include padding).
+    crop_left = max(0, int((node_x - padding_px) * scale_x))
+    crop_top = max(0, int((node_y - padding_px) * scale_y))
+    crop_right = min(iw, int((node_x + node_width + padding_px) * scale_x))
+    crop_bottom = min(ih, int((node_y + node_height + padding_px) * scale_y))
+    if crop_right <= crop_left or crop_bottom <= crop_top:
+        return screen_png
+
+    # Draw the bbox outline on the FULL image first, then crop. This
+    # ensures the outline lands exactly on the node's pixels even
+    # when the bbox hits the crop edge.
+    draw = ImageDraw.Draw(img)
+    # White halo (4px outside the magenta) for contrast on any bg.
+    halo = (255, 255, 255, 255)
+    # Stroke is magenta; bright + unlikely to appear in UI content.
+    stroke = (255, 0, 180, 255)
+    halo_w = 5
+    stroke_w = 3
+    draw.rectangle(
+        (node_left_img - halo_w, node_top_img - halo_w,
+         node_right_img + halo_w, node_bottom_img + halo_w),
+        outline=halo, width=halo_w,
+    )
+    draw.rectangle(
+        (node_left_img, node_top_img, node_right_img, node_bottom_img),
+        outline=stroke, width=stroke_w,
+    )
+
+    cropped = img.crop((crop_left, crop_top, crop_right, crop_bottom))
+
+    # If the crop is tiny, upscale to ~400px min-side for visibility.
+    min_side = 400
+    cw, ch = cropped.size
+    smaller = min(cw, ch)
+    if smaller < min_side:
+        factor = min_side / smaller
+        cropped = cropped.resize(
+            (int(cw * factor), int(ch * factor)),
+            Image.Resampling.LANCZOS,
+        )
+
+    out = BytesIO()
+    cropped.save(out, format="PNG")
+    return out.getvalue()
+
+
+_CROP_CACHE: dict[int, bytes] = {}
+
+
+def _fetch_crop_for_sci(sci_id: int) -> bytes | None:
+    """Serve a cropped node image via the screen screenshot + bbox.
+
+    Cheaper than per-node screenshots from Figma (one REST call per
+    screen, reused across all that screen's flagged nodes) AND works
+    for the 90% of flagged nodes where Figma won't render the node
+    directly.
+    """
+    with _CACHE_LOCK:
+        cached = _CROP_CACHE.get(sci_id)
+    if cached is not None:
+        return cached
+
+    info = _get_crop_info(sci_id)
+    if info is None:
+        return None
+    fig_id, nx, ny, nw, nh, sw, sh = info
+
+    # Fetch the SCREEN's screenshot (cached in _SCREENSHOT_CACHE).
+    with _CACHE_LOCK:
+        screen_png = _SCREENSHOT_CACHE.get(fig_id)
+    if screen_png is None:
+        fetcher = _get_fetcher()
+        with _FETCH_SEMAPHORE:
+            try:
+                screen_png = fetcher(FILE_KEY, fig_id)
+            except Exception:
+                screen_png = None
+        if screen_png is None:
+            return None
+        with _CACHE_LOCK:
+            _SCREENSHOT_CACHE[fig_id] = screen_png
+
+    try:
+        cropped = _crop_to_bbox(screen_png, nx, ny, nw, nh, sw, sh)
+    except Exception:
+        return None
+
+    with _CACHE_LOCK:
+        _CROP_CACHE[sci_id] = cropped
+    return cropped
 
 
 def _fetch_screenshot_cached(figma_node_id: str) -> bytes | None:
-    """Fetch + cache a Figma node screenshot. Returns None on failure;
-    the placeholder image is shown client-side via onerror.
+    """Fetch + cache a Figma node screenshot. Falls back to the
+    parent screen's screenshot when the node itself can't be
+    rendered (common for deep child frames). Successful fetches
+    cached in-memory; failures NOT cached so a refresh retries.
     """
     with _CACHE_LOCK:
         if figma_node_id in _SCREENSHOT_CACHE:
             return _SCREENSHOT_CACHE[figma_node_id]
 
-    # Import here so the server module stays importable even when
-    # Figma credentials aren't set (the reviewer can still click
-    # through verdicts without screenshots).
-    from dd.cli import make_figma_screenshot_fetcher
-    try:
-        fetcher = make_figma_screenshot_fetcher()
-        data = fetcher(FILE_KEY, figma_node_id)
-    except Exception:
-        data = None
+    fetcher = _get_fetcher()
 
-    with _CACHE_LOCK:
-        _SCREENSHOT_CACHE[figma_node_id] = data
+    with _FETCH_SEMAPHORE:
+        try:
+            data = fetcher(FILE_KEY, figma_node_id)
+        except Exception:
+            data = None
+
+    if data is None:
+        # Fall back to the node's screen ancestor.
+        screen_fig_id = _find_screen_figma_id(figma_node_id)
+        if screen_fig_id:
+            # Screen screenshots are cached too; check first.
+            with _CACHE_LOCK:
+                cached_screen = _SCREENSHOT_CACHE.get(screen_fig_id)
+            if cached_screen is not None:
+                data = cached_screen
+            else:
+                with _FETCH_SEMAPHORE:
+                    try:
+                        data = fetcher(FILE_KEY, screen_fig_id)
+                    except Exception:
+                        data = None
+                if data is not None:
+                    with _CACHE_LOCK:
+                        _SCREENSHOT_CACHE[screen_fig_id] = data
+
+    if data is not None:
+        with _CACHE_LOCK:
+            _SCREENSHOT_CACHE[figma_node_id] = data
     return data
 
 
+def _load_catalog_types(conn: sqlite3.Connection) -> list[str]:
+    """Fetch every canonical_name from component_type_catalog + the
+    two catch-alls. Used to populate the override-input's <datalist>
+    so the reviewer sees existing types as suggestions — prevents
+    vocabulary drift (typing `list-row` when `list_item` exists).
+    """
+    rows = conn.execute(
+        "SELECT canonical_name FROM component_type_catalog "
+        "ORDER BY canonical_name"
+    ).fetchall()
+    out = [r[0] for r in rows]
+    # Catch-alls that aren't in the catalog table itself.
+    for extra in ("container", "unsure"):
+        if extra not in out:
+            out.append(extra)
+    return out
+
+
 def _load_flagged(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    return fetch_flagged_rows(conn)
+    """Group flagged rows by (llm_type, ps_type, cs_type, node_name).
+
+    Returns one representative row per group, with two extra fields:
+    - `group_sci_ids`: list of ALL sci_ids in the group (for bulk apply).
+    - `group_size`: len(group_sci_ids).
+    - `group_screens`: sorted list of distinct screen_ids in the group
+      (surfaced in the UI so the reviewer can eyeball spread).
+
+    Rows where the node isn't part of any multi-instance pattern still
+    appear as singletons (group_size=1).
+    """
+    raw = fetch_flagged_rows(conn)
+    by_key: dict[tuple, list[dict[str, Any]]] = {}
+    for r in raw:
+        key = (
+            r.get("llm_type"),
+            r.get("vision_ps_type"),
+            r.get("vision_cs_type"),
+            r.get("node_name"),
+        )
+        by_key.setdefault(key, []).append(r)
+
+    grouped: list[dict[str, Any]] = []
+    for members in by_key.values():
+        # Representative = first row. Copy + enrich.
+        rep = dict(members[0])
+        rep["group_sci_ids"] = [m["sci_id"] for m in members]
+        rep["group_size"] = len(members)
+        rep["group_screens"] = sorted({m["screen_id"] for m in members})
+        grouped.append(rep)
+
+    # Sort by group_size descending — big groups first so the reviewer
+    # tackles high-impact patterns up front.
+    grouped.sort(key=lambda r: -r["group_size"])
+    return grouped
 
 
-def _render_index(rows: list[dict[str, Any]]) -> str:
+def _render_index(rows: list[dict[str, Any]], catalog: list[str]) -> str:
     """Render the full interactive HTML page."""
     cards = "\n".join(_render_card(r) for r in rows)
     total = len(rows)
+    datalist_options = "\n".join(
+        f'<option value="{html.escape(t)}"/>' for t in catalog
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -165,6 +451,15 @@ def _render_index(rows: list[dict[str, Any]]) -> str:
     display: inline-block; padding: 2px 8px; border-radius: 10px;
     background: #fef3c7; color: #92400e; font-size: 11px;
   }}
+  .group-badge {{
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    background: #dbeafe; color: #1e40af; font-size: 11px;
+    font-weight: 600; margin-left: 4px;
+  }}
+  .group-screens {{
+    font-size: 11px; color: #9ca3af; margin-bottom: 8px;
+    font-family: -apple-system-monospace, monospace;
+  }}
 </style>
 </head>
 <body>
@@ -174,6 +469,9 @@ def _render_index(rows: list[dict[str, Any]]) -> str:
     <span id="progress-done">0</span> / <b id="progress-total">{total}</b> reviewed
   </div>
 </header>
+<datalist id="catalog-types">
+  {datalist_options}
+</datalist>
 <main id="cards">
   {cards}
 </main>
@@ -181,8 +479,17 @@ def _render_index(rows: list[dict[str, Any]]) -> str:
 const total = {total};
 let done = 0;
 
-function update(sciId, decisionType, sourceAccepted, canonicalType, notes) {{
-  const body = {{sci_id: sciId, decision_type: decisionType}};
+function cardOf(el) {{
+  return el.closest ? el.closest('.review-card') : el;
+}}
+function sciIdsFor(card) {{
+  try {{ return JSON.parse(card.dataset.group); }}
+  catch (e) {{ return [parseInt(card.dataset.sci, 10)]; }}
+}}
+
+function update(card, decisionType, sourceAccepted, canonicalType, notes) {{
+  const sciIds = sciIdsFor(card);
+  const body = {{sci_ids: sciIds, decision_type: decisionType}};
   if (sourceAccepted) body.source_accepted = sourceAccepted;
   if (canonicalType) body.decision_canonical_type = canonicalType;
   if (notes) body.notes = notes;
@@ -192,9 +499,8 @@ function update(sciId, decisionType, sourceAccepted, canonicalType, notes) {{
     body: JSON.stringify(body),
   }}).then(r => r.json()).then(res => {{
     if (res.ok) {{
-      const card = document.querySelector(`[data-sci="${{sciId}}"]`);
       card.classList.add('done');
-      done += 1;
+      done += sciIds.length;
       document.getElementById('progress-done').textContent = done;
     }} else {{
       alert('Save failed: ' + (res.error || 'unknown'));
@@ -202,32 +508,28 @@ function update(sciId, decisionType, sourceAccepted, canonicalType, notes) {{
   }});
 }}
 
-function pickSource(sciId, source, type) {{
-  update(sciId, 'accept_source', source, type, null);
+function pickSource(el, source, type) {{
+  update(cardOf(el), 'accept_source', source, type, null);
 }}
-
-function overrideType(sciId) {{
-  const card = document.querySelector(`[data-sci="${{sciId}}"]`);
-  const input = card.querySelector('.override-input');
-  const type = input.value.trim();
+function overrideType(el) {{
+  const card = cardOf(el);
+  const type = card.querySelector('.override-input').value.trim();
   if (!type) {{ alert('Enter a canonical type'); return; }}
-  update(sciId, 'override', null, type, null);
+  update(card, 'override', null, type, null);
 }}
-
-function markUnsure(sciId) {{ update(sciId, 'unsure', null, null, null); }}
-function skipRow(sciId)   {{ update(sciId, 'skip', null, null, null); }}
+function markUnsure(el) {{ update(cardOf(el), 'unsure', null, null, null); }}
+function skipRow(el)   {{ update(cardOf(el), 'skip', null, null, null); }}
 
 document.addEventListener('keydown', (e) => {{
   if (e.target.tagName === 'INPUT') return;
   const firstOpen = document.querySelector('.review-card:not(.done)');
   if (!firstOpen) return;
-  const sciId = firstOpen.dataset.sci;
   firstOpen.scrollIntoView({{behavior: 'smooth', block: 'start'}});
   if (e.key === '1') firstOpen.querySelector('.source-llm').click();
   if (e.key === '2') firstOpen.querySelector('.source-ps').click();
   if (e.key === '3') firstOpen.querySelector('.source-cs').click();
-  if (e.key === 'u') markUnsure(sciId);
-  if (e.key === 's') skipRow(sciId);
+  if (e.key === 'u') markUnsure(firstOpen);
+  if (e.key === 's') skipRow(firstOpen);
 }});
 </script>
 </body>
@@ -248,37 +550,47 @@ def _render_card(row: dict[str, Any]) -> str:
     ps_reason = html.escape(row["vision_ps_reason"] or "")
     cs_reason = html.escape(row["vision_cs_reason"] or "")
     deep_link = format_figma_deep_link(FILE_KEY, fig_id)
+    group_ids_json = html.escape(json.dumps(row.get("group_sci_ids", [sci])))
+    group_size = row.get("group_size", 1)
+    group_screens = row.get("group_screens", [row["screen_id"]])
+    screens_summary = (
+        f"{len(group_screens)} screens: {', '.join(str(s) for s in group_screens[:6])}"
+        + (" …" if len(group_screens) > 6 else "")
+    )
+    group_badge = (
+        f'<span class="group-badge">× {group_size} instances</span>'
+        if group_size > 1 else ""
+    )
     return f"""
-<section class="review-card" data-sci="{sci}">
-  <span class="saved-badge">✓ saved</span>
+<section class="review-card" data-sci="{sci}" data-group='{group_ids_json}'>
+  <span class="saved-badge">✓ saved ({group_size})</span>
   <div class="screenshot">
-    <img src="/api/screenshot/{html.escape(fig_id)}" loading="lazy"
+    <img src="/api/crop/{sci}" loading="lazy"
          onerror="this.outerHTML='<div class=\\'no-preview\\'>(no screenshot)</div>'"
          alt="screenshot"/>
   </div>
   <div>
     <div class="meta">
       <span class="badge">{html.escape(row['consensus_method'] or '')}</span>
-      sci_id=<code>{sci}</code>
-      screen=<code>{row['screen_id']}</code> ({html.escape(row['screen_name'] or '')})
-      node=<code>{html.escape(fig_id)}</code>
+      {group_badge}
       name=<code>{html.escape(row['node_name'] or '')}</code>
       <a href="{html.escape(deep_link)}">Open in Figma</a>
     </div>
+    <div class="group-screens">{html.escape(screens_summary)}</div>
     <div class="sources">
-      <div class="source source-llm" onclick="pickSource({sci}, 'llm', '{html.escape(llm_type)}')">
+      <div class="source source-llm" onclick="pickSource(this, 'llm', '{html.escape(llm_type)}')">
         <div class="label">LLM</div>
         <div class="type">{html.escape(llm_type)}</div>
         <div class="confidence">confidence: {llm_conf}</div>
         <div class="reason">{llm_reason}</div>
       </div>
-      <div class="source source-ps" onclick="pickSource({sci}, 'vision_ps', '{html.escape(ps_type)}')">
+      <div class="source source-ps" onclick="pickSource(this, 'vision_ps', '{html.escape(ps_type)}')">
         <div class="label">Vision PS</div>
         <div class="type">{html.escape(ps_type)}</div>
         <div class="confidence">confidence: {ps_conf}</div>
         <div class="reason">{ps_reason}</div>
       </div>
-      <div class="source source-cs" onclick="pickSource({sci}, 'vision_cs', '{html.escape(cs_type)}')">
+      <div class="source source-cs" onclick="pickSource(this, 'vision_cs', '{html.escape(cs_type)}')">
         <div class="label">Vision CS</div>
         <div class="type">{html.escape(cs_type)}</div>
         <div class="confidence">confidence: {cs_conf}</div>
@@ -286,10 +598,12 @@ def _render_card(row: dict[str, Any]) -> str:
       </div>
     </div>
     <div class="actions">
-      <input type="text" class="override-input" placeholder="override type (e.g. heading)"/>
-      <button onclick="overrideType({sci})">Override</button>
-      <button onclick="markUnsure({sci})">Unsure</button>
-      <button onclick="skipRow({sci})">Skip</button>
+      <input type="text" class="override-input" list="catalog-types"
+             placeholder="override type (type to filter catalog)"
+             autocomplete="off"/>
+      <button onclick="overrideType(this)">Override all {group_size}</button>
+      <button onclick="markUnsure(this)">Unsure</button>
+      <button onclick="skipRow(this)">Skip</button>
     </div>
   </div>
 </section>
@@ -317,8 +631,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/":
             conn = get_connection(DB_PATH)
             rows = _load_flagged(conn)
+            catalog = _load_catalog_types(conn)
             conn.close()
-            html_body = _render_index(rows).encode("utf-8")
+            html_body = _render_index(rows, catalog).encode("utf-8")
             self._send(200, html_body, "text/html; charset=utf-8")
             return
         if self.path.startswith("/api/screenshot/"):
@@ -327,6 +642,18 @@ class _Handler(BaseHTTPRequestHandler):
             from urllib.parse import unquote
             fig_id = unquote(fig_id)
             data = _fetch_screenshot_cached(fig_id)
+            if data is None:
+                self._send(404, b"not found", "text/plain")
+                return
+            self._send(200, data, "image/png")
+            return
+        if self.path.startswith("/api/crop/"):
+            try:
+                sci_id = int(self.path[len("/api/crop/"):])
+            except ValueError:
+                self._send(400, b"bad sci_id", "text/plain")
+                return
+            data = _fetch_crop_for_sci(sci_id)
             if data is None:
                 self._send(404, b"not found", "text/plain")
                 return
@@ -361,27 +688,40 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send_json(400, {"ok": False, "error": "bad json"})
             return
+        # Accept either a single sci_id (legacy) or a list sci_ids
+        # (new bulk-apply path for pattern-grouped cards).
+        sci_ids = body.get("sci_ids")
         sci_id = body.get("sci_id")
         decision_type = body.get("decision_type")
         source_accepted = body.get("source_accepted")
         canonical_type = body.get("decision_canonical_type")
         notes = body.get("notes")
-        if not isinstance(sci_id, int) or not isinstance(decision_type, str):
+        if sci_ids is None and isinstance(sci_id, int):
+            sci_ids = [sci_id]
+        if not isinstance(sci_ids, list) or not all(
+            isinstance(x, int) for x in sci_ids
+        ):
             self._send_json(400, {
                 "ok": False,
-                "error": "sci_id (int) and decision_type (str) required",
+                "error": "sci_ids (list[int]) or sci_id (int) required",
+            })
+            return
+        if not isinstance(decision_type, str):
+            self._send_json(400, {
+                "ok": False, "error": "decision_type (str) required",
             })
             return
         try:
             conn = get_connection(DB_PATH)
-            record_review_decision(
-                conn,
-                sci_id=sci_id,
-                decision_type=decision_type,
-                source_accepted=source_accepted,
-                decision_canonical_type=canonical_type,
-                notes=notes,
-            )
+            for sid in sci_ids:
+                record_review_decision(
+                    conn,
+                    sci_id=sid,
+                    decision_type=decision_type,
+                    source_accepted=source_accepted,
+                    decision_canonical_type=canonical_type,
+                    notes=notes,
+                )
             conn.close()
         except sqlite3.IntegrityError as e:
             self._send_json(400, {"ok": False, "error": str(e)})
@@ -389,7 +729,7 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self._send_json(500, {"ok": False, "error": str(e)})
             return
-        self._send_json(200, {"ok": True})
+        self._send_json(200, {"ok": True, "applied": len(sci_ids)})
 
 
 def main(argv: list[str] | None = None) -> int:
