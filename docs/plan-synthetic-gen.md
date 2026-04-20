@@ -162,7 +162,7 @@ Milestones continue the v0.3 M0–M6(a) numbering. **Ordering: library-first.** 
 | Milestone | Scope | Exit criteria |
 |---|---|---|
 | **M7.0** | **Library population.** Fills the empty compositional tables. See §5.1 for sub-structure. | Quant gate: all six sub-tasks complete + classification accuracy ≥80% on spot-check. Qual gate: LLM smoke test — Claude (tool-use) receives a screen's L3 + library context, emits a valid reference-and-override edit that round-trips to `is_parity=True`. |
-| **M7.1** | **Edit grammar — all seven verbs at once.** Parser productions in `dd/markup_l3.py`; `EditStatement` AST types; `apply_edits(doc, [stmt]) → doc'` engine; unit tests per verb. No LLM. | All 7 verbs parse + apply correctly on minimal fixtures; each verb × each common case has a passing unit test. |
+| **M7.1** ✅ | **Edit grammar — all seven verbs at once.** Parser productions in `dd/markup_l3.py`; `EditStatement` AST types; `apply_edits(doc, [stmt]) → doc'` engine; unit tests per verb. No LLM. | All 7 verbs parse + apply correctly on minimal fixtures; each verb × each common case has a passing unit test. **Shipped 2026-04-19/20 in 9 passes (commits `39aa39e` → `fb693e1`); 109 passing + 1 skipped tests. See `docs/plan-m7.1.md` + `docs/m7_assumptions_log.md`.** |
 | **M7.2** | **First LLM-in-loop demo — S2.5 component swap.** Library-intensive: exercises slot definitions + variant families + the `swap` verb end-to-end via Claude tool-use. | Claude receives a screen's L3 + library catalog as tool context. Emits `swap @X with=-> family/variant` as a tool call. Apply + render + verify: `is_parity=True` + the resolved component matches the requested variant. |
 | **M7.3** | **S1 tier expansion (rest of single-node property edits).** | S1.1–S1.4 each pass end-to-end with Claude tool-use. |
 | **M7.4** | **S2 tier full (structural edits + S3.5 duplicate-with-mods).** | S2.1–S2.5 pass; S3.5 passes. |
@@ -176,7 +176,7 @@ Milestones continue the v0.3 M0–M6(a) numbering. **Ordering: library-first.** 
 | Sub | Scope | Approach |
 |---|---|---|
 | **M7.0.a** | Full classification cascade re-run from scratch. Formal → heuristic → LLM → vision per-screen → vision cross-screen. Records per-source confidence + reason + provenance. **See §5.1.a for full decisions.** | Runs on all candidate component-like subtrees across 338 screens. Truncates + repopulates `screen_component_instances`. |
-| **M7.0.b** | Slot-definition derivation per canonical_type. | For each canonical_type with ≥N instances, auto-cluster children by role/position; Claude labels each cluster's slot purpose. Populates `component_slots`. |
+| **M7.0.b** | Slot-definition derivation per canonical_type. | For each canonical_type with ≥N instances, auto-cluster children by role/position; Claude labels each cluster's slot purpose. Populates `component_slots`. **Spec drafted 2026-04-19 at `docs/plan-m7.0.b.md`; held on three schema decisions (SD-1/SD-2/SD-3) needing user sign-off — `components` table currently empty (CKR populated separately).** |
 | **M7.0.c** | Variant-family derivation. | Auto-cluster instances by structural/visual similarity; Claude labels variant names + purposes. Populates `component_variants`. |
 | **M7.0.d** | Forces/context per-instance LLM label. | Claude labels each instance's compositional role (e.g., "main-cta in login-form"). Alexander's overfitting guard. Adds a column to `screen_component_instances`. |
 | **M7.0.e** | Cross-screen pattern extraction. | Rule-of-three detection of repeating subtrees. Populates `patterns`. |
