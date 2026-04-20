@@ -54,6 +54,11 @@ def main() -> int:
     ap.add_argument("--sequential", action="store_true",
                     help="Take the first N screens in id order "
                          "instead of a random sample")
+    ap.add_argument("--screen-ids", type=str, default=None,
+                    help="Comma-separated list of screen ids to render "
+                         "(overrides --fraction / --limit / --seed). "
+                         "Used by M7 dry-run drivers that want to render "
+                         "a specific curated selection.")
     ap.add_argument("--skip-existing", action="store_true",
                     help="Skip screens that already have a walk-grid "
                          "output (successful previous render). Used to "
@@ -72,12 +77,23 @@ def main() -> int:
     ]
     conn.close()
 
-    count = args.limit or max(1, int(round(len(all_screens) * args.fraction)))
-    if args.sequential:
-        sample = all_screens[:count]
+    if args.screen_ids:
+        # Curated selection: use exact ids, preserving the order the
+        # caller listed them. Useful for M7 dry-runs where we want a
+        # specific sample spread across the corpus.
+        want = [int(x) for x in args.screen_ids.split(",") if x.strip()]
+        by_id = {sid: (sid, name) for sid, name in all_screens}
+        sample = [by_id[sid] for sid in want if sid in by_id]
+        missing = [sid for sid in want if sid not in by_id]
+        if missing:
+            print(f"warning: screen_ids not in corpus: {missing}", flush=True)
     else:
-        rng = random.Random(args.seed)
-        sample = sorted(rng.sample(all_screens, count), key=lambda s: s[0])
+        count = args.limit or max(1, int(round(len(all_screens) * args.fraction)))
+        if args.sequential:
+            sample = all_screens[:count]
+        else:
+            rng = random.Random(args.seed)
+            sample = sorted(rng.sample(all_screens, count), key=lambda s: s[0])
 
     print(
         f"Grid-rendering {len(sample)}/{len(all_screens)} app_screens "
