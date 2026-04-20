@@ -531,8 +531,9 @@ def run_classification_v2(
         link_parent_instances(conn, sid)
 
     # Pass 6: fetch screenshots for every screen containing any
-    # candidate (minimises REST calls; one image per screen reused
-    # across all that screen's reps).
+    # candidate. Caller's `fetch_screenshot` determines pixel scale
+    # (production uses scale=2 via `make_figma_screenshot_fetcher(
+    # scale=2)`; tests pass a mock).
     screens_with_reps = sorted({r["screen_id"] for r in reps})
     screenshots: dict[str, bytes] = {}
     if screens_with_reps:

@@ -520,7 +520,12 @@ def _run_classify(
         client = anthropic.Anthropic()
 
     if use_vision:
-        fetch_screenshot = make_figma_screenshot_fetcher()
+        # Classifier v2 uses scale=2 — 4x source pixels for small-
+        # node crops; spotlight pipeline upscales to 400px min-side
+        # so the vision model sees sharper detail. v1 stays at
+        # scale=1 for byte-identical behaviour.
+        scale = 2 if classifier_v2 else 1
+        fetch_screenshot = make_figma_screenshot_fetcher(scale=scale)
 
     def _progress(i: int, n: int, sid: int, per_screen: dict) -> None:
         parts = [
@@ -759,6 +764,7 @@ def make_figma_screenshot_fetcher(
     token: str | None = None,
     max_retries: int = 5,
     retry_delay: float = 2.0,
+    scale: int = 1,
 ):
     """Create a batch screenshot fetcher with retry/backoff for Figma rate limits.
 
@@ -779,7 +785,10 @@ def make_figma_screenshot_fetcher(
     def _fetch_image_urls(file_key: str, node_ids: list[str]) -> dict[str, str]:
         url = f"https://api.figma.com/v1/images/{file_key}"
         headers = {"X-Figma-Token": token}
-        params = {"ids": ",".join(node_ids), "format": "png", "scale": "1"}
+        params = {
+            "ids": ",".join(node_ids), "format": "png",
+            "scale": str(scale),
+        }
 
         delay = retry_delay
         for attempt in range(max_retries + 1):
