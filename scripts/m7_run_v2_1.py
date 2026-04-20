@@ -25,9 +25,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 import sqlite3
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -144,6 +146,18 @@ def main(argv: list[str] | None = None) -> int:
     if not Path(args.db).exists():
         print(f"DB not found: {args.db}", file=sys.stderr)
         return 1
+
+    # Step 0: whole-DB backup before ANY mutation. Snapshot lives in
+    # Python memory, so if the process dies mid-run the 674 reviews
+    # die with it. `cp` before truncate is cheap insurance.
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = Path(args.db).with_suffix(f".pre-v2.1-{ts}.bak.db")
+    shutil.copy2(args.db, backup)
+    for suffix in ("-wal", "-shm"):
+        src = Path(args.db + suffix)
+        if src.exists():
+            shutil.copy2(src, str(backup) + suffix)
+    print(f"[0/5] backed up DB → {backup}", flush=True)
 
     from dd.db import get_connection
     conn = get_connection(args.db)
