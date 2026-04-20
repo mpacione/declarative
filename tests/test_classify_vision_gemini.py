@@ -10,6 +10,7 @@ import pytest
 
 from dd.classify_vision_gemini import (
     build_gemini_crops_prompt,
+    build_response_schema,
     classify_crops_gemini,
 )
 
@@ -40,12 +41,8 @@ class _FakeCall:
         self.payload = payload
         self.calls: list[dict] = []
 
-    def __call__(self, *, prompt: str, images: list[bytes], api_key: str,
-                 model: str) -> dict:
-        self.calls.append(
-            {"prompt": prompt, "images": images,
-             "api_key": api_key, "model": model}
-        )
+    def __call__(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
         return self.payload
 
 
@@ -222,3 +219,144 @@ def test_code_fenced_json_still_parses():
     )
     assert len(result) == 1
     assert result[0]["canonical_type"] == "button"
+
+
+# ---------------------------------------------------------------------------
+# v2 tests: escape hatch, few-shot, response schema, v2 prompt rules
+# ---------------------------------------------------------------------------
+
+
+def test_new_type_verdict_preserves_new_type_label():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    call = _FakeCall(_gemini_response([
+        {"screen_id": 1, "node_id": 10,
+         "canonical_type": "new_type",
+         "new_type_label": "segmented_control",
+         "confidence": 0.9,
+         "reason": "two mutually-exclusive pills in a rounded container"},
+    ]))
+    result = classify_crops_gemini(
+        [candidate], crops, api_key="stub", call_fn=call,
+    )
+    assert len(result) == 1
+    assert result[0]["canonical_type"] == "new_type"
+    assert result[0]["new_type_label"] == "segmented_control"
+
+
+def test_new_type_label_omitted_when_canonical_type_is_catalog():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    call = _FakeCall(_gemini_response([
+        {"screen_id": 1, "node_id": 10,
+         "canonical_type": "button",
+         "new_type_label": None,
+         "confidence": 0.95,
+         "reason": "pill with 'Continue' label"},
+    ]))
+    result = classify_crops_gemini(
+        [candidate], crops, api_key="stub", call_fn=call,
+    )
+    assert "new_type_label" not in result[0]
+
+
+def test_few_shot_block_appears_in_prompt():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    few_shot = (
+        "## Examples from human review on this project\n"
+        "- name=\"Submit\" parent=container → reviewer classified as "
+        "**`button`** (reviewed)."
+    )
+    call = _FakeCall(_gemini_response([]))
+    classify_crops_gemini(
+        [candidate], crops, api_key="stub",
+        few_shot_block=few_shot, call_fn=call,
+    )
+    prompt = call.calls[0]["prompt"]
+    assert "Examples from human review" in prompt
+    assert "reviewed" in prompt
+
+
+def test_prompt_includes_layout_slot_rule():
+    prompt = build_gemini_crops_prompt([_candidate(1, 10)], catalog=[])
+    assert "Layout-slot" in prompt or "layout wrappers" in prompt.lower()
+
+
+def test_prompt_includes_wordmark_rule():
+    prompt = build_gemini_crops_prompt([_candidate(1, 10)], catalog=[])
+    assert "wordmark" in prompt.lower()
+    assert "image" in prompt.lower()
+
+
+def test_prompt_includes_skeleton_rule_with_example():
+    prompt = build_gemini_crops_prompt([_candidate(1, 10)], catalog=[])
+    assert "skeleton" in prompt.lower()
+    # Strengthened rule should name at least one placeholder frame.
+    assert "Frame 352" in prompt or "Skeleton" in prompt
+
+
+def test_prompt_includes_escape_hatch_instructions():
+    prompt = build_gemini_crops_prompt([_candidate(1, 10)], catalog=[])
+    assert "new_type" in prompt
+    assert "new_type_label" in prompt
+
+
+def test_build_response_schema_constrains_canonical_type_to_enum():
+    catalog = [
+        {"canonical_name": "button", "category": "interactive",
+         "behavioral_description": "tap"},
+        {"canonical_name": "heading", "category": "text",
+         "behavioral_description": "label"},
+    ]
+    schema = build_response_schema(catalog)
+    enum = schema["properties"]["classifications"]["items"][
+        "properties"]["canonical_type"]["enum"]
+    assert "button" in enum
+    assert "heading" in enum
+    assert "unsure" in enum
+    assert "new_type" in enum
+
+
+def test_response_schema_passed_to_call_fn_when_catalog_present():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    catalog = [
+        {"canonical_name": "button", "category": "interactive",
+         "behavioral_description": "tap"},
+    ]
+    call = _FakeCall(_gemini_response([]))
+    classify_crops_gemini(
+        [candidate], crops, api_key="stub", catalog=catalog, call_fn=call,
+    )
+    assert "response_schema" in call.calls[0]
+    enum = call.calls[0]["response_schema"]["properties"][
+        "classifications"]["items"]["properties"][
+            "canonical_type"]["enum"]
+    assert "button" in enum
+    assert "new_type" in enum
+
+
+def test_response_schema_suppressed_when_catalog_empty():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    call = _FakeCall(_gemini_response([]))
+    classify_crops_gemini(
+        [candidate], crops, api_key="stub", catalog=[], call_fn=call,
+    )
+    assert "response_schema" not in call.calls[0]
+
+
+def test_response_schema_disabled_when_flag_off():
+    candidate = _candidate(1, 10)
+    crops = {(1, 10): _png_stub()}
+    catalog = [
+        {"canonical_name": "button", "category": "interactive",
+         "behavioral_description": "tap"},
+    ]
+    call = _FakeCall(_gemini_response([]))
+    classify_crops_gemini(
+        [candidate], crops, api_key="stub", catalog=catalog,
+        use_response_schema=False, call_fn=call,
+    )
+    assert "response_schema" not in call.calls[0]
