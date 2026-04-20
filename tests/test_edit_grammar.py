@@ -839,3 +839,56 @@ class TestApplyMove:
         with pytest.raises(DDMarkupParseError) as exc:
             apply_edits(doc)
         assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Pass 7: replace verb apply semantics (OQ-3 Interpretation A:
+# replaces the block CONTENT; the addressed node itself stays.)
+# ---------------------------------------------------------------------------
+
+class TestApplyReplace:
+    def test_replace_block_with_single_node(self):
+        doc = parse_l3(_doc(
+            "replace @card-1 {\n  text #only \"only child\"\n}"
+        ))
+        result = apply_edits(doc)
+        # @card-1 still exists.
+        card = _find_node_by_eid(result, "card-1")
+        assert card is not None
+        # Its block content is now exactly the new content (the
+        # original #title and #subtitle children are gone).
+        assert _find_node_by_eid(result, "title") is None
+        assert _find_node_by_eid(result, "subtitle") is None
+        assert _find_node_by_eid(result, "only") is not None
+
+    def test_replace_with_multiple_children(self):
+        doc = parse_l3(_doc(
+            "replace @card-1 {\n"
+            "  text #h \"new heading\"\n"
+            "  text #b \"new body\"\n"
+            "}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card.block.statements]
+        assert eids == ["h", "b"]
+
+    def test_replace_preserves_target_node_head(self):
+        # The card-1 node keeps its eid + head properties (only the
+        # children change).
+        doc = parse_l3(_doc(
+            "replace @card-1 {\n  text \"x\"\n}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        # head.eid + radius prop preserved.
+        assert card.head.eid == "card-1"
+        assert card.head.get_prop("radius") is not None
+
+    def test_replace_target_not_found_raises(self):
+        doc = parse_l3(_doc(
+            "replace @nope {\n  text \"x\"\n}"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"

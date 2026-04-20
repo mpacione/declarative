@@ -3875,9 +3875,39 @@ def _apply_one(
         return _apply_insert(doc, stmt, deleted_targets)
     if isinstance(stmt, MoveStatement):
         return _apply_move(doc, stmt, deleted_targets)
+    if isinstance(stmt, ReplaceStatement):
+        return _apply_replace(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
     )
+
+
+def _apply_replace(
+    doc: L3Document,
+    stmt: ReplaceStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    """OQ-3 Interpretation A: replaces the addressed node's BLOCK
+    CONTENT; the node itself stays. To replace the node entirely,
+    use `swap`.
+    """
+    if stmt.target.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"replace targets `@{stmt.target.path}` which was deleted "
+            "earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    target_node, target_path = _resolve_eref(doc, stmt.target)
+    if target_node is None:
+        raise DDMarkupParseError(
+            f"replace target `@{stmt.target.path}` not found.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    new_block = stmt.body if stmt.body is not None else Block()
+    new_node = replace(target_node, block=new_block)
+    return _splice_node(doc, target_path, target_node, new_node)
 
 
 def _apply_move(
