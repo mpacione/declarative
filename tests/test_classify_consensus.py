@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import pytest
 
-from dd.classify_consensus import compute_consensus_v1
+from dd.classify_consensus import compute_consensus_v1, compute_consensus_v2
 
 
 class TestConsensusV1ThreeSources:
@@ -135,4 +135,96 @@ class TestConsensusV1DegradedInput:
         )
         assert compute_consensus_v1("unsure", None, "button") == (
             "unsure", "any_unsure", True,
+        )
+
+
+class TestConsensusV2Weighted:
+    """Rule v2 — CS gets 2x weight (empirical: 67.6% match rate vs
+    55.7%/51.0% for LLM/PS on the full-corpus review corpus).
+    """
+
+    def test_all_three_agree_still_unanimous(self):
+        assert compute_consensus_v2("button", "button", "button") == (
+            "button", "unanimous", False,
+        )
+
+    def test_llm_ps_agree_cs_dissents_flags_tie(self):
+        # LLM(1) + PS(1) = 2, CS(2) = 2 → tie → flag.
+        # This is the signature behavior change: v1 picks majority
+        # (LLM+PS=button), v2 flags the disagreement because CS's
+        # weight matches the pair.
+        assert compute_consensus_v2("button", "button", "card") == (
+            "unsure", "weighted_tie", True,
+        )
+
+    def test_cs_outvotes_single_dissent_llm(self):
+        # LLM=a(1), PS=b(1), CS=b(2) → b wins 3-1.
+        assert compute_consensus_v2("button", "card", "card") == (
+            "card", "weighted_majority", False,
+        )
+
+    def test_cs_outvotes_three_way_disagree(self):
+        # LLM=a(1), PS=b(1), CS=c(2) → c wins 2-1-1. This is where
+        # rule v2 recovers 51 flagged cases from v1's
+        # three_way_disagreement bucket.
+        assert compute_consensus_v2(
+            "button", "card", "list_item",
+        ) == (
+            "list_item", "weighted_majority", False,
+        )
+
+    def test_any_unsure_flags_even_when_pair_matches(self):
+        # Rule v1 semantics preserved — unsure short-circuits.
+        assert compute_consensus_v2("unsure", "button", "button") == (
+            "unsure", "any_unsure", True,
+        )
+
+    def test_llm_cs_agree_ps_dissents_wins_3_1(self):
+        # LLM=a(1), CS=a(2), PS=b(1) → a wins 3-1.
+        assert compute_consensus_v2("button", "card", "button") == (
+            "button", "weighted_majority", False,
+        )
+
+    def test_ps_cs_agree_llm_dissents_wins_3_1(self):
+        # PS=a(1), CS=a(2), LLM=b(1) → a wins 3-1.
+        assert compute_consensus_v2("card", "button", "button") == (
+            "button", "weighted_majority", False,
+        )
+
+    def test_two_sources_cs_alone_is_single_source(self):
+        assert compute_consensus_v2(None, None, "button") == (
+            "button", "single_source", False,
+        )
+
+    def test_two_sources_both_present_and_agree(self):
+        assert compute_consensus_v2(None, "button", "button") == (
+            "button", "two_source_unanimous", False,
+        )
+
+    def test_two_sources_cs_wins_against_one(self):
+        # Only PS and CS. PS=a(1), CS=b(2) → b wins 2-1.
+        assert compute_consensus_v2(None, "card", "button") == (
+            "button", "weighted_majority", False,
+        )
+
+    def test_two_sources_llm_loses_to_cs(self):
+        # LLM=a(1), CS=b(2) → b wins 2-1.
+        assert compute_consensus_v2("card", None, "button") == (
+            "button", "weighted_majority", False,
+        )
+
+    def test_two_sources_llm_and_ps_tie_if_disagree(self):
+        # LLM=a(1), PS=b(1), no CS → 1-1 → tie → flag.
+        assert compute_consensus_v2("card", "button", None) == (
+            "unsure", "weighted_tie", True,
+        )
+
+    def test_no_sources_flag_no_sources(self):
+        assert compute_consensus_v2(None, None, None) == (
+            None, "no_sources", True,
+        )
+
+    def test_single_unsure_source_flags(self):
+        assert compute_consensus_v2("unsure", None, None) == (
+            "unsure", "single_source", True,
         )

@@ -109,7 +109,7 @@ class TestConsensusBypassForTrustedSources:
     ) -> None:
         _seed_row(db, classification_source="formal",
                   canonical_type="button", confidence=1.0)
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -123,7 +123,7 @@ class TestConsensusBypassForTrustedSources:
     ) -> None:
         _seed_row(db, classification_source="heuristic",
                   canonical_type="header", confidence=0.8)
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -158,7 +158,7 @@ class TestConsensusThreeSourceVoting:
             vision_ps_type="button", vision_ps_confidence=0.85,
             vision_cs_type="button", vision_cs_confidence=0.88,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -177,7 +177,7 @@ class TestConsensusThreeSourceVoting:
             vision_ps_type="card", vision_ps_confidence=0.85,
             vision_cs_type="card", vision_cs_confidence=0.9,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -194,7 +194,7 @@ class TestConsensusThreeSourceVoting:
             vision_ps_type="unsure", vision_ps_confidence=0.4,
             vision_cs_type="button", vision_cs_confidence=0.85,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -211,7 +211,7 @@ class TestConsensusThreeSourceVoting:
             vision_ps_type="card", vision_ps_confidence=0.7,
             vision_cs_type="container", vision_cs_confidence=0.7,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -230,7 +230,7 @@ class TestConsensusThreeSourceVoting:
             canonical_type="button",
             llm_type="button", llm_confidence=0.8,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -248,7 +248,7 @@ class TestConsensusThreeSourceVoting:
             llm_type="button", llm_confidence=0.8,
             vision_ps_type="button", vision_ps_confidence=0.85,
         )
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review "
             "FROM screen_component_instances WHERE id = 1"
@@ -268,8 +268,8 @@ class TestConsensusThreeSourceVoting:
             vision_ps_type="card", vision_ps_confidence=0.7,
             vision_cs_type="container", vision_cs_confidence=0.7,
         )
-        apply_consensus_to_screen(db, screen_id=1)
-        apply_consensus_to_screen(db, screen_id=1)
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
+        apply_consensus_to_screen(db, screen_id=1, rule="v1")
         # Still flagged with three_way_disagreement; llm_type intact.
         row = db.execute(
             "SELECT canonical_type, consensus_method, flagged_for_review, "
@@ -596,9 +596,15 @@ class TestRunClassificationThreeSource:
             assert row[4] == "card"
             assert row[5] == "card"
 
-    def test_three_source_disagreement_flags(
+    def test_three_source_disagreement_resolves_to_cs_under_v2(
         self, db: sqlite3.Connection,
     ) -> None:
+        """Under rule v2 (the default post-2026-04-20), three-way
+        disagreement resolves to CS's verdict because CS has 2x vote.
+        LLM=card(1), PS=button(1), CS=container(2) → container wins.
+        Rule v1's `three_way_disagreement` flag is covered by the
+        v1-explicit tests in TestConsensusThreeSourceVoting.
+        """
         from dd.classify import run_classification
         client = _make_dual_client_returning(
             llm_types={10: "card"},
@@ -616,9 +622,9 @@ class TestRunClassificationThreeSource:
             "       llm_type, vision_ps_type, vision_cs_type "
             "FROM screen_component_instances WHERE node_id = 10"
         ).fetchone()
-        assert row[0] == "unsure"
-        assert row[1] == "three_way_disagreement"
-        assert row[2] == 1
+        assert row[0] == "container"
+        assert row[1] == "weighted_majority"
+        assert row[2] == 0
         assert row[3] == "card"
         assert row[4] == "button"
         assert row[5] == "container"

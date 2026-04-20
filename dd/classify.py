@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from dd.catalog import get_catalog
-from dd.classify_consensus import compute_consensus_v1
+from dd.classify_consensus import compute_consensus_v1, compute_consensus_v2
 from dd.classify_rules import is_system_chrome, parse_component_name
 
 
@@ -329,6 +329,8 @@ def apply_vision_cs_results(
 def apply_consensus_to_screen(
     conn: sqlite3.Connection,
     screen_id: int,
+    *,
+    rule: str = "v2",
 ) -> dict[str, int]:
     """Walk every row on the screen and compute consensus.
 
@@ -337,17 +339,27 @@ def apply_consensus_to_screen(
     for them is set to their `classification_source` and
     `flagged_for_review` to 0. `canonical_type` is preserved.
 
-    Rows classified by `llm` enter three-source voting via
-    `compute_consensus_v1`. The LLM's original verdict is read from
-    `llm_type` (preserved in migration 015) — NOT from canonical_type,
-    which consensus overwrites on this same update. Vision sources
-    contribute their `vision_ps_type` + `vision_cs_type`. The final
+    Rows classified by `llm` enter three-source voting. ``rule`` selects
+    ``v1`` (plain majority, conservative) or ``v2`` (weighted — CS gets
+    2x vote based on empirical accuracy). v2 is the default after the
+    2026-04-20 full-corpus analysis showed +6.4 pts lift on user-review
+    match. The LLM's original verdict is read from ``llm_type``
+    (preserved in migration 015) — NOT from canonical_type, which
+    consensus overwrites on this same update. Vision sources contribute
+    their ``vision_ps_type`` + ``vision_cs_type``. The final
     canonical_type, consensus_method, and flag are written in a
     single UPDATE.
 
     Returns a count summary per consensus_method so callers (CLI +
     orchestrator) can print a progress line.
     """
+    if rule == "v1":
+        compute = compute_consensus_v1
+    elif rule == "v2":
+        compute = compute_consensus_v2
+    else:
+        raise ValueError(f"unknown consensus rule: {rule!r}")
+
     rows = conn.execute(
         "SELECT id, classification_source, canonical_type, "
         "       llm_type, vision_ps_type, vision_cs_type "
@@ -371,7 +383,7 @@ def apply_consensus_to_screen(
         # `llm_type` when present; fall back to canonical_type so rows
         # written before migration 015 still work.
         llm_verdict = llm_type if llm_type is not None else canonical_type
-        result_type, method, flagged = compute_consensus_v1(
+        result_type, method, flagged = compute(
             llm_verdict, ps_type, cs_type,
         )
         conn.execute(
