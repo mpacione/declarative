@@ -387,6 +387,15 @@ def _vision_ps_classify(
     results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
     batch_size = 8
 
+    # Pre-compute every rep's crop on the main thread. SQLite
+    # connections can't cross threads, so all DB reads must happen
+    # before the ThreadPoolExecutor dispatches.
+    rep_crops: dict[tuple[int, int], bytes] = {}
+    for rep in reps:
+        crop = _build_crop(conn, rep, screenshots)
+        if crop is not None:
+            rep_crops[(rep["screen_id"], rep["node_id"])] = crop
+
     def _apply_classifications(
         classifications: list[dict[str, Any]],
         target: dict[tuple[int, int], tuple[str, float, Optional[str]]],
@@ -412,9 +421,10 @@ def _vision_ps_classify(
     ) -> list[dict[str, Any]]:
         crops: dict[tuple[int, int], bytes] = {}
         for rep in batch:
-            crop = _build_crop(conn, rep, screenshots)
-            if crop is not None:
-                crops[(rep["screen_id"], rep["node_id"])] = crop
+            key = (rep["screen_id"], rep["node_id"])
+            pre = rep_crops.get(key)
+            if pre is not None:
+                crops[key] = pre
         if not crops:
             return []
         return _classify_crops_with_retry(
@@ -509,15 +519,35 @@ def _vision_cs_classify(
     Groups are processed in parallel via ThreadPoolExecutor — each
     group is one independent API call. Anthropic SDK is thread-safe.
     """
+    # Only groups with ≥2 members do CS; singletons inherit PS.
+    multi_groups = [
+        (members, rep)
+        for members, rep in zip(groups, reps)
+        if len(members) >= 2
+    ]
+
+    # Pre-compute crops for every sampled member on the main thread.
+    # Worker threads can't touch the sqlite connection.
+    member_crops: dict[tuple[int, int], bytes] = {}
+    for members, _rep in multi_groups:
+        for m in members[:5]:
+            key = (m["screen_id"], m["node_id"])
+            if key in member_crops:
+                continue
+            crop = _build_crop(conn, m, screenshots)
+            if crop is not None:
+                member_crops[key] = crop
+
     def _classify_group(
         members: list[dict[str, Any]], rep: dict[str, Any],
     ) -> Optional[tuple[tuple[int, int], tuple[str, float, Optional[str]]]]:
         sample = members[:5]
         crops: dict[tuple[int, int], bytes] = {}
         for m in sample:
-            crop = _build_crop(conn, m, screenshots)
-            if crop is not None:
-                crops[(m["screen_id"], m["node_id"])] = crop
+            key = (m["screen_id"], m["node_id"])
+            pre = member_crops.get(key)
+            if pre is not None:
+                crops[key] = pre
         if not crops:
             return None
         classifications = _classify_crops_with_retry(
@@ -541,12 +571,6 @@ def _vision_cs_classify(
                 break
         return None
 
-    # Only groups with ≥2 members do CS; singletons inherit PS.
-    multi_groups = [
-        (members, rep)
-        for members, rep in zip(groups, reps)
-        if len(members) >= 2
-    ]
     results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
     if workers > 1 and len(multi_groups) > 1:
         with ThreadPoolExecutor(max_workers=workers) as executor:
