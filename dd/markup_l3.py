@@ -3867,8 +3867,67 @@ def _apply_one(
     """
     if isinstance(stmt, SetStatement):
         return _apply_set(doc, stmt, deleted_targets)
+    if isinstance(stmt, DeleteStatement):
+        return _apply_delete(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
+    )
+
+
+def _apply_delete(
+    doc: L3Document,
+    stmt: DeleteStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    if stmt.target.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"delete targets `@{stmt.target.path}` which was already "
+            "deleted earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    node, path = _resolve_eref(doc, stmt.target)
+    if node is None:
+        raise DDMarkupParseError(
+            f"delete target `@{stmt.target.path}` not found in document.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    deleted_targets.add(stmt.target.path)
+
+    if not path:
+        # Top-level delete — drop from doc.top_level.
+        new_top = [
+            item for item in doc.top_level if item is not node
+        ]
+        return replace(doc, top_level=tuple(new_top))
+
+    # Walk path from deepest parent up; drop the child at the slot.
+    deepest_parent, child_idx = path[-1]
+    new_stmts = list(deepest_parent.block.statements)
+    del new_stmts[child_idx]
+    new_block = replace(deepest_parent.block, statements=tuple(new_stmts))
+    current = replace(deepest_parent, block=new_block)
+
+    # Walk back further up the path with `current` as the new
+    # subtree, replacing it at each level.
+    for parent, idx in reversed(path[:-1]):
+        ps = list(parent.block.statements)
+        ps[idx] = current
+        nb = replace(parent.block, statements=tuple(ps))
+        current = replace(parent, block=nb)
+
+    # Top-level: replace the root.
+    root_parent = path[0][0]
+    new_top = list(doc.top_level)
+    for i, item in enumerate(new_top):
+        if item is root_parent:
+            new_top[i] = current
+            return replace(doc, top_level=tuple(new_top))
+    raise DDMarkupParseError(
+        "internal: root parent not found during delete",
+        kind="KIND_EID_NOT_FOUND",
+        line=stmt.line, col=stmt.col,
     )
 
 

@@ -580,3 +580,55 @@ class TestApplySetErrors:
         assert card.head.get_prop("radius").value.path == "radius.xl"
         kinds = [w.kind for w in result.warnings]
         assert "KIND_EID_NOT_FOUND" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Pass 3: delete verb apply semantics
+# ---------------------------------------------------------------------------
+
+class TestApplyDelete:
+    def test_delete_removes_node(self):
+        doc = parse_l3(_doc("delete @card-2"))
+        result = apply_edits(doc)
+        assert _find_node_by_eid(result, "card-2") is None
+        # Original unchanged.
+        assert _find_node_by_eid(doc, "card-2") is not None
+
+    def test_delete_with_subtree_removes_descendants(self):
+        # card-1 has #title and #subtitle as children. Deleting card-1
+        # also removes both children (no orphan eids).
+        doc = parse_l3(_doc("delete @card-1"))
+        result = apply_edits(doc)
+        assert _find_node_by_eid(result, "card-1") is None
+        assert _find_node_by_eid(result, "title") is None
+        assert _find_node_by_eid(result, "subtitle") is None
+
+    def test_delete_leaf(self):
+        doc = parse_l3(_doc("delete @title"))
+        result = apply_edits(doc)
+        assert _find_node_by_eid(result, "title") is None
+        # Card-1 itself still present; subtitle still present.
+        assert _find_node_by_eid(result, "card-1") is not None
+        assert _find_node_by_eid(result, "subtitle") is not None
+
+    def test_delete_eid_not_found_raises(self):
+        doc = parse_l3(_doc("delete @nonexistent"))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_delete_then_set_conflicts(self):
+        doc = parse_l3(_doc(
+            "delete @card-1\n"
+            "set @card-1 radius={radius.xl}"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EDIT_CONFLICT"
+
+    def test_delete_top_level_node(self):
+        doc = parse_l3(_doc("delete @s"))
+        result = apply_edits(doc)
+        # The screen #s is a top-level node; deleting it empties top_level.
+        assert _find_node_by_eid(result, "s") is None
+        assert len(result.top_level) == 0
