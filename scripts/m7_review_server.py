@@ -134,18 +134,18 @@ def _crop_to_bbox(
     *,
     padding_px: int = 40,
 ) -> bytes:
-    """Crop the screen PNG to the node's bbox + padding, AND draw a
-    colored rectangle outline on the node's actual bbox so the
-    reviewer can see exactly what region is the classification
-    target vs the surrounding context.
+    """Crop the screen PNG to the node's bbox + padding, with a
+    **spotlight effect**: everything outside the node's bbox is
+    dimmed to ~45% brightness; the bbox itself stays at full
+    brightness + gets a magenta stroke so the classification target
+    is visually unmissable.
 
-    Figma bbox is in canvas-pixel coords; the REST image may be at
-    a different pixel density (iPads ship 2×). We scale the bbox
-    by the actual/canvas ratio.
+    Pattern from Google Research's Spotlight (arXiv 2209.14927) —
+    the standard for mobile-UI VLM tasks where "target vs
+    surrounding context" is the dominant failure mode.
 
-    Padding is 40px (in canvas units) — enough to see a bit of
-    context around tiny nodes. The outline is magenta 3px-stroke
-    inside a 1px white halo (so it's visible on any background).
+    Figma canvas pixels are scaled to the actual image's pixel
+    density (iPad retina screens can ship 2×).
     """
     from io import BytesIO
     from PIL import Image, ImageDraw
@@ -156,12 +156,12 @@ def _crop_to_bbox(
     scale_y = ih / screen_height if screen_height > 0 else 1.0
 
     # Node bbox in actual-image pixels.
-    node_left_img = node_x * scale_x
-    node_top_img = node_y * scale_y
-    node_right_img = (node_x + node_width) * scale_x
-    node_bottom_img = (node_y + node_height) * scale_y
+    nl = max(0, int(node_x * scale_x))
+    nt = max(0, int(node_y * scale_y))
+    nr = min(iw, int((node_x + node_width) * scale_x))
+    nb = min(ih, int((node_y + node_height) * scale_y))
 
-    # Crop bounds (include padding).
+    # Crop bounds (padded).
     crop_left = max(0, int((node_x - padding_px) * scale_x))
     crop_top = max(0, int((node_y - padding_px) * scale_y))
     crop_right = min(iw, int((node_x + node_width + padding_px) * scale_x))
@@ -169,29 +169,33 @@ def _crop_to_bbox(
     if crop_right <= crop_left or crop_bottom <= crop_top:
         return screen_png
 
-    # Draw the bbox outline on the FULL image first, then crop. This
-    # ensures the outline lands exactly on the node's pixels even
-    # when the bbox hits the crop edge.
+    # Spotlight: build a dim-everywhere-mask, then paste the bbox
+    # region back at full brightness before drawing the stroke.
+    dim = Image.new("RGBA", img.size, (0, 0, 0, 140))  # ~55% alpha
+    dimmed = Image.alpha_composite(img, dim)
+    # Restore the bbox region.
+    if nr > nl and nb > nt:
+        bbox_region = img.crop((nl, nt, nr, nb))
+        dimmed.paste(bbox_region, (nl, nt))
+    img = dimmed
+
+    # Draw stroke + halo on the bbox edge.
     draw = ImageDraw.Draw(img)
-    # White halo (4px outside the magenta) for contrast on any bg.
     halo = (255, 255, 255, 255)
-    # Stroke is magenta; bright + unlikely to appear in UI content.
-    stroke = (255, 0, 180, 255)
+    stroke = (255, 0, 180, 255)  # bright magenta
     halo_w = 5
     stroke_w = 3
     draw.rectangle(
-        (node_left_img - halo_w, node_top_img - halo_w,
-         node_right_img + halo_w, node_bottom_img + halo_w),
+        (nl - halo_w, nt - halo_w, nr + halo_w, nb + halo_w),
         outline=halo, width=halo_w,
     )
     draw.rectangle(
-        (node_left_img, node_top_img, node_right_img, node_bottom_img),
-        outline=stroke, width=stroke_w,
+        (nl, nt, nr, nb), outline=stroke, width=stroke_w,
     )
 
     cropped = img.crop((crop_left, crop_top, crop_right, crop_bottom))
 
-    # If the crop is tiny, upscale to ~400px min-side for visibility.
+    # Upscale tiny crops to 400px min-side for legibility.
     min_side = 400
     cw, ch = cropped.size
     smaller = min(cw, ch)
@@ -487,17 +491,45 @@ function sciIdsFor(card) {{
   catch (e) {{ return [parseInt(card.dataset.sci, 10)]; }}
 }}
 
-function update(card, decisionType, sourceAccepted, canonicalType, notes) {{
+function update(card, decisionType, sourceAccepted, canonicalType, notes, acceptNew) {{
   const sciIds = sciIdsFor(card);
   const body = {{sci_ids: sciIds, decision_type: decisionType}};
   if (sourceAccepted) body.source_accepted = sourceAccepted;
   if (canonicalType) body.decision_canonical_type = canonicalType;
   if (notes) body.notes = notes;
+  if (acceptNew) body.accept_new = true;
   return fetch('/api/review', {{
     method: 'POST',
     headers: {{'Content-Type': 'application/json'}},
     body: JSON.stringify(body),
-  }}).then(r => r.json()).then(res => {{
+  }}).then(async r => {{
+    const res = await r.json();
+    // 409: novel type — not in the catalog. May or may not have
+    // close matches.
+    if (r.status === 409 && res.error === 'novel_type') {{
+      const typed = res.typed;
+      const suggestions = res.suggestions || [];
+      let msg;
+      if (suggestions.length > 0) {{
+        msg = `"${{typed}}" isn't in the catalog.\n\n`
+            + `Did you mean: ${{suggestions.join(', ')}}?\n\n`
+            + `OK → use "${{suggestions[0]}}"\n`
+            + `Cancel → create new "${{typed}}"`;
+      }} else {{
+        msg = `"${{typed}}" isn't in the catalog.\n\n`
+            + `No close matches found.\n\n`
+            + `OK → create new "${{typed}}" (logged for review)\n`
+            + `Cancel → abort and pick from catalog`;
+      }}
+      const picked = confirm(msg);
+      if (picked && suggestions.length > 0) {{
+        return update(card, decisionType, sourceAccepted, suggestions[0], notes, false);
+      }} else if (picked) {{
+        return update(card, decisionType, sourceAccepted, typed, notes, true);
+      }}
+      // Cancel: no save.
+      return;
+    }}
     if (res.ok) {{
       card.classList.add('done');
       done += sciIds.length;
@@ -711,6 +743,57 @@ class _Handler(BaseHTTPRequestHandler):
                 "ok": False, "error": "decision_type (str) required",
             })
             return
+
+        # Vocabulary-drift check: on override, if the typed type isn't
+        # in the catalog, check for a close match. Block the save
+        # unless the client confirms via `accept_new: true`. Catches
+        # `list-row` before it leaks into the DB as a novel duplicate
+        # of `list_item`. Pattern: difflib.get_close_matches cutoff
+        # 0.7 per the annotation-tooling research (Unilexicon,
+        # Smartlogic, PoolParty all use this shape).
+        if decision_type == "override" and not body.get("accept_new"):
+            conn = get_connection(DB_PATH)
+            catalog = _load_catalog_types(conn)
+            conn.close()
+            if (
+                isinstance(canonical_type, str)
+                and canonical_type not in catalog
+            ):
+                # Novel type — always warn. Offer close matches when
+                # difflib finds any (cutoff 0.5 catches kebab-vs-snake
+                # patterns like `list-row` ↔ `list_item`; higher
+                # cutoffs miss these even though token overlap is 50%).
+                import difflib
+                matches = difflib.get_close_matches(
+                    canonical_type, catalog, n=3, cutoff=0.5,
+                )
+                self._send_json(409, {
+                    "ok": False,
+                    "error": "novel_type",
+                    "typed": canonical_type,
+                    "suggestions": matches,  # may be empty
+                })
+                return
+
+        # If accepting a novel type (no catalog match + accept_new=true),
+        # log it for periodic catalog review.
+        if (
+            decision_type == "override"
+            and body.get("accept_new")
+            and isinstance(canonical_type, str)
+        ):
+            try:
+                with open(
+                    "render_batch/proposed_types.jsonl", "a",
+                ) as f:
+                    f.write(json.dumps({
+                        "typed": canonical_type,
+                        "sci_ids": sci_ids,
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    }) + "\n")
+            except Exception:
+                pass
+
         try:
             conn = get_connection(DB_PATH)
             for sid in sci_ids:
