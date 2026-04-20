@@ -35,6 +35,10 @@ from dd.classify import (
     link_parent_instances,
 )
 from dd.classify_dedup import dedup_key, group_candidates
+from dd.classify_few_shot import (
+    format_few_shot_block,
+    retrieve_few_shot,
+)
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_llm import (
     CLASSIFY_TOOL_SCHEMA,
@@ -97,23 +101,54 @@ def _llm_classify_representatives(
     reps: list[dict[str, Any]],
     client: Any,
     catalog: list[dict[str, Any]],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> dict[int, tuple[str, float, Optional[str]]]:
     """Classify all group representatives in one LLM call.
+
+    When `conn` is provided, retrieves up to 3 few-shot examples per
+    representative from the user's review history and prepends them
+    to the prompt. Uniform example set across all reps in the batch;
+    if reps span multiple parent types, we pool examples from each.
 
     Returns a `{node_id: (canonical_type, confidence, reason)}` map.
     """
     if not reps:
         return {}
-    # Reuse v1's prompt builder — it takes a list of candidate dicts.
-    # We build the prompt without per-screen skeleton context (reps
-    # come from multiple screens; global skeleton isn't meaningful).
-    prompt = build_classification_prompt(
+    few_shot_block = ""
+    if conn is not None:
+        # Collect ≤3 examples PER distinct parent context across reps.
+        seen_parents: set[str] = set()
+        pooled: list[dict[str, Any]] = []
+        for rep in reps:
+            parent = rep.get("parent_classified_as") or ""
+            if parent in seen_parents:
+                continue
+            seen_parents.add(parent)
+            pooled.extend(retrieve_few_shot(conn, rep, k=2))
+            if len(pooled) >= 6:
+                break
+        # Dedup pooled examples on sci_id.
+        seen_ids = set()
+        unique_pool: list[dict[str, Any]] = []
+        for e in pooled:
+            sid = e.get("sci_id")
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            unique_pool.append(e)
+        few_shot_block = format_few_shot_block(unique_pool[:6])
+
+    # v1's prompt builder + few-shot prepended.
+    base_prompt = build_classification_prompt(
         nodes=reps,
         catalog=catalog,
         screen_name="(global representatives batch)",
         screen_width=0, screen_height=0,
         skeleton_notation=None, skeleton_type=None,
     )
+    prompt = (few_shot_block + "\n" + base_prompt) if few_shot_block else base_prompt
+
     response = client.messages.create(
         model=_LLM_MODEL,
         max_tokens=8192,
@@ -459,8 +494,11 @@ def run_classification_v2(
 
     catalog = get_catalog(conn)
 
-    # Pass 4: LLM on representatives.
-    llm_verdicts = _llm_classify_representatives(reps, client, catalog)
+    # Pass 4: LLM on representatives. Passes the DB connection so
+    # few-shot retrieval pulls from classification_reviews.
+    llm_verdicts = _llm_classify_representatives(
+        reps, client, catalog, conn=conn,
+    )
 
     # Pass 5: propagate LLM verdicts → INSERT sci rows.
     llm_inserts = _insert_llm_verdicts(
