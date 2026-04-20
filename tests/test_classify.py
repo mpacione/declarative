@@ -50,6 +50,13 @@ class TestClassificationSchema:
             # M7.0.a additions: LLM + vision reasons persisted for
             # spot-check / quality audit (Alexander force-resolution).
             "classification_reason", "vision_reason",
+            # M7.0.a three-source architecture (migration 013).
+            # Per-source verdicts persisted permanently; consensus
+            # computed from these columns.
+            "vision_ps_type", "vision_ps_confidence", "vision_ps_reason",
+            "vision_cs_type", "vision_cs_confidence", "vision_cs_reason",
+            "vision_cs_evidence_json",
+            "consensus_method",
             "created_at",
         }
         assert columns == expected
@@ -114,6 +121,124 @@ class TestClassificationSchema:
             "VALUES (1, 1, 'n2', 'button/primary', 'INSTANCE', 1, 0)"
         )
         db.commit()
+
+
+def _seed_reviews_sci_row(db: sqlite3.Connection) -> None:
+    """Minimal seeding for tests that need a `screen_component_instances`
+    row to hang a review off of. Shared between
+    `TestClassificationReviewsTable` tests.
+    """
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 'n1', 'Screen 1', 428, 926)"
+    )
+    db.execute(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+        "VALUES (1, 1, 'n2', 'button/primary', 'INSTANCE', 1, 0)"
+    )
+    db.execute(
+        "INSERT INTO screen_component_instances "
+        "(id, screen_id, node_id, canonical_type, classification_source) "
+        "VALUES (1, 1, 1, 'button', 'formal')"
+    )
+    db.commit()
+
+
+class TestClassificationReviewsTable:
+    """Verify the `classification_reviews` table exists with correct
+    structure + constraints. One row per human decision — additive,
+    reversible; the consensus view joins against the latest review.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        yield conn
+        conn.close()
+
+    def test_table_exists(self, db: sqlite3.Connection):
+        row = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='classification_reviews'"
+        ).fetchone()
+        assert row is not None
+
+    def test_has_expected_columns(self, db: sqlite3.Connection):
+        cursor = db.execute("PRAGMA table_info(classification_reviews)")
+        columns = {row[1] for row in cursor.fetchall()}
+        expected = {
+            "id", "sci_id", "decided_at", "decided_by",
+            "decision_type", "decision_canonical_type",
+            "source_accepted", "notes",
+        }
+        assert columns == expected
+
+    def test_decision_type_enum_enforced(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO classification_reviews "
+                "(sci_id, decision_type) VALUES (1, 'bogus')"
+            )
+
+    def test_source_accepted_enum_enforced(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO classification_reviews "
+                "(sci_id, decision_type, source_accepted) "
+                "VALUES (1, 'accept_source', 'bogus_source')"
+            )
+
+    def test_sci_fk_cascades_on_delete(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type, decision_canonical_type) "
+            "VALUES (1, 'override', 'card')"
+        )
+        db.execute("DELETE FROM screen_component_instances WHERE id = 1")
+        row = db.execute(
+            "SELECT COUNT(*) FROM classification_reviews"
+        ).fetchone()
+        assert row[0] == 0
+
+    def test_decided_at_default_is_set(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type) VALUES (1, 'skip')"
+        )
+        row = db.execute(
+            "SELECT decided_at, decided_by FROM classification_reviews"
+        ).fetchone()
+        assert row[0] is not None and len(row[0]) > 0
+        assert row[1] == "human"
+
+    def test_reviews_index_on_sci(self, db: sqlite3.Connection):
+        row = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_reviews_sci'"
+        ).fetchone()
+        assert row is not None
+
+    def test_accept_source_decision_writes(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type, source_accepted, "
+            " decision_canonical_type, notes) "
+            "VALUES (1, 'accept_source', 'vision_ps', 'button', "
+            " 'visual glyph in the screenshot clinches it')"
+        )
+        row = db.execute(
+            "SELECT source_accepted, decision_canonical_type, notes "
+            "FROM classification_reviews WHERE sci_id = 1"
+        ).fetchone()
+        assert row[0] == "vision_ps"
+        assert row[1] == "button"
+        assert row[2].startswith("visual glyph")
 
 
 class TestClassificationSourceEnum:

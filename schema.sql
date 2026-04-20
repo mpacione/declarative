@@ -537,14 +537,50 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     vision_type           TEXT,                        -- vision classifier result
     vision_agrees         INTEGER,                     -- 1=agree, 0=disagree with structural
     flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
-    classification_reason TEXT,                        -- M7.0.a: LLM/heuristic one-sentence evidence
-    vision_reason         TEXT,                        -- M7.0.a: vision pass's evidence paragraph
+    classification_reason TEXT,                        -- M7.0.a: LLM/heuristic one-sentence evidence (renamed to llm_reason in migration 014)
+    vision_reason         TEXT,                        -- M7.0.a: legacy (pre-three-source) vision reason
+    -- M7.0.a three-source architecture (migration 013). Every node
+    -- gets three independent verdicts: LLM text, vision per-screen,
+    -- vision cross-screen. `canonical_type` above becomes the
+    -- COMPUTED consensus, not the primary signal. `consensus_method`
+    -- records which rule branch chose it (unanimous, majority,
+    -- any_unsure, three_way_disagreement).
+    vision_ps_type        TEXT,
+    vision_ps_confidence  REAL,
+    vision_ps_reason      TEXT,
+    vision_cs_type        TEXT,
+    vision_cs_confidence  REAL,
+    vision_cs_reason      TEXT,
+    vision_cs_evidence_json TEXT,
+    consensus_method      TEXT,
     created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, node_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sci_screen ON screen_component_instances(screen_id);
 CREATE INDEX IF NOT EXISTS idx_sci_type ON screen_component_instances(canonical_type);
+
+-- M7.0.a Tier 1.5 review workflow. One row per human decision —
+-- additive + reversible. The consensus view (added in a later step)
+-- joins against the latest review to produce the final
+-- canonical_type. Decisions include audit rows from
+-- `dd classify-audit` on unflagged agreements.
+CREATE TABLE IF NOT EXISTS classification_reviews (
+    id                      INTEGER PRIMARY KEY,
+    sci_id                  INTEGER NOT NULL REFERENCES screen_component_instances(id) ON DELETE CASCADE,
+    decided_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    decided_by              TEXT NOT NULL DEFAULT 'human',
+    decision_type           TEXT NOT NULL CHECK(decision_type IN (
+        'accept_source', 'override', 'unsure', 'skip', 'audit'
+    )),
+    decision_canonical_type TEXT,
+    source_accepted         TEXT CHECK(source_accepted IN (
+        'llm', 'vision_ps', 'vision_cs', 'formal', 'heuristic'
+    )),
+    notes                   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_sci ON classification_reviews(sci_id);
 
 -- Screen-level skeleton: abstract structural arrangement after classification.
 CREATE TABLE IF NOT EXISTS screen_skeletons (
