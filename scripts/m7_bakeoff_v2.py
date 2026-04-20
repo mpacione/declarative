@@ -302,7 +302,9 @@ def main(argv: list[str] | None = None) -> int:
     from dd.classify_v2 import run_classification_v2
 
     client = anthropic.Anthropic()
-    fetch_screenshot = make_figma_screenshot_fetcher()
+    # v2.1: scale=2 Figma fetches so small-node crops have 4x
+    # source pixels. See docs/plan-classifier-v2.1.md Phase D.
+    fetch_screenshot = make_figma_screenshot_fetcher(scale=2)
 
     work_conn = get_connection(work_db)
     start = time.time()
