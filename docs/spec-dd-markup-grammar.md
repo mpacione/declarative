@@ -259,7 +259,16 @@ NamespaceDecl    ::= 'namespace' DottedPath EOL
 UseDecl          ::= 'use' StringLit 'as' IDENT EOL
 TokensBlock      ::= 'tokens' Block
 
-TopLevelItem     ::= DefineDecl | Node
+TopLevelItem     ::= DefineDecl | Node | EditStatement
+                                                       // EditStatement productions
+                                                       // are listed in §8 and may
+                                                       // appear at the document
+                                                       // top level OR as Block
+                                                       // statements (e.g. inside
+                                                       // an `append`/`insert`/
+                                                       // `replace` body, where they
+                                                       // operate on the new subtree
+                                                       // before insertion).
 
 DefineDecl       ::= 'define' IDENT ParamList Block
 ParamList        ::= '(' (Param (',' Param)* ','?)? ')'
@@ -1122,6 +1131,112 @@ Stage 1 ships the parser + emitter for construction. Edit grammar
 evaluated** until Stage 4 (Priority 1). Fixture 03 shows the edit form
 inside a comment block to illustrate without activating Stage 4 scope.
 
+### 8.6 EBNF for verb statements (M7.1)
+
+```ebnf
+EditStatement    ::= SetStatement
+                   | DeleteStatement
+                   | AppendStatement
+                   | InsertStatement
+                   | MoveStatement
+                   | SwapStatement
+                   | ReplaceStatement
+                   | ImplicitSetStatement
+
+SetStatement     ::= 'set' ERef PropAssign+
+ImplicitSetStatement
+                 ::= ERef PropAssign+              // §8.2 sugar; parses to a
+                                                   // SetStatement AST node
+DeleteStatement  ::= 'delete' ERef
+AppendStatement  ::= 'append' 'to' '=' ERef Block
+InsertStatement  ::= 'insert' 'into' '=' ERef
+                     ( 'after' '=' ERef
+                     | 'before' '=' ERef )
+                     Block
+MoveStatement    ::= 'move' ERef 'to' '=' ERef MovePosition?
+MovePosition     ::= 'position' '=' ('first' | 'last')
+                   | 'after' '=' ERef
+                   | 'before' '=' ERef
+SwapStatement    ::= 'swap' ERef 'with' '=' NodeExpr
+ReplaceStatement ::= 'replace' ERef Block
+```
+
+Notes:
+
+- **§8.2 implicit-set form** (`@card-1 radius={radius.lg}`) is the
+  same AST as the explicit `set` form. The parser produces a
+  `SetStatement` for both; the emitter chooses the implicit form when
+  no other verb keywords are needed (matching the original input
+  shape preserves byte-parity for round-trip).
+- **`set` accepts one or more PropAssign** (`PropAssign+`). Multi-
+  property `set @card-1 radius={radius.lg} fill={color.brand.primary}`
+  is valid.
+- **`replace` semantics:** the body replaces the addressed node's
+  *block content*; the addressed node itself stays in the tree. To
+  replace the node entirely, use `swap`.
+- **`move` position:** `position=first` and `position=last` are bare
+  enums. Relative anchors are `after=@eid` / `before=@eid` as
+  separate top-level kwargs alongside `to=` (NOT nested
+  `position=after=@eid`).
+- **`insert` requires an anchor** — either `after=@eid` or
+  `before=@eid`. To append (no anchor), use `append to=@eid` instead.
+- **Verb keywords are reserved at statement-start position only.** A
+  property assignment `set=42` parses unambiguously because `=`
+  follows the IDENT immediately; that pattern never appears at the
+  start of a verb statement (which always has `@eid` or `to`/`into`
+  next).
+- **Auto-generated EIDs MUST NOT be addressed.** Per §3.4, code that
+  edits a document MUST NOT address auto-id'd nodes by their
+  synthesized id. `apply_edits` raises `KIND_EID_NOT_FOUND` with
+  message "auto-generated ids are not stable; promote to explicit
+  #eid before editing" if a synthesized eid is targeted.
+
+### 8.7 EID resolution semantics (apply-engine)
+
+EIDs are scoped to siblings (§2.3.1) — cousin subtrees CAN share an
+eid. `apply_edits`'s resolver:
+
+1. Walk the tree depth-first; collect all nodes whose `head.eid ==
+   target.path` (for simple paths).
+2. Exactly one match → resolved.
+3. Zero matches → `KIND_EID_NOT_FOUND`.
+4. Multiple matches → `KIND_EID_AMBIGUOUS`. Caller must qualify
+   using a dotted path (`@parent.child`) or slash path
+   (`@parent/child`).
+
+Wildcard ERefs (`@grid/*`, `@**/buy-button`) are reserved for M7.3+;
+in M7.1, `apply_edits` raises `KIND_EID_AMBIGUOUS` when a wildcard
+ERef is encountered.
+
+Cross-library addressing (`@alias::eid`) is reserved for post-v0.3
+(see §11). In M7.1, `ERef.scope_alias` is parsed but `apply_edits`
+raises `KIND_EID_AMBIGUOUS` if non-null.
+
+### 8.8 Multi-statement semantics
+
+`apply_edits(doc, [s1, s2, s3])` executes statements **sequentially**
+on the result of all previous statements. Conflict patterns:
+
+- **Statement targets a previously-deleted ERef** → `KIND_EDIT_CONFLICT`.
+- **Two `set` statements on the same property+ERef** → warn
+  (duplicate override); not a hard error.
+
+`apply_edits(doc, stmts, *, strict=True)` is the API default. With
+`strict=False`, errors collect on the result document's `warnings`
+list and execution continues; this is the path the verifier-as-agent
+loop (M7.5) uses for partial repair runs.
+
+### 8.9 `swap` override preservation
+
+For M7.1, `swap` is the minimal "replace target node with the new
+NodeExpr; preserve the target's `head.eid` on the replacement so
+later edits can still address by the same name." Override
+preservation across component-ref swaps (e.g., when swapping
+`button/primary/lg` for `button/primary/sm`, carrying user-set props
+forward) requires `component_slots` data from M7.0.b. Until M7.0.b
+ships, the M7.1 `swap` test for the component-ref form is marked
+skipped.
+
 ---
 
 ## 9. Provenance annotations
@@ -1213,6 +1328,11 @@ AND the renderer AND the verifier.
 | `KIND_OVERRIDE_TARGET_MISSING` | A path override at a `& pattern` call site targets an eid that doesn't exist after expansion | §6 (L0↔L3 spec) |
 | `KIND_INSTANCE_UNKEYED` | `node_type=INSTANCE` with null `component_key` (extractor-side; fail-open in L3 emission) | L0↔L3 §OQ-2 |
 | `KIND_UNUSED_IMPORT` | **Warning** (non-fatal): `use` alias declared but never referenced via `alias::...` | §6.2 |
+| `KIND_BAD_EDIT_VERB` | Malformed verb statement (missing required keyword arg, wrong token type after verb, anchor without sibling) | §8.6 |
+| `KIND_EID_NOT_FOUND` | `apply_edits` cannot resolve an `@eid` to a node in the current tree; also fired when an auto-generated eid is targeted (§3.4 prohibition) | §8.7 |
+| `KIND_EID_AMBIGUOUS` | An `@eid` resolves to multiple nodes across sibling scopes; also fired for unsupported wildcard (`@grid/*`) and cross-library (`@alias::eid`) edit targets in M7.1 | §8.7 |
+| `KIND_EDIT_CONFLICT` | Multi-edit sequence contains contradictory statements (e.g., `delete @x` followed by `set @x prop=1`) | §8.8 |
+| `KIND_EDIT_INVALID_TARGET` | Verb's operation is structurally invalid on the resolved target (e.g., `append` to a leaf TypeKeyword node that cannot host children) | §8.6 |
 
 Note on severity: all KIND values listed are **hard-errors** (halt the
 parse) EXCEPT `KIND_UNUSED_IMPORT`, which is a **warning** (surfaced on
