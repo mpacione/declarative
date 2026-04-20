@@ -26,6 +26,8 @@ for the full spec + rationale.
 from __future__ import annotations
 
 import sqlite3
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Optional
 
 from dd.catalog import get_catalog
@@ -329,6 +331,37 @@ def _build_crop(
 
 
 _LOW_CONFIDENCE_THRESHOLD = 0.70
+_DEFAULT_WORKERS = 4
+_RETRY_BACKOFF_S = 10.0
+
+
+def _classify_crops_with_retry(
+    batch: list[dict[str, Any]],
+    crops: dict[tuple[int, int], bytes],
+    client: Any,
+    catalog: list[dict[str, Any]],
+    *,
+    retry_mode: bool = False,
+    max_attempts: int = 3,
+) -> list[dict[str, Any]]:
+    """Call classify_crops_batch with retry/backoff on transient
+    errors (Anthropic 429 / 529 / SSL hiccups). Returns [] on
+    final failure rather than propagating the exception so one bad
+    batch doesn't abort the whole parallel run.
+    """
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            return classify_crops_batch(
+                batch, crops, client,
+                catalog=catalog, retry_mode=retry_mode,
+            )
+        except Exception:
+            attempt += 1
+            if attempt >= max_attempts:
+                return []
+            time.sleep(_RETRY_BACKOFF_S * attempt)
+    return []
 
 
 def _vision_ps_classify(
@@ -337,6 +370,8 @@ def _vision_ps_classify(
     screenshots: dict[str, bytes],
     client: Any,
     catalog: list[dict[str, Any]],
+    *,
+    workers: int = _DEFAULT_WORKERS,
 ) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
     """Vision PS pass: one crop per group representative. Batches
     multiple reps into a single classify_crops_batch call (up to
@@ -351,19 +386,11 @@ def _vision_ps_classify(
         return {}
     results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
     batch_size = 8
-    # Initial pass.
-    for start in range(0, len(reps), batch_size):
-        batch = reps[start:start + batch_size]
-        crops: dict[tuple[int, int], bytes] = {}
-        for rep in batch:
-            crop = _build_crop(conn, rep, screenshots)
-            if crop is not None:
-                crops[(rep["screen_id"], rep["node_id"])] = crop
-        if not crops:
-            continue
-        classifications = classify_crops_batch(
-            batch, crops, client, catalog=catalog,
-        )
+
+    def _apply_classifications(
+        classifications: list[dict[str, Any]],
+        target: dict[tuple[int, int], tuple[str, float, Optional[str]]],
+    ) -> None:
         for c in classifications:
             sid = c.get("screen_id")
             nid = c.get("node_id")
@@ -375,10 +402,41 @@ def _vision_ps_classify(
                 and isinstance(ctype, str)
             ):
                 continue
-            results[(sid, nid)] = (
+            target[(sid, nid)] = (
                 ctype, float(conf),
                 reason if isinstance(reason, str) else None,
             )
+
+    def _build_and_classify(
+        batch: list[dict[str, Any]], *, retry_mode: bool = False,
+    ) -> list[dict[str, Any]]:
+        crops: dict[tuple[int, int], bytes] = {}
+        for rep in batch:
+            crop = _build_crop(conn, rep, screenshots)
+            if crop is not None:
+                crops[(rep["screen_id"], rep["node_id"])] = crop
+        if not crops:
+            return []
+        return _classify_crops_with_retry(
+            batch, crops, client, catalog, retry_mode=retry_mode,
+        )
+
+    # Initial pass — parallelize batches across a thread pool.
+    # Anthropic's SDK is thread-safe; one client is shared.
+    batches = [
+        reps[i:i + batch_size] for i in range(0, len(reps), batch_size)
+    ]
+    if workers > 1 and len(batches) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_build_and_classify, b)
+                for b in batches
+            ]
+            for fut in as_completed(futures):
+                _apply_classifications(fut.result(), results)
+    else:
+        for b in batches:
+            _apply_classifications(_build_and_classify(b), results)
 
     # Phase E — rejection sampling. Find reps whose first verdict
     # was low-confidence or unsure; re-classify with CoT prompt.
@@ -391,43 +449,45 @@ def _vision_ps_classify(
         ctype, conf, _reason = verdict
         if ctype == "unsure" or conf < _LOW_CONFIDENCE_THRESHOLD:
             retry_reps.append(rep)
-    for start in range(0, len(retry_reps), batch_size):
-        batch = retry_reps[start:start + batch_size]
-        crops: dict[tuple[int, int], bytes] = {}
-        for rep in batch:
-            crop = _build_crop(conn, rep, screenshots)
-            if crop is not None:
-                crops[(rep["screen_id"], rep["node_id"])] = crop
-        if not crops:
-            continue
-        classifications = classify_crops_batch(
-            batch, crops, client, catalog=catalog, retry_mode=True,
-        )
-        for c in classifications:
-            sid = c.get("screen_id")
-            nid = c.get("node_id")
-            ctype = c.get("canonical_type")
-            conf = c.get("confidence", _DEFAULT_CONFIDENCE)
-            reason = c.get("reason")
-            if not (
-                isinstance(sid, int) and isinstance(nid, int)
-                and isinstance(ctype, str)
-            ):
-                continue
-            # Use retry verdict IF higher confidence OR if first pass
-            # was 'unsure' and retry isn't.
-            existing = results.get((sid, nid))
+    if retry_reps:
+        retry_results: dict[
+            tuple[int, int], tuple[str, float, Optional[str]]
+        ] = {}
+        retry_batches = [
+            retry_reps[i:i + batch_size]
+            for i in range(0, len(retry_reps), batch_size)
+        ]
+        if workers > 1 and len(retry_batches) > 1:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(
+                        _build_and_classify, b, retry_mode=True,
+                    )
+                    for b in retry_batches
+                ]
+                for fut in as_completed(futures):
+                    _apply_classifications(
+                        fut.result(), retry_results,
+                    )
+        else:
+            for b in retry_batches:
+                _apply_classifications(
+                    _build_and_classify(b, retry_mode=True),
+                    retry_results,
+                )
+        # Merge retry verdicts: keep the higher-confidence one or
+        # promote a non-unsure retry over an initial `unsure`.
+        for key, retry_verdict in retry_results.items():
+            r_ctype, r_conf, r_reason = retry_verdict
+            existing = results.get(key)
             first_conf = existing[1] if existing else 0.0
             first_type = existing[0] if existing else None
             use_retry = (
-                float(conf) > first_conf
-                or (first_type == "unsure" and ctype != "unsure")
+                r_conf > first_conf
+                or (first_type == "unsure" and r_ctype != "unsure")
             )
             if use_retry:
-                results[(sid, nid)] = (
-                    ctype, float(conf),
-                    reason if isinstance(reason, str) else None,
-                )
+                results[key] = retry_verdict
     return results
 
 
@@ -438,17 +498,20 @@ def _vision_cs_classify(
     screenshots: dict[str, bytes],
     client: Any,
     catalog: list[dict[str, Any]],
+    *,
+    workers: int = _DEFAULT_WORKERS,
 ) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
     """Vision CS pass: for each group with ≥2 members, classify the
     representative using crops of ALL members (or up to 5) as
     multi-image context — the cross-screen visual-consistency signal.
     Singletons are skipped (CS == PS for a group of 1; PS already ran).
+
+    Groups are processed in parallel via ThreadPoolExecutor — each
+    group is one independent API call. Anthropic SDK is thread-safe.
     """
-    results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
-    for members, rep in zip(groups, reps):
-        if len(members) < 2:
-            continue
-        # Build crops of up to 5 members for cross-screen context.
+    def _classify_group(
+        members: list[dict[str, Any]], rep: dict[str, Any],
+    ) -> Optional[tuple[tuple[int, int], tuple[str, float, Optional[str]]]]:
         sample = members[:5]
         crops: dict[tuple[int, int], bytes] = {}
         for m in sample:
@@ -456,15 +519,10 @@ def _vision_cs_classify(
             if crop is not None:
                 crops[(m["screen_id"], m["node_id"])] = crop
         if not crops:
-            continue
-        # Call v2 classifier on the rep + its group crops. Tool
-        # schema expects one classification per (screen_id, node_id);
-        # we only use the representative's verdict and apply it to
-        # all members (propagation happens in the caller).
-        classifications = classify_crops_batch(
-            sample, crops, client, catalog=catalog,
+            return None
+        classifications = _classify_crops_with_retry(
+            sample, crops, client, catalog,
         )
-        # Find the rep's verdict in the response.
         for c in classifications:
             sid = c.get("screen_id")
             nid = c.get("node_id")
@@ -473,11 +531,40 @@ def _vision_cs_classify(
                 conf = c.get("confidence", _DEFAULT_CONFIDENCE)
                 reason = c.get("reason")
                 if isinstance(ctype, str):
-                    results[(sid, nid)] = (
-                        ctype, float(conf),
-                        reason if isinstance(reason, str) else None,
+                    return (
+                        (sid, nid),
+                        (
+                            ctype, float(conf),
+                            reason if isinstance(reason, str) else None,
+                        ),
                     )
                 break
+        return None
+
+    # Only groups with ≥2 members do CS; singletons inherit PS.
+    multi_groups = [
+        (members, rep)
+        for members, rep in zip(groups, reps)
+        if len(members) >= 2
+    ]
+    results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
+    if workers > 1 and len(multi_groups) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(_classify_group, members, rep)
+                for members, rep in multi_groups
+            ]
+            for fut in as_completed(futures):
+                out = fut.result()
+                if out is not None:
+                    key, verdict = out
+                    results[key] = verdict
+    else:
+        for members, rep in multi_groups:
+            out = _classify_group(members, rep)
+            if out is not None:
+                key, verdict = out
+                results[key] = verdict
     return results
 
 
@@ -537,6 +624,7 @@ def run_classification_v2(
     since_screen_id: Optional[int] = None,
     limit: Optional[int] = None,
     progress_callback: Any = None,
+    workers: int = _DEFAULT_WORKERS,
 ) -> dict[str, Any]:
     """Orchestrate the full v2 cascade.
 
@@ -599,12 +687,14 @@ def run_classification_v2(
             conn, screens_with_reps, fetch_screenshot, file_key,
         )
 
-    # Pass 7 + 8: vision PS + CS.
+    # Pass 7 + 8: vision PS + CS. Parallelized across workers.
     ps_verdicts = _vision_ps_classify(
         conn, reps, screenshots, client, catalog,
+        workers=workers,
     )
     cs_verdicts = _vision_cs_classify(
         conn, groups_list, reps, screenshots, client, catalog,
+        workers=workers,
     )
 
     # Pass 9: propagate vision verdicts.
