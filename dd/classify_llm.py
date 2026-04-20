@@ -128,8 +128,31 @@ def _describe_node(node: dict[str, Any]) -> str:
         f'name="{node["name"]}"',
         f"type={node['node_type']}",
         f"depth={node.get('depth', '?')}",
-        f"size={int(node.get('width') or 0)}×{int(node.get('height') or 0)}",
     ]
+    w = int(node.get("width") or 0)
+    h = int(node.get("height") or 0)
+    parts.append(f"size={w}×{h}")
+    # Classifier v2.1 — geometric features. Aspect ratio + position
+    # encode priors (bottom_nav bottom-full-width, divider thin,
+    # icon small-square). Caller populates screen_width / screen_
+    # height on the candidate dict when these features should apply.
+    sw = node.get("screen_width") or 0
+    sh = node.get("screen_height") or 0
+    if w and h:
+        aspect = w / h if h else 0
+        parts.append(f"aspect={aspect:.2f}")
+    if sw and sh and w and h:
+        x = node.get("x") or 0
+        y = node.get("y") or 0
+        # Position as percent across the screen.
+        x_pct = (x / sw) * 100 if sw else 0
+        y_pct = (y / sh) * 100 if sh else 0
+        w_pct = (w / sw) * 100 if sw else 0
+        h_pct = (h / sh) * 100 if sh else 0
+        parts.append(
+            f"pos=({x_pct:.0f}%,{y_pct:.0f}%) "
+            f"size_vs_screen=({w_pct:.0f}%,{h_pct:.0f}%)"
+        )
     if node.get("layout_mode"):
         parts.append(f"layout={node['layout_mode']}")
     total_children = node.get("total_children")

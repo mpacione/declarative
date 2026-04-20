@@ -87,12 +87,33 @@ def _collect_all_candidates(
     """Pool unclassified candidates across every screen. Reuses
     `_get_unclassified_for_llm` per screen (already applies the
     full-screen + system-chrome filters).
+
+    Enriches each candidate with screen-level context so downstream
+    prompt builders (classify_llm._describe_node) can compute
+    geometric features (aspect ratio, position on screen,
+    size-relative-to-viewport). v2.1 Phase C.
     """
+    # Fetch screen metadata once per screen.
     pooled: list[dict[str, Any]] = []
     for sid in screen_ids:
+        screen_row = conn.execute(
+            "SELECT name, width, height, device_class "
+            "FROM screens WHERE id = ?",
+            (sid,),
+        ).fetchone()
+        sw, sh = 0.0, 0.0
+        device_class = None
+        if screen_row:
+            sw = float(screen_row[1] or 0)
+            sh = float(screen_row[2] or 0)
+            device_class = screen_row[3]
         cands = _get_unclassified_for_llm(conn, sid)
         for c in cands:
             c["screen_id"] = sid
+            c["screen_width"] = sw
+            c["screen_height"] = sh
+            if device_class:
+                c["device_class"] = device_class
             pooled.append(c)
     return pooled
 
