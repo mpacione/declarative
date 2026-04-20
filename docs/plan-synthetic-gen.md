@@ -283,74 +283,117 @@ Shipped commits, in order:
 6. `b083243` — prompt tightening v1 + bake-off v2 results
 7. `a2820fa` — M7.0.a decisions captured in this section
 
-Infrastructure NOT yet built (pending next session):
-- Migration 012 (three-source storage columns + `classification_reviews` table)
-- Orchestrator update (run all three sources per screen)
-- Consensus computation (rule v1)
+**2026-04-19 evening session shipped the remaining infrastructure (Steps 1–8, 10):**
+8. `15e9155` — migration 013 (three-source columns + classification_reviews)
+9. `f0124ac` — rename classification_reason → llm_reason (migration 014)
+10. `d446883` — consensus rule v1 pure function
+11. `448cc64` — three-source orchestrator + migration 015 (llm_type / llm_confidence)
+12. `6acc3f0` — `--three-source` CLI flag
+13. `9fdab37` — `dd classify-review` interactive TUI
+14. `d13aa06` — `dd classify-review-index` HTML companion
+15. `07ba3d9` — `dd classify-audit` spot-check
+16. `02e445e` — `scripts/m7_disagreement_report.py`
+
+Infrastructure shipped (Step numbering matches §5.1.b below):
+- Migrations 013, 014, 015 applied to Dank DB
+- Orchestrator `run_classification(three_source=True)` runs all three sources
+- Consensus computation `dd.classify_consensus.compute_consensus_v1`
+- `dd classify --three-source` CLI flag
 - `dd classify-review` CLI (Tier 1.5 TUI + visual refs)
 - `dd classify-review-index` HTML companion
-- `dd classify-audit` spot-check
+- `dd classify-audit --sample N --seed` spot-check
+- `scripts.m7_disagreement_report` markdown report generator
 
-Full-corpus 204-screen run: pending the above.
+Dry-run validation (3 iPad screens, 150–152): 452 rows classified end-to-end —
+formal 219 / heuristic 163 / LLM 70, vision PS applied 70, vision CS applied 70,
+consensus breakdown 48 unanimous / 21 majority / 1 three_way_disagreement. Pair
+disagreement rates (LLM↔PS 24%, LLM↔CS 29%, PS↔CS 11%) consistent with the v2
+bake-off's 76.9% agreement.
 
-### 5.1.b Next-session M7.0.a build plan (TDD, concrete steps)
+Tests: 194+ across classify modules; 54 pre-existing failures in unrelated
+modules unchanged.
 
-Step-by-step execution plan for the next session. Assume a fresh Claude session starts here; each step is independently testable and commits cleanly.
+Full-corpus 204-screen cascade run: in progress / see commit log for completion.
 
-**Step 1 — Migration 012 (schema extension).** File: `migrations/012_three_source_classification.sql`. Adds to `screen_component_instances`:
+### 5.1.b M7.0.a build plan — step status
 
-```sql
-ALTER TABLE screen_component_instances ADD COLUMN vision_ps_type TEXT;
-ALTER TABLE screen_component_instances ADD COLUMN vision_ps_confidence REAL;
-ALTER TABLE screen_component_instances ADD COLUMN vision_ps_reason TEXT;
-ALTER TABLE screen_component_instances ADD COLUMN vision_cs_type TEXT;
-ALTER TABLE screen_component_instances ADD COLUMN vision_cs_confidence REAL;
-ALTER TABLE screen_component_instances ADD COLUMN vision_cs_reason TEXT;
-ALTER TABLE screen_component_instances ADD COLUMN vision_cs_evidence_json TEXT;
-ALTER TABLE screen_component_instances ADD COLUMN consensus_method TEXT;
+Step-by-step execution plan. Steps 1–8, 10 were completed in the 2026-04-19
+evening session. Each step is independently testable and commits cleanly.
+
+**Step 1 — Migration 013 (schema extension).** ✅ Shipped `15e9155`. Renumbered
+from "012" in the original plan because `012_variant_token_bindings.sql` already
+existed. File: `migrations/013_three_source_classification.sql`. Adds 8 columns
+to `screen_component_instances` (`vision_ps_*`, `vision_cs_*`, `consensus_method`)
++ `classification_reviews` table. Also added `audit` to the `decision_type`
+CHECK enum (required for Step 8 spot-check workflow).
+
+**Step 2 — Rename `classification_reason` → `llm_reason`.** ✅ Shipped `f0124ac`.
+Migration 014 uses `ALTER TABLE ... RENAME COLUMN` — SQLite ≥ 3.25 preserves
+data in place. Callers: `dd/classify_llm.py`, `scripts/m7_dry_run_10.py`.
+
+**Step 3 — Consensus computation module (`dd/classify_consensus.py`).** ✅
+Shipped `d446883`. 13 unit tests cover every rule-v1 branch including degraded
+input (1 or 2 sources available). **Extra (not in original plan):** added
+`llm_type` + `llm_confidence` columns via migration 015 (`448cc64`) so the
+LLM's primary verdict survives consensus overwriting `canonical_type`. Rule-v2
+iteration reads `llm_type`, not `canonical_type`.
+
+**Step 4 — Three-source orchestrator.** ✅ Shipped `448cc64`. `run_classification(
+three_source=True)` runs formal → heuristic → LLM → vision_ps per-screen, then
+vision_cs batched by (device_class, skeleton_type), then consensus per screen.
+`apply_vision_ps_results` / `apply_vision_cs_results` / `apply_consensus_to_screen`
+live in `dd/classify.py`. 15 end-to-end tests.
+
+**Step 5 — CLI flag for three-source mode.** ✅ Shipped `6acc3f0`.
+`dd classify --three-source` implies `--llm` + `--vision`. Progress line gains
+`ps=N` marker; summary prints vision_ps_applied / vision_cs_applied / consensus
+breakdown.
+
+**Step 6 — `dd classify-review` CLI (Tier 1.5).** ✅ Shipped `9fdab37`.
+Interactive TUI at `dd/classify_review.py`. Figma deep-link (`figma://`),
+local PNG via `open`, iTerm2/Kitty/Ghostty env-var detection hook. Records
+decisions in `classification_reviews`. 23 tests covering every prompt branch.
+
+**Step 7 — `dd classify-review-index` HTML.** ✅ Shipped `d13aa06`.
+`render_review_index_html(conn, file_key, ...)` returns a self-contained
+HTML doc with inline CSS + base64 screenshots. 7 tests.
+
+**Step 8 — `dd classify-audit` spot-check.** ✅ Shipped `07ba3d9`.
+`dd/classify_audit.py`: `fetch_audit_sample(conn, n, seed, screen_id)` with
+reproducible seeded sampling. `run_audit_tui` records every decision as
+`decision_type='audit'` regardless of outcome. 10 tests.
+
+**Step 9 — Full 204-screen cascade run.** Command:
 ```
-
-Creates `classification_reviews` table:
-
-```sql
-CREATE TABLE IF NOT EXISTS classification_reviews (
-  id INTEGER PRIMARY KEY,
-  sci_id INTEGER NOT NULL REFERENCES screen_component_instances(id) ON DELETE CASCADE,
-  decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  decided_by TEXT NOT NULL DEFAULT 'human',
-  decision_type TEXT NOT NULL CHECK(decision_type IN ('accept_source','override','unsure','skip')),
-  decision_canonical_type TEXT,
-  source_accepted TEXT CHECK(source_accepted IN ('llm','vision_ps','vision_cs','formal','heuristic')),
-  notes TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_reviews_sci ON classification_reviews(sci_id);
+.venv/bin/python3 -m dd classify --truncate --three-source
 ```
+Budget: ~$35, wall time ~30–60 min. **Dry run on 3 iPad screens** (150/151/152)
+validated the pipeline end-to-end: 452 rows classified, 70 LLM + PS + CS,
+consensus 48 unanimous / 21 majority / 1 three_way_disagreement in ~45 sec.
 
-Update `schema.sql` to match. Apply to Dank DB. Tests: schema matches, reviews table constraints enforce.
+**Step 10 — Disagreement report.** ✅ Shipped `02e445e`. `scripts/m7_disagreement_report.py`
+emits markdown with summary / pair matrix / top-N 3-way rows / pattern clusters.
+Smoke-tested on dry-run data: surfaces a genuine disagreement with all three
+reasons preserved. 8 tests.
 
-**Step 2 — Rename `classification_reason` → `llm_reason` (semantic clarification).** The column today holds the LLM's reason specifically. With per-source columns landing, rename to avoid ambiguity. Migration preserves data. Update `dd/classify_llm.py` insert + tests.
+**Step 11 — Manual review sprint** (user-facing). Work through
+`dd classify-review` across flagged rows. `--screen <sid>` filters by screen;
+HTML companion via `dd classify-review-index --out <path>` scrolls alongside.
 
-**Step 3 — Consensus computation module (`dd/classify_consensus.py`).** Pure function: `compute_consensus(row: SCIRow) → (canonical_type, consensus_method)`. Rule v1 as in §5.1.a. Unit tests: every branch of the decision tree (3/3 agree, 2/3 agree, all differ, any `unsure`, any `None` for missing sources).
+**Step 12 — Rule v2 design** (based on real data). Consume `m7_disagreement_report.py`
++ human overrides; encode bias-aware consensus rules (e.g., "discount cross-
+screen-alone container," "honor cross-screen-alone skeleton on empty grids,"
+confidence tiebreaker). Consensus recomputes from persisted `llm_type` +
+`vision_ps_type` + `vision_cs_type` — no re-classification needed.
 
-**Step 4 — Three-source orchestrator update.** `dd/classify.py::run_classification` gains per-screen flow: formal → heuristic → LLM → vision_ps → vision_cs → compute_consensus → set canonical_type + consensus_method + flagged_for_review. Existing `classify_llm` writes to `llm_*` columns (not `canonical_type` directly). New helper `apply_vision_ps_results` + `apply_vision_cs_results`. Tests: full cascade on in-memory DB produces expected consensus + flag state.
-
-**Step 5 — CLI flags for three-source mode.** `dd classify --three-source` (or make it the default with `--single-source` as override). Integrates streaming + progress callback. Tests: CLI handler passes through to orchestrator.
-
-**Step 6 — `dd classify-review` CLI (Tier 1.5).** Interactive TUI. Walks flagged rows on a screen. Visual refs: Figma deep-link (printed URL) + local PNG (subprocess `open`) + inline terminal image (detect iTerm2/Kitty/Ghostty via `TERM_PROGRAM`). Records decisions in `classification_reviews`. Tests: record-and-rollback roundtrip; stubbed user input.
-
-**Step 7 — `dd classify-review-index` HTML.** Static HTML page per screen with screenshot cards + classifications. Tests: output is valid HTML; contains expected screen count; per-row cards visible.
-
-**Step 8 — `dd classify-audit` spot-check.** `--sample N` randomly samples N unflagged rows, prompts user same UX as review. Writes decisions to `classification_reviews` with `decision_type='audit'`. Tests: sampling is uniform, decisions recorded.
-
-**Step 9 — Full 204-screen cascade run.** Command: `.venv/bin/python3 -m dd classify --truncate --llm --vision --three-source`. Budget: ~$35 in tokens, ~30–60 min wall time. Produces all three source columns + consensus + flagged rows. Log per-screen progress.
-
-**Step 10 — Disagreement report.** `scripts/m7_disagreement_report.py` queries the DB, emits a markdown report: total flagged count, per-source-pair disagreement heat map, top-50 3-way-disagreement rows with all three reasons, cluster the flags by pattern (e.g., "cross-screen says container; LLM + PS say X"). This report is the input to rule v2 design.
-
-**Step 11 — Manual review sprint** (user-facing). Work through the `dd classify-review` queue across screens. Record overrides. Overrides become the canonical `canonical_type` via the consensus view's join against the latest review.
-
-**Step 12 — Rule v2 design** (based on real data). Look at override patterns: when humans consistently pick the specific type over cross-screen's container → encode "discount cross-screen-alone container" override. Apply, re-run consensus (data is persisted), measure flagged-row reduction.
-
-Each step is independent + TDD + commits cleanly. Steps 1–8 are pure code (no API costs). Step 9 incurs the $35. Steps 10–12 iterate on the data.
+**Commands shipped for M7.0.a:**
+```
+dd classify --three-source [--truncate] [--since SID] [--limit N]
+dd classify-review [--screen SID] [--limit N] [--no-preview]
+dd classify-review-index [--screen SID] [--limit N] [--out PATH] [--no-screenshots]
+dd classify-audit [--sample N] [--screen SID] [--seed K] [--no-preview]
+python3 -m scripts.m7_disagreement_report --db PATH [--top-n N] [--out PATH]
+```
 
 ## 6. Architectural constraints (non-negotiable)
 
