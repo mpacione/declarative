@@ -79,6 +79,20 @@ Context: spawned a Plan subagent to design M7.1 (seven-verb edit grammar). It re
 **Why:** the parser/AST infrastructure is shared scaffolding; splitting it across 7 commits creates intermediate states where some verbs parse and some don't. The Plan agent recommended this and the recommendation matches the "TDD with red-green-refactor at the verb level" pattern of CLAUDE.md.
 **Reversal cost:** rebase to split commit; low cost, but no obvious need.
 
+#### Observation: Step 9 wall-time estimate was wrong (factor of ~5x)
+
+Plan said ~50 min, dry-run extrapolated similar. Actual: ~4.5 hours and counting at the time of this log entry, with CS at 49% complete. Cost likely $50-70 instead of the plan's $35.
+
+**Why the underestimate:** dry-run was 3 iPad screens with ~20-30 LLM nodes each → 70 total LLM rows in ~45 sec, ≈ 0.6 sec/row. Real corpus: 6233 LLM rows total. At dry-run rate, that's ~62 minutes. Reality is 4-5x slower, suggesting Sonnet streaming time scales sub-linearly with screen size (per-call overhead dominates) AND the larger app screens (50+ LLM nodes) take 60+ seconds each per stage. Compounded by 2 stages (PS + CS).
+
+**Implications:**
+- The perf plan (`docs/plan-ingest-performance.md`) Lever A (parallelization) becomes more urgent than originally specced. Bench-mark numbers in the plan should be updated AFTER this run completes with real data.
+- Run is committed; not stopping. ~$70 sunk cost vs ~$35 plan estimate is acceptable for our own use; not acceptable for shipping to a user.
+
+**Action when run completes:** update `docs/plan-ingest-performance.md` with actual wall-time + cost numbers; flag to user.
+
+---
+
 #### Decision: spec doc updated BEFORE implementation
 
 **Decision:** update `docs/spec-dd-markup-grammar.md` §8 EBNF additions and §9.5 KIND catalog BEFORE the Pass 1 commit, per the spec's own Implementation hook directive at §15: "Update this file BEFORE touching `dd/markup.py` or any consumer."

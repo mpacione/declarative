@@ -332,12 +332,115 @@ class TokenAssign:
     value: Value
 
 
+# ---------------------------------------------------------------------------
+# Edit-verb AST (M7.1) — grammar §8.6
+# ---------------------------------------------------------------------------
+# Seven verb statements + an ERef helper. All frozen dataclasses for
+# pattern-match exhaustiveness + structural equality (no ABC needed
+# per the rest of the AST style). Per-verb apply semantics live in
+# `apply_edits` below; Pass 1 ships the AST + parser + emitter + stub.
+
+
+@dataclass(frozen=True)
+class ERef:
+    """Edit-context reference (`@eid`, `@parent.child`, `@grid/*`).
+
+    Wildcards are parsed (the `has_wildcard` flag is set) but
+    `apply_edits` rejects them in M7.1; full wildcard expansion is a
+    later milestone.
+    """
+    path: str
+    scope_alias: Optional[str] = None
+    has_wildcard: bool = False
+    kind: str = "eref"
+
+
+@dataclass(frozen=True)
+class SetStatement:
+    target: ERef
+    properties: tuple[object, ...] = ()  # PropAssign | PathOverride
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "set"
+    implicit: bool = False  # `@eid prop=val` form vs `set @eid prop=val`
+
+
+@dataclass(frozen=True)
+class DeleteStatement:
+    target: ERef
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "delete"
+
+
+@dataclass(frozen=True)
+class AppendStatement:
+    to: "ERef"
+    body: "Block"
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "append"
+
+
+@dataclass(frozen=True)
+class InsertStatement:
+    into: "ERef"
+    anchor: "ERef"
+    anchor_rel: Literal["after", "before"] = "after"
+    body: "Block" = None  # set by parser
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "insert"
+
+
+@dataclass(frozen=True)
+class MoveStatement:
+    target: "ERef"
+    to: "ERef"
+    position: Literal["first", "last", "after", "before"] = "last"
+    position_anchor: Optional["ERef"] = None
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "move"
+
+
+@dataclass(frozen=True)
+class SwapStatement:
+    target: "ERef"
+    with_node: "Node"
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "swap"
+
+
+@dataclass(frozen=True)
+class ReplaceStatement:
+    target: "ERef"
+    body: "Block"
+    line: Optional[int] = None
+    col: Optional[int] = None
+    kind: str = "replace"
+
+
+# Type alias for the tagged-union of all verb statement types.
+EditStatement = Union[
+    SetStatement,
+    DeleteStatement,
+    AppendStatement,
+    InsertStatement,
+    MoveStatement,
+    SwapStatement,
+    ReplaceStatement,
+]
+
+
 @dataclass(frozen=True)
 class L3Document:
     namespace: Optional[str] = None
     uses: tuple[UseDecl, ...] = ()
     tokens: tuple[TokenAssign, ...] = ()
     top_level: tuple[object, ...] = ()   # Define | Node
+    edits: tuple[object, ...] = ()       # EditStatement (M7.1)
     warnings: tuple[Warning, ...] = ()
     source_path: Optional[str] = None
 
@@ -1805,6 +1908,327 @@ def _parse_edit_node(c: _Cursor) -> Node:
 
 
 # ---------------------------------------------------------------------------
+# Edit-verb parsers (M7.1) — grammar §8.6
+# ---------------------------------------------------------------------------
+# Each parser consumes the verb keyword + arguments and returns the
+# matching EditStatement subclass. Errors raise DDMarkupParseError
+# with kind=KIND_BAD_EDIT_VERB.
+
+
+_EDIT_VERBS = frozenset({
+    "set", "delete", "append", "insert", "move", "swap", "replace",
+})
+
+
+def _parse_eref(c: _Cursor) -> ERef:
+    """Parse an `@eid` / `@parent.child` / `@parent/child` reference
+    into an ERef object. Wildcards (`*`, `**`) are recognised and the
+    `has_wildcard` flag is set; the apply-engine rejects them in M7.1.
+    """
+    at_tok = c.expect("AT", kind="KIND_BAD_EDIT_VERB")
+    first = c.peek()
+    parts: list[str] = []
+    has_wildcard = False
+    if first.type == "IDENT":
+        parts.append(first.value)
+        c.advance()
+    else:
+        raise DDMarkupParseError(
+            f"expected IDENT after `@`, got {first.type} `{first.value}`",
+            kind="KIND_BAD_EDIT_VERB",
+            line=at_tok.line, col=at_tok.col,
+        )
+    while c.peek().type in ("DOT", "SLASH"):
+        sep_tok = c.advance()
+        nxt = c.peek()
+        if nxt.type == "IDENT":
+            parts.append(nxt.value)
+            c.advance()
+        elif nxt.type in ("STAR", "DSTAR"):
+            parts.append(nxt.value)
+            has_wildcard = True
+            c.advance()
+        else:
+            raise DDMarkupParseError(
+                f"expected IDENT or wildcard after `{sep_tok.value}`, "
+                f"got {nxt.type} `{nxt.value}`",
+                kind="KIND_BAD_EDIT_VERB",
+                line=nxt.line, col=nxt.col,
+            )
+    # Canonical join: dotted form. ERefs parsed from `@a/b` and
+    # `@a.b` produce the same ERef; the emitter emits dotted form
+    # consistently. Round-trip identity holds for dotted-input
+    # fixtures (which is what we test in M7.1). Slash-form input
+    # canonicalises on round-trip — documented in the assumption log.
+    return ERef(
+        path=".".join(parts),
+        scope_alias=None,
+        has_wildcard=has_wildcard,
+    )
+
+
+def _parse_property_list(c: _Cursor) -> tuple[object, ...]:
+    """Parse zero-or-more `key=value` PropAssign / PathOverride
+    entries until a statement-stopper token.
+
+    Edit-context disambiguation differs from construction: in
+    `set @card-1 text="New"`, the IDENT `text` is a property key,
+    NOT a new TEXT node. We look ahead one token: if the next IDENT
+    is followed by `=` (or `.`-then-IDENT-then-`=` for dotted
+    paths), it's a property assignment; otherwise it ends the verb
+    statement.
+    """
+    properties: list[object] = []
+    c.skip_eols()
+    while True:
+        nxt = c.peek()
+        if nxt.type in ("RBRACE", "EOF", "LBRACE"):
+            break
+        if nxt.type in ("ARROW", "AMP", "AT", "DOLLAR"):
+            break
+        if nxt.type == "IDENT":
+            # Look ahead: walk a dotted path (IDENT (DOT IDENT)*) and
+            # check if it ends in `=`. If yes, it's a property
+            # assignment. If no, it's a new statement (or noise) and
+            # we stop.
+            i = 1
+            while c.peek(i).type == "DOT" and c.peek(i + 1).type == "IDENT":
+                i += 2
+            if c.peek(i).type != "EQ":
+                # IDENT not followed by `=` → end of properties.
+                break
+            key = _parse_dotted_or_single(c)
+            c.expect("EQ", kind="KIND_BAD_EDIT_VERB")
+            val = _parse_value(c)
+            if "." in key:
+                properties.append(PathOverride(path=key, value=val))
+            else:
+                properties.append(PropAssign(key=key, value=val))
+            while c.peek().type == "EOL":
+                c.advance()
+            continue
+        break
+    return tuple(properties)
+
+
+def _expect_kw(c: _Cursor, name: str, verb: str) -> Token:
+    """Expect a bare IDENT with the given value (e.g., `to`, `into`,
+    `with`, `position`) followed by `=`. Returns the IDENT token
+    (callers usually only need its line/col for errors).
+    """
+    tok = c.peek()
+    if tok.type != "IDENT" or tok.value != name:
+        raise DDMarkupParseError(
+            f"{verb} requires `{name}=` keyword arg",
+            kind="KIND_BAD_EDIT_VERB",
+            line=tok.line, col=tok.col,
+        )
+    c.advance()
+    c.expect("EQ", kind="KIND_BAD_EDIT_VERB")
+    return tok
+
+
+def _parse_set_explicit(c: _Cursor) -> SetStatement:
+    """`set @eid prop=val [prop=val ...]`."""
+    set_tok = c.expect("IDENT", value="set", kind="KIND_BAD_EDIT_VERB")
+    target = _parse_eref(c)
+    props = _parse_property_list(c)
+    if not props:
+        raise DDMarkupParseError(
+            "set statement requires at least one property assignment",
+            kind="KIND_BAD_EDIT_VERB",
+            line=set_tok.line, col=set_tok.col,
+        )
+    return SetStatement(
+        target=target, properties=props,
+        line=set_tok.line, col=set_tok.col, implicit=False,
+    )
+
+
+def _parse_implicit_set(c: _Cursor) -> SetStatement:
+    """`@eid prop=val [prop=val ...]` — sugar for `set @eid ...`."""
+    at_pos = c.peek()
+    target = _parse_eref(c)
+    props = _parse_property_list(c)
+    if not props:
+        raise DDMarkupParseError(
+            "implicit set requires at least one property assignment",
+            kind="KIND_BAD_EDIT_VERB",
+            line=at_pos.line, col=at_pos.col,
+        )
+    return SetStatement(
+        target=target, properties=props,
+        line=at_pos.line, col=at_pos.col, implicit=True,
+    )
+
+
+def _parse_delete(c: _Cursor) -> DeleteStatement:
+    """`delete @eid`."""
+    del_tok = c.expect("IDENT", value="delete", kind="KIND_BAD_EDIT_VERB")
+    nxt = c.peek()
+    if nxt.type != "AT":
+        raise DDMarkupParseError(
+            "delete requires an @eid argument",
+            kind="KIND_BAD_EDIT_VERB",
+            line=del_tok.line, col=del_tok.col,
+        )
+    target = _parse_eref(c)
+    return DeleteStatement(
+        target=target, line=del_tok.line, col=del_tok.col,
+    )
+
+
+def _parse_append(c: _Cursor) -> AppendStatement:
+    """`append to=@eid Block`."""
+    app_tok = c.expect("IDENT", value="append", kind="KIND_BAD_EDIT_VERB")
+    _expect_kw(c, "to", "append")
+    to_eref = _parse_eref(c)
+    c.skip_eols()
+    if c.peek().type != "LBRACE":
+        raise DDMarkupParseError(
+            "append requires a block body `{ ... }`",
+            kind="KIND_BAD_EDIT_VERB",
+            line=app_tok.line, col=app_tok.col,
+        )
+    body = _parse_block(c)
+    return AppendStatement(
+        to=to_eref, body=body, line=app_tok.line, col=app_tok.col,
+    )
+
+
+def _parse_insert(c: _Cursor) -> InsertStatement:
+    """`insert into=@eid (after=@eid | before=@eid) Block`."""
+    ins_tok = c.expect("IDENT", value="insert", kind="KIND_BAD_EDIT_VERB")
+    _expect_kw(c, "into", "insert")
+    into_eref = _parse_eref(c)
+    nxt = c.peek()
+    if nxt.type == "IDENT" and nxt.value == "after":
+        _expect_kw(c, "after", "insert")
+        anchor = _parse_eref(c)
+        anchor_rel: Literal["after", "before"] = "after"
+    elif nxt.type == "IDENT" and nxt.value == "before":
+        _expect_kw(c, "before", "insert")
+        anchor = _parse_eref(c)
+        anchor_rel = "before"
+    else:
+        raise DDMarkupParseError(
+            "insert requires position anchor (`after=@eid` or "
+            "`before=@eid`)",
+            kind="KIND_BAD_EDIT_VERB",
+            line=ins_tok.line, col=ins_tok.col,
+        )
+    c.skip_eols()
+    if c.peek().type != "LBRACE":
+        raise DDMarkupParseError(
+            "insert requires a block body `{ ... }`",
+            kind="KIND_BAD_EDIT_VERB",
+            line=ins_tok.line, col=ins_tok.col,
+        )
+    body = _parse_block(c)
+    return InsertStatement(
+        into=into_eref, anchor=anchor, anchor_rel=anchor_rel,
+        body=body, line=ins_tok.line, col=ins_tok.col,
+    )
+
+
+_MOVE_POSITION_VALUES = frozenset({"first", "last"})
+
+
+def _parse_move(c: _Cursor) -> MoveStatement:
+    """`move @eid to=@eid (position=first|last | after=@eid | before=@eid)?`."""
+    mov_tok = c.expect("IDENT", value="move", kind="KIND_BAD_EDIT_VERB")
+    target = _parse_eref(c)
+    _expect_kw(c, "to", "move")
+    to_eref = _parse_eref(c)
+    nxt = c.peek()
+    position: Literal["first", "last", "after", "before"] = "last"
+    position_anchor: Optional[ERef] = None
+    if nxt.type == "IDENT" and nxt.value == "position":
+        _expect_kw(c, "position", "move")
+        v_tok = c.expect("IDENT", kind="KIND_BAD_EDIT_VERB")
+        if v_tok.value not in _MOVE_POSITION_VALUES:
+            raise DDMarkupParseError(
+                f"position must be `first` or `last` (got `{v_tok.value}`)",
+                kind="KIND_BAD_EDIT_VERB",
+                line=v_tok.line, col=v_tok.col,
+            )
+        position = v_tok.value  # type: ignore[assignment]
+    elif nxt.type == "IDENT" and nxt.value == "after":
+        _expect_kw(c, "after", "move")
+        position_anchor = _parse_eref(c)
+        position = "after"
+    elif nxt.type == "IDENT" and nxt.value == "before":
+        _expect_kw(c, "before", "move")
+        position_anchor = _parse_eref(c)
+        position = "before"
+    return MoveStatement(
+        target=target, to=to_eref,
+        position=position, position_anchor=position_anchor,
+        line=mov_tok.line, col=mov_tok.col,
+    )
+
+
+def _parse_swap(c: _Cursor) -> SwapStatement:
+    """`swap @eid with=NodeExpr`."""
+    sw_tok = c.expect("IDENT", value="swap", kind="KIND_BAD_EDIT_VERB")
+    target = _parse_eref(c)
+    nxt = c.peek()
+    if nxt.type != "IDENT" or nxt.value != "with":
+        raise DDMarkupParseError(
+            "swap requires `with=<node-expr>` keyword arg",
+            kind="KIND_BAD_EDIT_VERB",
+            line=sw_tok.line, col=sw_tok.col,
+        )
+    _expect_kw(c, "with", "swap")
+    with_node = _parse_node(c)
+    return SwapStatement(
+        target=target, with_node=with_node,
+        line=sw_tok.line, col=sw_tok.col,
+    )
+
+
+def _parse_replace(c: _Cursor) -> ReplaceStatement:
+    """`replace @eid Block`."""
+    rep_tok = c.expect("IDENT", value="replace", kind="KIND_BAD_EDIT_VERB")
+    target = _parse_eref(c)
+    c.skip_eols()
+    if c.peek().type != "LBRACE":
+        raise DDMarkupParseError(
+            "replace requires a block body `{ ... }`",
+            kind="KIND_BAD_EDIT_VERB",
+            line=rep_tok.line, col=rep_tok.col,
+        )
+    body = _parse_block(c)
+    return ReplaceStatement(
+        target=target, body=body,
+        line=rep_tok.line, col=rep_tok.col,
+    )
+
+
+_EDIT_PARSERS = {
+    "set": _parse_set_explicit,
+    "delete": _parse_delete,
+    "append": _parse_append,
+    "insert": _parse_insert,
+    "move": _parse_move,
+    "swap": _parse_swap,
+    "replace": _parse_replace,
+}
+
+
+def _parse_edit_statement(c: _Cursor) -> EditStatement:
+    """Dispatch from the verb keyword to the per-verb parser."""
+    tok = c.peek()
+    if tok.type != "IDENT" or tok.value not in _EDIT_VERBS:
+        raise DDMarkupParseError(
+            f"expected edit verb, got {tok.type} `{tok.value}`",
+            kind="KIND_BAD_EDIT_VERB",
+            line=tok.line, col=tok.col,
+        )
+    return _EDIT_PARSERS[tok.value](c)
+
+
+# ---------------------------------------------------------------------------
 # Define parser
 # ---------------------------------------------------------------------------
 
@@ -1937,6 +2361,7 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
     ns, uses, tokens_tuple = _parse_preamble(c)
 
     top_level: list[object] = []
+    edits: list[object] = []
     warnings: list[Warning] = []
 
     c.skip_eols()
@@ -1944,6 +2369,12 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
         t = c.peek()
         if t.type == "IDENT" and t.value == "define":
             top_level.append(_parse_define(c))
+        elif t.type == "IDENT" and t.value in _EDIT_VERBS:
+            # Verb-statement at top level — M7.1 grammar §8.6.
+            edits.append(_parse_edit_statement(c))
+        elif t.type == "AT":
+            # Implicit-set form `@eid prop=val` (§8.2 sugar).
+            edits.append(_parse_implicit_set(c))
         else:
             top_level.append(_parse_node(c))
         c.skip_eols()
@@ -1996,6 +2427,7 @@ def parse_l3(source: str, *, source_path: Optional[str] = None) -> L3Document:
         uses=uses,
         tokens=tokens_tuple,
         top_level=tuple(top_level),
+        edits=tuple(edits),
         warnings=tuple(warnings),
         source_path=source_path,
     )
@@ -2764,7 +3196,71 @@ class _Emitter:
                     f"unknown top-level item type: {type(item).__name__}",
                     path="top_level",
                 )
+
+        # Edit statements emit as a separate section after the
+        # construction tree, separated by a blank line. Per-edit
+        # emission is one statement per logical block.
+        if doc.edits:
+            if doc.top_level:
+                self.out.append("\n")
+            for i, stmt in enumerate(doc.edits):
+                if i > 0:
+                    self.out.append("\n")
+                self.emit_edit_statement(stmt, depth=0)
+
         return "".join(self.out)
+
+    def emit_edit_statement(self, stmt: object, *, depth: int) -> None:
+        """Dispatch to the per-verb emitter."""
+        ind = self.INDENT * depth
+        if isinstance(stmt, SetStatement):
+            if stmt.implicit:
+                head = f"{ind}@{stmt.target.path}"
+            else:
+                head = f"{ind}set @{stmt.target.path}"
+            self.out.append(head)
+            self._emit_props_inline(stmt.properties)
+            self.out.append("\n")
+        elif isinstance(stmt, DeleteStatement):
+            self.out.append(f"{ind}delete @{stmt.target.path}\n")
+        elif isinstance(stmt, AppendStatement):
+            self.out.append(f"{ind}append to=@{stmt.to.path} ")
+            self.emit_block(stmt.body, depth=depth)
+        elif isinstance(stmt, InsertStatement):
+            self.out.append(
+                f"{ind}insert into=@{stmt.into.path} "
+                f"{stmt.anchor_rel}=@{stmt.anchor.path} "
+            )
+            self.emit_block(stmt.body, depth=depth)
+        elif isinstance(stmt, MoveStatement):
+            head = f"{ind}move @{stmt.target.path} to=@{stmt.to.path}"
+            if stmt.position in ("first", "last"):
+                head += f" position={stmt.position}"
+            elif stmt.position in ("after", "before") and stmt.position_anchor is not None:
+                head += f" {stmt.position}=@{stmt.position_anchor.path}"
+            self.out.append(head + "\n")
+        elif isinstance(stmt, SwapStatement):
+            self.out.append(f"{ind}swap @{stmt.target.path} with=")
+            self.out.append(self._emit_node_inline(stmt.with_node))
+            self.out.append("\n")
+        elif isinstance(stmt, ReplaceStatement):
+            self.out.append(f"{ind}replace @{stmt.target.path} ")
+            self.emit_block(stmt.body, depth=depth)
+        else:
+            raise DDMarkupSerializeError(
+                f"unknown edit-statement type: {type(stmt).__name__}",
+                path="edits",
+            )
+
+    def _emit_props_inline(self, props: tuple[object, ...]) -> None:
+        """Emit a list of PropAssign / PathOverride entries inline on
+        the current line, space-separated. Used by SetStatement.
+        """
+        for p in props:
+            if isinstance(p, PropAssign):
+                self.out.append(f" {p.key}={self.emit_value(p.value)}")
+            elif isinstance(p, PathOverride):
+                self.out.append(f" {p.path}={self.emit_value(p.value)}")
 
     def emit_define(self, d: Define, *, depth: int) -> None:
         ind = self.INDENT * depth
@@ -3104,3 +3600,51 @@ def validate(doc: L3Document, *, mode: str = "E") -> list[Warning]:
     """Structural validator. Stage 5 expands per grammar-modes decision."""
     # Current slice: pass through any warnings from parse.
     return list(doc.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Edit-application engine (M7.1) — grammar §8.7 / §8.8
+# ---------------------------------------------------------------------------
+
+
+def apply_edits(
+    doc: L3Document,
+    stmts: Optional[list[object]] = None,
+    *,
+    strict: bool = True,
+) -> L3Document:
+    """Apply a sequence of edit statements to a document.
+
+    Pass 1 ships the function signature; per-verb implementations
+    arrive in Passes 2–8. The current behaviour:
+
+    - Empty edits (or empty `doc.edits` when `stmts` is None) → return
+      `doc` unchanged. Identity is the no-op.
+    - Any non-empty statement list → raise `NotImplementedError` with
+      a pointer to the milestone. This makes accidental calls fail
+      loudly during M7.1 implementation.
+
+    Per-verb apply semantics (when fully implemented):
+
+    - `set` — merge properties on the addressed node.
+    - `delete` — remove the addressed node + its subtree.
+    - `append` / `insert` — add new children at end / at position.
+    - `move` — reparent the addressed node; compose delete + insert
+      atomically.
+    - `swap` — replace the addressed node with `with_node`,
+      preserving the target's eid on the replacement.
+    - `replace` — replace the addressed node's block content; the
+      node itself stays.
+
+    See `docs/spec-dd-markup-grammar.md` §8.7-§8.9 for the EID
+    resolution algorithm, multi-statement semantics, and `swap`'s
+    M7.2 override-preservation deferral.
+    """
+    if stmts is None:
+        stmts = list(doc.edits)
+    if not stmts:
+        return doc
+    raise NotImplementedError(
+        "apply_edits per-verb implementations land in M7.1 Passes 2-8. "
+        "Current pass ships parse + emit + AST + this stub only."
+    )
