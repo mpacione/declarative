@@ -330,7 +330,7 @@ def apply_consensus_to_screen(
     conn: sqlite3.Connection,
     screen_id: int,
     *,
-    rule: str = "v2",
+    rule: str = "v1",
 ) -> dict[str, int]:
     """Walk every row on the screen and compute consensus.
 
@@ -340,12 +340,17 @@ def apply_consensus_to_screen(
     `flagged_for_review` to 0. `canonical_type` is preserved.
 
     Rows classified by `llm` enter three-source voting. ``rule`` selects
-    ``v1`` (plain majority, conservative) or ``v2`` (weighted — CS gets
-    2x vote based on empirical accuracy). v2 is the default after the
-    2026-04-20 full-corpus analysis showed +6.4 pts lift on user-review
-    match. The LLM's original verdict is read from ``llm_type``
-    (preserved in migration 015) — NOT from canonical_type, which
-    consensus overwrites on this same update. Vision sources contribute
+    ``v1`` (plain majority — the default) or ``v2`` (weighted, CS=2x).
+    v1 is the default after a 2026-04-20 broader review revealed the
+    initial CS=2x weighting was over-fit to a biased 266-review sample
+    that over-represented cross-screen-decided cases. On the expanded
+    980-review pool v1 hits 76.3% match vs v2's 17.4% — when LLM+PS
+    agree they're almost always right; CS as the dissenting third is
+    usually wrong. Keeping v2 available for rollback or for callers
+    with different source-accuracy profiles. The LLM's original
+    verdict is read from ``llm_type`` (preserved in migration 015) —
+    NOT from canonical_type, which consensus overwrites on this same
+    update. Vision sources contribute
     their ``vision_ps_type`` + ``vision_cs_type``. The final
     canonical_type, consensus_method, and flag are written in a
     single UPDATE.

@@ -19,6 +19,7 @@ import pytest
 
 from dd.catalog import seed_catalog
 from dd.classify_review import (
+    apply_reviews_to_sci,
     detect_terminal_image_support,
     fetch_flagged_rows,
     format_figma_deep_link,
@@ -241,6 +242,136 @@ class TestRecordReviewDecision:
             "SELECT COUNT(*) FROM classification_reviews WHERE sci_id = 1"
         ).fetchone()
         assert row[0] == 2
+
+
+class TestApplyReviewsToSci:
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        _seed_flagged_row(conn, sci_id=1, node_id=10)
+        _seed_flagged_row(conn, sci_id=2, node_id=20)
+        _seed_flagged_row(conn, sci_id=3, node_id=30)
+        _seed_flagged_row(conn, sci_id=4, node_id=40)
+        _seed_flagged_row(conn, sci_id=5, node_id=50)
+        yield conn
+        conn.close()
+
+    def test_accept_source_llm_updates_canonical_and_clears_flag(
+        self, db: sqlite3.Connection,
+    ):
+        record_review_decision(
+            db, sci_id=1, decision_type="accept_source",
+            source_accepted="llm",
+        )
+        counts = apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 1"
+        ).fetchone()
+        assert row[0] == "button"  # llm_type seeded as "button"
+        assert row[1] == 0
+        assert counts["accept_source_applied"] == 1
+
+    def test_accept_source_vision_ps(self, db: sqlite3.Connection):
+        record_review_decision(
+            db, sci_id=1, decision_type="accept_source",
+            source_accepted="vision_ps",
+        )
+        apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type FROM screen_component_instances "
+            "WHERE id = 1"
+        ).fetchone()
+        assert row[0] == "card"  # vision_ps_type
+
+    def test_accept_source_vision_cs(self, db: sqlite3.Connection):
+        record_review_decision(
+            db, sci_id=1, decision_type="accept_source",
+            source_accepted="vision_cs",
+        )
+        apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type FROM screen_component_instances "
+            "WHERE id = 1"
+        ).fetchone()
+        assert row[0] == "container"  # vision_cs_type
+
+    def test_override_updates_canonical_and_clears_flag(
+        self, db: sqlite3.Connection,
+    ):
+        record_review_decision(
+            db, sci_id=2, decision_type="override",
+            decision_canonical_type="heading",
+        )
+        counts = apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 2"
+        ).fetchone()
+        assert row[0] == "heading"
+        assert row[1] == 0
+        assert counts["override_applied"] == 1
+
+    def test_unsure_keeps_flag(self, db: sqlite3.Connection):
+        # Seed an unsure review on row 3; canonical_type seeded as
+        # "unsure" by the fixture.
+        record_review_decision(db, sci_id=3, decision_type="unsure")
+        apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 3"
+        ).fetchone()
+        assert row[0] == "unsure"
+        assert row[1] == 1  # still flagged
+
+    def test_skip_unflags_without_changing_canonical(
+        self, db: sqlite3.Connection,
+    ):
+        record_review_decision(db, sci_id=4, decision_type="skip")
+        apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 4"
+        ).fetchone()
+        assert row[0] == "unsure"  # unchanged from seed
+        assert row[1] == 0
+
+    def test_latest_review_wins(self, db: sqlite3.Connection):
+        """When multiple reviews exist, the most recent should apply."""
+        import time as _time
+        record_review_decision(
+            db, sci_id=5, decision_type="accept_source",
+            source_accepted="llm",
+        )
+        _time.sleep(0.02)  # ensure distinct decided_at
+        record_review_decision(
+            db, sci_id=5, decision_type="override",
+            decision_canonical_type="text",
+        )
+        apply_reviews_to_sci(db)
+        row = db.execute(
+            "SELECT canonical_type FROM screen_component_instances "
+            "WHERE id = 5"
+        ).fetchone()
+        assert row[0] == "text"  # override, not button
+
+    def test_idempotent(self, db: sqlite3.Connection):
+        record_review_decision(
+            db, sci_id=1, decision_type="accept_source",
+            source_accepted="vision_ps",
+        )
+        apply_reviews_to_sci(db)
+        first = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 1"
+        ).fetchone()
+        apply_reviews_to_sci(db)
+        second = db.execute(
+            "SELECT canonical_type, flagged_for_review "
+            "FROM screen_component_instances WHERE id = 1"
+        ).fetchone()
+        assert first == second
 
 
 # ---------------------------------------------------------------------------

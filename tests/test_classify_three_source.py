@@ -596,15 +596,10 @@ class TestRunClassificationThreeSource:
             assert row[4] == "card"
             assert row[5] == "card"
 
-    def test_three_source_disagreement_resolves_to_cs_under_v2(
+    def test_three_source_disagreement_flags(
         self, db: sqlite3.Connection,
     ) -> None:
-        """Under rule v2 (the default post-2026-04-20), three-way
-        disagreement resolves to CS's verdict because CS has 2x vote.
-        LLM=card(1), PS=button(1), CS=container(2) → container wins.
-        Rule v1's `three_way_disagreement` flag is covered by the
-        v1-explicit tests in TestConsensusThreeSourceVoting.
-        """
+        """Default rule v1: three-way disagreement flags for review."""
         from dd.classify import run_classification
         client = _make_dual_client_returning(
             llm_types={10: "card"},
@@ -622,9 +617,9 @@ class TestRunClassificationThreeSource:
             "       llm_type, vision_ps_type, vision_cs_type "
             "FROM screen_component_instances WHERE node_id = 10"
         ).fetchone()
-        assert row[0] == "container"
-        assert row[1] == "weighted_majority"
-        assert row[2] == 0
+        assert row[0] == "unsure"
+        assert row[1] == "three_way_disagreement"
+        assert row[2] == 1
         assert row[3] == "card"
         assert row[4] == "button"
         assert row[5] == "container"

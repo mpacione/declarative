@@ -166,6 +166,136 @@ def record_review_decision(
     conn.commit()
 
 
+def apply_reviews_to_sci(
+    conn: sqlite3.Connection,
+) -> dict[str, int]:
+    """Propagate human review decisions back to
+    ``screen_component_instances.canonical_type`` and clear
+    ``flagged_for_review`` on reviewed rows.
+
+    Reviews are the ground-truth source in the M7.0.a cascade — once
+    a human has decided on a row, the pipeline should use their
+    decision instead of the consensus output. Rules:
+
+    - ``accept_source`` — set canonical_type to the accepted source's
+      verdict (llm_type / vision_ps_type / vision_cs_type).
+    - ``override`` — set canonical_type to the user's explicit
+      decision_canonical_type.
+    - ``unsure`` — leave canonical_type unchanged; keep flag so the
+      row continues to surface for future review.
+    - ``skip`` / ``audit`` — leave canonical_type unchanged; clear
+      flag so the row isn't re-surfaced unnecessarily.
+
+    When a row has multiple reviews (re-reviews / audit trail), the
+    MOST RECENT row by decided_at wins — matching the review UI's
+    "last word" semantics.
+
+    Returns a count summary keyed by applied action, for caller
+    telemetry and CLI progress output.
+
+    Idempotent: re-applying yields the same canonical_type / flag
+    state so it's safe to run on every consensus refresh.
+    """
+    # Fetch the latest review per sci_id, joined with the source
+    # verdict columns so we can resolve accept_source without a
+    # second query.
+    rows = conn.execute(
+        """
+        SELECT
+            r.sci_id,
+            r.decision_type,
+            r.source_accepted,
+            r.decision_canonical_type,
+            sci.llm_type, sci.vision_ps_type, sci.vision_cs_type,
+            sci.canonical_type
+        FROM classification_reviews r
+        JOIN screen_component_instances sci ON sci.id = r.sci_id
+        JOIN (
+            SELECT sci_id, MAX(decided_at) AS latest
+            FROM classification_reviews
+            GROUP BY sci_id
+        ) latest_per_sci
+          ON latest_per_sci.sci_id = r.sci_id
+          AND latest_per_sci.latest = r.decided_at
+        """
+    ).fetchall()
+
+    counts: dict[str, int] = {
+        "accept_source_applied": 0,
+        "override_applied": 0,
+        "unsure_kept_flagged": 0,
+        "skip_unflagged": 0,
+        "audit_unflagged": 0,
+        "no_op": 0,
+    }
+
+    for row in rows:
+        sci_id = row[0]
+        decision_type = row[1]
+        source_accepted = row[2]
+        decision_canonical_type = row[3]
+        llm_type = row[4]
+        vision_ps_type = row[5]
+        vision_cs_type = row[6]
+
+        if decision_type == "accept_source":
+            picked = {
+                "llm": llm_type,
+                "vision_ps": vision_ps_type,
+                "vision_cs": vision_cs_type,
+            }.get(source_accepted)
+            if picked is None:
+                counts["no_op"] += 1
+                continue
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET canonical_type = ?, flagged_for_review = 0 "
+                "WHERE id = ?",
+                (picked, sci_id),
+            )
+            counts["accept_source_applied"] += 1
+        elif decision_type == "override":
+            if not decision_canonical_type:
+                counts["no_op"] += 1
+                continue
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET canonical_type = ?, flagged_for_review = 0 "
+                "WHERE id = ?",
+                (decision_canonical_type, sci_id),
+            )
+            counts["override_applied"] += 1
+        elif decision_type == "unsure":
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET flagged_for_review = 1 "
+                "WHERE id = ?",
+                (sci_id,),
+            )
+            counts["unsure_kept_flagged"] += 1
+        elif decision_type == "skip":
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET flagged_for_review = 0 "
+                "WHERE id = ?",
+                (sci_id,),
+            )
+            counts["skip_unflagged"] += 1
+        elif decision_type == "audit":
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET flagged_for_review = 0 "
+                "WHERE id = ?",
+                (sci_id,),
+            )
+            counts["audit_unflagged"] += 1
+        else:
+            counts["no_op"] += 1
+
+    conn.commit()
+    return counts
+
+
 # ---------------------------------------------------------------------------
 # Visual-reference helpers
 # ---------------------------------------------------------------------------
