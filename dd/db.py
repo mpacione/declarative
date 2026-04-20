@@ -20,11 +20,17 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     Returns:
         Configured sqlite3.Connection object
     """
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
 
     # Set WAL mode for file-based DBs (skip for :memory:)
     if db_path != ":memory:":
         conn.execute("PRAGMA journal_mode = WAL")
+
+    # Busy timeout: when another connection holds the write lock,
+    # wait up to 30s before raising 'database is locked'. Covers
+    # multi-threaded servers, concurrent CLI + GUI browsers, long-
+    # running ingest jobs. Matches the socket timeout above.
+    conn.execute("PRAGMA busy_timeout = 30000")
 
     # Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON")
