@@ -120,49 +120,50 @@ def _collect_all_candidates(
     return pooled
 
 
-def _llm_classify_representatives(
+_LLM_BATCH_SIZE = 50
+_LLM_MAX_TOKENS = 16384
+
+
+def _build_few_shot_block(
+    conn: Optional[sqlite3.Connection],
+    reps: list[dict[str, Any]],
+) -> str:
+    """Pool few-shot examples across the rep batch — ≤6 total,
+    drawn from distinct parent contexts. Shared across every
+    batch so the prompt-building work is paid once per run.
+    """
+    if conn is None:
+        return ""
+    seen_parents: set[str] = set()
+    pooled: list[dict[str, Any]] = []
+    for rep in reps:
+        parent = rep.get("parent_classified_as") or ""
+        if parent in seen_parents:
+            continue
+        seen_parents.add(parent)
+        pooled.extend(retrieve_few_shot(conn, rep, k=2))
+        if len(pooled) >= 6:
+            break
+    seen_ids: set[int] = set()
+    unique_pool: list[dict[str, Any]] = []
+    for e in pooled:
+        sid = e.get("sci_id")
+        if sid in seen_ids:
+            continue
+        seen_ids.add(sid)
+        unique_pool.append(e)
+    return format_few_shot_block(unique_pool[:6])
+
+
+def _llm_classify_batch(
     reps: list[dict[str, Any]],
     client: Any,
     catalog: list[dict[str, Any]],
-    *,
-    conn: Optional[sqlite3.Connection] = None,
+    few_shot_block: str,
 ) -> dict[int, tuple[str, float, Optional[str]]]:
-    """Classify all group representatives in one LLM call.
-
-    When `conn` is provided, retrieves up to 3 few-shot examples per
-    representative from the user's review history and prepends them
-    to the prompt. Uniform example set across all reps in the batch;
-    if reps span multiple parent types, we pool examples from each.
-
-    Returns a `{node_id: (canonical_type, confidence, reason)}` map.
+    """Single LLM call for ONE batch of representatives. Used as the
+    worker in the parallelized batching pass.
     """
-    if not reps:
-        return {}
-    few_shot_block = ""
-    if conn is not None:
-        # Collect ≤3 examples PER distinct parent context across reps.
-        seen_parents: set[str] = set()
-        pooled: list[dict[str, Any]] = []
-        for rep in reps:
-            parent = rep.get("parent_classified_as") or ""
-            if parent in seen_parents:
-                continue
-            seen_parents.add(parent)
-            pooled.extend(retrieve_few_shot(conn, rep, k=2))
-            if len(pooled) >= 6:
-                break
-        # Dedup pooled examples on sci_id.
-        seen_ids = set()
-        unique_pool: list[dict[str, Any]] = []
-        for e in pooled:
-            sid = e.get("sci_id")
-            if sid in seen_ids:
-                continue
-            seen_ids.add(sid)
-            unique_pool.append(e)
-        few_shot_block = format_few_shot_block(unique_pool[:6])
-
-    # v1's prompt builder + few-shot prepended.
     base_prompt = build_classification_prompt(
         nodes=reps,
         catalog=catalog,
@@ -170,11 +171,13 @@ def _llm_classify_representatives(
         screen_width=0, screen_height=0,
         skeleton_notation=None, skeleton_type=None,
     )
-    prompt = (few_shot_block + "\n" + base_prompt) if few_shot_block else base_prompt
-
+    prompt = (
+        few_shot_block + "\n" + base_prompt
+        if few_shot_block else base_prompt
+    )
     response = client.messages.create(
         model=_LLM_MODEL,
-        max_tokens=8192,
+        max_tokens=_LLM_MAX_TOKENS,
         tools=[CLASSIFY_TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": CLASSIFY_TOOL_SCHEMA["name"]},
         messages=[{"role": "user", "content": prompt}],
@@ -192,6 +195,66 @@ def _llm_classify_representatives(
                 reason if isinstance(reason, str) else None,
             )
     return out
+
+
+def _llm_classify_representatives(
+    reps: list[dict[str, Any]],
+    client: Any,
+    catalog: list[dict[str, Any]],
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+    workers: int = 4,
+) -> dict[int, tuple[str, float, Optional[str]]]:
+    """Classify every representative by batching into chunks of
+    ``_LLM_BATCH_SIZE`` and dispatching batches via a thread pool.
+
+    max_tokens caps the OUTPUT. At ~80 tokens/classification, a
+    single 8K-cap call can emit ~100 classifications before truncating.
+    On the full corpus we have hundreds of reps; batching is required.
+    Bake-off at 29 reps / 10 screens previously fit in one call — that
+    was the single-call regression risk. Batch size 50 is the safe
+    default: fits comfortably under 16K output tokens and keeps each
+    call short-ish so a single failure only loses one batch, not the
+    whole run.
+
+    Few-shot is retrieved once at the top and reused across every
+    batch; retrieval is O(N_reviews × batch_reps) per call, so
+    amortising it is meaningful.
+    """
+    if not reps:
+        return {}
+    few_shot_block = _build_few_shot_block(conn, reps)
+
+    batches = [
+        reps[i:i + _LLM_BATCH_SIZE]
+        for i in range(0, len(reps), _LLM_BATCH_SIZE)
+    ]
+    merged: dict[int, tuple[str, float, Optional[str]]] = {}
+    if workers > 1 and len(batches) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(
+                    _llm_classify_batch, b, client, catalog, few_shot_block,
+                )
+                for b in batches
+            ]
+            for fut in as_completed(futures):
+                try:
+                    merged.update(fut.result())
+                except Exception as exc:
+                    print(
+                        f"  LLM batch failed (dropped): {exc}",
+                        flush=True,
+                    )
+    else:
+        for b in batches:
+            try:
+                merged.update(
+                    _llm_classify_batch(b, client, catalog, few_shot_block)
+                )
+            except Exception as exc:
+                print(f"  LLM batch failed (dropped): {exc}", flush=True)
+    return merged
 
 
 def _insert_llm_verdicts(
@@ -687,8 +750,9 @@ def run_classification_v2(
 
     # Pass 4: LLM on representatives. Passes the DB connection so
     # few-shot retrieval pulls from classification_reviews.
+    # `workers` also applies here — batches of 50 reps each.
     llm_verdicts = _llm_classify_representatives(
-        reps, client, catalog, conn=conn,
+        reps, client, catalog, conn=conn, workers=workers,
     )
 
     # Pass 5: propagate LLM verdicts → INSERT sci rows.
