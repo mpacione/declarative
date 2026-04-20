@@ -1,0 +1,519 @@
+"""Classifier v2 orchestrator — corpus-wide dedup + per-node crops.
+
+Three changes from v1:
+1. Candidates are pooled across all screens, then deduped by
+   structural signature. One representative per group gets
+   classified; the verdict propagates to every sci row in the
+   group. Expected 5-8x cost reduction.
+2. Full-screen canvas nodes are filtered at the SQL layer (see
+   `dd.classify_llm._get_unclassified_for_llm` + `dd.classify_
+   vision_batched._fetch_unclassified_for_screen`).
+3. Vision passes use per-node spotlight crops instead of full
+   screens + bbox lists. Each crop shows the target at full
+   brightness with its bbox outlined in magenta; surroundings are
+   dimmed. Vision model doesn't do visual attention-mapping —
+   classification target is unambiguous.
+
+The 3-source architecture is preserved: LLM (text-only, reps only)
++ Vision PS (single-crop per group rep) + Vision CS (multi-crop
+across screens for groups with ≥2 members; singletons inherit PS).
+Consensus runs per-screen at the end via `apply_consensus_to_screen`.
+
+Entry point: `run_classification_v2`. See `docs/plan-classifier-v2.md`
+for the full spec + rationale.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from typing import Any, Callable, Optional
+
+from dd.catalog import get_catalog
+from dd.classify import (
+    apply_consensus_to_screen,
+    classify_formal,
+    link_parent_instances,
+)
+from dd.classify_dedup import dedup_key, group_candidates
+from dd.classify_heuristics import classify_heuristics
+from dd.classify_llm import (
+    CLASSIFY_TOOL_SCHEMA,
+    _extract_classifications_from_response,
+    _get_unclassified_for_llm,
+    build_classification_prompt,
+)
+from dd.classify_rules import is_system_chrome
+from dd.classify_skeleton import extract_skeleton
+from dd.classify_vision_batched import (
+    CLASSIFY_CROPS_TOOL_SCHEMA,
+    classify_crops_batch,
+)
+from dd.classify_vision_crop import crop_node_with_spotlight
+
+
+_LLM_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_CONFIDENCE = 0.7
+
+
+def _list_screens(
+    conn: sqlite3.Connection,
+    file_id: int,
+    since_screen_id: Optional[int],
+    limit: Optional[int],
+) -> list[int]:
+    query = (
+        "SELECT id FROM screens WHERE file_id = ? "
+        "AND (device_class IS NULL OR device_class != 'component_sheet')"
+    )
+    params: list[Any] = [file_id]
+    if since_screen_id is not None:
+        query += " AND id >= ?"
+        params.append(since_screen_id)
+    query += " ORDER BY id"
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    return [r[0] for r in conn.execute(query, params).fetchall()]
+
+
+def _collect_all_candidates(
+    conn: sqlite3.Connection,
+    screen_ids: list[int],
+) -> list[dict[str, Any]]:
+    """Pool unclassified candidates across every screen. Reuses
+    `_get_unclassified_for_llm` per screen (already applies the
+    full-screen + system-chrome filters).
+    """
+    pooled: list[dict[str, Any]] = []
+    for sid in screen_ids:
+        cands = _get_unclassified_for_llm(conn, sid)
+        for c in cands:
+            c["screen_id"] = sid
+            pooled.append(c)
+    return pooled
+
+
+def _llm_classify_representatives(
+    reps: list[dict[str, Any]],
+    client: Any,
+    catalog: list[dict[str, Any]],
+) -> dict[int, tuple[str, float, Optional[str]]]:
+    """Classify all group representatives in one LLM call.
+
+    Returns a `{node_id: (canonical_type, confidence, reason)}` map.
+    """
+    if not reps:
+        return {}
+    # Reuse v1's prompt builder — it takes a list of candidate dicts.
+    # We build the prompt without per-screen skeleton context (reps
+    # come from multiple screens; global skeleton isn't meaningful).
+    prompt = build_classification_prompt(
+        nodes=reps,
+        catalog=catalog,
+        screen_name="(global representatives batch)",
+        screen_width=0, screen_height=0,
+        skeleton_notation=None, skeleton_type=None,
+    )
+    response = client.messages.create(
+        model=_LLM_MODEL,
+        max_tokens=8192,
+        tools=[CLASSIFY_TOOL_SCHEMA],
+        tool_choice={"type": "tool", "name": CLASSIFY_TOOL_SCHEMA["name"]},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    classifications = _extract_classifications_from_response(response)
+    out: dict[int, tuple[str, float, Optional[str]]] = {}
+    for c in classifications:
+        nid = c.get("node_id")
+        ctype = c.get("canonical_type")
+        conf = c.get("confidence", _DEFAULT_CONFIDENCE)
+        reason = c.get("reason")
+        if isinstance(nid, int) and isinstance(ctype, str):
+            out[nid] = (
+                ctype, float(conf),
+                reason if isinstance(reason, str) else None,
+            )
+    return out
+
+
+def _insert_llm_verdicts(
+    conn: sqlite3.Connection,
+    groups: list[list[dict[str, Any]]],
+    reps: list[dict[str, Any]],
+    verdicts_by_node_id: dict[int, tuple[str, float, Optional[str]]],
+    catalog: list[dict[str, Any]],
+) -> int:
+    """Propagate the representative's LLM verdict to every member
+    of its group. INSERTs one sci row per member.
+    """
+    catalog_id_lookup = {e["canonical_name"]: e["id"] for e in catalog}
+    inserts: list[tuple[Any, ...]] = []
+    for members, rep in zip(groups, reps):
+        verdict = verdicts_by_node_id.get(rep["node_id"])
+        if verdict is None:
+            continue
+        ctype, conf, reason = verdict
+        if ctype in ("container", "unsure"):
+            catalog_id = None
+        else:
+            catalog_id = catalog_id_lookup.get(ctype)
+            if catalog_id is None:
+                # Model invented a type not in the catalog — skip.
+                continue
+        for m in members:
+            inserts.append((
+                m["screen_id"], m["node_id"], catalog_id, ctype,
+                conf, "llm", reason, ctype, conf,
+            ))
+    if inserts:
+        conn.executemany(
+            "INSERT OR IGNORE INTO screen_component_instances "
+            "(screen_id, node_id, catalog_type_id, canonical_type, "
+            " confidence, classification_source, llm_reason, "
+            " llm_type, llm_confidence) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            inserts,
+        )
+        conn.commit()
+    return len(inserts)
+
+
+def _fetch_screenshots_for_screens(
+    conn: sqlite3.Connection,
+    screen_ids: list[int],
+    fetch_screenshot: Callable,
+    file_key: str,
+) -> dict[str, bytes]:
+    """One REST call per screen (or a batched call where the fetcher
+    supports it). Returns `{screen_figma_id: png_bytes}`.
+    """
+    rows = conn.execute(
+        "SELECT id, figma_node_id FROM screens "
+        "WHERE id IN (%s)" % ",".join("?" * len(screen_ids)),
+        screen_ids,
+    ).fetchall()
+    figma_ids = [fid for _, fid in rows if fid]
+    screenshots: dict[str, bytes] = {}
+    try:
+        result = fetch_screenshot(file_key, figma_ids)
+        if isinstance(result, dict):
+            screenshots = result
+    except TypeError:
+        pass
+    # Fallback: per-node fetch for anything missing.
+    for fid in figma_ids:
+        if fid not in screenshots:
+            data = fetch_screenshot(file_key, fid)
+            if data is not None:
+                screenshots[fid] = data
+    return screenshots
+
+
+def _screen_root_offset(
+    conn: sqlite3.Connection, screen_id: int,
+) -> tuple[float, float]:
+    """Subtract the screen root's (x, y) from node absolute canvas
+    coords to get screen-relative coords for cropping.
+    """
+    row = conn.execute(
+        "SELECT COALESCE(x, 0), COALESCE(y, 0) FROM nodes "
+        "WHERE screen_id = ? AND parent_id IS NULL LIMIT 1",
+        (screen_id,),
+    ).fetchone()
+    if row is None:
+        return (0.0, 0.0)
+    return (float(row[0]), float(row[1]))
+
+
+def _screen_figma_id(
+    conn: sqlite3.Connection, screen_id: int,
+) -> Optional[str]:
+    row = conn.execute(
+        "SELECT figma_node_id FROM screens WHERE id = ?",
+        (screen_id,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _build_crop(
+    conn: sqlite3.Connection,
+    candidate: dict[str, Any],
+    screenshots: dict[str, bytes],
+) -> Optional[bytes]:
+    """Spotlight-crop a single candidate's node region from its
+    screen screenshot. Returns None if we don't have the screen's
+    PNG or if the bbox is degenerate.
+    """
+    fig_id = _screen_figma_id(conn, candidate["screen_id"])
+    if fig_id is None:
+        return None
+    screen_png = screenshots.get(fig_id)
+    if screen_png is None:
+        return None
+    rx, ry = _screen_root_offset(conn, candidate["screen_id"])
+    screen_dims = conn.execute(
+        "SELECT width, height FROM screens WHERE id = ?",
+        (candidate["screen_id"],),
+    ).fetchone()
+    if screen_dims is None:
+        return None
+    sw = float(screen_dims[0] or 0)
+    sh = float(screen_dims[1] or 0)
+    try:
+        return crop_node_with_spotlight(
+            screen_png=screen_png,
+            node_x=float(candidate.get("x") or 0) - rx,
+            node_y=float(candidate.get("y") or 0) - ry,
+            node_width=float(candidate.get("width") or 0),
+            node_height=float(candidate.get("height") or 0),
+            screen_width=sw, screen_height=sh,
+        )
+    except Exception:
+        return None
+
+
+def _vision_ps_classify(
+    conn: sqlite3.Connection,
+    reps: list[dict[str, Any]],
+    screenshots: dict[str, bytes],
+    client: Any,
+    catalog: list[dict[str, Any]],
+) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
+    """Vision PS pass: one crop per group representative. Batches
+    multiple reps into a single classify_crops_batch call (up to
+    ~8 per batch for token budget reasons).
+    """
+    if not reps:
+        return {}
+    results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
+    batch_size = 8
+    for start in range(0, len(reps), batch_size):
+        batch = reps[start:start + batch_size]
+        crops: dict[tuple[int, int], bytes] = {}
+        for rep in batch:
+            crop = _build_crop(conn, rep, screenshots)
+            if crop is not None:
+                crops[(rep["screen_id"], rep["node_id"])] = crop
+        if not crops:
+            continue
+        classifications = classify_crops_batch(
+            batch, crops, client, catalog=catalog,
+        )
+        for c in classifications:
+            sid = c.get("screen_id")
+            nid = c.get("node_id")
+            ctype = c.get("canonical_type")
+            conf = c.get("confidence", _DEFAULT_CONFIDENCE)
+            reason = c.get("reason")
+            if not (
+                isinstance(sid, int) and isinstance(nid, int)
+                and isinstance(ctype, str)
+            ):
+                continue
+            results[(sid, nid)] = (
+                ctype, float(conf),
+                reason if isinstance(reason, str) else None,
+            )
+    return results
+
+
+def _vision_cs_classify(
+    conn: sqlite3.Connection,
+    groups: list[list[dict[str, Any]]],
+    reps: list[dict[str, Any]],
+    screenshots: dict[str, bytes],
+    client: Any,
+    catalog: list[dict[str, Any]],
+) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
+    """Vision CS pass: for each group with ≥2 members, classify the
+    representative using crops of ALL members (or up to 5) as
+    multi-image context — the cross-screen visual-consistency signal.
+    Singletons are skipped (CS == PS for a group of 1; PS already ran).
+    """
+    results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
+    for members, rep in zip(groups, reps):
+        if len(members) < 2:
+            continue
+        # Build crops of up to 5 members for cross-screen context.
+        sample = members[:5]
+        crops: dict[tuple[int, int], bytes] = {}
+        for m in sample:
+            crop = _build_crop(conn, m, screenshots)
+            if crop is not None:
+                crops[(m["screen_id"], m["node_id"])] = crop
+        if not crops:
+            continue
+        # Call v2 classifier on the rep + its group crops. Tool
+        # schema expects one classification per (screen_id, node_id);
+        # we only use the representative's verdict and apply it to
+        # all members (propagation happens in the caller).
+        classifications = classify_crops_batch(
+            sample, crops, client, catalog=catalog,
+        )
+        # Find the rep's verdict in the response.
+        for c in classifications:
+            sid = c.get("screen_id")
+            nid = c.get("node_id")
+            if sid == rep["screen_id"] and nid == rep["node_id"]:
+                ctype = c.get("canonical_type")
+                conf = c.get("confidence", _DEFAULT_CONFIDENCE)
+                reason = c.get("reason")
+                if isinstance(ctype, str):
+                    results[(sid, nid)] = (
+                        ctype, float(conf),
+                        reason if isinstance(reason, str) else None,
+                    )
+                break
+    return results
+
+
+def _propagate_vision_to_members(
+    conn: sqlite3.Connection,
+    groups: list[list[dict[str, Any]]],
+    reps: list[dict[str, Any]],
+    ps: dict[tuple[int, int], tuple[str, float, Optional[str]]],
+    cs: dict[tuple[int, int], tuple[str, float, Optional[str]]],
+) -> tuple[int, int]:
+    """Write vision_ps_* + vision_cs_* columns for every member of
+    every group where the representative got a verdict. Singletons
+    inherit PS for CS.
+    """
+    ps_applied = 0
+    cs_applied = 0
+    for members, rep in zip(groups, reps):
+        rep_key = (rep["screen_id"], rep["node_id"])
+        ps_verdict = ps.get(rep_key)
+        cs_verdict = cs.get(rep_key)
+        # Singletons: CS has no meaningful distinct verdict. Inherit PS.
+        if cs_verdict is None and ps_verdict is not None:
+            cs_verdict = ps_verdict
+
+        for m in members:
+            if ps_verdict is not None:
+                ctype, conf, reason = ps_verdict
+                conn.execute(
+                    "UPDATE screen_component_instances "
+                    "SET vision_ps_type = ?, vision_ps_confidence = ?, "
+                    "    vision_ps_reason = ? "
+                    "WHERE screen_id = ? AND node_id = ?",
+                    (ctype, conf, reason, m["screen_id"], m["node_id"]),
+                )
+                ps_applied += 1
+            if cs_verdict is not None:
+                ctype, conf, reason = cs_verdict
+                conn.execute(
+                    "UPDATE screen_component_instances "
+                    "SET vision_cs_type = ?, vision_cs_confidence = ?, "
+                    "    vision_cs_reason = ? "
+                    "WHERE screen_id = ? AND node_id = ?",
+                    (ctype, conf, reason, m["screen_id"], m["node_id"]),
+                )
+                cs_applied += 1
+    conn.commit()
+    return (ps_applied, cs_applied)
+
+
+def run_classification_v2(
+    conn: sqlite3.Connection,
+    file_id: int,
+    client: Any,
+    file_key: str,
+    fetch_screenshot: Callable,
+    *,
+    since_screen_id: Optional[int] = None,
+    limit: Optional[int] = None,
+    progress_callback: Any = None,
+) -> dict[str, Any]:
+    """Orchestrate the full v2 cascade.
+
+    Flow:
+    1. Per-screen formal + heuristic + link_parents (fast, no API).
+    2. Pool unclassified candidates globally across all screens.
+    3. Dedup into groups via `classify_dedup.group_candidates`.
+    4. LLM: classify group representatives in a single batched call.
+    5. Propagate LLM verdicts → INSERT sci rows for every member.
+    6. Fetch screen screenshots for the corpus (batched).
+    7. Vision PS: one crop per rep, batched ~8 at a time.
+    8. Vision CS: multi-crop per group (>=2 members) for cross-screen
+       consistency signal.
+    9. Propagate vision verdicts to all group members.
+    10. Per-screen apply_consensus_to_screen + extract_skeleton.
+
+    Returns a summary dict with counts at each stage.
+    """
+    screen_ids = _list_screens(conn, file_id, since_screen_id, limit)
+
+    # Pass 1: per-screen rule-based stages.
+    for sid in screen_ids:
+        classify_formal(conn, sid)
+        classify_heuristics(conn, sid)
+        link_parent_instances(conn, sid)
+
+    # Pass 2: collect candidates globally.
+    candidates = _collect_all_candidates(conn, screen_ids)
+
+    # Pass 3: dedup.
+    groups_map = group_candidates(candidates)
+    groups_list = list(groups_map.values())
+    reps = [members[0] for members in groups_list]
+
+    catalog = get_catalog(conn)
+
+    # Pass 4: LLM on representatives.
+    llm_verdicts = _llm_classify_representatives(reps, client, catalog)
+
+    # Pass 5: propagate LLM verdicts → INSERT sci rows.
+    llm_inserts = _insert_llm_verdicts(
+        conn, groups_list, reps, llm_verdicts, catalog,
+    )
+
+    # Re-link parent chains now that new sci rows exist.
+    for sid in screen_ids:
+        link_parent_instances(conn, sid)
+
+    # Pass 6: fetch screenshots for every screen containing any
+    # candidate (minimises REST calls; one image per screen reused
+    # across all that screen's reps).
+    screens_with_reps = sorted({r["screen_id"] for r in reps})
+    screenshots: dict[str, bytes] = {}
+    if screens_with_reps:
+        screenshots = _fetch_screenshots_for_screens(
+            conn, screens_with_reps, fetch_screenshot, file_key,
+        )
+
+    # Pass 7 + 8: vision PS + CS.
+    ps_verdicts = _vision_ps_classify(
+        conn, reps, screenshots, client, catalog,
+    )
+    cs_verdicts = _vision_cs_classify(
+        conn, groups_list, reps, screenshots, client, catalog,
+    )
+
+    # Pass 9: propagate vision verdicts.
+    ps_applied, cs_applied = _propagate_vision_to_members(
+        conn, groups_list, reps, ps_verdicts, cs_verdicts,
+    )
+
+    # Pass 10: consensus + skeleton per screen.
+    consensus_counts: dict[str, int] = {}
+    skeletons_generated = 0
+    for sid in screen_ids:
+        counts = apply_consensus_to_screen(conn, sid)
+        for k, v in counts.items():
+            consensus_counts[k] = consensus_counts.get(k, 0) + v
+        skel = extract_skeleton(conn, sid)
+        if skel is not None:
+            skeletons_generated += 1
+        if progress_callback is not None:
+            progress_callback(sid, counts)
+
+    return {
+        "screens_processed": len(screen_ids),
+        "dedup_candidates": len(candidates),
+        "dedup_groups": len(groups_list),
+        "llm_inserts": llm_inserts,
+        "vision_ps_applied": ps_applied,
+        "vision_cs_applied": cs_applied,
+        "consensus": consensus_counts,
+        "skeletons_generated": skeletons_generated,
+    }
