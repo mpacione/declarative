@@ -216,25 +216,29 @@ Use the behavioral description to disambiguate. The UI component that matches th
 
 ## Rules
 
-1. **Pick one canonical type per node.** `container` and `unsure` are valid but prefer a specific type when evidence supports it.
+1. **Pick one canonical type per node.** `container` and `unsure` are valid; prefer a specific catalog type when the evidence is strong.
 
-2. **Confidence is calibrated.**
-   - **0.95+** — unambiguous. "Button labeled 'Sign in' with button-shaped layout."
-   - **0.85–0.94** — strong signal + minor alternative. "Probably a card; could be a list_item tile."
-   - **0.75–0.84** — real evidence + plausible alternative. Use the specific type at this band.
-   - **Below 0.75** — **prefer `unsure`** with a reason rather than a low-confidence specific type. Hedging with "container at 0.70" loses more information than an honest `unsure`.
+2. **Layout-slot names default to `container`.** Frames named `Left`, `Right`, `Center`, `Titles`, `Frame 267`, `Group 4`, etc. are almost always pure layout wrappers — classify them as `container` unless their children carry unambiguous identity signal (e.g. children are all buttons → `button_group`; children form a clear nav row → `navigation_row`). Auto-generated names like `Frame NNN` / `Group NNN` should only pick a specific type when another signal (sample text, distinctive child pattern, strong parent context) overrides.
 
-3. **Don't regress to `container` when a specific type has evidence.** `container` is for *truly generic layout frames with no identity signals* — no sample_text, no distinctive children, no known pattern. If the node has ANY specific signal (distinctive name like `grabber` / `address` / `wordmark`, characteristic children like 3 ellipses = dots/grabber, sample text, known layout pattern), classify it specifically. A `button_group` is more useful downstream than a `container` with 3 button children.
+3. **Wordmarks and logos → `image`.** A frame named `wordmark`, `logo`, `brand`, `logomark` is treated as an `image` — the compiler renders these as assets, not as editable text. They are NOT `heading`, `text`, `navigation_row`, or `icon_button`.
 
-4. **Use parent/sibling context.** A node inside a `bottom_nav` is likely a `navigation_row`, not a button. A text-only node inside a `card` at the top is likely `heading`. A row of identical button-like instances is `button_group`, not `container`.
+4. **Empty-frame placeholders → `skeleton`.** Multiple identical empty frames (same size, same parent, no children, no sample_text) arranged in a grid or stack — often named `Frame 352`/`Skeleton`/`Loading` — are loading placeholders. Classify as `skeleton`. This is NOT a `dialog` or `drawer` — it's a placeholder pattern the renderer replaces at runtime.
 
-5. **Sample text is a strong signal.** "Sign in" → button. "Welcome back" → heading. "Forgot password?" → link. URL-like text (`chads.wtf`) → search_input or text depending on context.
+5. **Decorative-child pattern → `icon`.** A small frame with N identical decorative children (3 ellipses, 2 chevrons, 4 dots) in a tight layout is typically a single semantic glyph — classify as `icon`, not a `container` of N independent things.
 
-6. **Empty-frame grid pattern.** Multiple identical frames (same size, same parent, no children, no sample_text) arranged in a grid → `skeleton` (loading placeholder). Rare to be `image` unless the frame carries an actual image fill.
+6. **Use parent/sibling context.** A node inside a `bottom_nav` is likely a `navigation_row`, not a button. A text-only node inside a `card` at the top is likely `heading`. A row of identical button-like instances is `button_group`.
 
-7. **Decorative-child pattern.** A small frame with N identical decorative children (3 ellipses, 2 chevrons, 4 dots) in a tight layout is typically a single semantic icon/glyph (`icon`), not a `container` of N independent things.
+7. **Sample text is a strong signal.** "Sign in" → `button`. "Welcome back" → `heading`. "Forgot password?" → `link`. URL-like text (`chads.wtf`) → `search_input` or `text` depending on context.
 
-8. **Reasons are evidence-based, not speculation.** One sentence, citing the signals (layout, text, parent, size, child pattern). "Assumed to be a card" is bad; "Vertical auto-layout with image at top, heading, and action row" is good. "Structural grouping of controls" is a weak reason — if the children are all buttons, say `button_group` and cite why.
+8. **Don't regress to `container` when specific evidence exists.** `container` is for *truly generic layout frames with no identity signals* — no sample_text, no distinctive children, no known pattern. If the node has ANY specific signal (distinctive name like `grabber` / `address`, characteristic children, sample text, known layout pattern), classify it specifically. A `button_group` is more useful downstream than a `container` with 3 button children. (But rule 2 still governs generic layout-slot names like `Left`/`Center`/`Frame NNN`.)
+
+9. **Confidence is calibrated and ANCHORED.**
+   - **0.95+ — unambiguous.** *Example:* frame named `CTA` with sample_text="Continue", parent=card — this is a `button` at 0.98.
+   - **0.85–0.94 — strong signal + one minor alternative.** *Example:* a frame with a single line of sentence-case text in the page body — very likely `text`, could arguably be `heading` at the smallest sizes, at 0.88.
+   - **0.75–0.84 — real evidence + plausible alternative.** *Example:* a small square frame named `icon` with one child — could be `icon` alone OR part of an `icon_button`; at 0.78.
+   - **Below 0.75 — prefer `unsure` with a reason.** Hedging with "container at 0.70" loses more information than an honest `unsure`.
+
+10. **Reasons are evidence-based.** One sentence citing the signals (layout, text, parent, size, child pattern). "Assumed to be a card" is bad; "Vertical auto-layout with image at top, heading, and action row" is good. "Structural grouping of controls" is weak — if the children are all buttons, say `button_group` and cite why.
 
 ## Nodes to classify
 

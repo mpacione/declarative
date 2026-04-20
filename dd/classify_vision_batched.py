@@ -639,7 +639,7 @@ def build_crops_batch_prompt(
         _describe_candidate_compact(c) for c in candidates
     )
     n = len(candidates)
-    return f"""You are classifying UI nodes. Each node is shown as a spotlighted CROP — the target region is at full brightness with its bbox outlined in magenta; surrounding context is dimmed. Classify each node against a fixed catalog. This feeds a design-system compiler — accuracy matters, and "unsure" is a valid answer.
+    return f"""You are classifying UI nodes. Each node is shown as a spotlighted CROP — the target region is at full brightness with its bbox outlined in magenta; surrounding context is dimmed. Classify each node against a fixed catalog. This feeds a design-system compiler — accuracy matters.
 
 ## Canonical types (pick exactly one per node)
 
@@ -648,23 +648,29 @@ Use the behavioral description to disambiguate. The UI component that matches th
 
 ## Rules
 
-1. **One canonical type per node.** `container` and `unsure` are valid; prefer a specific type when evidence supports it.
+1. **One canonical type per node.** Prefer a specific catalog type when the evidence is strong. `container` and `unsure` are valid.
 
-2. **Confidence is calibrated.**
-   - **0.95+** — unambiguous.
-   - **0.85–0.94** — strong signal + minor alternative.
-   - **0.75–0.84** — real evidence + plausible alternative.
-   - **Below 0.75** — prefer `unsure` with a reason.
+2. **Layout-slot names default to `container`.** Frames named `Left`, `Right`, `Center`, `Titles`, `Frame 267`, `Group 4`, etc. are almost always pure layout wrappers — classify them as `container` unless the crop shows unambiguous interactive or informational content (e.g. a pill-shaped button with a label, a clear tab indicator, an icon row). Auto-generated names like `Frame NNN` / `Group NNN` should only pick a specific type when the visual is unmistakable.
 
-3. **Trust the crop.** The bbox outline shows exactly what to classify. Surrounding dimmed context is for reference, not the target. Don't over-weight context.
+3. **Wordmarks and logos → `image`.** A frame named `wordmark`, `logo`, `brand`, `logomark` (or that shows a stylized brand name rendered as vector/text artwork at the top of a screen) is treated as an `image` — the compiler renders these as assets, not as editable text. They are NOT `heading`, `text`, `navigation_row`, or `icon_button`.
 
-4. **Don't regress to `container` when specific evidence exists.** Distinctive name, characteristic glyph, sample text, known pattern → classify specifically.
+4. **Empty-frame placeholders → `skeleton`.** If the crop shows a stack of empty rounded rectangles, shimmer blocks, or repeating grey placeholder rows (a frame named `Frame 352`/`Skeleton`/`Loading` is a strong hint), classify as `skeleton`. This is NOT a `dialog` or `drawer` — it is a placeholder pattern that the renderer replaces at runtime.
 
-5. **Empty-frame grid → `skeleton`.** Decorative-child pattern (3 ellipses, 2 chevrons, 4 dots) → single `icon`.
+5. **Trust the crop.** The bbox outline shows exactly what to classify. Surrounding dimmed context is for reference, not the target. Don't over-weight context.
 
 6. **Reasons are evidence-based.** Cite visual signals (shape, content, affordances in the crop) AND structural context (parent, sample text, layout, child count).
 
-7. **Every (screen_id, node_id) in the input must appear in the output exactly once.** {n} nodes total.
+7. **Confidence is calibrated and ANCHORED.**
+   - **0.95+ — unambiguous.** *Example:* pill-shaped rectangle with a primary fill color and the label `Continue` — this is a `button` at 0.98.
+   - **0.85–0.94 — strong signal + one minor alternative.** *Example:* a flat rectangular region with a single line of sentence-case text 14-16px in the page body — very likely `text`, could arguably be `heading` at the smallest sizes, at 0.88.
+   - **0.75–0.84 — real evidence + plausible alternative.** *Example:* a small square icon with a horizontal-line glyph — could be `menu` (hamburger) OR `close` (equal sign) depending on exact stroke count; at 0.78.
+   - **Below 0.75 — prefer `unsure` with a reason.** If you cannot reliably distinguish two catalog types, `unsure` beats a coin flip.
+
+8. **Don't regress to `container` when specific evidence exists.** Distinctive name, characteristic glyph, sample text, known pattern → classify specifically. (But rule 2 still governs generic layout-slot names.)
+
+9. **Decorative-child pattern → single `icon`.** 3 ellipses, 2 chevrons, 4 dots — treat the entire group as one `icon`.
+
+10. **Every (screen_id, node_id) in the input must appear in the output exactly once.** {n} nodes total.
 
 ## Nodes to classify
 
