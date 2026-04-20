@@ -1050,3 +1050,146 @@ class TestApplyEditsFixtureIdentity:
         doc = parse_l3(src)
         result = apply_edits(doc, [])
         assert result is doc
+
+
+# ---------------------------------------------------------------------------
+# Code-review subagent (2026-04-19) suggested tests T1-T5
+# ---------------------------------------------------------------------------
+
+class TestCodeReviewFollowUps:
+    """Tests added per the post-Pass-9 Sonnet code-review subagent
+    suggestions (see docs/m7_assumptions_log.md). Each docstring
+    notes which review issue the test addresses + the resolution.
+    """
+
+    def test_t1_cousin_eids_no_false_conflict(self):
+        """Issue #1 (subagent: HIGH). Subagent claimed deleting
+        `@left.c` would falsely conflict with a subsequent `set
+        @right.c`. Investigation: ERef.path for the dotted form is
+        `"left.c"`, NOT `"c"` — so target.path strings don't collide
+        across cousins. Spec §2.3.1 forces dotted addressing on
+        cousins (otherwise KIND_EID_AMBIGUOUS fires before
+        deleted_targets is touched).
+
+        This test PROVES the claimed bug doesn't exist.
+        """
+        src = (
+            "screen #s {\n"
+            "  frame #left {\n"
+            "    card #c { text \"left\" }\n"
+            "  }\n"
+            "  frame #right {\n"
+            "    card #c { text \"right\" }\n"
+            "  }\n"
+            "}\n"
+            "delete @left.c\n"
+            "set @right.c radius={radius.lg}\n"
+        )
+        doc = parse_l3(src)
+        result = apply_edits(doc)
+        # left.c gone; right.c present + has new radius.
+        # Locate by walking left/right scopes:
+        for top in result.top_level:
+            for s in top.block.statements:
+                if s.head.eid == "left":
+                    assert all(
+                        c.head.eid != "c" for c in s.block.statements
+                    ), "left.c should be deleted"
+                if s.head.eid == "right":
+                    rc = next(
+                        c for c in s.block.statements if c.head.eid == "c"
+                    )
+                    assert rc.head.get_prop("radius") is not None
+
+    def test_t2_move_where_target_isolates_ancestor_of_dest(self):
+        """Issue #4 (subagent: MEDIUM). Move where target's removal
+        leaves a parent that is also an ancestor of the destination.
+        Tests the re-resolve path.
+        """
+        src = (
+            "screen #s {\n"
+            "  frame #outer {\n"
+            "    frame #inner {\n"
+            "      card #target { text \"x\" }\n"
+            "      frame #dest { text #placeholder \"\" }\n"
+            "    }\n"
+            "  }\n"
+            "}\n"
+            "move @target to=@dest position=first\n"
+        )
+        doc = parse_l3(src)
+        result = apply_edits(doc)
+        # @target now lives inside @dest as the first child.
+        dest = _find_node_by_eid(result, "dest")
+        assert dest is not None
+        first_child = dest.block.statements[0]
+        assert first_child.head.eid == "target"
+        # @inner still exists; no longer has @target as a direct child.
+        inner = _find_node_by_eid(result, "inner")
+        assert inner is not None
+        eids = [s.head.eid for s in inner.block.statements
+                if isinstance(s, Node)]
+        assert "target" not in eids
+        assert "dest" in eids
+
+    def test_t3_replace_on_node_with_no_block(self):
+        """Subagent T3. Original test only covered replace on nodes
+        with existing children. Test with a leaf node (no block).
+        """
+        src = (
+            "screen #s {\n"
+            "  card #empty\n"
+            "}\n"
+            "replace @empty {\n"
+            "  text #only \"new\"\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        result = apply_edits(doc)
+        empty = _find_node_by_eid(result, "empty")
+        assert empty is not None
+        assert empty.block is not None
+        assert empty.block.statements[0].head.eid == "only"
+
+    def test_t4_insert_anchor_must_be_direct_child(self):
+        """Subagent T4. Insert anchor lookup must only match direct
+        children of `into=`, not any descendant.
+        """
+        src = (
+            "screen #s {\n"
+            "  frame #grid {\n"
+            "    card #c1 { text \"a\" }\n"
+            "    card #c2 {\n"
+            "      text #item \"b\"\n"
+            "    }\n"
+            "  }\n"
+            "}\n"
+            "insert into=@grid after=@item {\n"
+            "  card #x\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        # @item is a grandchild of @grid, not a direct child.
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_t5_swap_with_compref_does_not_crash(self):
+        """Subagent T5. The full CompRef swap test is deferred to
+        M7.2. This minimal version only verifies the dataclasses.
+        replace(head, eid=...) call doesn't crash on a CompRef head.
+        """
+        # Use a CompRef as the with_node target.
+        src = (
+            "screen #s {\n"
+            "  card #card-1\n"
+            "}\n"
+            "swap @card-1 with=-> button/primary/lg\n"
+        )
+        doc = parse_l3(src)
+        # Should not crash. The replacement node should have
+        # head_kind=comp-ref AND retain card-1's eid.
+        result = apply_edits(doc)
+        node = _find_node_by_eid(result, "card-1")
+        assert node is not None
+        assert node.head.head_kind == "comp-ref"

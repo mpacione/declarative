@@ -3651,18 +3651,16 @@ def _resolve_eref(
     matches: list[tuple[Node, list[tuple[object, int]]]] = []
     if len(segments) == 1:
         eid = segments[0]
-        for top_idx, item in enumerate(doc.top_level):
+        for item in doc.top_level:
             if not isinstance(item, Node):
                 continue
-            _walk_for_eid(item, eid, [], matches, in_top=(item, top_idx))
+            _walk_for_eid(item, eid, [], matches)
     else:
         # Descend through each segment.
-        for top_idx, item in enumerate(doc.top_level):
+        for item in doc.top_level:
             if not isinstance(item, Node):
                 continue
-            _walk_dotted(
-                item, segments, [], matches, in_top=(item, top_idx),
-            )
+            _walk_dotted(item, segments, [], matches)
 
     if not matches:
         return (None, [])
@@ -3682,8 +3680,6 @@ def _walk_for_eid(
     node: Node, eid: str,
     path_so_far: list[tuple[object, int]],
     matches: list[tuple[Node, list[tuple[object, int]]]],
-    *,
-    in_top: tuple[object, int],
 ) -> None:
     """Depth-first walk; collect every node where head.eid matches."""
     if node.head.eid == eid:
@@ -3696,7 +3692,6 @@ def _walk_for_eid(
                 stmt, eid,
                 path_so_far + [(node, idx)],
                 matches,
-                in_top=in_top,
             )
 
 
@@ -3704,8 +3699,6 @@ def _walk_dotted(
     node: Node, segments: list[str],
     path_so_far: list[tuple[object, int]],
     matches: list[tuple[Node, list[tuple[object, int]]]],
-    *,
-    in_top: tuple[object, int],
 ) -> None:
     """Depth-first walk for dotted-path resolution: each segment must
     match the next nesting level. The first segment can match anywhere;
@@ -3726,7 +3719,6 @@ def _walk_dotted(
                     stmt, rest,
                     path_so_far + [(node, idx)],
                     matches,
-                    in_top=in_top,
                 )
         return
     # Not a match at this level; keep searching deeper for the first
@@ -3739,7 +3731,6 @@ def _walk_dotted(
                 stmt, segments,
                 path_so_far + [(node, idx)],
                 matches,
-                in_top=in_top,
             )
 
 

@@ -93,6 +93,89 @@ Plan said ~50 min, dry-run extrapolated similar. Actual: ~4.5 hours and counting
 
 ---
 
+#### Crash + recovery: Step 9 cascade hit `APIConnectionError` mid-CS
+
+After ~4.5h wall time, the python classify process raised
+`anthropic.APIConnectionError: Connection error.` (root cause: SSL
+bad-record-mac alert during a streaming Sonnet call). `tee` wrapped
+the exit at code 0. Actual state:
+- LLM rows: 6,233 (100% complete)
+- Vision PS rows: 6,233 (100%)
+- Vision CS rows: 3,451 (55%; ~110 screens lacking CS)
+- Consensus: 0 (CS phase blocks consensus)
+
+**Decision:** wrote `scripts/m7_resume_three_source.py` that:
+- Adds `target_source="llm_missing_cs"` to `_fetch_unclassified_for_screen` (one-line change in `dd/classify_vision_batched.py`).
+- Resumes only the missing-CS rows (no re-payment for completed batches).
+- Per-batch retry/backoff (3 attempts, 10s delay) in case of more transient errors.
+- Runs `apply_consensus_to_screen` for every LLM screen after CS finishes.
+
+**Why:** straight re-truncate-and-rerun would discard $35-50 of work AND likely hit another transient error mid-run. Resume is robust + cheap.
+
+**Reversal cost:** drop the `llm_missing_cs` target_source branch; resume becomes obsolete after run completes.
+
+**Status at log entry:** resume in background, ~2/23 batches done.
+
+---
+
+#### M7.1 implementation completed in 9 passes (autonomous)
+
+All seven verb statements ship end-to-end:
+
+| Pass | Verb | Commit | LOC | Tests |
+|---|---|---|---:|---:|
+| 1 | infrastructure | `39aa39e` | ~960 | 50 |
+| 2 | set | `f39973d` | +280 | +13 |
+| 3 | delete | `1a07909` | +110 | +6 |
+| 4 | append | `92c90bc` | +75 | +5 |
+| 5 | insert | `140cb76` | +95 | +6 |
+| 6 | move | `93567e1` | +145 | +7 |
+| 7 | replace | `0e8f1a6` | +30 | +4 |
+| 8 | swap | `cbb6e6f` | +30 | +3 (+1 skip) |
+| 9 | integration | `354d8fb` | +110 (test only) | +11 |
+| review | follow-ups | (unstaged) | +5 tests, -2 dead params | +5 |
+
+Total: 109 passing + 1 skipped tests for M7.1; 490 passing in the broader markup + classify suite. Full corpus parity (204/204) preserved (changes are additive — none of the construction code path was modified).
+
+**OQ resolutions** (in plan-m7.1.md §Open Questions; reproduced here for the audit):
+- OQ-1: `before=` in `insert` — INCLUDED.
+- OQ-2: `move position=` shape — bare enums for first/last; `after=`/`before=` as separate kwargs.
+- OQ-3: `replace` semantics — Interpretation A (replaces block content; node stays).
+- OQ-4: multi-property `set` — ALLOWED.
+- OQ-5: auto-id targeting — KIND_EID_NOT_FOUND with explanatory message; strict=True default. NOTE: the message hints at the auto-id case but the actual auto-id check is documentation-only — flagged by code review (Issue #5). Real check requires distinguishing synth-eids from explicit ones in the parser; deferred to M7.2 because auto-id'd nodes are typically UUID-style and unlikely to be typed.
+- OQ-6: swap CompRef test — written + skipped pending M7.0.b.
+
+**Code review subagent findings (2026-04-19, sonnet):**
+- Issue #1 (HIGH, claimed): cousin-eid false conflict in `deleted_targets`. **Investigation: NOT a bug.** Test T1 added in TestCodeReviewFollowUps proves: dotted ERef paths (`@left.c`) produce target.path strings that don't collide across cousins. The subagent assumed `target.path` for `@left.c` would be `"c"`, but it's `"left.c"`. Bare `@c` would raise KIND_EID_AMBIGUOUS before reaching deleted_targets.
+- Issue #2 (MEDIUM): dead `in_top` parameter in `_walk_for_eid` and `_walk_dotted`. **Fixed**: removed.
+- Issue #3 (MEDIUM): strict=False + double-delete gives misleading KIND. Edge case; deferred — accept the minor message-quality issue.
+- Issue #4 (MEDIUM): `_apply_move` ins_idx computation comment is partially correct. Test T2 added; passes. Comment clarification deferred.
+- Issue #5 (LOW): auto-id targeting check is documentation-only. Deferred to M7.2 per OQ-5 note above.
+
+**Test follow-ups added (T1-T5)**: cousin no-false-conflict, move-with-shared-ancestor, replace-on-leaf-node, insert-anchor-must-be-direct-child, swap-with-CompRef-doesn't-crash. All 5 pass.
+
+---
+
+#### Step 12 rule v2 proposal drafted
+
+Drafted `docs/plan-m7-step12-rule-v2.md` (autonomous design pass). Six override patterns (A-F) addressing the systematic biases the dry-run + bake-off exposed. Drop-in replacement for `compute_consensus_v1`; reads only persisted columns (no re-classification needed).
+
+**Status:** SPEC, deferred until full disagreement-report data + Step 11 manual reviews provide ground truth for validation.
+
+**User sign-off needed:** override patterns A-F are heuristic guesses; real disagreement data may need different patterns.
+
+---
+
+#### M7.0.b plan drafted (NOT executed)
+
+Drafted `docs/plan-m7.0.b.md` (autonomous design pass). Discovered the existing `component_slots` schema is keyed on `component_id` (FK to `components` table), which is currently empty (CKR is populated separately). Two-step path: (1) backfill `components` from CKR via SQL; (2) cluster + slot-derive per canonical_type.
+
+**Status:** SPEC ONLY. Did NOT execute the API-cost step (clustering + Claude labelling) because it requires three schema decisions (SD-1, SD-2, SD-3) that need user sign-off.
+
+**Why I held:** my "aggressive" instructions assume forward progress on already-spec'd work. M7.0.b's schema interlock with `components` (currently 0 rows) wasn't covered in plan-synthetic-gen.md's per-canonical-type framing — this is a design fork, not just execution. Spec drafted; implementation deferred to user review.
+
+---
+
 #### Decision: spec doc updated BEFORE implementation
 
 **Decision:** update `docs/spec-dd-markup-grammar.md` §8 EBNF additions and §9.5 KIND catalog BEFORE the Pass 1 commit, per the spec's own Implementation hook directive at §15: "Update this file BEFORE touching `dd/markup.py` or any consumer."
