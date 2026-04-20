@@ -283,6 +283,14 @@ def _fetch_unclassified_for_screen(
     """
     if target_source == "llm":
         sci_filter = "sci.classification_source = 'llm'"
+    elif target_source == "llm_missing_cs":
+        # Resume path: only LLM rows that haven't received a CS
+        # verdict yet. Lets a crashed three-source run pick up where
+        # it left off without re-paying for completed batches.
+        sci_filter = (
+            "sci.classification_source = 'llm' "
+            "AND sci.vision_cs_type IS NULL"
+        )
     else:
         sci_filter = "sci.id IS NULL"
 
