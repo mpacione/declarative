@@ -767,3 +767,75 @@ class TestApplyInsert:
         with pytest.raises(DDMarkupParseError) as exc:
             apply_edits(doc)
         assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Pass 6: move verb apply semantics
+# ---------------------------------------------------------------------------
+
+class TestApplyMove:
+    def test_move_to_position_first(self):
+        # Move card-2 from @s into @card-1 at position=first.
+        doc = parse_l3(_doc(
+            "move @card-2 to=@card-1 position=first"
+        ))
+        result = apply_edits(doc)
+        # card-2 is gone from @s.
+        screen = result.top_level[0]
+        s_eids = [
+            s.head.eid for s in screen.block.statements
+            if isinstance(s, Node)
+        ]
+        assert "card-2" not in s_eids
+        # card-2 is the FIRST child of card-1.
+        card1 = _find_node_by_eid(result, "card-1")
+        assert card1.block.statements[0].head.eid == "card-2"
+
+    def test_move_to_position_last(self):
+        doc = parse_l3(_doc(
+            "move @card-2 to=@card-1 position=last"
+        ))
+        result = apply_edits(doc)
+        card1 = _find_node_by_eid(result, "card-1")
+        assert card1.block.statements[-1].head.eid == "card-2"
+
+    def test_move_after_anchor(self):
+        # Move card-2 into card-1, after=title.
+        doc = parse_l3(_doc(
+            "move @card-2 to=@card-1 after=@title"
+        ))
+        result = apply_edits(doc)
+        card1 = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card1.block.statements]
+        assert eids == ["title", "card-2", "subtitle"]
+
+    def test_move_before_anchor(self):
+        doc = parse_l3(_doc(
+            "move @card-2 to=@card-1 before=@subtitle"
+        ))
+        result = apply_edits(doc)
+        card1 = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card1.block.statements]
+        assert eids == ["title", "card-2", "subtitle"]
+
+    def test_move_within_same_parent_reorders(self):
+        # Reorder #title and #subtitle inside #card-1.
+        doc = parse_l3(_doc(
+            "move @subtitle to=@card-1 position=first"
+        ))
+        result = apply_edits(doc)
+        card1 = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card1.block.statements]
+        assert eids == ["subtitle", "title"]
+
+    def test_move_target_not_found_raises(self):
+        doc = parse_l3(_doc("move @nope to=@s position=first"))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_move_destination_not_found_raises(self):
+        doc = parse_l3(_doc("move @card-1 to=@nope position=first"))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"

@@ -3873,8 +3873,216 @@ def _apply_one(
         return _apply_append(doc, stmt, deleted_targets)
     if isinstance(stmt, InsertStatement):
         return _apply_insert(doc, stmt, deleted_targets)
+    if isinstance(stmt, MoveStatement):
+        return _apply_move(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
+    )
+
+
+def _apply_move(
+    doc: L3Document,
+    stmt: MoveStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    """`move` = atomic delete + insert. Resolve target + destination
+    on the ORIGINAL doc (not on a delete-then-insert intermediate),
+    so the destination's anchor index isn't invalidated by the
+    target's removal.
+    """
+    if (
+        stmt.target.path in deleted_targets
+        or stmt.to.path in deleted_targets
+    ):
+        raise DDMarkupParseError(
+            f"move references `@{stmt.target.path}`/`@{stmt.to.path}` "
+            "which was deleted earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+
+    target_node, target_path = _resolve_eref(doc, stmt.target)
+    if target_node is None:
+        raise DDMarkupParseError(
+            f"move target `@{stmt.target.path}` not found.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    dest_node, dest_path = _resolve_eref(doc, stmt.to)
+    if dest_node is None:
+        raise DDMarkupParseError(
+            f"move destination `@{stmt.to.path}` not found.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    if not target_path:
+        raise DDMarkupParseError(
+            "cannot move a top-level node (no parent to detach from)",
+            kind="KIND_EDIT_INVALID_TARGET",
+            line=stmt.line, col=stmt.col,
+        )
+
+    # Build the moved-into-destination block first.
+    if dest_node.block is None:
+        dest_block_stmts: list[object] = []
+    else:
+        dest_block_stmts = list(dest_node.block.statements)
+
+    # Remove target from dest's children if it lives there (same-
+    # parent move). This avoids duplicating it.
+    dest_block_stmts = [
+        s for s in dest_block_stmts if s is not target_node
+    ]
+
+    # Compute insertion index per `position` / `position_anchor`.
+    if stmt.position == "first":
+        ins_idx = 0
+    elif stmt.position == "last":
+        ins_idx = len(dest_block_stmts)
+    elif stmt.position in ("after", "before"):
+        if stmt.position_anchor is None:
+            raise DDMarkupParseError(
+                f"move position={stmt.position} requires an anchor",
+                kind="KIND_BAD_EDIT_VERB",
+                line=stmt.line, col=stmt.col,
+            )
+        anchor_eid = stmt.position_anchor.path
+        anchor_idx: Optional[int] = None
+        for i, sib in enumerate(dest_block_stmts):
+            if isinstance(sib, Node) and sib.head.eid == anchor_eid:
+                anchor_idx = i
+                break
+        if anchor_idx is None:
+            raise DDMarkupParseError(
+                f"move position={stmt.position} anchor "
+                f"`@{anchor_eid}` not a child of `@{stmt.to.path}`",
+                kind="KIND_EID_NOT_FOUND",
+                line=stmt.line, col=stmt.col,
+            )
+        ins_idx = anchor_idx + 1 if stmt.position == "after" else anchor_idx
+    else:
+        ins_idx = len(dest_block_stmts)
+
+    new_dest_stmts = (
+        tuple(dest_block_stmts[:ins_idx])
+        + (target_node,)
+        + tuple(dest_block_stmts[ins_idx:])
+    )
+    new_dest_block = (
+        Block(statements=new_dest_stmts) if dest_node.block is None
+        else replace(dest_node.block, statements=new_dest_stmts)
+    )
+    new_dest_node = replace(dest_node, block=new_dest_block)
+
+    # Remove target from its original parent (only if NOT same parent
+    # as dest; for same-parent we already filtered out target above
+    # and rebuilt the block with the new position).
+    target_parent, target_idx = target_path[-1]
+
+    # Build a doc with both rewrites applied. The challenge: we need
+    # to rebuild the tree such that BOTH the target's old parent and
+    # the dest get their new states. They may share ancestors.
+    same_parent = target_parent is dest_node
+
+    if same_parent:
+        # The dest_node's new state already reflects the move (we
+        # filtered out the target before re-inserting). Just put
+        # new_dest_node back in place via dest_path.
+        return _splice_node(doc, dest_path, dest_node, new_dest_node)
+
+    # Different parents. Two-step structural rewrite:
+    # 1) Build the new target_parent without the target.
+    new_target_parent_stmts = list(target_parent.block.statements)
+    del new_target_parent_stmts[target_idx]
+    new_target_parent = replace(
+        target_parent,
+        block=replace(
+            target_parent.block, statements=tuple(new_target_parent_stmts),
+        ),
+    )
+
+    # 2) Apply both rewrites, with the wrinkle that one can be
+    # nested under the other. _splice_node operates on the original
+    # doc; if we splice them sequentially, the second splice runs on
+    # a doc where the first splice already changed the ancestor,
+    # which means the second splice's `path` is stale. Resolve by
+    # re-resolving after the first splice.
+
+    doc_after_target = _splice_node(
+        doc, target_path[:-1], target_parent, new_target_parent,
+    )
+
+    # Now find dest_node again in the new doc — its identity may
+    # have changed if it was an ancestor/descendant of target_parent,
+    # but we resolved on the original. Re-resolve.
+    fresh_dest, fresh_dest_path = _resolve_eref(doc_after_target, stmt.to)
+    if fresh_dest is None:
+        raise DDMarkupParseError(
+            f"internal: dest `@{stmt.to.path}` lost during move splice",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    # Rebuild the dest node's block with the moved target inserted
+    # at the same index we computed earlier (the anchor index does
+    # not change since we already filtered out the target if it
+    # lived there).
+    fresh_dest_block_stmts = list(
+        fresh_dest.block.statements if fresh_dest.block else []
+    )
+    new_fresh_dest_stmts = (
+        tuple(fresh_dest_block_stmts[:ins_idx])
+        + (target_node,)
+        + tuple(fresh_dest_block_stmts[ins_idx:])
+    )
+    new_fresh_dest_block = (
+        Block(statements=new_fresh_dest_stmts) if fresh_dest.block is None
+        else replace(fresh_dest.block, statements=new_fresh_dest_stmts)
+    )
+    new_fresh_dest_node = replace(fresh_dest, block=new_fresh_dest_block)
+
+    return _splice_node(
+        doc_after_target, fresh_dest_path, fresh_dest, new_fresh_dest_node,
+    )
+
+
+def _splice_node(
+    doc: L3Document,
+    path: list[tuple[object, int]],
+    old_subtree: Node,
+    new_subtree: Node,
+) -> L3Document:
+    """Replace `old_subtree` with `new_subtree` at the position given
+    by `path`. Walks back up the path with dataclasses.replace.
+    """
+    if not path:
+        # Top-level — `old_subtree` is in doc.top_level by identity.
+        new_top = list(doc.top_level)
+        for i, item in enumerate(new_top):
+            if item is old_subtree:
+                new_top[i] = new_subtree
+                return replace(doc, top_level=tuple(new_top))
+        raise DDMarkupParseError(
+            "internal: top-level node not located in splice",
+            kind="KIND_EID_NOT_FOUND",
+            line=None, col=None,
+        )
+    current = new_subtree
+    for parent, child_idx in reversed(path):
+        ps = list(parent.block.statements)
+        ps[child_idx] = current
+        current = replace(
+            parent, block=replace(parent.block, statements=tuple(ps)),
+        )
+    root_parent = path[0][0]
+    new_top = list(doc.top_level)
+    for i, item in enumerate(new_top):
+        if item is root_parent:
+            new_top[i] = current
+            return replace(doc, top_level=tuple(new_top))
+    raise DDMarkupParseError(
+        "internal: root parent not found during splice",
+        kind="KIND_EID_NOT_FOUND",
+        line=None, col=None,
     )
 
 
