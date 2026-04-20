@@ -157,6 +157,48 @@ class TestCrossValidateVision:
 # Batched screenshot fetcher tests
 # ---------------------------------------------------------------------------
 
+class TestFullScreenFilter:
+    """Classifier v2: vision_batched._fetch_unclassified_for_screen
+    excludes nodes that fill the entire viewport (canvas/root
+    containers).
+    """
+
+    def test_full_screen_node_filtered(self):
+        from dd.classify_vision_batched import _fetch_unclassified_for_screen
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')"
+        )
+        conn.execute(
+            "INSERT INTO screens "
+            "(id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'S', 428, 926)"
+        )
+        # Canvas FRAME at 99% of viewport → should be filtered.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, x, y, width, height) "
+            "VALUES (60, 1, 'c60', 'Canvas', 'FRAME', 1, 0, "
+            " 0, 0, 424, 917)"
+        )
+        # Content FRAME at 60% of viewport → stays.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, x, y, width, height) "
+            "VALUES (61, 1, 'c61', 'Content', 'FRAME', 1, 1, "
+            " 10, 10, 257, 556)"
+        )
+        conn.commit()
+        candidates = _fetch_unclassified_for_screen(conn, 1)
+        names = [c["name"] for c in candidates]
+        conn.close()
+        assert "Canvas" not in names
+        assert "Content" in names
+
+
 class TestBatchedScreenshotFetcher:
     """Verify the batched Figma screenshot fetcher with retry."""
 

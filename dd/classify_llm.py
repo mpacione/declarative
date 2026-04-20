@@ -243,6 +243,12 @@ def _get_unclassified_for_llm(
     if screen is None:
         return []
 
+    # Full-screen filter (classifier v2): nodes at >=95% of the
+    # screen's viewport in BOTH dimensions are canvas/root
+    # containers, not classifiable UI components. They waste API
+    # calls and confuse the model. Size threshold is expressed in
+    # the SQL so the DB skips them before we materialise rows.
+    screen_w, screen_h = screen[1] or 0, screen[2] or 0
     cursor = conn.execute(
         """
         SELECT n.id AS node_id, n.name, n.node_type, n.depth,
@@ -255,9 +261,13 @@ def _get_unclassified_for_llm(
           AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT')
           AND n.depth >= 1
           AND sci.id IS NULL
+          AND NOT (
+            COALESCE(n.width, 0) >= ? * 0.95
+            AND COALESCE(n.height, 0) >= ? * 0.95
+          )
         ORDER BY n.depth, n.sort_order
         """,
-        (screen_id,),
+        (screen_id, screen_w, screen_h),
     )
     columns = [desc[0] for desc in cursor.description]
     raw = [dict(zip(columns, row)) for row in cursor.fetchall()]

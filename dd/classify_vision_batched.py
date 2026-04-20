@@ -294,18 +294,27 @@ def _fetch_unclassified_for_screen(
     else:
         sci_filter = "sci.id IS NULL"
 
+    # Full-screen filter (classifier v2): exclude nodes that are
+    # >=95% of the screen's viewport in both dimensions. Canvas/
+    # root containers pollute the candidate set; they're not
+    # classifiable UI components.
     cursor = conn.execute(
         f"""
         SELECT n.id AS node_id, n.name, n.node_type, n.depth,
                n.x, n.y, n.width, n.height, n.layout_mode,
                n.parent_id, n.component_key
         FROM nodes n
+        JOIN screens s ON s.id = n.screen_id
         LEFT JOIN screen_component_instances sci
           ON sci.node_id = n.id AND sci.screen_id = n.screen_id
         WHERE n.screen_id = ?
           AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT')
           AND n.depth >= 1
           AND {sci_filter}
+          AND NOT (
+            COALESCE(n.width, 0) >= COALESCE(s.width, 0) * 0.95
+            AND COALESCE(n.height, 0) >= COALESCE(s.height, 0) * 0.95
+          )
         ORDER BY n.depth, n.sort_order
         """,
         (screen_id,),

@@ -326,6 +326,40 @@ class TestClassifyLLM:
             "Bounded container with image + heading + actions"
         )
 
+    def test_full_screen_node_is_filtered(
+        self, db: sqlite3.Connection,
+    ):
+        """Classifier v2: nodes at >=95% of the screen's viewport in
+        BOTH dimensions are canvas roots and are excluded from the
+        candidate set.
+        """
+        # Seed a full-screen canvas FRAME: depth=1, width==screen.width,
+        # height==screen.height. With screen 428x926, canvas at
+        # 408×914 (≥95%) should be filtered.
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, y, width, height, layout_mode) "
+            "VALUES (50, 1, 'canvas-50', 'Canvas', 'FRAME', 1, 10, "
+            " 0, 408, 914, 'VERTICAL')"
+        )
+        # And a sub-screen-sized FRAME (80% of viewport) that SHOULD
+        # still be a candidate.
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, y, width, height, layout_mode) "
+            "VALUES (51, 1, 'half-51', 'Half', 'FRAME', 1, 11, "
+            " 0, 342, 740, 'VERTICAL')"
+        )
+        db.commit()
+
+        from dd.classify_llm import _get_unclassified_for_llm
+        candidates = _get_unclassified_for_llm(db, screen_id=1)
+        names = [c["name"] for c in candidates]
+        assert "Canvas" not in names, "full-screen FRAME must be filtered"
+        assert "Half" in names, "sub-screen FRAME must remain a candidate"
+
     def test_persists_llm_type_and_confidence(
         self, db: sqlite3.Connection,
     ):
