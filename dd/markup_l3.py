@@ -3877,9 +3877,42 @@ def _apply_one(
         return _apply_move(doc, stmt, deleted_targets)
     if isinstance(stmt, ReplaceStatement):
         return _apply_replace(doc, stmt, deleted_targets)
+    if isinstance(stmt, SwapStatement):
+        return _apply_swap(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
     )
+
+
+def _apply_swap(
+    doc: L3Document,
+    stmt: SwapStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    """M7.1: replace the addressed node with stmt.with_node, carrying
+    the target's eid forward onto the replacement so subsequent edits
+    can address it. Override preservation across CompRef swaps is
+    deferred to M7.2 (requires component_slots data from M7.0.b).
+    """
+    if stmt.target.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"swap targets `@{stmt.target.path}` which was deleted "
+            "earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    target_node, target_path = _resolve_eref(doc, stmt.target)
+    if target_node is None:
+        raise DDMarkupParseError(
+            f"swap target `@{stmt.target.path}` not found.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    # Carry the target's eid forward onto the replacement so
+    # subsequent edits can address by the same name.
+    new_head = replace(stmt.with_node.head, eid=target_node.head.eid)
+    new_node = replace(stmt.with_node, head=new_head)
+    return _splice_node(doc, target_path, target_node, new_node)
 
 
 def _apply_replace(

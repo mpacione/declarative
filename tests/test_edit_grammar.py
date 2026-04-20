@@ -892,3 +892,54 @@ class TestApplyReplace:
         with pytest.raises(DDMarkupParseError) as exc:
             apply_edits(doc)
         assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Pass 8: swap verb apply semantics (M7.1: TypeKeyword swaps only;
+# CompRef + override-preservation deferred to M7.2.)
+# ---------------------------------------------------------------------------
+
+class TestApplySwap:
+    def test_swap_with_typekeyword_replaces_node(self):
+        # Swap @card-1 (a card) with an icon node.
+        doc = parse_l3(_doc(
+            "swap @card-1 with=icon"
+        ))
+        result = apply_edits(doc)
+        # The card-1 eid is now an icon (eid preserved on replacement).
+        node = _find_node_by_eid(result, "card-1")
+        assert node is not None
+        assert node.head.head_kind == "type"
+        assert node.head.type_or_path == "icon"
+        assert node.head.eid == "card-1"
+
+    def test_swap_preserves_eid_for_subsequent_edits(self):
+        doc = parse_l3(_doc(
+            "swap @card-2 with=text\n"
+            "set @card-2 text=\"swapped\""
+        ))
+        result = apply_edits(doc)
+        node = _find_node_by_eid(result, "card-2")
+        assert node.head.type_or_path == "text"
+        assert node.head.get_prop("text").value.py == "swapped"
+
+    def test_swap_target_not_found_raises(self):
+        doc = parse_l3(_doc("swap @nope with=icon"))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    @pytest.mark.skip(reason="stub: full swap requires M7.0.b component_slots")
+    def test_swap_with_component_ref_preserves_overrides(self):
+        # M7.2 unskips this once component_slots populated by M7.0.b
+        # provides the slot map needed to carry overrides forward.
+        doc = parse_l3(_doc(
+            "set @card-1 fill={color.brand.primary}\n"
+            "swap @card-1 with=-> button/primary/lg"
+        ))
+        result = apply_edits(doc)
+        node = _find_node_by_eid(result, "card-1")
+        # Expected: the swap brings in button/primary/lg's defaults
+        # but carries the user-set fill forward as an override.
+        assert node.head.head_kind == "comp-ref"
+        assert node.head.get_prop("fill") is not None
