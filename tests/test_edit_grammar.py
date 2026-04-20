@@ -632,3 +632,66 @@ class TestApplyDelete:
         # The screen #s is a top-level node; deleting it empties top_level.
         assert _find_node_by_eid(result, "s") is None
         assert len(result.top_level) == 0
+
+
+# ---------------------------------------------------------------------------
+# Pass 4: append verb apply semantics
+# ---------------------------------------------------------------------------
+
+class TestApplyAppend:
+    def test_append_to_node_with_children(self):
+        doc = parse_l3(_doc(
+            "append to=@card-1 {\n  text #footer \"footer\"\n}"
+        ))
+        result = apply_edits(doc)
+        # card-1 originally had 2 text children (#title, #subtitle);
+        # now it has 3.
+        card = _find_node_by_eid(result, "card-1")
+        assert len(card.block.statements) == 3
+        # Appended child is last and has the new eid.
+        last = card.block.statements[-1]
+        assert isinstance(last, Node)
+        assert last.head.eid == "footer"
+
+    def test_append_to_empty_block(self):
+        # Construct a doc with an empty-block node.
+        src = (
+            "screen #s {\n"
+            "  card #empty\n"
+            "}\n"
+            "append to=@empty {\n"
+            "  text \"first child\"\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "empty")
+        assert card.block is not None
+        assert len(card.block.statements) == 1
+
+    def test_append_multiple_compose(self):
+        doc = parse_l3(_doc(
+            "append to=@card-1 {\n  text \"a\"\n}\n"
+            "append to=@card-1 {\n  text \"b\"\n}\n"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        # Original 2 + 2 appended.
+        assert len(card.block.statements) == 4
+
+    def test_append_to_nonexistent_raises(self):
+        doc = parse_l3(_doc(
+            "append to=@nope {\n  text \"x\"\n}"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_append_then_address_appended_child(self):
+        doc = parse_l3(_doc(
+            "append to=@card-1 {\n  text #later \"x\"\n}\n"
+            "set @later text=\"y\"\n"
+        ))
+        result = apply_edits(doc)
+        later = _find_node_by_eid(result, "later")
+        assert later.head.get_prop("text").value.py == "y"

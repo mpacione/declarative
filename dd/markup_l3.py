@@ -3869,8 +3869,76 @@ def _apply_one(
         return _apply_set(doc, stmt, deleted_targets)
     if isinstance(stmt, DeleteStatement):
         return _apply_delete(doc, stmt, deleted_targets)
+    if isinstance(stmt, AppendStatement):
+        return _apply_append(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
+    )
+
+
+def _apply_append(
+    doc: L3Document,
+    stmt: AppendStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    if stmt.to.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"append targets `@{stmt.to.path}` which was deleted "
+            "earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    parent_node, path = _resolve_eref(doc, stmt.to)
+    if parent_node is None:
+        raise DDMarkupParseError(
+            f"append target `@{stmt.to.path}` not found in document.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+
+    # Build the new block: existing statements + body.statements.
+    body_stmts = stmt.body.statements if stmt.body is not None else ()
+    if parent_node.block is None:
+        new_block = Block(statements=tuple(body_stmts))
+    else:
+        new_block = replace(
+            parent_node.block,
+            statements=parent_node.block.statements + tuple(body_stmts),
+        )
+    new_parent = replace(parent_node, block=new_block)
+
+    # Reconstruct the tree with the modified parent in place.
+    if not path:
+        # Top-level node — replace at its index.
+        for i, item in enumerate(doc.top_level):
+            if item is parent_node:
+                new_top = list(doc.top_level)
+                new_top[i] = new_parent
+                return replace(doc, top_level=tuple(new_top))
+        raise DDMarkupParseError(
+            "internal: top-level node not located in append",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+
+    # Non-top-level: walk back up the path with the new parent.
+    current = new_parent
+    for grandparent, child_idx in reversed(path):
+        gs = list(grandparent.block.statements)
+        gs[child_idx] = current
+        new_block_g = replace(grandparent.block, statements=tuple(gs))
+        current = replace(grandparent, block=new_block_g)
+
+    root_parent = path[0][0]
+    new_top = list(doc.top_level)
+    for i, item in enumerate(new_top):
+        if item is root_parent:
+            new_top[i] = current
+            return replace(doc, top_level=tuple(new_top))
+    raise DDMarkupParseError(
+        "internal: root parent not found during append",
+        kind="KIND_EID_NOT_FOUND",
+        line=stmt.line, col=stmt.col,
     )
 
 
