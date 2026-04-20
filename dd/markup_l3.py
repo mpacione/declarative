@@ -3607,6 +3607,212 @@ def validate(doc: L3Document, *, mode: str = "E") -> list[Warning]:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_eref(
+    doc: L3Document, target: ERef,
+) -> tuple[Optional[Node], list[tuple[object, int]]]:
+    """Resolve an ERef against the construction tree.
+
+    Returns ``(node, path)`` where:
+    - ``node`` is the resolved Node (or None if not found / ambiguous;
+      caller decides how to react via KIND_*).
+    - ``path`` is the list of ``(parent, child_index)`` tuples from
+      root to the target's parent. Used by tree-rebuilding handlers.
+
+    Raises ``DDMarkupParseError`` with kind=KIND_EID_AMBIGUOUS for
+    multi-match (callers must qualify with dotted/slash path) and for
+    wildcard / cross-library targets (deferred to M7.3+).
+    """
+    if target.has_wildcard:
+        raise DDMarkupParseError(
+            f"wildcard ERef `@{target.path}` is not supported by "
+            "apply_edits in M7.1 (deferred to M7.3+)",
+            kind="KIND_EID_AMBIGUOUS",
+            line=None, col=None,
+        )
+    if target.scope_alias is not None:
+        raise DDMarkupParseError(
+            f"cross-library ERef `@{target.scope_alias}::{target.path}` "
+            "is not supported by apply_edits in M7.1 (deferred to "
+            "post-v0.3)",
+            kind="KIND_EID_AMBIGUOUS",
+            line=None, col=None,
+        )
+
+    # Split dotted path: `card-1.title` → ["card-1", "title"]; the
+    # apply-engine walks segment-by-segment.
+    segments = target.path.split(".") if "." in target.path else [
+        target.path,
+    ]
+
+    # For a single-segment path: walk the entire tree, collect all
+    # nodes whose head.eid matches. Single match → resolved.
+    # Multi-segment: descend through each segment as a parent → child
+    # match.
+    matches: list[tuple[Node, list[tuple[object, int]]]] = []
+    if len(segments) == 1:
+        eid = segments[0]
+        for top_idx, item in enumerate(doc.top_level):
+            if not isinstance(item, Node):
+                continue
+            _walk_for_eid(item, eid, [], matches, in_top=(item, top_idx))
+    else:
+        # Descend through each segment.
+        for top_idx, item in enumerate(doc.top_level):
+            if not isinstance(item, Node):
+                continue
+            _walk_dotted(
+                item, segments, [], matches, in_top=(item, top_idx),
+            )
+
+    if not matches:
+        return (None, [])
+    if len(matches) > 1:
+        paths = [_describe_match_path(m[1]) for m in matches]
+        raise DDMarkupParseError(
+            f"ERef `@{target.path}` resolves to {len(matches)} "
+            f"nodes; qualify with a dotted/slash path. Matches: "
+            f"{paths}",
+            kind="KIND_EID_AMBIGUOUS",
+            line=None, col=None,
+        )
+    return matches[0]
+
+
+def _walk_for_eid(
+    node: Node, eid: str,
+    path_so_far: list[tuple[object, int]],
+    matches: list[tuple[Node, list[tuple[object, int]]]],
+    *,
+    in_top: tuple[object, int],
+) -> None:
+    """Depth-first walk; collect every node where head.eid matches."""
+    if node.head.eid == eid:
+        matches.append((node, list(path_so_far)))
+    if node.block is None:
+        return
+    for idx, stmt in enumerate(node.block.statements):
+        if isinstance(stmt, Node):
+            _walk_for_eid(
+                stmt, eid,
+                path_so_far + [(node, idx)],
+                matches,
+                in_top=in_top,
+            )
+
+
+def _walk_dotted(
+    node: Node, segments: list[str],
+    path_so_far: list[tuple[object, int]],
+    matches: list[tuple[Node, list[tuple[object, int]]]],
+    *,
+    in_top: tuple[object, int],
+) -> None:
+    """Depth-first walk for dotted-path resolution: each segment must
+    match the next nesting level. The first segment can match anywhere;
+    subsequent segments must be direct children of the previously-
+    matched node.
+    """
+    first, *rest = segments
+    if node.head.eid == first:
+        if not rest:
+            matches.append((node, list(path_so_far)))
+            return
+        # Descend into children for the next segment.
+        if node.block is None:
+            return
+        for idx, stmt in enumerate(node.block.statements):
+            if isinstance(stmt, Node) and stmt.head.eid == rest[0]:
+                _walk_dotted(
+                    stmt, rest,
+                    path_so_far + [(node, idx)],
+                    matches,
+                    in_top=in_top,
+                )
+        return
+    # Not a match at this level; keep searching deeper for the first
+    # segment.
+    if node.block is None:
+        return
+    for idx, stmt in enumerate(node.block.statements):
+        if isinstance(stmt, Node):
+            _walk_dotted(
+                stmt, segments,
+                path_so_far + [(node, idx)],
+                matches,
+                in_top=in_top,
+            )
+
+
+def _describe_match_path(
+    path: list[tuple[object, int]],
+) -> str:
+    """Render a (parent, idx)-list path for ambiguous-error messages."""
+    parts = []
+    for parent, _idx in path:
+        eid = getattr(parent.head, "eid", None) if hasattr(parent, "head") else None
+        parts.append(eid or "?")
+    return "/".join(parts) if parts else "<root>"
+
+
+def _replace_node_at_path(
+    doc: L3Document,
+    path: list[tuple[object, int]],
+    final_node: Node,
+    final_index_in_top: int,
+    new_subtree: Node,
+) -> L3Document:
+    """Rebuild the document with `final_node` replaced by `new_subtree`.
+
+    Walks back up the path, using `dataclasses.replace()` at each
+    level to construct fresh frozen instances. The unchanged portions
+    of the tree are shared.
+    """
+    if not path:
+        # The target is a top-level Node; rebuild top_level tuple.
+        new_top = list(doc.top_level)
+        new_top[final_index_in_top] = new_subtree
+        return replace(doc, top_level=tuple(new_top))
+
+    # Walk path from the deepest parent up to the root, rebuilding.
+    current = new_subtree
+    # The deepest parent is path[-1]; its block.statements gets the
+    # current at its child slot.
+    for parent, child_idx in reversed(path):
+        new_stmts = list(parent.block.statements)
+        new_stmts[child_idx] = current
+        new_block = replace(parent.block, statements=tuple(new_stmts))
+        current = replace(parent, block=new_block)
+
+    # `current` is now the new top-level node; replace at its index.
+    new_top = list(doc.top_level)
+    new_top[final_index_in_top] = current
+    return replace(doc, top_level=tuple(new_top))
+
+
+def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
+    """Merge new properties into the existing node head, last-wins per
+    key. Returns a fresh Node with the merged head.
+    """
+    existing_props = list(node.head.properties)
+    by_key: dict[str, int] = {}
+    for i, p in enumerate(existing_props):
+        if isinstance(p, PropAssign):
+            by_key[p.key] = i
+        elif isinstance(p, PathOverride):
+            by_key[p.path] = i
+
+    for new_p in stmt.properties:
+        key = new_p.key if isinstance(new_p, PropAssign) else new_p.path
+        if key in by_key:
+            existing_props[by_key[key]] = new_p
+        else:
+            existing_props.append(new_p)
+            by_key[key] = len(existing_props) - 1
+
+    new_head = replace(node.head, properties=tuple(existing_props))
+    return replace(node, head=new_head)
+
+
 def apply_edits(
     doc: L3Document,
     stmts: Optional[list[object]] = None,
@@ -3615,36 +3821,99 @@ def apply_edits(
 ) -> L3Document:
     """Apply a sequence of edit statements to a document.
 
-    Pass 1 ships the function signature; per-verb implementations
-    arrive in Passes 2–8. The current behaviour:
+    Returns a new `L3Document`; never mutates the input. Statements
+    apply sequentially, each operating on the result of all prior
+    statements.
 
-    - Empty edits (or empty `doc.edits` when `stmts` is None) → return
-      `doc` unchanged. Identity is the no-op.
-    - Any non-empty statement list → raise `NotImplementedError` with
-      a pointer to the milestone. This makes accidental calls fail
-      loudly during M7.1 implementation.
+    `strict=True` (default) raises `DDMarkupParseError` on the first
+    error (unresolvable ERef, contradiction). `strict=False` collects
+    errors as `Warning` entries on the result document and continues.
 
-    Per-verb apply semantics (when fully implemented):
-
-    - `set` — merge properties on the addressed node.
-    - `delete` — remove the addressed node + its subtree.
-    - `append` / `insert` — add new children at end / at position.
-    - `move` — reparent the addressed node; compose delete + insert
-      atomically.
-    - `swap` — replace the addressed node with `with_node`,
-      preserving the target's eid on the replacement.
-    - `replace` — replace the addressed node's block content; the
-      node itself stays.
-
-    See `docs/spec-dd-markup-grammar.md` §8.7-§8.9 for the EID
-    resolution algorithm, multi-statement semantics, and `swap`'s
-    M7.2 override-preservation deferral.
+    See `docs/spec-dd-markup-grammar.md` §8.7-§8.9 for semantics.
+    Pass-2 implements `set` only; other verbs raise NotImplementedError.
     """
     if stmts is None:
         stmts = list(doc.edits)
     if not stmts:
         return doc
+
+    current = doc
+    accumulated_warnings = list(doc.warnings)
+    deleted_targets: set[str] = set()
+
+    for stmt in stmts:
+        try:
+            current = _apply_one(current, stmt, deleted_targets)
+        except DDMarkupParseError as e:
+            if strict:
+                raise
+            accumulated_warnings.append(Warning(
+                kind=e.kind, message=str(e),
+                line=e.line, col=e.col,
+            ))
+
+    return replace(current, warnings=tuple(accumulated_warnings))
+
+
+def _apply_one(
+    doc: L3Document,
+    stmt: object,
+    deleted_targets: set[str],
+) -> L3Document:
+    """Apply a single edit statement to the document. Internal helper
+    so the per-statement loop in `apply_edits` can do error policy
+    around each call. Per-verb branches expand here as Passes 3-8
+    land.
+    """
+    if isinstance(stmt, SetStatement):
+        return _apply_set(doc, stmt, deleted_targets)
     raise NotImplementedError(
-        "apply_edits per-verb implementations land in M7.1 Passes 2-8. "
-        "Current pass ships parse + emit + AST + this stub only."
+        f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
+    )
+
+
+def _apply_set(
+    doc: L3Document,
+    stmt: SetStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    if stmt.target.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"set targets `@{stmt.target.path}` which was deleted "
+            "earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    node, path = _resolve_eref(doc, stmt.target)
+    if node is None:
+        raise DDMarkupParseError(
+            f"set target `@{stmt.target.path}` not found in document. "
+            "If this eid was auto-generated by the parser, promote "
+            "it to an explicit `#eid` before editing.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    new_node = _apply_set_to_node(node, stmt)
+
+    # Find the top-level index for this branch by walking path[0]'s
+    # parent — but path may be empty if the target IS top-level.
+    if not path:
+        # Top-level node. Find its index by identity.
+        for i, item in enumerate(doc.top_level):
+            if item is node:
+                return _replace_node_at_path(doc, [], new_node, i, new_node)
+        raise DDMarkupParseError(
+            "internal: top-level node could not be located by identity",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    # Find top index from the root parent.
+    root_parent = path[0][0]
+    for i, item in enumerate(doc.top_level):
+        if item is root_parent:
+            return _replace_node_at_path(doc, path, node, i, new_node)
+    raise DDMarkupParseError(
+        "internal: root parent of resolved ERef not found in top_level",
+        kind="KIND_EID_NOT_FOUND",
+        line=stmt.line, col=stmt.col,
     )

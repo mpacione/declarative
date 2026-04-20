@@ -386,20 +386,197 @@ class TestVerbErrors:
 # ---------------------------------------------------------------------------
 
 class TestApplyEditsStub:
-    """Pass 1 ships the function signature; per-verb implementations
-    arrive in Passes 2–8. The stub raises NotImplementedError so any
-    accidental call fails loudly.
+    """Pass 1 shipped the function signature; per-verb implementations
+    arrive in Passes 2–8. Each pass converts a NotImplementedError
+    test into a per-verb apply test.
     """
 
-    def test_stub_raises_on_any_statement(self):
-        doc = parse_l3(_doc("set @card-1 radius={radius.lg}"))
-        with pytest.raises(NotImplementedError):
-            apply_edits(doc)
-
     def test_stub_with_empty_edits_returns_doc_unchanged(self):
-        """Empty edits = identity. Should NOT raise (the stub
-        short-circuits on no-op).
-        """
+        """Empty edits = identity. Always a no-op."""
         doc = parse_l3(_doc(""))  # no verbs at all
         result = apply_edits(doc, [])
         assert result == doc
+
+
+# ---------------------------------------------------------------------------
+# Pass 2: set verb apply semantics
+# ---------------------------------------------------------------------------
+
+def _find_node_by_eid(doc, eid: str):
+    """Test helper: depth-first walk for the first node with given eid.
+    Returns None if not found. Mirrors apply_edits's resolver for
+    test assertions.
+    """
+    def _walk(items):
+        for item in items:
+            if isinstance(item, Node):
+                if item.head.eid == eid:
+                    return item
+                if item.block is not None:
+                    found = _walk(item.block.statements)
+                    if found is not None:
+                        return found
+        return None
+    return _walk(doc.top_level)
+
+
+class TestApplySetSimple:
+    """`set` mutates a property on the addressed node."""
+
+    def test_set_changes_existing_property(self):
+        doc = parse_l3(_doc("set @card-1 radius={radius.xl}"))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        radius_prop = card.head.get_prop("radius")
+        assert radius_prop is not None
+        # The token ref's path should now be `radius.xl`.
+        assert radius_prop.value.path == "radius.xl"
+
+    def test_set_adds_new_property(self):
+        doc = parse_l3(_doc("set @card-1 visible=false"))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        vis = card.head.get_prop("visible")
+        assert vis is not None
+        # `false` is a Literal_ with .py == False.
+        assert vis.value.py is False
+
+    def test_set_text_string(self):
+        # S1.1 — change a text string.
+        doc = parse_l3(_doc('set @title text="New title"'))
+        result = apply_edits(doc)
+        title = _find_node_by_eid(result, "title")
+        text_prop = title.head.get_prop("text")
+        assert text_prop is not None
+        assert text_prop.value.py == "New title"
+
+    def test_set_color_token(self):
+        # S1.3 — change a color token ref.
+        doc = parse_l3(_doc(
+            "set @card-1 fill={color.brand.primary}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        fill = card.head.get_prop("fill")
+        assert fill.value.path == "color.brand.primary"
+
+    def test_set_multi_property_one_statement(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl} visible=false"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        assert card.head.get_prop("radius").value.path == "radius.xl"
+        assert card.head.get_prop("visible").value.py is False
+
+    def test_implicit_set_form(self):
+        doc = parse_l3(_doc("@card-1 radius={radius.xl}"))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        assert card.head.get_prop("radius").value.path == "radius.xl"
+
+    def test_original_unchanged(self):
+        """apply_edits returns a new doc; original is preserved."""
+        doc = parse_l3(_doc("set @card-1 radius={radius.xl}"))
+        original_card = _find_node_by_eid(doc, "card-1")
+        original_radius = original_card.head.get_prop("radius").value
+        apply_edits(doc)
+        # Re-find on the SAME original doc — radius unchanged.
+        still_original = _find_node_by_eid(doc, "card-1")
+        assert still_original.head.get_prop("radius").value == original_radius
+
+
+class TestApplySetSequential:
+    """Multiple set statements apply in order."""
+
+    def test_three_sets_compose(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl}\n"
+            "set @card-1 visible=false\n"
+            "set @title text=\"Title 2\""
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        title = _find_node_by_eid(result, "title")
+        assert card.head.get_prop("radius").value.path == "radius.xl"
+        assert card.head.get_prop("visible").value.py is False
+        assert title.head.get_prop("text").value.py == "Title 2"
+
+    def test_later_set_overrides_earlier_on_same_key(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.lg}\n"
+            "set @card-1 radius={radius.xl}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        assert card.head.get_prop("radius").value.path == "radius.xl"
+
+
+class TestApplySetErrors:
+    """ERef resolution errors fire structured KINDs."""
+
+    def test_eid_not_found_raises(self):
+        doc = parse_l3(_doc("set @nonexistent radius={radius.xl}"))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_eid_ambiguous_raises(self):
+        # Construct a doc with two cousin nodes sharing eid "card-1".
+        src = (
+            "screen #s {\n"
+            "  frame #left {\n"
+            "    card #c { text \"a\" }\n"
+            "  }\n"
+            "  frame #right {\n"
+            "    card #c { text \"b\" }\n"
+            "  }\n"
+            "}\n"
+            "set @c radius={radius.xl}\n"
+        )
+        doc = parse_l3(src)
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_AMBIGUOUS"
+
+    def test_dotted_path_resolves_unambiguously(self):
+        # Same two cousin `c` nodes; address one explicitly via the
+        # parent.child path.
+        src = (
+            "screen #s {\n"
+            "  frame #left {\n"
+            "    card #c { text \"a\" }\n"
+            "  }\n"
+            "  frame #right {\n"
+            "    card #c { text \"b\" }\n"
+            "  }\n"
+            "}\n"
+            "set @left.c radius={radius.xl}\n"
+        )
+        doc = parse_l3(src)
+        result = apply_edits(doc)
+        # The targeted card-c (under left) has the new radius;
+        # the cousin (under right) does not.
+        def _find(name, eid):
+            for it in result.top_level:
+                for s in it.block.statements:
+                    if s.head.eid == name:
+                        for c in s.block.statements:
+                            if c.head.eid == eid:
+                                return c
+        left_c = _find("left", "c")
+        right_c = _find("right", "c")
+        assert left_c.head.get_prop("radius") is not None
+        assert right_c.head.get_prop("radius") is None
+
+    def test_strict_false_collects_errors_as_warnings(self):
+        doc = parse_l3(_doc(
+            "set @card-1 radius={radius.xl}\n"
+            "set @nonexistent visible=false\n"
+        ))
+        result = apply_edits(doc, strict=False)
+        # First edit applied; second became a warning.
+        card = _find_node_by_eid(result, "card-1")
+        assert card.head.get_prop("radius").value.path == "radius.xl"
+        kinds = [w.kind for w in result.warnings]
+        assert "KIND_EID_NOT_FOUND" in kinds

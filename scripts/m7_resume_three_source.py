@@ -35,6 +35,7 @@ from dd.classify_vision_batched import (
     classify_batch,
     group_screens_by_skeleton_and_device,
 )
+from dd.db import get_connection
 
 
 def _missing_cs_screens(conn: sqlite3.Connection) -> list[int]:
@@ -80,8 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    conn = sqlite3.connect(args.db)
-    conn.execute("PRAGMA foreign_keys = ON")
+    # Use get_connection so row_factory is sqlite3.Row — required by
+    # dd.catalog.get_catalog and other helpers downstream.
+    conn = get_connection(args.db)
 
     file_key = _file_key(conn)
 
