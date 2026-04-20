@@ -3871,8 +3871,93 @@ def _apply_one(
         return _apply_delete(doc, stmt, deleted_targets)
     if isinstance(stmt, AppendStatement):
         return _apply_append(doc, stmt, deleted_targets)
+    if isinstance(stmt, InsertStatement):
+        return _apply_insert(doc, stmt, deleted_targets)
     raise NotImplementedError(
         f"apply for {type(stmt).__name__} arrives in a later M7.1 pass"
+    )
+
+
+def _apply_insert(
+    doc: L3Document,
+    stmt: InsertStatement,
+    deleted_targets: set[str],
+) -> L3Document:
+    if stmt.into.path in deleted_targets:
+        raise DDMarkupParseError(
+            f"insert targets `@{stmt.into.path}` which was deleted "
+            "earlier in this edit sequence",
+            kind="KIND_EDIT_CONFLICT",
+            line=stmt.line, col=stmt.col,
+        )
+    parent_node, path = _resolve_eref(doc, stmt.into)
+    if parent_node is None:
+        raise DDMarkupParseError(
+            f"insert into=@{stmt.into.path} not found in document.",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+
+    # Find the anchor as a direct child of the resolved parent.
+    if parent_node.block is None:
+        raise DDMarkupParseError(
+            f"insert anchor=@{stmt.anchor.path} not found "
+            f"(parent `@{stmt.into.path}` has no children)",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    anchor_idx: Optional[int] = None
+    for i, sib in enumerate(parent_node.block.statements):
+        if isinstance(sib, Node) and sib.head.eid == stmt.anchor.path:
+            anchor_idx = i
+            break
+    if anchor_idx is None:
+        raise DDMarkupParseError(
+            f"insert anchor=@{stmt.anchor.path} is not a child of "
+            f"`@{stmt.into.path}`",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+
+    body_stmts = stmt.body.statements if stmt.body is not None else ()
+    insertion_idx = anchor_idx + 1 if stmt.anchor_rel == "after" else anchor_idx
+    new_stmts = (
+        parent_node.block.statements[:insertion_idx]
+        + tuple(body_stmts)
+        + parent_node.block.statements[insertion_idx:]
+    )
+    new_block = replace(parent_node.block, statements=new_stmts)
+    new_parent = replace(parent_node, block=new_block)
+
+    if not path:
+        for i, item in enumerate(doc.top_level):
+            if item is parent_node:
+                new_top = list(doc.top_level)
+                new_top[i] = new_parent
+                return replace(doc, top_level=tuple(new_top))
+        raise DDMarkupParseError(
+            "internal: top-level node not located in insert",
+            kind="KIND_EID_NOT_FOUND",
+            line=stmt.line, col=stmt.col,
+        )
+    current = new_parent
+    for grandparent, child_idx in reversed(path):
+        gs = list(grandparent.block.statements)
+        gs[child_idx] = current
+        current = replace(
+            grandparent,
+            block=replace(grandparent.block, statements=tuple(gs)),
+        )
+    root_parent = path[0][0]
+    new_top = list(doc.top_level)
+    for i, item in enumerate(new_top):
+        if item is root_parent:
+            new_top[i] = current
+            return replace(doc, top_level=tuple(new_top))
+    raise DDMarkupParseError(
+        "internal: root parent not found during insert",
+        kind="KIND_EID_NOT_FOUND",
+        line=stmt.line, col=stmt.col,
     )
 
 

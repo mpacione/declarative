@@ -695,3 +695,75 @@ class TestApplyAppend:
         result = apply_edits(doc)
         later = _find_node_by_eid(result, "later")
         assert later.head.get_prop("text").value.py == "y"
+
+
+# ---------------------------------------------------------------------------
+# Pass 5: insert verb apply semantics
+# ---------------------------------------------------------------------------
+
+class TestApplyInsert:
+    def test_insert_after_sibling(self):
+        doc = parse_l3(_doc(
+            "insert into=@card-1 after=@title {\n"
+            "  text #middle \"middle\"\n"
+            "}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        # Original [title, subtitle]; after=title → [title, middle, subtitle].
+        eids = [s.head.eid for s in card.block.statements]
+        assert eids == ["title", "middle", "subtitle"]
+
+    def test_insert_before_sibling(self):
+        doc = parse_l3(_doc(
+            "insert into=@card-1 before=@subtitle {\n"
+            "  text #middle \"middle\"\n"
+            "}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card.block.statements]
+        assert eids == ["title", "middle", "subtitle"]
+
+    def test_insert_after_last(self):
+        doc = parse_l3(_doc(
+            "insert into=@card-1 after=@subtitle {\n"
+            "  text #last \"last\"\n"
+            "}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card.block.statements]
+        assert eids == ["title", "subtitle", "last"]
+
+    def test_insert_before_first(self):
+        doc = parse_l3(_doc(
+            "insert into=@card-1 before=@title {\n"
+            "  text #first \"first\"\n"
+            "}"
+        ))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        eids = [s.head.eid for s in card.block.statements]
+        assert eids == ["first", "title", "subtitle"]
+
+    def test_insert_into_nonexistent_raises(self):
+        doc = parse_l3(_doc(
+            "insert into=@nope after=@title {\n"
+            "  text \"x\"\n"
+            "}"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
+
+    def test_insert_anchor_not_in_parent_raises(self):
+        # @subtitle exists but not as a child of @s.
+        doc = parse_l3(_doc(
+            "insert into=@s after=@subtitle {\n"
+            "  card #x\n"
+            "}"
+        ))
+        with pytest.raises(DDMarkupParseError) as exc:
+            apply_edits(doc)
+        assert exc.value.kind == "KIND_EID_NOT_FOUND"
