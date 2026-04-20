@@ -49,7 +49,11 @@ class TestClassificationSchema:
             "vision_type", "vision_agrees", "flagged_for_review",
             # M7.0.a additions: LLM + vision reasons persisted for
             # spot-check / quality audit (Alexander force-resolution).
-            "classification_reason", "vision_reason",
+            # `llm_reason` was renamed from `classification_reason` in
+            # migration 014 — the column only ever held the LLM's
+            # reason; the rename removes ambiguity now that vision
+            # per-screen + cross-screen also have their own reasons.
+            "llm_reason", "vision_reason",
             # M7.0.a three-source architecture (migration 013).
             # Per-source verdicts persisted permanently; consensus
             # computed from these columns.

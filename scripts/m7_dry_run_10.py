@@ -112,7 +112,7 @@ def _emit_report(screen_ids: list[int], out_path: Path) -> None:
         rows = conn.execute(
             """
             SELECT n.name, sci.canonical_type, sci.confidence,
-                   sci.classification_reason
+                   sci.llm_reason
             FROM screen_component_instances sci
             JOIN nodes n ON sci.node_id = n.id
             WHERE sci.screen_id = ?

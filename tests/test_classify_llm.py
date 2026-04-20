@@ -308,6 +308,24 @@ class TestClassifyLLM:
         assert row[1] == "llm"
         assert row[2] == 0.85
 
+    def test_persists_llm_reason(self, db: sqlite3.Connection):
+        """Post-rename (migration 014), the LLM's one-sentence reason
+        lives in `llm_reason`, not the ambiguous `classification_reason`.
+        """
+        mock_client = _make_mock_client([
+            {"node_id": 10, "canonical_type": "card",
+             "confidence": 0.85,
+             "reason": "Bounded container with image + heading + actions"},
+        ])
+        classify_llm(db, screen_id=1, client=mock_client)
+        row = db.execute(
+            "SELECT llm_reason FROM screen_component_instances "
+            "WHERE node_id = 10"
+        ).fetchone()
+        assert row[0] == (
+            "Bounded container with image + heading + actions"
+        )
+
     def test_skips_already_classified(self, db: sqlite3.Connection):
         db.execute(
             "INSERT INTO screen_component_instances "

@@ -537,7 +537,7 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     vision_type           TEXT,                        -- vision classifier result
     vision_agrees         INTEGER,                     -- 1=agree, 0=disagree with structural
     flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
-    classification_reason TEXT,                        -- M7.0.a: LLM/heuristic one-sentence evidence (renamed to llm_reason in migration 014)
+    llm_reason            TEXT,                        -- M7.0.a: LLM text stage's one-sentence evidence (renamed from classification_reason in migration 014)
     vision_reason         TEXT,                        -- M7.0.a: legacy (pre-three-source) vision reason
     -- M7.0.a three-source architecture (migration 013). Every node
     -- gets three independent verdicts: LLM text, vision per-screen,

@@ -409,7 +409,7 @@ def classify_llm(
         conn.executemany(
             "INSERT OR IGNORE INTO screen_component_instances "
             "(screen_id, node_id, catalog_type_id, canonical_type, "
-            " confidence, classification_source, classification_reason) "
+            " confidence, classification_source, llm_reason) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             inserts,
         )
