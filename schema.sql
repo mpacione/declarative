@@ -152,6 +152,9 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
     recognition_heuristics  TEXT,                        -- JSON: structural patterns for classification
     related_types           TEXT,                        -- JSON array of related canonical names
     variant_axes            TEXT,                        -- JSON: {axis_name: {values: [...]}} — state/tone/density/variant etc.
+    clay_equivalent         TEXT,                        -- Google Research CLAY taxonomy name (migration 016)
+    aria_role               TEXT,                        -- W3C WAI-ARIA widget/document role (migration 016)
+    disambiguation_notes    TEXT,                        -- "NOT a <neighbor> because..." prompt cues (migration 016)
     created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 

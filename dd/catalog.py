@@ -32,6 +32,12 @@ class CatalogEntry(TypedDict, total=False):
     # Consumed by the Mode-3 composition providers + LLM vocabulary
     # builder. Optional — types without enum-able variants omit it.
     variant_axes: dict[str, Any] | None
+    # Classifier v2.1 normalization (migration 016). Read by the
+    # classifier prompt builder to disambiguate near-neighbor types
+    # and by dataset-export callers for ecosystem alignment.
+    clay_equivalent: str | None        # Google Research CLAY taxonomy
+    aria_role: str | None              # W3C WAI-ARIA role
+    disambiguation_notes: str | None   # "NOT a <neighbor> because..."
 
 
 # ---------------------------------------------------------------------------
@@ -729,12 +735,445 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
             "size": {"values": ["md", "lg"], "default": "md"},
         },
     },
+    # ── Design-tool primitives (classifier v2.1) ─────────────────────────
+    {
+        "canonical_name": "control_point",
+        "aliases": ["handle", "control-handle", "vector-handle", "manipulator"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Design-tool manipulation handle — small circular or "
+            "square marker that lets a user drag, resize, or rotate "
+            "another element. Appears in editors (Figma, Sketch, "
+            "design systems' canvas surfaces) attached to selection "
+            "bounding boxes or vector control points."
+        ),
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": ["tiny_circle_or_square", "attached_to_selection_edge"],
+            "typical_size_range": [6, 14],
+        },
+        "related_types": ["icon"],
+    },
 )
 
 
 # ---------------------------------------------------------------------------
 # Seeding
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Classifier v2.1 enrichments (migration 016)
+# ---------------------------------------------------------------------------
+# Maps canonical_name → enrichment dict. Merged into CATALOG_ENTRIES at
+# seed time. Keeps the prose + ecosystem-alignment metadata collected
+# in one reviewable block rather than scattered across 50+ entries.
+#
+# Prioritised for types most-often confused in the v1 corpus run:
+# tooltip (29 override hits), button (29), icon, divider, checkbox,
+# card, image, heading. Adding the `disambiguation_notes` is the big
+# prompt-quality lever — the classifier gets "NOT a dialog because..."
+# style cues that push it off wrong-neighbor picks.
+
+_CATALOG_ENRICHMENTS: dict[str, dict[str, Any]] = {
+    "button": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "aliases": ["btn", "cta", "previous", "next", "new folder",
+                    "Button"],
+        "disambiguation_notes": (
+            "NOT a `link` — buttons trigger actions, links navigate. "
+            "NOT an `icon_button` — icon_button is icon-only with no "
+            "visible text label. NOT a `fab` — fab is an elevated "
+            "floating primary action, usually circular. "
+            "If the node has a centered text label and a visible "
+            "shape (rect/pill), it's a button."
+        ),
+    },
+    "icon_button": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "aliases": ["icon_btn", "icon button", "iconbutton",
+                    "image_button"],
+        "disambiguation_notes": (
+            "NOT an `icon` — icon is the glyph itself; icon_button "
+            "is the tappable container around the glyph with a "
+            "hit-target (usually 32-48px square). NOT a `button` — "
+            "button has a visible text label. NOT a `fab` — fab is "
+            "elevated/floating, icon_button is flush. If the node "
+            "is a small square frame containing only a single icon "
+            "child with no label, classify icon_button."
+        ),
+    },
+    "fab": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "disambiguation_notes": (
+            "NOT a `button` — fab is visually prominent, usually "
+            "circular/pill with elevation, positioned floating "
+            "(bottom-right or bottom-center). Reserved for the "
+            "primary screen action."
+        ),
+    },
+    "icon": {
+        "clay_equivalent": "PICTOGRAM",
+        "aria_role": None,  # icons are usually aria-hidden
+        "aliases": ["glyph", "symbol", ".icons", "pictogram", "ico"],
+        "disambiguation_notes": (
+            "NOT an `icon_button` — icon is the glyph primitive "
+            "itself; icon_button is the tappable container wrapping "
+            "an icon. NOT an `image` — icons are symbolic/vector, "
+            "small (≤32px typically), convey meaning or affordance; "
+            "images are raster content. Decorative children like "
+            "3 ellipses, 2 chevrons, 4 dots in a tight layout are "
+            "a single `icon`, not a container of N things."
+        ),
+    },
+    "image": {
+        "clay_equivalent": "IMAGE",
+        "aria_role": "img",
+        "aliases": ["img", "photo", "picture", "image-box",
+                    "image_box"],
+        "disambiguation_notes": (
+            "NOT an `icon` — images are raster content (photos, "
+            "illustrations, screenshots), typically > 64px. "
+            "NOT a `card` — image holds a single graphic; card is "
+            "a bounded container with mixed content. NOT a "
+            "`skeleton` — skeleton is the loading placeholder; "
+            "image carries actual visual content."
+        ),
+    },
+    "divider": {
+        "clay_equivalent": None,
+        "aria_role": "separator",
+        "aliases": ["separator", "hr", "rule", "line", "vertical_rule",
+                    "horizontal_rule"],
+        "disambiguation_notes": (
+            "A thin line (width OR height ≤ ~4px) that visually "
+            "groups or separates content. NOT a `container` — "
+            "containers hold children; dividers have none. NOT an "
+            "`icon` — dividers are straight lines, not glyphs. "
+            "Aspect ratio is extreme (>20:1 for horizontal, <1:20 "
+            "for vertical)."
+        ),
+    },
+    "heading": {
+        "clay_equivalent": "LABEL",
+        "aria_role": "heading",
+        "aliases": ["title", "h1", "h2", "h3", "section-title"],
+        "disambiguation_notes": (
+            "NOT a `text` — heading carries structural weight; "
+            "font is larger (≥18px typically) and/or bolder than "
+            "body text. NOT a `label` — labels describe form "
+            "controls; headings organise content. Appears at the "
+            "top of a section or card."
+        ),
+    },
+    "text": {
+        "clay_equivalent": "TEXT",
+        "aria_role": None,
+        "aliases": ["body", "paragraph", "p", "text-content",
+                    "description", "copy"],
+        "disambiguation_notes": (
+            "NOT a `heading` — text is body-weight content "
+            "(typically 12-16px). NOT a `link` — links have hover/"
+            "pressed states and trigger navigation. NOT a `label` — "
+            "labels describe form controls specifically."
+        ),
+    },
+    "card": {
+        "clay_equivalent": "CARD_VIEW",
+        "aria_role": None,
+        "aliases": ["tile", "panel", "card-view"],
+        "disambiguation_notes": (
+            "NOT a `container` — cards have visible boundaries "
+            "(fill + stroke + radius typically) AND mixed content "
+            "(image + heading + actions). NOT a `dialog` — dialogs "
+            "are modal; cards are inline within a feed/grid. NOT a "
+            "`list_item` — list_items are row-oriented and usually "
+            "stack vertically without individual borders. A bounded "
+            "container with an image at top + heading + body text "
+            "is a card."
+        ),
+    },
+    "list_item": {
+        "clay_equivalent": "LIST_ITEM",
+        "aria_role": "listitem",
+        "aliases": ["row", "list-row", "item", "list_row"],
+        "disambiguation_notes": (
+            "NOT a `card` — list_items are row-oriented and stack "
+            "vertically; they share borders with siblings rather "
+            "than having individual cards. NOT a `button` — "
+            "list_items may be tappable but they carry content "
+            "(text + optional icon/image), not just an action."
+        ),
+    },
+    "checkbox": {
+        "clay_equivalent": "CHECK_BOX",
+        "aria_role": "checkbox",
+        "aliases": ["check", "check-box", "check_box"],
+        "disambiguation_notes": (
+            "NOT a `toggle` — checkboxes are square; toggles are "
+            "pill-shaped with a sliding knob. NOT a `radio` — "
+            "radios are circular and mutually exclusive within a "
+            "group. A square control with a check glyph (visible "
+            "or hidden) = checkbox."
+        ),
+    },
+    "radio": {
+        "clay_equivalent": "RADIO_BUTTON",
+        "aria_role": "radio",
+        "aliases": ["radiobutton", "radio_button"],
+        "disambiguation_notes": (
+            "NOT a `checkbox` — radios are circular (not square). "
+            "Radios come in groups where only one can be selected. "
+            "A single circular control with an inner dot = radio."
+        ),
+    },
+    "toggle": {
+        "clay_equivalent": "SWITCH",
+        "aria_role": "switch",
+        "aliases": ["switch", "on_off"],
+        "disambiguation_notes": (
+            "NOT a `checkbox` — toggles are pill-shaped with a "
+            "sliding knob (binary state). Apple-style: pill with "
+            "knob slid left/right. Material-style: rail with knob. "
+            "If the shape is a rounded pill with a circle inside, "
+            "it's a toggle."
+        ),
+    },
+    "tooltip": {
+        "clay_equivalent": None,
+        "aria_role": "tooltip",
+        "aliases": ["hint", "info_tip", "help-text", "helptip",
+                    "callout"],
+        "disambiguation_notes": (
+            "NOT a `dialog` — dialogs are modal and require user "
+            "action. NOT a `popover` — popovers hold interactive "
+            "content (buttons, forms); tooltips are text-only "
+            "annotations. NOT a `toast` — toasts are transient "
+            "notifications unanchored from content; tooltips point "
+            "at an anchor element (arrow or adjacent positioning). "
+            "Short-text floating annotations with an arrow or "
+            "nearby alignment to another element = tooltip."
+        ),
+    },
+    "toast": {
+        "clay_equivalent": None,
+        "aria_role": "status",
+        "aliases": ["snackbar", "notification"],
+        "disambiguation_notes": (
+            "NOT a `tooltip` — toasts appear without an anchor, "
+            "usually at screen edges. NOT an `alert` — alerts are "
+            "modal/blocking; toasts are transient (auto-dismiss). "
+            "Small floating bar with text + optional action button "
+            "= toast."
+        ),
+    },
+    "alert": {
+        "clay_equivalent": None,
+        "aria_role": "alert",
+        "aliases": ["banner", "notice", "flash"],
+        "disambiguation_notes": (
+            "NOT a `toast` — alerts are often persistent until "
+            "dismissed; toasts auto-expire. NOT a `dialog` — alerts "
+            "are inline banners; dialogs are modal overlays. "
+            "Horizontal bar with icon + message + optional "
+            "dismiss/action = alert."
+        ),
+    },
+    "dialog": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["modal", "dialog-box"],
+        "disambiguation_notes": (
+            "NOT a `sheet` — sheets slide up from the bottom; "
+            "dialogs are centered overlays. NOT a `popover` — "
+            "popovers anchor to a trigger element; dialogs "
+            "command focus. NOT a `card` — dialogs are modal and "
+            "block the background (overlay behind them)."
+        ),
+    },
+    "sheet": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["bottom_sheet", "action_sheet", "half_sheet"],
+        "disambiguation_notes": (
+            "NOT a `dialog` — sheets slide from an edge (usually "
+            "bottom); dialogs are centered. Rounded top corners + "
+            "bottom-pinned = bottom sheet. Can hold interactive "
+            "content (unlike tooltips)."
+        ),
+    },
+    "drawer": {
+        "clay_equivalent": "DRAWER",
+        "aria_role": "dialog",
+        "aliases": ["side_drawer", "nav_drawer"],
+        "disambiguation_notes": (
+            "NOT a `sheet` — drawers slide from a SIDE (left/right); "
+            "sheets slide from top/bottom. Typically holds "
+            "navigation links or settings."
+        ),
+    },
+    "popover": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["flyout", "popup"],
+        "disambiguation_notes": (
+            "NOT a `tooltip` — popovers hold interactive content "
+            "(buttons, forms, lists); tooltips are text-only. "
+            "NOT a `dialog` — popovers anchor to a trigger element; "
+            "dialogs are unanchored modal overlays."
+        ),
+    },
+    "header": {
+        "clay_equivalent": "TOOLBAR",
+        "aria_role": "banner",
+        "aliases": ["top_bar", "app_bar", "nav_bar", "title_bar",
+                    "toolbar"],
+        "disambiguation_notes": (
+            "NOT a `bottom_nav` — headers sit at the TOP of the "
+            "viewport (y ≤ 100px typically); bottom_nav sits at "
+            "the bottom. Full-width frame containing title text + "
+            "nav controls (back/menu/action icons)."
+        ),
+    },
+    "bottom_nav": {
+        "clay_equivalent": "NAVIGATION_BAR",
+        "aria_role": "navigation",
+        "aliases": ["tab_bar", "bottom_bar", "tabbar"],
+        "disambiguation_notes": (
+            "NOT a `header` — bottom_nav sits at the BOTTOM (y near "
+            "screen height). NOT `tabs` — tabs usually sit below "
+            "a header; bottom_nav is the screen's primary "
+            "navigation. Full-width frame containing 3-5 icon+label "
+            "tab items."
+        ),
+    },
+    "tabs": {
+        "clay_equivalent": None,
+        "aria_role": "tablist",
+        "aliases": ["tab_bar", "segmented_tabs"],
+        "disambiguation_notes": (
+            "NOT `bottom_nav` — tabs switch content within a "
+            "screen; bottom_nav switches screens. Usually sits "
+            "below a header or at the top of a content area. "
+            "Horizontal row of text labels with an indicator under "
+            "the active one."
+        ),
+    },
+    "navigation_row": {
+        "clay_equivalent": None,
+        "aria_role": "navigation",
+        "aliases": ["nav_row", "nav-item", "drawer-row"],
+        "disambiguation_notes": (
+            "A single-row entry inside a navigation surface (side "
+            "drawer, settings list). Usually: leading icon + label "
+            "+ optional trailing chevron. NOT a `list_item` — "
+            "navigation_rows trigger route changes; list_items are "
+            "content."
+        ),
+    },
+    "breadcrumbs": {
+        "clay_equivalent": None,
+        "aria_role": "navigation",
+        "aliases": ["crumbs", "path", "breadcrumb"],
+        "disambiguation_notes": (
+            "A row of link-like text separated by chevrons or "
+            "slashes, showing the user's path through a hierarchy. "
+            "NOT `tabs` — breadcrumbs show HIERARCHY; tabs show "
+            "SIBLINGS."
+        ),
+    },
+    "container": {
+        "clay_equivalent": "CONTAINER",
+        "aria_role": None,
+        "disambiguation_notes": (
+            "FALLBACK only — a generic layout frame with no "
+            "specific component identity. Use `container` when the "
+            "node has NO distinctive name, sample text, child "
+            "pattern, or visual affordance. If the children "
+            "themselves are all buttons, say `button_group`; if "
+            "they're cards in a grid, say `list` or `card`; if the "
+            "name is distinctive (`grabber`, `wordmark`, "
+            "`filename`), use the specific type. `container` loses "
+            "information downstream — prefer anything specific."
+        ),
+    },
+    "skeleton": {
+        "clay_equivalent": None,
+        "aria_role": "status",
+        "aliases": ["loading_placeholder", "shimmer"],
+        "disambiguation_notes": (
+            "A loading placeholder — multiple identical empty "
+            "frames (no children, no text, same size) arranged in "
+            "a grid or list. NOT a `container` — skeletons have "
+            "the repetition pattern + empty-child signal. NOT "
+            "`image` — images carry actual content; skeletons are "
+            "placeholder rectangles awaiting data."
+        ),
+    },
+    "search_input": {
+        "clay_equivalent": "TEXT_INPUT",
+        "aria_role": "searchbox",
+        "aliases": ["search", "search_bar", "search-field"],
+        "disambiguation_notes": (
+            "NOT a `text_input` — search_input has a search icon "
+            "(magnifying glass) and usually auto-complete/suggest "
+            "affordances. Placeholder text often says 'Search...'."
+        ),
+    },
+    "text_input": {
+        "clay_equivalent": "TEXT_INPUT",
+        "aria_role": "textbox",
+        "aliases": ["input", "textfield", "text_field"],
+        "disambiguation_notes": (
+            "NOT a `search_input` — plain text input without a "
+            "search icon. Rectangular frame with optional label + "
+            "placeholder text + cursor."
+        ),
+    },
+    "spinner": {
+        "clay_equivalent": "SPINNER",
+        "aria_role": "progressbar",
+        "aliases": ["loader", "loading_indicator", "activity"],
+        "disambiguation_notes": (
+            "A circular/rotating loading indicator with no "
+            "determinate progress. NOT a `progress` bar — spinner "
+            "is indeterminate (shows activity, not completion %)."
+        ),
+    },
+    "progress": {
+        "clay_equivalent": "PROGRESS_BAR",
+        "aria_role": "progressbar",
+        "aliases": ["progress_bar", "progressbar", "loader-bar"],
+        "disambiguation_notes": (
+            "A determinate progress indicator — bar with a filled "
+            "portion showing completion. NOT a `spinner` — spinners "
+            "are indeterminate. NOT a `slider` — sliders are "
+            "interactive; progress is read-only status."
+        ),
+    },
+}
+
+
+def _enriched(entry: CatalogEntry) -> dict[str, Any]:
+    """Merge enrichments + base entry. Enrichments' `aliases` extend
+    the base entry's aliases (deduped); other enrichment keys
+    overwrite.
+    """
+    merged: dict[str, Any] = dict(entry)
+    enrich = _CATALOG_ENRICHMENTS.get(entry["canonical_name"], {})
+    for key, value in enrich.items():
+        if key == "aliases" and merged.get("aliases"):
+            existing = list(merged["aliases"])
+            for alias in value:
+                if alias not in existing:
+                    existing.append(alias)
+            merged["aliases"] = existing
+        else:
+            merged[key] = value
+    return merged
+
 
 def seed_catalog(conn: sqlite3.Connection) -> int:
     """Populate / reconcile ``component_type_catalog`` from CATALOG_ENTRIES.
@@ -751,7 +1190,8 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
     cursor = conn.cursor()
     inserted = 0
 
-    for entry in CATALOG_ENTRIES:
+    for base_entry in CATALOG_ENTRIES:
+        entry = _enriched(base_entry)
         insert_result = cursor.execute(
             "INSERT OR IGNORE INTO component_type_catalog "
             "(canonical_name, category) VALUES (?, ?)",
@@ -765,7 +1205,9 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
             "category = ?, aliases = ?, behavioral_description = ?, "
             "prop_definitions = ?, slot_definitions = ?, "
             "semantic_role = ?, recognition_heuristics = ?, "
-            "related_types = ?, variant_axes = ? "
+            "related_types = ?, variant_axes = ?, "
+            "clay_equivalent = ?, aria_role = ?, "
+            "disambiguation_notes = ? "
             "WHERE canonical_name = ?",
             (
                 entry["category"],
@@ -777,6 +1219,9 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
                 json.dumps(entry.get("recognition_heuristics")) if entry.get("recognition_heuristics") else None,
                 json.dumps(entry.get("related_types")) if entry.get("related_types") else None,
                 json.dumps(entry.get("variant_axes")) if entry.get("variant_axes") else None,
+                entry.get("clay_equivalent"),
+                entry.get("aria_role"),
+                entry.get("disambiguation_notes"),
                 entry["canonical_name"],
             ),
         )

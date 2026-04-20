@@ -81,11 +81,13 @@ CLASSIFY_TOOL_SCHEMA = {
 def _format_catalog_for_prompt(catalog: list[dict[str, Any]]) -> str:
     """Render the catalog by category with one line per type.
 
-    Grouping by category makes the ~55-line block scannable for the
-    LLM. The behavioral_description column (seeded in
-    ``dd.catalog``) provides the semantic hint that disambiguates
-    visually-similar types (button vs. icon_button, card vs.
-    dialog, etc.).
+    Each entry gets: canonical_name + behavioral_description +
+    optional industry-standard aliases (CLAY/ARIA) for prompt
+    alignment with the model's training data + disambiguation_notes
+    ("NOT a <neighbor> because...") when present. The disambiguation
+    text is the largest prompt-quality lever from classifier v2.1 —
+    it pushes the model off wrong-neighbor picks on confusable
+    types like tooltip-vs-popover or icon-vs-icon_button.
     """
     by_cat: dict[str, list[dict[str, Any]]] = {}
     for entry in catalog:
@@ -95,14 +97,27 @@ def _format_catalog_for_prompt(catalog: list[dict[str, Any]]) -> str:
         lines.append(f"\n**{cat}**")
         for entry in sorted(by_cat[cat], key=lambda e: e["canonical_name"]):
             desc = entry.get("behavioral_description") or "(no description)"
-            lines.append(f"- `{entry['canonical_name']}` — {desc}")
+            line = f"- `{entry['canonical_name']}` — {desc}"
+            # Industry-standard names the model was trained on.
+            std_aliases = []
+            if entry.get("clay_equivalent"):
+                std_aliases.append(f"CLAY:{entry['clay_equivalent']}")
+            if entry.get("aria_role"):
+                std_aliases.append(f"ARIA:{entry['aria_role']}")
+            if std_aliases:
+                line += f"  [{', '.join(std_aliases)}]"
+            lines.append(line)
+            # Disambiguation notes as an indented sub-line.
+            dis = entry.get("disambiguation_notes")
+            if dis:
+                lines.append(f"    • {dis}")
     lines.append(
         "- `container` — a structural layout frame with no specific "
-        "component identity."
+        "component identity. Use ONLY when no specific type fits."
     )
     lines.append(
         "- `unsure` — identity cannot be determined from the provided "
-        "information."
+        "information. Prefer this over a low-confidence specific type."
     )
     return "\n".join(lines)
 
