@@ -328,6 +328,9 @@ def _build_crop(
         return None
 
 
+_LOW_CONFIDENCE_THRESHOLD = 0.70
+
+
 def _vision_ps_classify(
     conn: sqlite3.Connection,
     reps: list[dict[str, Any]],
@@ -338,11 +341,17 @@ def _vision_ps_classify(
     """Vision PS pass: one crop per group representative. Batches
     multiple reps into a single classify_crops_batch call (up to
     ~8 per batch for token budget reasons).
+
+    Phase E: after the first pass, any row with confidence < 0.7
+    or canonical_type == 'unsure' goes through a retry pass with
+    CoT-framed prompting. If the retry returns higher confidence,
+    we use its verdict; otherwise we keep the first pass's.
     """
     if not reps:
         return {}
     results: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
     batch_size = 8
+    # Initial pass.
     for start in range(0, len(reps), batch_size):
         batch = reps[start:start + batch_size]
         crops: dict[tuple[int, int], bytes] = {}
@@ -370,6 +379,55 @@ def _vision_ps_classify(
                 ctype, float(conf),
                 reason if isinstance(reason, str) else None,
             )
+
+    # Phase E — rejection sampling. Find reps whose first verdict
+    # was low-confidence or unsure; re-classify with CoT prompt.
+    retry_reps: list[dict[str, Any]] = []
+    for rep in reps:
+        key = (rep["screen_id"], rep["node_id"])
+        verdict = results.get(key)
+        if verdict is None:
+            continue
+        ctype, conf, _reason = verdict
+        if ctype == "unsure" or conf < _LOW_CONFIDENCE_THRESHOLD:
+            retry_reps.append(rep)
+    for start in range(0, len(retry_reps), batch_size):
+        batch = retry_reps[start:start + batch_size]
+        crops: dict[tuple[int, int], bytes] = {}
+        for rep in batch:
+            crop = _build_crop(conn, rep, screenshots)
+            if crop is not None:
+                crops[(rep["screen_id"], rep["node_id"])] = crop
+        if not crops:
+            continue
+        classifications = classify_crops_batch(
+            batch, crops, client, catalog=catalog, retry_mode=True,
+        )
+        for c in classifications:
+            sid = c.get("screen_id")
+            nid = c.get("node_id")
+            ctype = c.get("canonical_type")
+            conf = c.get("confidence", _DEFAULT_CONFIDENCE)
+            reason = c.get("reason")
+            if not (
+                isinstance(sid, int) and isinstance(nid, int)
+                and isinstance(ctype, str)
+            ):
+                continue
+            # Use retry verdict IF higher confidence OR if first pass
+            # was 'unsure' and retry isn't.
+            existing = results.get((sid, nid))
+            first_conf = existing[1] if existing else 0.0
+            first_type = existing[0] if existing else None
+            use_retry = (
+                float(conf) > first_conf
+                or (first_type == "unsure" and ctype != "unsure")
+            )
+            if use_retry:
+                results[(sid, nid)] = (
+                    ctype, float(conf),
+                    reason if isinstance(reason, str) else None,
+                )
     return results
 
 
