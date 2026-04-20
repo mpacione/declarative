@@ -403,14 +403,19 @@ def classify_llm(
             screen_id, nid, catalog_id, ctype,
             float(confidence), "llm",
             reason if isinstance(reason, str) else None,
+            # Preserve the LLM's primary verdict in llm_type +
+            # llm_confidence (migration 015). Consensus rewrites
+            # canonical_type; rule-v2 iteration reads llm_type.
+            ctype, float(confidence),
         ))
 
     if inserts:
         conn.executemany(
             "INSERT OR IGNORE INTO screen_component_instances "
             "(screen_id, node_id, catalog_type_id, canonical_type, "
-            " confidence, classification_source, llm_reason) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " confidence, classification_source, llm_reason, "
+            " llm_type, llm_confidence) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             inserts,
         )
         conn.commit()

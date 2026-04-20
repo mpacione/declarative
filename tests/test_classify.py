@@ -54,9 +54,12 @@ class TestClassificationSchema:
             # reason; the rename removes ambiguity now that vision
             # per-screen + cross-screen also have their own reasons.
             "llm_reason", "vision_reason",
-            # M7.0.a three-source architecture (migration 013).
+            # M7.0.a three-source architecture (migrations 013 + 015).
             # Per-source verdicts persisted permanently; consensus
-            # computed from these columns.
+            # computed from these columns. `llm_type` + `llm_confidence`
+            # preserve the LLM's primary verdict so rule-v2 iteration
+            # can recompute without re-classification.
+            "llm_type", "llm_confidence",
             "vision_ps_type", "vision_ps_confidence", "vision_ps_reason",
             "vision_cs_type", "vision_cs_confidence", "vision_cs_reason",
             "vision_cs_evidence_json",

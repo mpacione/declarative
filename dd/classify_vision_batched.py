@@ -262,17 +262,32 @@ def _extract_classifications_from_response(response: Any) -> list[dict[str, Any]
 
 def _fetch_unclassified_for_screen(
     conn: sqlite3.Connection, screen_id: int,
+    target_source: str = "unclassified",
 ) -> list[dict[str, Any]]:
-    """Fetch unclassified FRAME/INSTANCE/COMPONENT nodes on a screen
+    """Fetch candidate FRAME/INSTANCE/COMPONENT nodes on a screen
     with bbox + enriched context (parent classification, child
     distribution, sample text, CKR master name).
 
-    Mirrors ``dd.classify_llm._get_unclassified_for_llm`` but also
-    returns bbox coordinates (x/y/width/height) so the prompt can
+    ``target_source`` controls which nodes are returned:
+
+    - ``"unclassified"`` (default) — nodes with no row in
+      `screen_component_instances`. Used by single-source vision
+      (pre-three-source) when vision classifies what formal /
+      heuristic / LLM didn't cover.
+    - ``"llm"`` — nodes classified by the LLM text stage. Used by
+      three-source vision PS + CS: all three sources classify the
+      SAME candidate set, then consensus votes.
+
+    Returns bbox coordinates (x/y/width/height) so the prompt can
     point the model at the exact spatial region.
     """
+    if target_source == "llm":
+        sci_filter = "sci.classification_source = 'llm'"
+    else:
+        sci_filter = "sci.id IS NULL"
+
     cursor = conn.execute(
-        """
+        f"""
         SELECT n.id AS node_id, n.name, n.node_type, n.depth,
                n.x, n.y, n.width, n.height, n.layout_mode,
                n.parent_id, n.component_key
@@ -282,7 +297,7 @@ def _fetch_unclassified_for_screen(
         WHERE n.screen_id = ?
           AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT')
           AND n.depth >= 1
-          AND sci.id IS NULL
+          AND {sci_filter}
         ORDER BY n.depth, n.sort_order
         """,
         (screen_id,),
@@ -347,12 +362,14 @@ def _fetch_unclassified_for_screen(
 def _build_batch_payload(
     conn: sqlite3.Connection, screen_ids: list[int],
     fetch_screenshot: Callable, file_key: str,
+    target_source: str = "unclassified",
 ) -> list[dict[str, Any]]:
     """Fetch + assemble the per-screen payload for a batch.
 
     Each entry has the screen metadata, the screen's image bytes,
-    its screen skeleton notation, and the list of unclassified
-    nodes with bbox + context.
+    its screen skeleton notation, and the list of candidate nodes
+    with bbox + context. ``target_source`` is forwarded to
+    `_fetch_unclassified_for_screen` (see its docstring).
     """
     batch: list[dict[str, Any]] = []
     # Fetch screens metadata + skeletons + figma_node_id for the
@@ -400,7 +417,9 @@ def _build_batch_payload(
         if img_bytes is None:
             # No screenshot — skip this screen (caller should log).
             continue
-        unclassified = _fetch_unclassified_for_screen(conn, sid)
+        unclassified = _fetch_unclassified_for_screen(
+            conn, sid, target_source=target_source,
+        )
         if not unclassified:
             # Nothing to classify on this screen; skip.
             continue
@@ -426,19 +445,25 @@ def classify_batch(
     *,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 32768,
+    target_source: str = "unclassified",
 ) -> list[dict[str, Any]]:
-    """Classify all unclassified nodes across a batch of screens in
-    one tool-use call. Returns the list of classifications
-    (screen_id + node_id + canonical_type + confidence + reason +
-    optional cross_screen_evidence). Caller decides whether to
-    persist them.
+    """Classify all candidate nodes across a batch of screens in one
+    tool-use call. Returns the list of classifications (screen_id +
+    node_id + canonical_type + confidence + reason + optional
+    cross_screen_evidence). Caller decides whether to persist them.
 
     ``screen_ids`` is typically a same-group batch (same
     device_class + skeleton_type) of size 1 (per-screen) to ~6
     (cross-screen sweet spot per the 2026-04-19 session).
+
+    ``target_source`` picks the candidate set per
+    `_fetch_unclassified_for_screen`: ``"unclassified"`` for
+    single-source vision, ``"llm"`` for three-source vision PS + CS
+    (classify the same candidates LLM did).
     """
     batch = _build_batch_payload(
         conn, screen_ids, fetch_screenshot, file_key,
+        target_source=target_source,
     )
     if not batch:
         return []

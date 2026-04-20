@@ -326,6 +326,27 @@ class TestClassifyLLM:
             "Bounded container with image + heading + actions"
         )
 
+    def test_persists_llm_type_and_confidence(
+        self, db: sqlite3.Connection,
+    ):
+        """Migration 015: LLM verdict preserved in llm_type +
+        llm_confidence separately from canonical_type. Consensus
+        overwrites canonical_type; rule-v2 iteration reads llm_type.
+        """
+        mock_client = _make_mock_client([
+            {"node_id": 10, "canonical_type": "card",
+             "confidence": 0.85,
+             "reason": "Bounded container with image + heading"},
+        ])
+        classify_llm(db, screen_id=1, client=mock_client)
+        row = db.execute(
+            "SELECT canonical_type, llm_type, llm_confidence "
+            "FROM screen_component_instances WHERE node_id = 10"
+        ).fetchone()
+        assert row[0] == "card"
+        assert row[1] == "card"
+        assert row[2] == 0.85
+
     def test_skips_already_classified(self, db: sqlite3.Connection):
         db.execute(
             "INSERT INTO screen_component_instances "

@@ -539,12 +539,16 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
     llm_reason            TEXT,                        -- M7.0.a: LLM text stage's one-sentence evidence (renamed from classification_reason in migration 014)
     vision_reason         TEXT,                        -- M7.0.a: legacy (pre-three-source) vision reason
-    -- M7.0.a three-source architecture (migration 013). Every node
-    -- gets three independent verdicts: LLM text, vision per-screen,
+    -- M7.0.a three-source architecture (migrations 013 + 015). Every
+    -- node gets three independent verdicts: LLM text, vision per-screen,
     -- vision cross-screen. `canonical_type` above becomes the
     -- COMPUTED consensus, not the primary signal. `consensus_method`
     -- records which rule branch chose it (unanimous, majority,
-    -- any_unsure, three_way_disagreement).
+    -- any_unsure, three_way_disagreement). `llm_type` + `llm_confidence`
+    -- preserve the LLM's original verdict so rule-v2 iteration can
+    -- recompute consensus from raw sources WITHOUT re-classification.
+    llm_type              TEXT,
+    llm_confidence        REAL,
     vision_ps_type        TEXT,
     vision_ps_confidence  REAL,
     vision_ps_reason      TEXT,

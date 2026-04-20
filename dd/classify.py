@@ -1,18 +1,27 @@
-"""Component classification cascade (T5 Phase 1).
+"""Component classification cascade (T5 Phase 1 + M7.0.a three-source).
 
 Classifies nodes against the component_type_catalog using:
   Step 1: Formal component matching (name/alias lookup)
   Step 2: Structural heuristics (position, layout, text patterns)
-  Step 3: LLM fallback (deferred to Phase 1b)
-  Step 4: Vision cross-validation (deferred to Phase 1b)
+  Step 3: LLM fallback
+  Step 4: Vision cross-validation — two variants under M7.0.a:
+          (a) legacy `cross_validate_vision` — single-source vision
+              on low-confidence rows;
+          (b) three-source (PS + CS) when `three_source=True` in
+              `run_classification`. Per-source verdicts are persisted
+              and `apply_consensus_to_screen` computes a consensus
+              canonical_type via rule v1.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from collections.abc import Iterable
 from typing import Any
 
 from dd.catalog import get_catalog
+from dd.classify_consensus import compute_consensus_v1
 from dd.classify_rules import is_system_chrome, parse_component_name
 
 
@@ -224,6 +233,165 @@ def truncate_classifications(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Three-source cascade helpers (M7.0.a)
+# ---------------------------------------------------------------------------
+# The three-source cascade persists LLM + vision_ps + vision_cs
+# verdicts independently; consensus is a computed value that rule-v2
+# iteration can recompute without re-classifying. `apply_consensus_to_screen`
+# walks every row on the screen and writes canonical_type +
+# consensus_method + flagged_for_review from the persisted sources.
+# `apply_vision_ps_results` / `apply_vision_cs_results` unpack the
+# output of `dd.classify_vision_batched.classify_batch` into the
+# per-source columns.
+
+
+def apply_vision_ps_results(
+    conn: sqlite3.Connection,
+    results: Iterable[dict[str, Any]],
+) -> dict[str, int]:
+    """Write vision per-screen verdicts to `vision_ps_*` columns.
+
+    Rows that don't match an existing (screen_id, node_id) are
+    silently skipped — the orchestrator runs vision PS against rows
+    LLM classified, so phantom rows shouldn't happen; but a defensive
+    no-op keeps pipeline robustness aligned with ADR-007 (failures
+    surface via the verification channel, not a crash).
+    """
+    applied = 0
+    for r in results:
+        ctype = r.get("canonical_type")
+        if not isinstance(ctype, str):
+            continue
+        screen_id = r.get("screen_id")
+        node_id = r.get("node_id")
+        confidence = r.get("confidence")
+        reason = r.get("reason")
+        cursor = conn.execute(
+            "UPDATE screen_component_instances "
+            "SET vision_ps_type = ?, vision_ps_confidence = ?, "
+            "    vision_ps_reason = ? "
+            "WHERE screen_id = ? AND node_id = ?",
+            (
+                ctype,
+                float(confidence) if confidence is not None else None,
+                reason if isinstance(reason, str) else None,
+                screen_id, node_id,
+            ),
+        )
+        if cursor.rowcount:
+            applied += 1
+    conn.commit()
+    return {"applied": applied}
+
+
+def apply_vision_cs_results(
+    conn: sqlite3.Connection,
+    results: Iterable[dict[str, Any]],
+) -> dict[str, int]:
+    """Write vision cross-screen verdicts to `vision_cs_*` columns,
+    serialising the optional `cross_screen_evidence` array to
+    `vision_cs_evidence_json`. Missing evidence leaves the column NULL.
+    """
+    applied = 0
+    for r in results:
+        ctype = r.get("canonical_type")
+        if not isinstance(ctype, str):
+            continue
+        screen_id = r.get("screen_id")
+        node_id = r.get("node_id")
+        confidence = r.get("confidence")
+        reason = r.get("reason")
+        evidence = r.get("cross_screen_evidence")
+        evidence_json = (
+            json.dumps(evidence) if isinstance(evidence, list) and evidence
+            else None
+        )
+        cursor = conn.execute(
+            "UPDATE screen_component_instances "
+            "SET vision_cs_type = ?, vision_cs_confidence = ?, "
+            "    vision_cs_reason = ?, vision_cs_evidence_json = ? "
+            "WHERE screen_id = ? AND node_id = ?",
+            (
+                ctype,
+                float(confidence) if confidence is not None else None,
+                reason if isinstance(reason, str) else None,
+                evidence_json,
+                screen_id, node_id,
+            ),
+        )
+        if cursor.rowcount:
+            applied += 1
+    conn.commit()
+    return {"applied": applied}
+
+
+def apply_consensus_to_screen(
+    conn: sqlite3.Connection,
+    screen_id: int,
+) -> dict[str, int]:
+    """Walk every row on the screen and compute consensus.
+
+    Rows classified by formal / heuristic bypass voting — those
+    sources are trusted at confidence 1.0 / 0.x. `consensus_method`
+    for them is set to their `classification_source` and
+    `flagged_for_review` to 0. `canonical_type` is preserved.
+
+    Rows classified by `llm` enter three-source voting via
+    `compute_consensus_v1`. The LLM's original verdict is read from
+    `llm_type` (preserved in migration 015) — NOT from canonical_type,
+    which consensus overwrites on this same update. Vision sources
+    contribute their `vision_ps_type` + `vision_cs_type`. The final
+    canonical_type, consensus_method, and flag are written in a
+    single UPDATE.
+
+    Returns a count summary per consensus_method so callers (CLI +
+    orchestrator) can print a progress line.
+    """
+    rows = conn.execute(
+        "SELECT id, classification_source, canonical_type, "
+        "       llm_type, vision_ps_type, vision_cs_type "
+        "FROM screen_component_instances WHERE screen_id = ?",
+        (screen_id,),
+    ).fetchall()
+
+    counts: dict[str, int] = {}
+    for sci_id, source, canonical_type, llm_type, ps_type, cs_type in rows:
+        if source in ("formal", "heuristic"):
+            conn.execute(
+                "UPDATE screen_component_instances "
+                "SET consensus_method = ?, flagged_for_review = 0 "
+                "WHERE id = ?",
+                (source, sci_id),
+            )
+            counts[source] = counts.get(source, 0) + 1
+            continue
+
+        # LLM / manual rows go through voting. Prefer persisted
+        # `llm_type` when present; fall back to canonical_type so rows
+        # written before migration 015 still work.
+        llm_verdict = llm_type if llm_type is not None else canonical_type
+        result_type, method, flagged = compute_consensus_v1(
+            llm_verdict, ps_type, cs_type,
+        )
+        conn.execute(
+            "UPDATE screen_component_instances "
+            "SET canonical_type = ?, consensus_method = ?, "
+            "    flagged_for_review = ? "
+            "WHERE id = ?",
+            (
+                result_type if result_type is not None else "unsure",
+                method,
+                1 if flagged else 0,
+                sci_id,
+            ),
+        )
+        counts[method] = counts.get(method, 0) + 1
+
+    conn.commit()
+    return counts
+
+
 def run_classification(
     conn: sqlite3.Connection,
     file_id: int,
@@ -233,6 +401,7 @@ def run_classification(
     since_screen_id: int | None = None,
     limit: int | None = None,
     progress_callback: Any = None,
+    three_source: bool = False,
 ) -> dict[str, Any]:
     """Orchestrate the full classification cascade for all screens in a file.
 
@@ -278,6 +447,9 @@ def run_classification(
     total_llm = 0
     total_linked = 0
     total_vision = {"validated": 0, "agreed": 0, "disagreed": 0}
+    total_vision_ps = 0
+    total_vision_cs = 0
+    consensus_counts: dict[str, int] = {}
     total_skeletons = 0
 
     n = len(screen_ids)
@@ -302,7 +474,17 @@ def run_classification(
         total_linked += link_result["linked"]
         per_screen["linked"] = link_result["linked"]
 
-        if client is not None and file_key is not None and fetch_screenshot is not None:
+        vision_available = (
+            client is not None
+            and file_key is not None
+            and fetch_screenshot is not None
+        )
+
+        if vision_available and not three_source:
+            # Legacy single-source vision path: validates low-confidence
+            # rows by re-classifying via screenshot + comparing to the
+            # structural/LLM type. Writes vision_type + vision_agrees +
+            # flagged_for_review only.
             from dd.classify_vision import cross_validate_vision
             vision_result = cross_validate_vision(
                 conn, screen_id, file_key, client, fetch_screenshot,
@@ -312,6 +494,23 @@ def run_classification(
             total_vision["disagreed"] += vision_result["disagreed"]
             per_screen["vision"] = vision_result
 
+        if three_source and vision_available:
+            # Three-source mode: vision PS runs per-screen and writes
+            # to vision_ps_* columns. Vision CS batched across screens
+            # runs AFTER the per-screen loop. Consensus runs last.
+            # `target_source="llm"` fetches the same candidate set
+            # LLM classified — three sources independently vote on
+            # the same rows.
+            from dd.classify_vision_batched import classify_batch
+            ps_results = classify_batch(
+                conn, [screen_id], client,
+                file_key, fetch_screenshot,
+                target_source="llm",
+            )
+            ps_summary = apply_vision_ps_results(conn, ps_results)
+            total_vision_ps += ps_summary["applied"]
+            per_screen["vision_ps"] = ps_summary["applied"]
+
         skeleton_result = extract_skeleton(conn, screen_id)
         if skeleton_result is not None:
             total_skeletons += 1
@@ -320,7 +519,40 @@ def run_classification(
         if progress_callback is not None:
             progress_callback(i, n, screen_id, per_screen)
 
-    return {
+    if three_source:
+        # Cross-screen vision: batched by (device_class, skeleton_type),
+        # target 5 screens per call. Writes to vision_cs_* columns.
+        # Safe to skip when vision isn't available — rows with only
+        # llm_type set fall through to the consensus single_source
+        # branch.
+        if vision_available := (
+            client is not None
+            and file_key is not None
+            and fetch_screenshot is not None
+        ):
+            from dd.classify_vision_batched import (
+                classify_batch,
+                group_screens_by_skeleton_and_device,
+            )
+            cs_batches = group_screens_by_skeleton_and_device(
+                conn, screen_ids, target_batch_size=5,
+            )
+            for batch in cs_batches:
+                cs_results = classify_batch(
+                    conn, batch, client, file_key, fetch_screenshot,
+                    target_source="llm",
+                )
+                cs_summary = apply_vision_cs_results(conn, cs_results)
+                total_vision_cs += cs_summary["applied"]
+
+        # Compute consensus for every screen, now that all three
+        # source columns are populated wherever possible.
+        for screen_id in screen_ids:
+            counts = apply_consensus_to_screen(conn, screen_id)
+            for k, v in counts.items():
+                consensus_counts[k] = consensus_counts.get(k, 0) + v
+
+    out: dict[str, Any] = {
         "screens_processed": len(screen_ids),
         "formal_classified": total_formal,
         "heuristic_classified": total_heuristic,
@@ -329,3 +561,8 @@ def run_classification(
         "vision": total_vision,
         "skeletons_generated": total_skeletons,
     }
+    if three_source:
+        out["vision_ps_applied"] = total_vision_ps
+        out["vision_cs_applied"] = total_vision_cs
+        out["consensus"] = consensus_counts
+    return out
