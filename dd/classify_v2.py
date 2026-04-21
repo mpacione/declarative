@@ -364,39 +364,80 @@ def _build_crop(
     conn: sqlite3.Connection,
     candidate: dict[str, Any],
     screenshots: dict[str, bytes],
+    *,
+    fetch_screenshot: Optional[Callable] = None,
+    file_key: Optional[str] = None,
 ) -> Optional[bytes]:
-    """Spotlight-crop a single candidate's node region from its
-    screen screenshot. Returns None if we don't have the screen's
-    PNG or if the bbox is degenerate. Passes ``rotation`` through so
-    rotated nodes get a polygon highlight matching the rendered
-    shape (not an axis-aligned box around pre-rotation dims).
+    """Return the VLM-ready crop PNG for one candidate. Strategy
+    depends on the candidate's effective visibility:
+
+    - ``visible_effective=True``: crop from the screen-level PNG
+      with spotlight + halo (existing path; rotation-aware).
+    - ``visible_self=True, visible_effective=False``: the node is
+      visible but an ancestor hides the subtree, so the screen
+      render shows empty space where the bbox is. Fetch a
+      per-node Figma render instead — REST renders ancestor-hidden
+      nodes standalone. The rendered PNG IS the crop; spotlight
+      + padding aren't needed because the node fills the frame.
+    - ``visible_self=False``: Figma REST refuses to render self-
+      hidden nodes. Return ``None`` so the caller falls back to
+      LLM-text-only classification (or marks ``not_ui``).
+
+    ``fetch_screenshot`` + ``file_key`` are only needed for the
+    per-node-render path; callers that have only the screenshots
+    dict can pass None and get None back for the ancestor-hidden
+    cases (they'll hit the LLM-text fallback).
     """
-    fig_id = _screen_figma_id(conn, candidate["screen_id"])
-    if fig_id is None:
+    visible_self = bool(candidate.get("visible_self", 1))
+    visible_effective = bool(candidate.get("visible_effective", 1))
+
+    if not visible_self:
+        # Figma REST won't render this. Caller should LLM-only it.
         return None
-    screen_png = screenshots.get(fig_id)
-    if screen_png is None:
+
+    if visible_effective:
+        # Normal path: crop from screen-level screenshot.
+        fig_id = _screen_figma_id(conn, candidate["screen_id"])
+        if fig_id is None:
+            return None
+        screen_png = screenshots.get(fig_id)
+        if screen_png is None:
+            return None
+        rx, ry = _screen_root_offset(conn, candidate["screen_id"])
+        screen_dims = conn.execute(
+            "SELECT width, height FROM screens WHERE id = ?",
+            (candidate["screen_id"],),
+        ).fetchone()
+        if screen_dims is None:
+            return None
+        sw = float(screen_dims[0] or 0)
+        sh = float(screen_dims[1] or 0)
+        rotation = float(candidate.get("rotation") or 0.0)
+        try:
+            return crop_node_with_spotlight(
+                screen_png=screen_png,
+                node_x=float(candidate.get("x") or 0) - rx,
+                node_y=float(candidate.get("y") or 0) - ry,
+                node_width=float(candidate.get("width") or 0),
+                node_height=float(candidate.get("height") or 0),
+                screen_width=sw, screen_height=sh,
+                rotation=rotation,
+            )
+        except Exception:
+            return None
+
+    # Ancestor-hidden: per-node render. Requires a fetcher.
+    if fetch_screenshot is None or not file_key:
         return None
-    rx, ry = _screen_root_offset(conn, candidate["screen_id"])
-    screen_dims = conn.execute(
-        "SELECT width, height FROM screens WHERE id = ?",
-        (candidate["screen_id"],),
+    # Look up the node's own figma_node_id (not the screen's).
+    row = conn.execute(
+        "SELECT figma_node_id FROM nodes WHERE id = ?",
+        (candidate["node_id"],),
     ).fetchone()
-    if screen_dims is None:
+    if row is None or not row[0]:
         return None
-    sw = float(screen_dims[0] or 0)
-    sh = float(screen_dims[1] or 0)
-    rotation = float(candidate.get("rotation") or 0.0)
     try:
-        return crop_node_with_spotlight(
-            screen_png=screen_png,
-            node_x=float(candidate.get("x") or 0) - rx,
-            node_y=float(candidate.get("y") or 0) - ry,
-            node_width=float(candidate.get("width") or 0),
-            node_height=float(candidate.get("height") or 0),
-            screen_width=sw, screen_height=sh,
-            rotation=rotation,
-        )
+        return fetch_screenshot(file_key, row[0])
     except Exception:
         return None
 
@@ -443,6 +484,8 @@ def _vision_ps_classify(
     catalog: list[dict[str, Any]],
     *,
     workers: int = _DEFAULT_WORKERS,
+    fetch_screenshot: Optional[Callable] = None,
+    file_key: Optional[str] = None,
 ) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
     """Vision PS pass: one crop per group representative. Batches
     multiple reps into a single classify_crops_batch call (up to
@@ -463,7 +506,10 @@ def _vision_ps_classify(
     # before the ThreadPoolExecutor dispatches.
     rep_crops: dict[tuple[int, int], bytes] = {}
     for rep in reps:
-        crop = _build_crop(conn, rep, screenshots)
+        crop = _build_crop(
+            conn, rep, screenshots,
+            fetch_screenshot=fetch_screenshot, file_key=file_key,
+        )
         if crop is not None:
             rep_crops[(rep["screen_id"], rep["node_id"])] = crop
 
@@ -581,6 +627,8 @@ def _vision_cs_classify(
     catalog: list[dict[str, Any]],
     *,
     workers: int = _DEFAULT_WORKERS,
+    fetch_screenshot: Optional[Callable] = None,
+    file_key: Optional[str] = None,
 ) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
     """Vision CS pass: for each group with ≥2 members, classify the
     representative using crops of ALL members (or up to 5) as
@@ -605,7 +653,10 @@ def _vision_cs_classify(
             key = (m["screen_id"], m["node_id"])
             if key in member_crops:
                 continue
-            crop = _build_crop(conn, m, screenshots)
+            crop = _build_crop(
+                conn, m, screenshots,
+                fetch_screenshot=fetch_screenshot, file_key=file_key,
+            )
             if crop is not None:
                 member_crops[key] = crop
 
@@ -784,13 +835,17 @@ def run_classification_v2(
         )
 
     # Pass 7 + 8: vision PS + CS. Parallelized across workers.
+    # fetch_screenshot + file_key are threaded in so _build_crop can
+    # fall back to per-node renders for ancestor-hidden candidates.
     ps_verdicts = _vision_ps_classify(
         conn, reps, screenshots, client, catalog,
         workers=workers,
+        fetch_screenshot=fetch_screenshot, file_key=file_key,
     )
     cs_verdicts = _vision_cs_classify(
         conn, groups_list, reps, screenshots, client, catalog,
         workers=workers,
+        fetch_screenshot=fetch_screenshot, file_key=file_key,
     )
 
     # Pass 9: propagate vision verdicts.

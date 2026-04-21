@@ -58,7 +58,11 @@ def _get_fetcher():
     global _FETCHER_INSTANCE
     if _FETCHER_INSTANCE is None:
         from dd.cli import make_figma_screenshot_fetcher
-        _FETCHER_INSTANCE = make_figma_screenshot_fetcher()
+        # scale=4 → 16x source pixels per Figma coord. Tiny 16x16 nodes
+        # become 64x64 source pixels, which upscale cleanly instead of
+        # turning into a grey blob. Cost: bigger PNGs from Figma, but
+        # those are client-side-only (cached in-process).
+        _FETCHER_INSTANCE = make_figma_screenshot_fetcher(scale=4)
     return _FETCHER_INSTANCE
 
 
@@ -87,7 +91,7 @@ def _find_screen_figma_id(figma_node_id: str) -> str | None:
     return row[0] if row else None
 
 
-def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float, float, float] | None:
+def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float, float, float, str, int, int] | None:
     """Look up crop metadata for a flagged sci row.
 
     Node x/y are stored in ABSOLUTE Figma canvas coords; to crop
@@ -95,17 +99,34 @@ def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float,
     own (x, y) origin.
 
     Returns (screen_figma_id, node_x_in_screen, node_y_in_screen,
-    node_width, node_height, screen_width, screen_height, rotation)
-    — all in Figma canvas pixels, rotation in radians. Returns None
+    node_width, node_height, screen_width, screen_height, rotation,
+    node_figma_id, visible_self, visible_effective). Returns None
     if row missing / bbox null.
+
+    Visibility bits let the renderer pick the right crop strategy:
+    visible_effective=1 → screen-level spotlight crop; self=1 &
+    effective=0 → per-node Figma render (ancestor hid it); self=0
+    → can't render, caller should show a placeholder.
     """
     conn = get_connection(DB_PATH)
     try:
         row = conn.execute(
             """
+            WITH RECURSIVE invisible_subtree(id) AS (
+                SELECT id FROM nodes
+                WHERE screen_id = (SELECT screen_id FROM screen_component_instances WHERE id = ?)
+                  AND COALESCE(visible, 1) = 0
+                UNION ALL
+                SELECT n.id FROM nodes n
+                JOIN invisible_subtree inv ON n.parent_id = inv.id
+            )
             SELECT s.figma_node_id, s.width, s.height,
                    n.x, n.y, n.width, n.height, n.rotation,
-                   root.x AS root_x, root.y AS root_y
+                   root.x AS root_x, root.y AS root_y,
+                   n.figma_node_id AS node_figma_id,
+                   COALESCE(n.visible, 1) AS visible_self,
+                   CASE WHEN n.id IN (SELECT id FROM invisible_subtree)
+                        THEN 0 ELSE 1 END AS visible_effective
             FROM screen_component_instances sci
             JOIN nodes n ON n.id = sci.node_id
             JOIN screens s ON s.id = sci.screen_id
@@ -113,20 +134,24 @@ def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float,
               ON root.screen_id = s.id AND root.parent_id IS NULL
             WHERE sci.id = ?
             """,
-            (sci_id,),
+            (sci_id, sci_id),
         ).fetchone()
     finally:
         conn.close()
     if row is None:
         return None
-    fig_id, sw, sh, nx, ny, nw, nh, rot, rx, ry = row
+    (fig_id, sw, sh, nx, ny, nw, nh, rot, rx, ry,
+     node_fig_id, vis_self, vis_eff) = row
     if None in (fig_id, sw, sh, nx, ny, nw, nh):
         return None
     rx = float(rx) if rx is not None else 0.0
     ry = float(ry) if ry is not None else 0.0
     rotation = float(rot) if rot is not None else 0.0
-    return (fig_id, float(nx) - rx, float(ny) - ry, float(nw),
-            float(nh), float(sw), float(sh), rotation)
+    return (
+        fig_id, float(nx) - rx, float(ny) - ry, float(nw),
+        float(nh), float(sw), float(sh), rotation,
+        node_fig_id or "", int(vis_self or 0), int(vis_eff or 0),
+    )
 
 
 def _crop_to_bbox(
@@ -171,13 +196,41 @@ def _fetch_crop_for_sci(sci_id: int) -> bytes | None:
     info = _get_crop_info(sci_id)
     if info is None:
         return None
-    fig_id, nx, ny, nw, nh, sw, sh, rotation = info
+    (fig_id, nx, ny, nw, nh, sw, sh, rotation,
+     node_fig_id, vis_self, vis_eff) = info
+
+    # Visibility dispatch:
+    # - effective visible: screen-level spotlight crop (existing).
+    # - ancestor-hidden (self=1, eff=0): fetch per-node render (Figma
+    #   REST renders standalone when only an ancestor is hidden).
+    # - self-hidden (self=0): Figma refuses — return a placeholder
+    #   PNG so the UI shows "hidden" rather than 404.
+    fetcher = _get_fetcher()
+
+    if not vis_self:
+        cropped = _hidden_placeholder_png(nw, nh)
+        with _CACHE_LOCK:
+            _CROP_CACHE[sci_id] = cropped
+        return cropped
+
+    if not vis_eff and node_fig_id:
+        with _FETCH_SEMAPHORE:
+            try:
+                per_node = fetcher(FILE_KEY, node_fig_id)
+            except Exception:
+                per_node = None
+        if per_node is None:
+            cropped = _hidden_placeholder_png(nw, nh)
+        else:
+            cropped = per_node
+        with _CACHE_LOCK:
+            _CROP_CACHE[sci_id] = cropped
+        return cropped
 
     # Fetch the SCREEN's screenshot (cached in _SCREENSHOT_CACHE).
     with _CACHE_LOCK:
         screen_png = _SCREENSHOT_CACHE.get(fig_id)
     if screen_png is None:
-        fetcher = _get_fetcher()
         with _FETCH_SEMAPHORE:
             try:
                 screen_png = fetcher(FILE_KEY, fig_id)
@@ -198,6 +251,35 @@ def _fetch_crop_for_sci(sci_id: int) -> bytes | None:
     with _CACHE_LOCK:
         _CROP_CACHE[sci_id] = cropped
     return cropped
+
+
+def _hidden_placeholder_png(width: float, height: float) -> bytes:
+    """Produce a small diagonal-hatched PNG with a '(hidden)' label
+    for nodes Figma refuses to render (self-invisible). Lets the UI
+    signal the invisibility rather than silently 404 the image.
+    """
+    from io import BytesIO
+    from PIL import Image, ImageDraw, ImageFont
+    w = max(240, int(width) if width else 240)
+    h = max(160, int(height) if height else 160)
+    img = Image.new("RGB", (w, h), (240, 240, 240))
+    draw = ImageDraw.Draw(img)
+    for i in range(-h, w, 14):
+        draw.line([(i, 0), (i + h, h)], fill=(220, 220, 220), width=2)
+    text = "hidden node\n(visible=0 in Figma)"
+    try:
+        font = ImageFont.truetype(
+            "/System/Library/Fonts/Helvetica.ttc", max(13, w // 20),
+        )
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+    draw.multiline_text(
+        (w // 2, h // 2), text, fill=(90, 90, 90), font=font,
+        anchor="mm", align="center",
+    )
+    buf = BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
 
 
 def _fetch_screenshot_cached(figma_node_id: str) -> bytes | None:

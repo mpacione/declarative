@@ -383,11 +383,34 @@ def _get_unclassified_for_llm(
     # calls and confuse the model. Size threshold is expressed in
     # the SQL so the DB skips them before we materialise rows.
     screen_w, screen_h = screen[1] or 0, screen[2] or 0
+    # Visibility handling (added 2026-04-20 after adjudicator showed
+    # 88% of "skip" judgments + 100% of "override" judgments hit
+    # effectively-invisible nodes). We do NOT exclude them — invisible
+    # design content is still content — but we tag each candidate
+    # with `visible_self` (the node's own flag) + `visible_effective`
+    # (false if self OR any ancestor is hidden). Downstream the crop
+    # path uses these tags to pick the right render strategy:
+    #   visible_effective=True  -> screen-level crop (existing)
+    #   self=True, eff=False    -> per-node Figma render (REST renders
+    #                               ancestor-hidden nodes standalone)
+    #   self=False              -> LLM-text only, no vision (Figma
+    #                               REST refuses to render self-hidden)
     cursor = conn.execute(
         """
+        WITH RECURSIVE invisible_subtree(id) AS (
+            SELECT id FROM nodes
+            WHERE screen_id = ? AND COALESCE(visible, 1) = 0
+            UNION ALL
+            SELECT n.id FROM nodes n
+            JOIN invisible_subtree inv ON n.parent_id = inv.id
+            WHERE n.screen_id = ?
+        )
         SELECT n.id AS node_id, n.name, n.node_type, n.depth,
                n.width, n.height, n.x, n.y, n.rotation, n.layout_mode,
-               n.parent_id, n.component_key
+               n.parent_id, n.component_key,
+               COALESCE(n.visible, 1) AS visible_self,
+               CASE WHEN n.id IN (SELECT id FROM invisible_subtree)
+                    THEN 0 ELSE 1 END AS visible_effective
         FROM nodes n
         LEFT JOIN screen_component_instances sci
           ON sci.node_id = n.id AND sci.screen_id = n.screen_id
@@ -401,7 +424,7 @@ def _get_unclassified_for_llm(
           )
         ORDER BY n.depth, n.sort_order
         """,
-        (screen_id, screen_w, screen_h),
+        (screen_id, screen_id, screen_id, screen_w, screen_h),
     )
     columns = [desc[0] for desc in cursor.description]
     raw = [dict(zip(columns, row)) for row in cursor.fetchall()]
