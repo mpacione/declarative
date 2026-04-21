@@ -21,6 +21,7 @@ from dd.fidelity_score import (
     score_font_readiness,
     score_leaf_type_structural,
     score_render_result,
+    score_rootedness,
     vlm_score_via_gemini,
 )
 
@@ -227,9 +228,85 @@ class TestScoreFidelityAggregate:
         )
         names = {d.name for d in report.dimensions}
         assert names == {
-            "coverage", "font_readiness",
+            "coverage", "rootedness", "font_readiness",
             "component_child_consistency", "leaf_type_structural",
         }
+
+
+class TestScoreRootedness:
+    """Rootedness dim: the rendered tree must be attached to the
+    page. Catches the 'flat hierarchy' failure mode where Phase 2
+    aborts and createFrame-auto-parented nodes stay at page root."""
+
+    def test_root_in_walk_and_no_errors_passes(self) -> None:
+        walk_map = {"screen-1": {"type": "FRAME"}}
+        d = score_rootedness("screen-1", walk_map, [])
+        assert d.passed is True
+        assert d.value == 1.0
+
+    def test_root_missing_from_walk_fails_hard(self) -> None:
+        """If the walker couldn't find the root eid, nothing ever
+        got parented — score cap 0.1."""
+        d = score_rootedness("screen-1", {}, [])
+        assert d.passed is False
+        assert d.value <= 0.2
+        assert "missing from rendered walk" in d.diagnostic
+
+    def test_root_append_failed_error_fails(self) -> None:
+        """The critical failure mode: _rootPage.appendChild throws,
+        tree orphaned. Score 0.4 (worse than imperfect but not as
+        catastrophic as missing entirely — some of the subtree may
+        still render via auto-parenting)."""
+        walk_map = {"screen-1": {"type": "FRAME"}}
+        errs = [{"kind": "root_append_failed", "error": "..."}]
+        d = score_rootedness("screen-1", walk_map, errs)
+        assert d.passed is False
+        assert d.value <= 0.5
+        assert "root_append_failed" in d.diagnostic
+
+    def test_append_child_failed_also_fails(self) -> None:
+        """Any cascading appendChild error signals broken nesting —
+        even if the root itself attached, interior wiring dropped."""
+        walk_map = {"screen-1": {"type": "FRAME"}}
+        errs = [{"kind": "append_child_failed", "error": "..."}]
+        d = score_rootedness("screen-1", walk_map, errs)
+        assert d.passed is False
+        assert "append_child_failed" in d.diagnostic
+
+    def test_no_root_eid_passes_through(self) -> None:
+        """Caller didn't provide a root to check against — don't
+        false-positive block the gate."""
+        d = score_rootedness(None, {"anything": {}}, [])
+        assert d.passed is True
+        assert d.value == 1.0
+        assert "no root_eid" in d.diagnostic
+
+    def test_integrated_into_score_fidelity(self) -> None:
+        """score_fidelity auto-infers root_eid from ir_elements
+        when the caller doesn't supply it."""
+        # Case A: root present in walk, no errors → all dims pass
+        ir = {
+            "screen-1": {"type": "screen", "children": ["btn"]},
+            "btn": {"type": "button"},
+        }
+        walk = {"screen-1": {"type": "FRAME"}, "btn": {"type": "INSTANCE"}}
+        report = score_fidelity(
+            ir_elements=ir, walk_eid_map=walk, walk_errors=[],
+        )
+        root_dim = next(d for d in report.dimensions if d.name == "rootedness")
+        assert root_dim.passed is True
+
+        # Case B: append_child_failed fires → rootedness dim fails
+        report2 = score_fidelity(
+            ir_elements=ir, walk_eid_map=walk,
+            walk_errors=[{
+                "kind": "append_child_failed", "error": "...",
+            }],
+        )
+        root_dim2 = next(
+            d for d in report2.dimensions if d.name == "rootedness"
+        )
+        assert root_dim2.passed is False
 
 
 class TestScoreRenderResult:

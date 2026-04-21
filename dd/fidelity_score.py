@@ -261,6 +261,88 @@ def score_component_child_consistency(
 # ---------------------------------------------------------------
 
 
+# ---------------------------------------------------------------
+# Dimension 5: rootedness (root attached to page)
+# ---------------------------------------------------------------
+
+
+# Error kinds that indicate the root attach op failed. When any of
+# these fires, the generated tree is DETACHED from the page —
+# Figma's createFrame auto-parents to currentPage, so un-re-parented
+# nodes end up flat at the page root. User-visible symptom: "no
+# nesting hierarchy."
+#
+# Introduced with the Tier E follow-up Phase-2 guards
+# (commit b95d3bc + follow-up). Before those, every appendChild
+# was naked and a single throw orphaned the whole tree. The scorer
+# was blind to this because coverage checked eid presence, not
+# whether those eids were actually attached.
+_ROOTING_ERROR_KINDS: frozenset[str] = frozenset({
+    "root_append_failed",
+    "append_child_failed",  # any cascading append also implies broken nesting
+})
+
+
+def score_rootedness(
+    root_eid: str | None,
+    walk_eid_map: dict[str, Any],
+    walk_errors: list[dict[str, Any]],
+) -> DimensionScore:
+    """Check the rendered tree is actually attached to the page.
+
+    Two signals:
+
+    1. ``root_eid`` (typically ``"screen-1"`` for compose output)
+       must appear in ``walk_eid_map``. The walker traverses from
+       the page's screen-root; if it's missing, nothing showed up
+       on the page.
+    2. No ``root_append_failed`` or ``append_child_failed`` errors
+       in the walk's ``__errors`` channel. Both indicate the tree
+       wiring threw and siblings may be orphaned at page root.
+
+    When ``root_eid`` is None, the caller didn't provide a root
+    to check against — we pass-through as a soft 1.0 so the
+    dimension isn't a false-positive block. Gate failures produce
+    a diagnostic naming the failing kinds."""
+    if not root_eid:
+        return DimensionScore(
+            name="rootedness", value=1.0, passed=True,
+            diagnostic="no root_eid provided (dim skipped)",
+        )
+
+    # Gate 1: root exists in walk
+    root_in_walk = root_eid in walk_eid_map
+    # Gate 2: no rooting-related errors
+    rooting_errors = [
+        e for e in walk_errors
+        if e.get("kind") in _ROOTING_ERROR_KINDS
+    ]
+
+    if root_in_walk and not rooting_errors:
+        return DimensionScore(
+            name="rootedness", value=1.0, passed=True,
+            diagnostic=f"root @{root_eid} attached; no rooting errors",
+        )
+
+    # Failure path — structured diagnostic
+    parts: list[str] = []
+    if not root_in_walk:
+        parts.append(f"root @{root_eid} missing from rendered walk")
+    if rooting_errors:
+        kinds = sorted({e.get("kind", "?") for e in rooting_errors})
+        parts.append(
+            f"{len(rooting_errors)} rooting error(s): {kinds}"
+        )
+    diag = "; ".join(parts)
+
+    # Hard cap value — either failure is catastrophic (nothing on
+    # page visible in the expected hierarchy).
+    value = 0.1 if not root_in_walk else 0.4
+    return DimensionScore(
+        name="rootedness", value=value, passed=False, diagnostic=diag,
+    )
+
+
 def score_leaf_type_structural(
     ir_elements: dict[str, Any],
 ) -> DimensionScore:
@@ -297,20 +379,33 @@ def score_fidelity(
     ir_elements: dict[str, Any],
     walk_eid_map: dict[str, Any],
     walk_errors: list[dict[str, Any]],
+    root_eid: str | None = None,
     vlm_score: Optional[DimensionScore] = None,
     coverage_threshold: float = 0.8,
 ) -> FidelityReport:
-    """Run all four structural dimensions + optional VLM. Returns a
+    """Run all structural dimensions + optional VLM. Returns a
     ``FidelityReport`` the caller can aggregate or filter.
+
+    ``root_eid`` enables the rootedness dimension (the tree
+    actually attached to the page). Default is to infer from
+    ``ir_elements`` — first element is typically the root. Pass
+    explicitly when the caller has better info.
 
     ``vlm_score`` is expected to already be computed elsewhere —
     this module doesn't make Gemini calls. See the ``vlm``
     helpers below for a thin wrapper."""
+    if root_eid is None and ir_elements:
+        # Best-guess: first element (typical shape has screen-1
+        # as the first key). Callers that compose their own IRs
+        # should pass an explicit root_eid.
+        root_eid = next(iter(ir_elements), None)
+
     return FidelityReport(
         dimensions=[
             score_coverage(
                 ir_elements, walk_eid_map, threshold=coverage_threshold,
             ),
+            score_rootedness(root_eid, walk_eid_map, walk_errors),
             score_font_readiness(walk_errors),
             score_component_child_consistency(walk_errors),
             score_leaf_type_structural(ir_elements),
@@ -323,6 +418,7 @@ def score_render_result(
     ir_elements: dict[str, Any],
     walk_result,
     *,
+    root_eid: str | None = None,
     vlm_score: Optional[DimensionScore] = None,
     coverage_threshold: float = 0.8,
 ) -> FidelityReport:
@@ -340,6 +436,7 @@ def score_render_result(
         ir_elements=ir_elements,
         walk_eid_map=walk_result.eid_map,
         walk_errors=walk_result.errors,
+        root_eid=root_eid,
         vlm_score=vlm_score,
         coverage_threshold=coverage_threshold,
     )

@@ -109,11 +109,15 @@ def run_one(
             result.notes = f"bridge failed: {e}"[:150]
         result.walk_sec = time.monotonic() - t0
 
-    # 3. Score
+    # 3. Score — use spec's root field when available so the
+    # rootedness dim checks the real screen root, not whichever
+    # element happens to be first in the elements dict.
+    root_eid = spec.get("root")
     report = score_fidelity(
         ir_elements=ir_elements,
         walk_eid_map=walk_eid_map,
         walk_errors=walk_errors,
+        root_eid=root_eid,
     )
     result.score_ten = report.to_ten(mode="min")
     result.passed = report.to_ten() >= 7.0

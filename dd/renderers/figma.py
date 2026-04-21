@@ -1937,21 +1937,36 @@ def _emit_layout(
 
     is_leaf = etype in _LEAF_TYPES if etype is not None else False
 
+    # Every op below was NAKED before Tier E-followup. A single
+    # "object is not extensible" throw (auto-layout prop on a
+    # non-auto-layout node type) used to abort the whole outer
+    # try/catch, cascading through Phase 1 + Phase 2 and leaving
+    # the screen orphaned from the page. All guarded now so one
+    # bad op produces one __errors entry; neighbours still run.
     if not is_leaf:
         direction = layout.get("direction", "")
         figma_dir = _DIRECTION_MAP.get(direction)
         if figma_dir:
-            lines.append(f'{var}.layoutMode = "{figma_dir}";')
+            lines.append(_guarded_op(
+                f'{var}.layoutMode = "{figma_dir}";',
+                eid, "layout_mode_failed",
+            ))
 
         wrap = layout.get("wrap")
         if wrap and wrap != "NO_WRAP":
-            lines.append(f'{var}.layoutWrap = "{wrap}";')
+            lines.append(_guarded_op(
+                f'{var}.layoutWrap = "{wrap}";',
+                eid, "layout_wrap_failed",
+            ))
 
         gap_val = layout.get("gap")
         if gap_val is not None:
             resolved, token_name = resolve_style_value(gap_val, tokens)
             if resolved is not None:
-                lines.append(f"{var}.itemSpacing = {resolved};")
+                lines.append(_guarded_op(
+                    f"{var}.itemSpacing = {resolved};",
+                    eid, "item_spacing_failed",
+                ))
             if token_name:
                 refs.append((eid, "itemSpacing", token_name))
 
@@ -1959,7 +1974,10 @@ def _emit_layout(
         if cas_val is not None:
             resolved, token_name = resolve_style_value(cas_val, tokens)
             if resolved is not None:
-                lines.append(f"{var}.counterAxisSpacing = {resolved};")
+                lines.append(_guarded_op(
+                    f"{var}.counterAxisSpacing = {resolved};",
+                    eid, "counter_axis_spacing_failed",
+                ))
             if token_name:
                 refs.append((eid, "counterAxisSpacing", token_name))
 
@@ -1970,7 +1988,10 @@ def _emit_layout(
                 resolved, token_name = resolve_style_value(val, tokens)
                 figma_prop = f"padding{side.capitalize()}"
                 if resolved is not None:
-                    lines.append(f"{var}.{figma_prop} = {resolved};")
+                    lines.append(_guarded_op(
+                        f"{var}.{figma_prop} = {resolved};",
+                        eid, "padding_failed",
+                    ))
                 if token_name:
                     refs.append((eid, f"padding.{side}", token_name))
 
@@ -2014,22 +2035,36 @@ def _emit_layout(
         rw = None
         rh = None
     if rw is not None and rh is not None:
-        lines.append(f"{var}.resize({rw}, {rh});")
+        lines.append(_guarded_op(
+            f"{var}.resize({rw}, {rh});", eid, "resize_failed",
+        ))
     elif rw is not None:
-        lines.append(f"{var}.resize({rw}, {var}.height);")
+        lines.append(_guarded_op(
+            f"{var}.resize({rw}, {var}.height);",
+            eid, "resize_failed",
+        ))
     elif rh is not None:
-        lines.append(f"{var}.resize({var}.width, {rh});")
+        lines.append(_guarded_op(
+            f"{var}.resize({var}.width, {rh});",
+            eid, "resize_failed",
+        ))
 
     if not is_leaf:
         main_align = layout.get("mainAxisAlignment")
         if main_align:
             mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
-            lines.append(f'{var}.primaryAxisAlignItems = "{mapped}";')
+            lines.append(_guarded_op(
+                f'{var}.primaryAxisAlignItems = "{mapped}";',
+                eid, "primary_axis_align_failed",
+            ))
 
         cross_align = layout.get("crossAxisAlignment")
         if cross_align:
             mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
-            lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
+            lines.append(_guarded_op(
+                f'{var}.counterAxisAlignItems = "{mapped}";',
+                eid, "counter_axis_align_failed",
+            ))
 
     # Position is NOT emitted here — it must be set AFTER appendChild
     # because Figma interprets x/y as parent-relative only when the
