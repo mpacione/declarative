@@ -40,7 +40,8 @@ def _fresh_db() -> sqlite3.Connection:
             screen_id INTEGER,
             node_id INTEGER,
             canonical_type TEXT,
-            classification_source TEXT
+            classification_source TEXT,
+            consensus_method TEXT
         );
 
         CREATE TABLE component_key_registry (
@@ -59,6 +60,7 @@ def _fresh_db() -> sqlite3.Connection:
             category TEXT,
             variant_properties TEXT,
             composition_hint TEXT,
+            canonical_type TEXT,
             UNIQUE(file_id, figma_node_id)
         );
     """)
@@ -89,8 +91,13 @@ def _add_component(
 
 def _add_instance(
     conn: sqlite3.Connection, *, node_id: int, key: str,
-    canonical_type: str,
+    canonical_type: str, consensus_method: str = "formal",
 ) -> None:
+    """Seed a classified instance. ``consensus_method`` defaults to
+    ``formal`` (trusted) so existing tests don't need to care about
+    the filter. Tests that need to exercise untrusted behaviour
+    pass e.g. ``weighted_tie``.
+    """
     conn.execute(
         "INSERT OR IGNORE INTO nodes (id, screen_id, component_key) "
         "VALUES (?, 1, ?)",
@@ -98,9 +105,10 @@ def _add_instance(
     )
     conn.execute(
         "INSERT INTO screen_component_instances "
-        "(screen_id, node_id, canonical_type, classification_source) "
-        "VALUES (1, ?, ?, 'llm')",
-        (node_id, canonical_type),
+        "(screen_id, node_id, canonical_type, classification_source, "
+        " consensus_method) "
+        "VALUES (1, ?, ?, 'llm', ?)",
+        (node_id, canonical_type, consensus_method),
     )
 
 
@@ -240,3 +248,111 @@ class TestBackfillComponents:
         assert stats["inserted"] == 1
         row = conn.execute("SELECT category FROM components").fetchone()
         assert row == ("navigation",)
+
+    def test_canonical_type_stored_on_components_row(self):
+        """Step 2 needs canonical_type on components (not just
+        category) to filter by specific type vs. the broader
+        category bucket.
+        """
+        conn = _fresh_db()
+        _add_component(conn, key="BTN", figma_id="6:6", name="button/x",
+                       instance_count=3)
+        for nid in (601, 602, 603):
+            _add_instance(conn, node_id=nid, key="BTN",
+                          canonical_type="button")
+        backfill_components(conn, file_id=1)
+        row = conn.execute(
+            "SELECT category, canonical_type FROM components"
+        ).fetchone()
+        assert row == ("actions", "button")
+
+    def test_ignores_untrusted_consensus_methods(self):
+        """Plan §SD-3: instances classified via weighted_tie /
+        weighted_majority shouldn't shape slot vocabularies. Here 10
+        untrusted 'icon' instances lose to 2 trusted 'button' ones.
+        """
+        conn = _fresh_db()
+        _add_component(conn, key="TRUST", figma_id="7:7", name="conf",
+                       instance_count=12)
+        for nid in range(700, 710):
+            _add_instance(conn, node_id=nid, key="TRUST",
+                          canonical_type="icon",
+                          consensus_method="weighted_tie")
+        for nid in (710, 711):
+            _add_instance(conn, node_id=nid, key="TRUST",
+                          canonical_type="button",
+                          consensus_method="formal")
+        backfill_components(conn, file_id=1)
+        row = conn.execute(
+            "SELECT canonical_type, category FROM components"
+        ).fetchone()
+        assert row == ("button", "actions")
+
+    def test_null_consensus_method_counts_as_trusted(self):
+        """Pre-M7.0.a rows may have classification_source='formal' but
+        consensus_method=NULL. Don't silently drop these.
+        """
+        conn = _fresh_db()
+        _add_component(conn, key="LEGACY", figma_id="8:8", name="old",
+                       instance_count=2)
+        conn.execute(
+            "INSERT OR IGNORE INTO nodes (id, screen_id, component_key) "
+            "VALUES (800, 1, 'LEGACY')"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, classification_source) "
+            "VALUES (1, 800, 'button', 'formal')"
+        )
+        backfill_components(conn, file_id=1)
+        row = conn.execute(
+            "SELECT canonical_type FROM components"
+        ).fetchone()
+        assert row == ("button",)
+
+    def test_multi_file_same_ckr_inserts_per_file(self):
+        """A shared component_key can exist across two files (e.g. a
+        team library). Each file gets its own components row keyed by
+        (file_id, figma_node_id).
+        """
+        conn = _fresh_db()
+        conn.execute("INSERT INTO files (id, file_key) VALUES (2, 'other')")
+        _add_component(conn, key="SHARED", figma_id="1:1",
+                       name="lib/button", instance_count=1)
+        _add_instance(conn, node_id=900, key="SHARED",
+                      canonical_type="button")
+
+        backfill_components(conn, file_id=1)
+        backfill_components(conn, file_id=2)
+        n = conn.execute(
+            "SELECT COUNT(*) FROM components WHERE figma_node_id='1:1'"
+        ).fetchone()[0]
+        assert n == 2
+
+    def test_empty_ckr_yields_zero_inserts(self):
+        conn = _fresh_db()
+        stats = backfill_components(conn, file_id=1)
+        assert stats == {
+            "inserted": 0, "skipped_existing": 0,
+            "skipped_no_figma_id": 0,
+            "orphan_no_instances": 0,
+            "orphan_type_not_in_catalog": 0,
+        }
+
+    def test_tie_break_alphabetical(self):
+        """Equal instance counts across two canonical_types → winner
+        is alphabetically first (SQL ORDER BY n DESC, type ASC).
+        """
+        conn = _fresh_db()
+        _add_component(conn, key="TIE", figma_id="9:9", name="tied",
+                       instance_count=2)
+        _add_instance(conn, node_id=910, key="TIE",
+                      canonical_type="button")
+        _add_instance(conn, node_id=911, key="TIE",
+                      canonical_type="drawer")
+        backfill_components(conn, file_id=1)
+        row = conn.execute(
+            "SELECT canonical_type FROM components"
+        ).fetchone()
+        # 'button' < 'drawer' alphabetically.
+        assert row == ("button",)

@@ -194,6 +194,7 @@ CREATE TABLE components (
     category        TEXT,                        -- button, input, nav, card, modal, icon, layout, chrome
     variant_properties TEXT,                     -- JSON: ["size","style","state"] — the axes (denormalized, see variant_axes for structured)
     composition_hint TEXT,                       -- JSON: structured recipe — see Component Model section
+    canonical_type  TEXT,                        -- Migration 018: type from component_type_catalog (set by M7.0.b backfill)
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(file_id, figma_node_id)
 );

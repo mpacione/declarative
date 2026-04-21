@@ -42,34 +42,61 @@ def _category_for_type(
     return row[0] if row else None
 
 
-def pick_canonical_category(
+# Trusted consensus methods — plan §SD-3. Noisy majorities
+# (weighted_tie, weighted_majority that barely won) are excluded so
+# slot vocabularies aren't built on shaky classifications.
+_TRUSTED_CONSENSUS_METHODS = (
+    "formal", "heuristic", "unanimous",
+    "two_source_unanimous",
+)
+
+
+def pick_canonical_type(
     conn: sqlite3.Connection, component_key: str,
 ) -> Optional[str]:
-    """Return the catalog category for the CKR entry, by majority-
-    voting canonical_type across every classified instance that links
-    to the master via ``nodes.component_key``.
+    """Majority-voted canonical_type for the CKR entry's instances.
 
-    Returns ``None`` when the CKR entry has no classified instances,
-    or when the winning canonical_type isn't in the catalog. Ties broken
-    by instance count then alphabetical.
+    Only counts instances whose ``consensus_method`` is in the
+    trusted set (plan §SD-3) — noisy weighted_tie / weighted_majority
+    are excluded. Ties broken by instance count then alphabetical.
+
+    Returns ``None`` when the CKR entry has no trusted instances.
     """
+    placeholders = ",".join("?" * len(_TRUSTED_CONSENSUS_METHODS))
     row = conn.execute(
-        """
+        f"""
         SELECT sci.canonical_type, COUNT(*) AS n
         FROM nodes n
         JOIN screen_component_instances sci
           ON sci.node_id = n.id
         WHERE n.component_key = ?
           AND sci.canonical_type IS NOT NULL
+          AND (
+              sci.consensus_method IS NULL
+              OR sci.consensus_method IN ({placeholders})
+          )
         GROUP BY sci.canonical_type
         ORDER BY n DESC, sci.canonical_type ASC
         LIMIT 1
         """,
-        (component_key,),
+        (component_key, *_TRUSTED_CONSENSUS_METHODS),
     ).fetchone()
-    if row is None:
+    return row[0] if row else None
+
+
+def pick_canonical_category(
+    conn: sqlite3.Connection, component_key: str,
+) -> Optional[str]:
+    """Return the catalog category for the CKR entry (via canonical_type
+    majority vote + catalog lookup).
+
+    Returns ``None`` when no trusted instances exist OR when the winning
+    canonical_type isn't in the catalog.
+    """
+    ctype = pick_canonical_type(conn, component_key)
+    if ctype is None:
         return None
-    return _category_for_type(conn, row[0])
+    return _category_for_type(conn, ctype)
 
 
 def backfill_components(
@@ -93,15 +120,20 @@ def backfill_components(
 
     for component_key, figma_node_id, name in ckr_rows:
         if not figma_node_id:
-            # CKR entry for a remote-library component whose master node
-            # isn't present in this file. components.figma_node_id is
-            # NOT NULL; can't write a row, and slots can't be derived
-            # without the master anyway. Count + skip.
+            # CKR entry for a remote-library component whose master
+            # node isn't present in this file. components.figma_node_id
+            # is NOT NULL; can't write a row, and slots can't be
+            # derived without the master anyway. Count + skip.
             skipped_no_figma_id += 1
             continue
+
         # Check whether a components row already exists for this
-        # file/master pair. INSERT OR IGNORE handles this too but
-        # we want to count skipped vs inserted accurately.
+        # file/master pair. Two CKR entries can share a figma_node_id
+        # (e.g., aliased component_keys pointing at the same master),
+        # so the existence check catches duplicates within one run.
+        # Downstream slot-derivation joins via nodes.component_key →
+        # nodes.figma_node_id → components.figma_node_id, so both
+        # aliases find the same components.id naturally.
         existing = conn.execute(
             "SELECT 1 FROM components "
             "WHERE file_id = ? AND figma_node_id = ?",
@@ -111,36 +143,20 @@ def backfill_components(
             skipped_existing += 1
             continue
 
-        # Pick category via majority classification. First find the
-        # winning canonical_type; if it has no instances, orphan.
-        winner = conn.execute(
-            """
-            SELECT sci.canonical_type, COUNT(*) AS n
-            FROM nodes n
-            JOIN screen_component_instances sci
-              ON sci.node_id = n.id
-            WHERE n.component_key = ?
-              AND sci.canonical_type IS NOT NULL
-            GROUP BY sci.canonical_type
-            ORDER BY n DESC, sci.canonical_type ASC
-            LIMIT 1
-            """,
-            (component_key,),
-        ).fetchone()
-        if winner is None:
+        canonical_type = pick_canonical_type(conn, component_key)
+        if canonical_type is None:
             orphan_no_instances += 1
             category = None
         else:
-            canonical_type = winner[0]
             category = _category_for_type(conn, canonical_type)
             if category is None:
                 orphan_type_not_in_catalog += 1
 
         conn.execute(
             "INSERT INTO components "
-            "(file_id, figma_node_id, name, category) "
-            "VALUES (?, ?, ?, ?)",
-            (file_id, figma_node_id, name, category),
+            "(file_id, figma_node_id, name, category, canonical_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (file_id, figma_node_id, name, category, canonical_type),
         )
         inserted += 1
 
@@ -193,15 +209,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     conn.close()
 
     print(f"M7.0.b Step 1: components backfill complete.")
-    print(f"  CKR rows read:             {total_ckr}")
-    print(f"  components rows inserted:  {stats['inserted']}")
-    print(f"  components rows skipped:   {stats['skipped_existing']} "
-          "(already present)")
-    print(f"  skipped (no figma_node_id):{stats['skipped_no_figma_id']} "
-          "(remote-library masters)")
-    print(f"  orphan (no instances):     {stats['orphan_no_instances']}")
-    print(f"  orphan (type not in cat):  {stats['orphan_type_not_in_catalog']}")
-    print(f"  components table total:    {total_components}")
+    print(f"  CKR rows read:                       {total_ckr}")
+    print(f"  components rows inserted:            {stats['inserted']}")
+    print(f"  skipped (already present):           {stats['skipped_existing']}")
+    print(f"  skipped (no figma_node_id):          {stats['skipped_no_figma_id']}")
+    print(f"  orphan (no trusted instances):       {stats['orphan_no_instances']}")
+    print(f"  orphan (canonical_type not in cat):  {stats['orphan_type_not_in_catalog']}")
+    print(f"  components table total (this file):  {total_components}")
+    # Sanity: every CKR row is accounted for in exactly one bucket.
+    accounted = (
+        stats["inserted"]
+        + stats["skipped_existing"]
+        + stats["skipped_no_figma_id"]
+    )
+    if accounted != total_ckr:
+        print(
+            f"  WARNING: {total_ckr - accounted} CKR rows unaccounted.",
+            file=sys.stderr,
+        )
     return 0
 
 
