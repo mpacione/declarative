@@ -78,26 +78,48 @@ class TestDedupKey:
         b = _mk_node(children={"FRAME": 3})
         assert dedup_key(a) != dedup_key(b)
 
-    def test_sample_text_truncated_to_60(self):
-        # Two nodes with long sample_text that differ only AFTER char 60
-        # still dedup (they'll be close enough for classifier purposes;
-        # full text isn't load-bearing once the first 60 chars match).
-        prefix = "same first sixty chars of shared content 1234567890123456789"
-        assert len(prefix) >= 60
-        a = _mk_node(sample_text=prefix + "TAIL_A" * 20)
-        b = _mk_node(sample_text=prefix + "TAIL_B" * 20)
-        assert dedup_key(a) == dedup_key(b)
-
-    def test_sample_text_differs_in_first_60(self):
+    def test_sample_text_does_not_affect_key(self):
+        """sample_text is dropped from the dedup key. Two nodes
+        with the same structure but different first-60-char content
+        must produce the same key — otherwise iPad-variant cards
+        with user-name data ('Alice' vs 'Bob') fail to collapse.
+        """
         a = _mk_node(sample_text="Sign in")
         b = _mk_node(sample_text="Sign up")
-        assert dedup_key(a) != dedup_key(b)
+        assert dedup_key(a) == dedup_key(b)
 
     def test_sample_text_none_vs_empty(self):
         # Both represent "no sample text" — treat as equivalent.
         a = _mk_node(sample_text=None)
         b = _mk_node(sample_text="")
         assert dedup_key(a) == dedup_key(b)
+
+    def test_generic_frame_numbers_normalize(self):
+        """Figma auto-generates names like 'Frame 292', 'Frame 293'
+        when a designer doesn't rename a new frame. Two structurally
+        identical candidates with different generic numbers must
+        collapse — otherwise duplicated iPad cards never dedup.
+        """
+        a = _mk_node(name="Frame 292")
+        b = _mk_node(name="Frame 293")
+        assert dedup_key(a) == dedup_key(b)
+
+    def test_non_generic_frame_names_stay_distinct(self):
+        """Only strict 'Frame <digits>' is normalized. A human-
+        authored name like 'Frame: Hero Card' is intentional and
+        must keep its signature separate from 'Frame: Sidebar'.
+        """
+        a = _mk_node(name="Frame Hero Card")
+        b = _mk_node(name="Frame Sidebar")
+        assert dedup_key(a) != dedup_key(b)
+
+    def test_frame_numbered_suffixes_not_normalized(self):
+        """'Frame 292 active' is not a bare auto-generated name —
+        the designer added semantic suffix. Keep it distinct.
+        """
+        a = _mk_node(name="Frame 292")
+        b = _mk_node(name="Frame 292 active")
+        assert dedup_key(a) != dedup_key(b)
 
     def test_component_key_matters(self):
         a = _mk_node(component_key="mkey-button-primary")

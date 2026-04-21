@@ -102,6 +102,62 @@ def _fetch_reps(
     return [dict(zip(cols, r)) for r in rows]
 
 
+def _compute_group_reps(
+    reps: list[dict], conn,
+) -> tuple[list[dict], dict[int, list[int]]]:
+    """Collapse rep rows into structural-dedup representatives.
+
+    Returns:
+      - ``representatives``: one rep per dedup group, first-seen wins
+        (same contract as ``classify_dedup.group_candidates``).
+      - ``members_by_rep_sci``: maps rep sci_id → list of all sci_ids
+        in its group so callers can propagate one verdict to many
+        instances when emitting output.
+
+    The bake-off uses the same signature as production classify so
+    a given copy-pasted card that appears on 10 iPad-variant screens
+    burns one SoM call, not ten.
+    """
+    from collections import OrderedDict
+
+    from dd.classify_dedup import dedup_key
+
+    def _child_dist(node_id: int) -> dict[str, int]:
+        pairs = conn.execute(
+            "SELECT node_type, COUNT(*) FROM nodes "
+            "WHERE parent_id = ? GROUP BY node_type",
+            (node_id,),
+        ).fetchall()
+        return {row[0]: row[1] for row in pairs}
+
+    groups: "OrderedDict[tuple, list[dict]]" = OrderedDict()
+    for r in reps:
+        candidate = {
+            "name": r.get("name"),
+            "node_type": r.get("node_type"),
+            "parent_classified_as": r.get("parent_classified_as"),
+            "child_type_dist": _child_dist(r["node_id"]),
+            "component_key": None,
+            "width": r.get("width"),
+            "height": r.get("height"),
+        }
+        try:
+            key = dedup_key(candidate)
+        except Exception:
+            # Fall through with a unique key so unhashable reps don't
+            # crash the whole batch.
+            key = ("__unhashable__", r["sci_id"])
+        groups.setdefault(key, []).append(r)
+
+    representatives: list[dict] = []
+    members_by_rep_sci: dict[int, list[int]] = {}
+    for members in groups.values():
+        rep = members[0]
+        representatives.append(rep)
+        members_by_rep_sci[rep["sci_id"]] = [m["sci_id"] for m in members]
+    return representatives, members_by_rep_sci
+
+
 def _build_screen_annotations(
     reps_on_screen: list[dict], root_x: float, root_y: float,
 ) -> list[dict]:
@@ -580,9 +636,20 @@ def main(argv: list[str] | None = None) -> int:
 
     work_conn = get_connection(args.copy_path)
     catalog = get_catalog(work_conn)
-    reps = _fetch_reps(work_conn, screen_ids)
-    print(f"Loaded {len(reps)} reps across {len(screen_ids)} screens.",
-          flush=True)
+    all_reps = _fetch_reps(work_conn, screen_ids)
+    print(f"Loaded {len(all_reps)} instance reps across "
+          f"{len(screen_ids)} screens.", flush=True)
+
+    # Cross-screen dedup: collapse structurally-identical instances
+    # to one representative before spending VLM budget.
+    reps, members_by_rep_sci = _compute_group_reps(all_reps, work_conn)
+    total_instances = sum(len(v) for v in members_by_rep_sci.values())
+    print(
+        f"Deduped to {len(reps)} representatives "
+        f"(covers {total_instances} instances, "
+        f"{(1 - len(reps) / max(total_instances, 1)) * 100:.1f}% reduction).",
+        flush=True,
+    )
 
     # Group reps by screen.
     reps_by_screen: dict[int, list[dict]] = {}
@@ -670,6 +737,9 @@ def main(argv: list[str] | None = None) -> int:
     with jsonl_path.open("w", encoding="utf-8") as f:
         for r in reps:
             som = som_by_sci.get(r["sci_id"], {})
+            member_sci_ids = members_by_rep_sci.get(
+                r["sci_id"], [r["sci_id"]]
+            )
             rec = {
                 "sci_id": r["sci_id"],
                 "screen_id": r["screen_id"],
@@ -683,6 +753,8 @@ def main(argv: list[str] | None = None) -> int:
                 "som_type": som.get("canonical_type"),
                 "som_confidence": som.get("confidence"),
                 "som_reason": som.get("reason"),
+                "instance_count": len(member_sci_ids),
+                "member_sci_ids": member_sci_ids,
             }
             f.write(json.dumps(rec) + "\n")
     print(f"Wrote JSONL: {jsonl_path}", flush=True)

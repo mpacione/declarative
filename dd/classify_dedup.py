@@ -13,15 +13,16 @@ The signature is a tuple chosen to be tight enough that two nodes
 with identical signatures are genuinely the same pattern, and loose
 enough that real duplicates dedup. Keys used:
 
-- `name` — designer-assigned label. Very strong signal for Figma.
+- `name` — designer-assigned label. Normalised first: bare
+  Figma auto-generated names (``Frame 292`` etc.) collapse to a
+  single sentinel so copy-pasted frames with auto-numbers dedup.
+  Human-authored names stay distinct.
 - `node_type` — FRAME / INSTANCE / COMPONENT.
 - `parent_classified_as` — the parent's canonical_type (None if
   unclassified). Distinguishes "Left inside header" from "Left
   inside toolbar".
 - `child_type_dist` — multiset of child node types (order ignored).
   Catches structural-shape differences.
-- `sample_text` first 60 chars — first text child's content. Sample
-  length > 60 is not load-bearing once the prefix matches.
 - `component_key` — Figma master key (INSTANCE nodes). Two instances
   of different masters are never the same pattern regardless of
   displayed name.
@@ -33,14 +34,25 @@ enough that real duplicates dedup. Keys used:
   icon and 108x108 avatar both hit `square` aspect but obviously
   aren't the same component.
 
+`sample_text` is deliberately excluded from the key (dropped
+2026-04-20): iPad-variant cards holding user-name data ("Alice" vs
+"Bob") failed to collapse when text differed but structure matched.
+Sample text is still carried in the candidate dict for the LLM
+prompt; it's just no longer a grouping dimension.
+
 None values in any position are normalised (None ≡ "") so
 candidates with the same "nothing here" shape dedup.
 """
 
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 from typing import Any, Optional
+
+
+_GENERIC_FRAME_PATTERN = re.compile(r"^Frame\s+\d+$")
+_GENERIC_NAME_SENTINEL = "__frame_numbered__"
 
 
 _ASPECT_TALL_MAX = 0.7
@@ -110,20 +122,31 @@ def size_bucket(
     return "large"
 
 
+def _normalize_name(name: str) -> str:
+    """Collapse Figma auto-generated ``Frame <digits>`` names to a
+    shared sentinel so copy-pasted frames dedup regardless of the
+    auto-assigned number. Any name with a human-authored suffix or
+    a different prefix passes through unchanged.
+    """
+    if _GENERIC_FRAME_PATTERN.match(name):
+        return _GENERIC_NAME_SENTINEL
+    return name
+
+
 def dedup_key(candidate: dict[str, Any]) -> tuple:
     """Build the structural-signature tuple for a classifier candidate.
 
     ``candidate`` is the same shape ``_fetch_unclassified_for_screen``
     emits: a dict with keys ``name``, ``node_type``,
-    ``parent_classified_as``, ``child_type_dist``, ``sample_text``,
-    ``component_key``, ``width``, ``height``. Missing keys are
-    treated as None / empty.
+    ``parent_classified_as``, ``child_type_dist``, ``component_key``,
+    ``width``, ``height`` (``sample_text`` is read from the dict by
+    callers but deliberately NOT included in the key — see module
+    docstring). Missing keys are treated as None / empty.
     """
-    name = candidate.get("name") or ""
+    name = _normalize_name(candidate.get("name") or "")
     node_type = candidate.get("node_type") or ""
     parent_type = candidate.get("parent_classified_as") or ""
     children = candidate.get("child_type_dist") or {}
-    sample_text = (candidate.get("sample_text") or "")[:60]
     component_key = candidate.get("component_key") or ""
 
     # Child-type distribution as a sorted tuple so dict insertion order
@@ -143,7 +166,6 @@ def dedup_key(candidate: dict[str, Any]) -> tuple:
         node_type,
         parent_type,
         children_tuple,
-        sample_text,
         component_key,
         a_bucket,
         s_bucket,
