@@ -195,14 +195,24 @@ def run_demo(
     screen_id: int | None,
     target_eid: str | None,
     dry_run: bool,
+    render: bool = False,
+    ws_port: int = 9228,
+    save_script_path: str | None = None,
+    skip_bridge: bool = False,
+    bridge_timeout: float = 240.0,
 ) -> int:
-    from dd.db import get_connection
-    from dd.ir import generate_ir
-    from dd.compress_l3 import compress_to_l3_with_nid_map
-    from dd.library_catalog import serialize_library, serialize_library_json
-    from dd.markup_l3 import (
-        apply_edits, emit_l3, parse_l3,
+    from dd.apply_render import (
+        BridgeError,
+        render_applied_doc,
+        walk_rendered_via_bridge,
     )
+    from dd.compress_l3 import compress_to_l3_with_maps
+    from dd.db import get_connection
+    from dd.ir import generate_ir, query_screen_visuals
+    from dd.library_catalog import serialize_library, serialize_library_json
+    from dd.markup_l3 import apply_edits, parse_l3
+    from dd.renderers.figma import collect_fonts
+    from dd.verify_figma import FigmaRenderVerifier
 
     conn = get_connection(db_path)
 
@@ -226,11 +236,28 @@ def run_demo(
         screen_id = row[0]
     print(f"Screen: {screen_id}")
 
-    # 2. Compress to L3.
-    ir = generate_ir(conn, screen_id, semantic=True)
+    # 2. Compress to L3 — four side-car maps (render_applied_doc
+    # needs the id(Node)-keyed forms; structural verify only needs
+    # the eid→nid bridge, but pulling all four once keeps the render
+    # path cheap to reach from --render).
+    #
+    # When --render is active we match the production generate_screen
+    # ingestion: filter_chrome=False keeps the Safari + HomeIndicator
+    # system chrome instances, and collapse_wrapper=False keeps the
+    # iPhone outer/inner double-frame the verifier expects. Without
+    # these, the emitted script differs structurally from the 204/204
+    # parity baseline and the rendered walk won't align with the IR.
+    ir = generate_ir(
+        conn, screen_id,
+        semantic=True,
+        filter_chrome=False if render else True,
+    )
     spec = ir.get("spec") if "spec" in ir else ir
-    doc, eid_to_nid = compress_to_l3_with_nid_map(
-        spec, conn, screen_id=screen_id,
+    doc, eid_to_nid, old_nid_map, old_spec_key_map, old_original_name_map = (
+        compress_to_l3_with_maps(
+            spec, conn, screen_id=screen_id,
+            collapse_wrapper=not render,
+        )
     )
     # compress returns {eid_str: db_node_id_int}; invert for lookup
     # by node_id.
@@ -412,14 +439,146 @@ def run_demo(
         f"\nApplied swap at @{target_eid_str}: "
         f"new CompRef path = {new_path!r}"
     )
-    if new_path == new_master:
-        print("SUCCESS: structural verify pass — CompRef path matches.")
+    if new_path != new_master:
+        print(
+            f"FAIL: expected {new_master!r}, got {new_path!r}",
+            file=sys.stderr,
+        )
+        conn.close()
+        return 1
+    print("structural verify PASS — CompRef path matches.")
+
+    # ---------------------------------------------------------------
+    # 8. Optional: full render + plugin-bridge walk + is_parity verify.
+    #    This is the plan-synthetic-gen.md M7.2 exit bar.
+    # ---------------------------------------------------------------
+    if not render:
         conn.close()
         return 0
-    print(
-        f"FAIL: expected {new_master!r}, got {new_path!r}",
-        file=sys.stderr,
+
+    print("\n--- render pass (M7.2 is_parity gate) ---")
+    db_visuals = query_screen_visuals(conn, screen_id)
+    fonts = collect_fonts(spec, db_visuals=db_visuals)
+
+    try:
+        rendered = render_applied_doc(
+            applied_doc=applied,
+            original_doc=doc,
+            edits=edit_stmts,
+            spec=spec,
+            conn=conn,
+            db_visuals=db_visuals,
+            fonts=fonts,
+            old_nid_map=old_nid_map,
+            old_spec_key_map=old_spec_key_map,
+            old_original_name_map=old_original_name_map,
+        )
+    except Exception as e:
+        print(f"render failed: {e}", file=sys.stderr)
+        conn.close()
+        return 1
+
+    print(f"render OK — script {len(rendered.script)} chars, "
+          f"token_refs={len(rendered.token_refs)}, "
+          f"synth_nids={len(rendered.applied_maps.db_visuals_patch)}")
+
+    if save_script_path:
+        Path(save_script_path).write_text(rendered.script)
+        print(f"saved render script to {save_script_path}")
+
+    # --skip-bridge short-circuits to render-only; the caller runs
+    # the walk out-of-band. Useful when the Figma plugin is stuck or
+    # the user wants to diff the script offline first.
+    if skip_bridge:
+        print(
+            "\n--skip-bridge set — stopping at render-OK. Run the "
+            "walk manually when the bridge is ready:\n"
+            f"  node render_test/walk_ref.js {save_script_path or '<script>'} "
+            f"<out.json> {ws_port}"
+        )
+        conn.close()
+        return 0
+
+    # Try the plugin bridge. If not reachable, we still succeed at
+    # render-level (script generated cleanly), but the plan's
+    # is_parity gate requires a live walk. Report clearly.
+    try:
+        rendered_ref = walk_rendered_via_bridge(
+            script=rendered.script,
+            ws_port=ws_port,
+            timeout=bridge_timeout,
+            keep_artifacts=False,
+        )
+    except BridgeError as e:
+        print(
+            f"\nBRIDGE UNAVAILABLE — {e}\n"
+            "Render-only verification succeeded; save the script "
+            "above and walk it manually via `node render_test/"
+            f"walk_ref.js <script> <out.json> {ws_port}` to complete "
+            "is_parity verify.",
+            file=sys.stderr,
+        )
+        conn.close()
+        return 2  # Distinct exit code so callers can see "render ok, bridge unavailable"
+
+    # The rendered-walk keys eid_map on whatever `M[...]` contains,
+    # which is spec_key (the spec's element-dict key like
+    # ``button-2``), not the user-facing eid. The apply-render
+    # output includes the eid → spec_key translation for swap
+    # targets; use it to look up the rendered entry.
+    target_spec_key = rendered.eid_to_spec_key.get(
+        target_eid_str, target_eid_str
     )
+    rendered_target = (rendered_ref.get("eid_map") or {}).get(
+        target_spec_key, {}
+    )
+    if not rendered_target:
+        print(
+            f"FAIL: target @{target_eid_str} (spec_key={target_spec_key}) "
+            f"absent from rendered_ref eid_map "
+            f"(walker found {len(rendered_ref.get('eid_map') or {})} eids).",
+            file=sys.stderr,
+        )
+        conn.close()
+        return 1
+    print(
+        f"rendered @{target_eid_str} (spec_key={target_spec_key}): "
+        f"type={rendered_target.get('type')} "
+        f"name={rendered_target.get('name')!r}"
+    )
+
+    report = FigmaRenderVerifier().verify(
+        rendered.adjusted_spec, rendered_ref,
+    )
+    print(
+        f"RenderReport: ir_nodes={report.ir_node_count} "
+        f"rendered={report.rendered_node_count} "
+        f"is_parity={report.is_parity} "
+        f"errors={len(report.errors)}"
+    )
+    for err in report.errors[:10]:
+        print(f"  kind={err.kind} id={err.id} {(err.error or '')[:80]}")
+    if len(report.errors) > 10:
+        print(f"  ... ({len(report.errors) - 10} more)")
+
+    # Two M7.2 gates: (a) is_parity=True; (b) the resolved component
+    # at the swap target rendered as an INSTANCE (not a placeholder
+    # wireframe).
+    gate_parity = report.is_parity
+    gate_instance = rendered_target.get("type") == "INSTANCE"
+    if gate_parity and gate_instance:
+        print("\nM7.2 SUCCESS: is_parity + resolved-to-INSTANCE")
+        conn.close()
+        return 0
+    if not gate_parity:
+        print("\nM7.2 FAIL: is_parity=False", file=sys.stderr)
+    if not gate_instance:
+        print(
+            f"\nM7.2 FAIL: target rendered as "
+            f"{rendered_target.get('type')!r}, expected INSTANCE "
+            "(renderer likely fell through to a placeholder wireframe)",
+            file=sys.stderr,
+        )
     conn.close()
     return 1
 
@@ -434,6 +593,43 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true",
         help="Skip the Anthropic call; use a hand-picked swap.",
     )
+    parser.add_argument(
+        "--render", action="store_true",
+        help=(
+            "After structural verify, also render the applied doc as "
+            "a Figma script, walk it via the plugin bridge, and run "
+            "FigmaRenderVerifier to gate on is_parity=True + the "
+            "swap target rendering as INSTANCE. M7.2 exit bar."
+        ),
+    )
+    parser.add_argument(
+        "--ws-port", type=int, default=9228,
+        help="WebSocket port where the Figma plugin bridge listens.",
+    )
+    parser.add_argument(
+        "--save-script", default=None,
+        help=(
+            "If set and --render is active, write the generated "
+            "Figma JS to this path. Useful when the bridge isn't "
+            "reachable and you want to walk manually."
+        ),
+    )
+    parser.add_argument(
+        "--skip-bridge", action="store_true",
+        help=(
+            "Skip the plugin-bridge walk + verify step; only "
+            "generate the swap script. Pair with --save-script "
+            "for offline inspection."
+        ),
+    )
+    parser.add_argument(
+        "--bridge-timeout", type=float, default=240.0,
+        help=(
+            "Seconds to wait for the plugin bridge to respond. "
+            "Bump up to 300–600 for iPad-sized screens when the "
+            "Figma plugin is under cumulative load."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not Path(args.db).exists():
@@ -445,6 +641,11 @@ def main(argv: list[str] | None = None) -> int:
         screen_id=args.screen_id,
         target_eid=args.target_eid,
         dry_run=args.dry_run,
+        render=args.render,
+        ws_port=args.ws_port,
+        save_script_path=args.save_script,
+        skip_bridge=args.skip_bridge,
+        bridge_timeout=args.bridge_timeout,
     )
 
 
