@@ -52,6 +52,14 @@ def _fresh_db() -> sqlite3.Connection:
             description TEXT,
             UNIQUE(component_id, name)
         );
+
+        CREATE TABLE component_variants (
+            id INTEGER PRIMARY KEY,
+            component_id INTEGER NOT NULL REFERENCES components(id),
+            figma_node_id TEXT,
+            name TEXT,
+            properties TEXT
+        );
     """)
     return conn
 
@@ -254,6 +262,41 @@ class TestSerializeLibrary:
         catalog = serialize_library(conn)
         cr = catalog["components"][0]["comp_ref"]
         assert cr.startswith(COMP_REF_PREFIX)
+
+    def test_variants_off_by_default(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        conn.execute(
+            "INSERT INTO component_variants (component_id, "
+            " figma_node_id, name, properties) "
+            "VALUES (10, '1:1', 'button/small/solid', "
+            " '{\"size\":\"small\",\"style\":\"solid\"}')"
+        )
+        catalog = serialize_library(conn)
+        assert "variant" not in catalog["components"][0]
+
+    def test_variants_opt_in(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        conn.execute(
+            "INSERT INTO component_variants (component_id, "
+            " figma_node_id, name, properties) "
+            "VALUES (10, '1:1', 'button/small/solid', "
+            " '{\"size\":\"small\",\"style\":\"solid\"}')"
+        )
+        catalog = serialize_library(conn, include_variants=True)
+        variant = catalog["components"][0]["variant"]
+        assert variant["name"] == "button/small/solid"
+        assert variant["properties"] == {
+            "size": "small", "style": "solid",
+        }
+
+    def test_variants_opt_in_missing_row_returns_absent(self):
+        """Component with no variants row → variant field absent."""
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn, include_variants=True)
+        assert "variant" not in catalog["components"][0]
 
 
 class TestSerializeLibraryJson:

@@ -85,6 +85,28 @@ def _fetch_slots(
     ]
 
 
+def _fetch_variant(
+    conn: sqlite3.Connection, component_id: int,
+) -> Optional[dict[str, Any]]:
+    """The variant row for a components.id, if any. Returns
+    ``{name, properties}`` where ``properties`` is the decoded JSON
+    axis-value map (e.g. ``{"size": "small", "style": "solid"}``).
+    """
+    row = conn.execute(
+        "SELECT name, properties FROM component_variants "
+        "WHERE component_id = ? LIMIT 1",
+        (component_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    name, props_json = row
+    try:
+        props = json.loads(props_json) if props_json else {}
+    except (ValueError, TypeError):
+        props = {}
+    return {"name": name, "properties": props}
+
+
 def _comp_ref_for(name: str) -> str:
     """Render the CompRef literal the LLM should emit to swap in this
     master (`docs/spec-dd-markup-grammar.md` §7).
@@ -127,6 +149,7 @@ def serialize_library(
     include_slots: bool = True,
     include_prop_defs: bool = False,
     include_figma_ids: bool = False,
+    include_variants: bool = False,
 ) -> dict[str, Any]:
     """Return a JSON-serialisable catalog description.
 
@@ -144,6 +167,10 @@ def serialize_library(
     ``include_figma_ids``: set True to include the master's
     figma_node_id. Off by default — the LLM selects via name /
     CompRef and doesn't need raw node ids.
+    ``include_variants``: set True to include the master's
+    component_variants row (name + properties axis-value map).
+    Lets M7.3+ flows emit axis-aware swaps (``style=translucent``)
+    instead of selecting by full CompRef path.
     """
     clauses: list[str] = ["c.canonical_type IS NOT NULL"]
     params: list[Any] = []
@@ -185,6 +212,10 @@ def serialize_library(
             pd = prop_defs.get(ctype)
             if pd:
                 entry["prop_definitions"] = pd
+        if include_variants:
+            variant = _fetch_variant(conn, cid)
+            if variant is not None:
+                entry["variant"] = variant
         entries.append(entry)
 
     return {

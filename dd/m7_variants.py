@@ -29,14 +29,34 @@ from collections import defaultdict
 from typing import Any, Callable, Optional
 
 
+# Stable axis vocabulary — Haiku is asked to pick from this list
+# before inventing a new name. Covers the common UI-variant axes
+# (size, visual style, interaction state, layout orientation) plus
+# typological catch-alls for components whose axes don't fit a
+# standard bucket.
+AXIS_VOCABULARY = (
+    "size",
+    "style",
+    "state",
+    "orientation",
+    "density",
+    "category",
+    "role",
+    "type",
+    "theme",
+    "shape",
+)
+
+
 _VARIANT_TOOL_SCHEMA = {
     "name": "emit_variant_axes",
     "description": (
         "Given a list of variant-path segment-tuples for ONE "
-        "component family, emit one axis-name per position. Axis "
-        "names are snake_case and describe the CONCEPT encoded "
-        "at that position (size / style / state / layout / "
-        "orientation, etc.)."
+        "component family, emit one axis-name per position. Prefer "
+        "names from the shared vocabulary (size / style / state / "
+        "orientation / density / category / role / type / theme / "
+        "shape). Invent a new snake_case name only if none of those "
+        "fit."
     ),
     "input_schema": {
         "type": "object",
@@ -46,7 +66,8 @@ _VARIANT_TOOL_SCHEMA = {
                 "items": {"type": "string"},
                 "description": (
                     "One axis name per path-segment position, in "
-                    "order. Length MUST match the path depth."
+                    "order. Length MUST match the path depth. "
+                    "Prefer names from the shared vocabulary."
                 ),
             },
         },
@@ -107,8 +128,10 @@ def _label_axes(
         lines.append(f"  position {i}: [{', '.join(samples[:6])}]")
     lines.append("")
     lines.append(
-        "Emit one axis_name per position (in order). Use snake_case. "
-        "Examples: size / style / state / orientation / density."
+        f"Emit one axis_name per position (in order). Prefer names "
+        f"from the shared vocabulary: {list(AXIS_VOCABULARY)}. "
+        f"Only invent a new snake_case name when none of those fit "
+        f"(e.g., a novel domain concept)."
     )
     prompt = "\n".join(lines)
 
