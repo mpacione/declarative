@@ -38,7 +38,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from dd.classify_llm import build_canonical_type_enum
-from dd.classify_vision_crop import rotated_aabb_dims
+from dd.classify_vision_crop import rotated_aabb_dims, rotated_top_left_offset
 
 
 SOM_TOOL_NAME = "classify_marks"
@@ -201,11 +201,16 @@ def render_som_overlay(
         draw.rectangle((nl, nt, nr, nb), outline=halo_color, width=halo_w)
         draw.rectangle((nl, nt, nr, nb), outline=stroke_color, width=stroke_w)
 
-        # Label: filled magenta disc at top-left corner with the
-        # mark_id in white.
+        # Label: filled magenta disc anchored at the rotated node's
+        # pre-rotation TL corner (falls back to AABB TL when rot=0).
+        # For rotated nodes, AABB TL is an empty corner — the label
+        # needs to sit on the visible node edge to look attached.
+        dx_rot, dy_rot = rotated_top_left_offset(w, h, rot)
+        rtl_x = (x + dx_rot) * scale_x
+        rtl_y = (y + dy_rot) * scale_y
         lbl_size = _label_size_for(aabb_w * scale_x, aabb_h * scale_y)
-        lbl_x = max(0, int(nl - lbl_size / 2))
-        lbl_y = max(0, int(nt - lbl_size / 2))
+        lbl_x = max(0, int(rtl_x - lbl_size / 2))
+        lbl_y = max(0, int(rtl_y - lbl_size / 2))
         draw.ellipse(
             (lbl_x, lbl_y, lbl_x + lbl_size, lbl_y + lbl_size),
             fill=label_fill, outline=halo_color, width=2,

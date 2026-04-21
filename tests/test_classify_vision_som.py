@@ -94,6 +94,79 @@ class TestRenderSomOverlay:
         img = Image.open(BytesIO(out))
         assert img.format == "PNG"
 
+    def test_label_anchored_to_rotated_topleft_not_aabb_topleft(self):
+        """On a rotated node, the numeric label should sit at the
+        corner that was originally pre-rotation TL (anchored to the
+        visible node edge), NOT at the AABB top-left which is an
+        empty corner when the node is rotated.
+
+        Setup: 100x50 annotation at world (100, 100), rotated π/2
+        CCW. Post-rotation AABB dims = (50, 100) starting at
+        (100, 100). Pre-rotation TL lands at world (150, 100) —
+        the AABB's top-right. The label disc ellipse should center
+        near (150, 100), not (100, 100).
+        """
+        import math
+        from unittest.mock import patch, MagicMock
+
+        screen = _solid_png(400, 400)
+        mock_draw = MagicMock()
+        with patch(
+            "dd.classify_vision_som.ImageDraw.Draw",
+            return_value=mock_draw,
+        ):
+            render_som_overlay(
+                screen_png=screen,
+                annotations=[{
+                    "id": 1, "x": 100, "y": 100, "w": 100, "h": 50,
+                    "rotation": math.pi / 2,
+                }],
+                screen_width=400, screen_height=400,
+            )
+        # The ellipse call draws the label disc: its bbox arg is
+        # (lbl_x, lbl_y, lbl_x+size, lbl_y+size).
+        ellipse_calls = mock_draw.ellipse.call_args_list
+        assert ellipse_calls, "expected an ellipse call for the label disc"
+        bbox = ellipse_calls[0].args[0]
+        cx = (bbox[0] + bbox[2]) / 2
+        cy = (bbox[1] + bbox[3]) / 2
+        rotated_tl = (150, 100)
+        aabb_tl = (100, 100)
+        dist_rot = ((cx - rotated_tl[0]) ** 2 + (cy - rotated_tl[1]) ** 2) ** 0.5
+        dist_aabb = ((cx - aabb_tl[0]) ** 2 + (cy - aabb_tl[1]) ** 2) ** 0.5
+        assert dist_rot < dist_aabb, (
+            f"label centered at ({cx:.1f}, {cy:.1f}) is closer to AABB "
+            f"TL {aabb_tl} (d={dist_aabb:.1f}) than rotated TL "
+            f"{rotated_tl} (d={dist_rot:.1f})"
+        )
+
+    def test_label_unchanged_for_unrotated_node(self):
+        """For rotation=0, the label should still sit at the AABB
+        TL (which IS the node's real TL). This guards against the
+        fix accidentally shifting unrotated labels.
+        """
+        from unittest.mock import patch, MagicMock
+
+        screen = _solid_png(400, 400)
+        mock_draw = MagicMock()
+        with patch(
+            "dd.classify_vision_som.ImageDraw.Draw",
+            return_value=mock_draw,
+        ):
+            render_som_overlay(
+                screen_png=screen,
+                annotations=[{
+                    "id": 1, "x": 100, "y": 100, "w": 100, "h": 50,
+                }],  # no rotation
+                screen_width=400, screen_height=400,
+            )
+        bbox = mock_draw.ellipse.call_args_list[0].args[0]
+        cx = (bbox[0] + bbox[2]) / 2
+        cy = (bbox[1] + bbox[3]) / 2
+        # Disc centred on AABB TL (100, 100) when unrotated.
+        assert abs(cx - 100) < 1.0
+        assert abs(cy - 100) < 1.0
+
 
 class TestBuildSomToolSchema:
     def test_schema_uses_mark_id_not_node_id(self):

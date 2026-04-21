@@ -65,6 +65,36 @@ def rotated_aabb_dims(
     )
 
 
+def rotated_top_left_offset(
+    w: float, h: float, rotation: float,
+) -> tuple[float, float]:
+    """Return ``(dx, dy)`` offset from the post-rotation AABB top-left
+    to the corner of the rotated rectangle that was originally the
+    pre-rotation top-left.
+
+    For a rectangle ``(0, 0, w, h)`` rotated by ``rotation`` radians
+    (CCW, Figma convention) around ``(0, 0)``, compute where the
+    original ``(0, 0)`` corner lands relative to the AABB top-left.
+    For ``rotation=0`` this is ``(0, 0)`` — the AABB TL IS the node TL.
+
+    Used by SoM overlay to anchor the numeric label to the visible
+    rotated corner instead of an empty AABB corner.
+    """
+    if not rotation:
+        return (0.0, 0.0)
+    cos_r = math.cos(rotation)
+    sin_r = math.sin(rotation)
+    corners = (
+        (0.0, 0.0),
+        (w * cos_r, w * sin_r),
+        (w * cos_r - h * sin_r, w * sin_r + h * cos_r),
+        (-h * sin_r, h * cos_r),
+    )
+    min_x = min(c[0] for c in corners)
+    min_y = min(c[1] for c in corners)
+    return (-min_x, -min_y)
+
+
 def crop_node_with_spotlight(
     screen_png: bytes,
     node_x: float,
