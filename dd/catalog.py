@@ -911,6 +911,131 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         ),
     },
     {
+        "canonical_name": "keyboard",
+        "aliases": [
+            "on_screen_keyboard", "virtual_keyboard",
+            "soft_keyboard", "ime", "keypad",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "On-screen software keyboard for text entry. Typically 3-5 "
+            "rows of keys with uniform shape + size, a wide spacebar in "
+            "the bottom row, and modifier keys (shift, delete, return, "
+            "numbers toggle, dictation, emoji) flanking the alphabet. "
+            "Appears when a text_input / textarea gains focus or when "
+            "explicitly invoked via a keyboard toggle. Distinct from "
+            "`button_group` — a keyboard is a structured text-entry "
+            "device where the rows and spacebar are diagnostic."
+        ),
+        "prop_definitions": {
+            "variant": "enum:qwerty|numeric|emoji|symbols|dvorak",
+            "layout": "enum:default|email|url|dictation|numeric_pad",
+        },
+        "slot_definitions": {},
+        "semantic_role": "group",
+        "recognition_heuristics": {
+            "patterns": [
+                "three_to_five_rows_of_keys",
+                "wide_spacebar_bottom_row",
+                "return_key_right_end",
+                "uniform_key_shape",
+                "modifier_keys_outer_columns",
+            ],
+            "position": "bottom_of_screen",
+            "typical_height_range": [200, 400],
+        },
+        "related_types": ["button_group", "text_input", "textarea"],
+        "disambiguation_notes": (
+            "keyboard has ≥ 3 rows of uniform keys and a wide spacebar; "
+            "button_group is an arbitrary cluster of labeled buttons "
+            "without the row/spacebar structure. A single row of 8+ "
+            "small keys is still a keyboard row, not a button_group. "
+            "Classify the whole widget as `keyboard`; individual rows "
+            "classified alone are also `keyboard` (not button_group)."
+        ),
+    },
+    {
+        "canonical_name": "control_box",
+        "aliases": [
+            "bounding_box", "selection_box", "transform_box",
+            "crop_box", "marching_ants",
+        ],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Rectangular selection / transform widget drawn around an "
+            "image, shape, or canvas element in an editor. The box is "
+            "the outline showing what's selected; corner and midpoint "
+            "`control_point` handles on the edges do the resize / "
+            "rotate. Shown only while an element is selected or being "
+            "transformed. Distinct from `control_point` (the individual "
+            "handle) — control_box is the WHOLE widget."
+        ),
+        "prop_definitions": {
+            "show_rotation_handle": "boolean",
+            "show_midpoint_handles": "boolean",
+            "dashed": "boolean",
+        },
+        "slot_definitions": {
+            "handles": {
+                "allowed": ["control_point"],
+                "required": False,
+                "multiple": True,
+                "position": "edge",
+            },
+        },
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "rect_outline_with_corner_handles",
+                "surrounds_image_or_shape",
+                "dashed_or_solid_border",
+            ],
+            "has_corner_handles": True,
+        },
+        "related_types": ["control_point", "image"],
+        "disambiguation_notes": (
+            "control_box is the whole bounding widget (outline + "
+            "handles); control_point is one handle. A rectangular "
+            "outline with 4-8 small filled squares at its corners / "
+            "midpoints is control_box. A single small filled square "
+            "by itself, attached to an edge, is control_point."
+        ),
+    },
+    {
+        "canonical_name": "text_cursor",
+        "aliases": [
+            "caret", "ibeam_cursor", "text_caret", "insertion_point",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Vertical line indicating the current insertion point in a "
+            "focused text_input or textarea. Thin (1-2px wide), height "
+            "matches the line box, blinks in live apps. Always inside a "
+            "text field, always vertical-line-shaped. Distinct from "
+            "`mouse_cursor`, which is the system pointer icon (arrow, "
+            "ibeam, resize, grab, etc.) indicating where input lands."
+        ),
+        "prop_definitions": {"visible": "boolean"},
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "thin_vertical_line",
+                "inside_text_input_bounds",
+                "matches_line_height",
+            ],
+            "typical_size_range": [1, 3],
+        },
+        "related_types": ["mouse_cursor", "text_input", "textarea"],
+        "disambiguation_notes": (
+            "text_cursor is a vertical-line insertion indicator inside "
+            "a text field. mouse_cursor is the system input pointer "
+            "(arrow, ibeam, resize). The ibeam mouse_cursor shape LOOKS "
+            "like a text_cursor but lives outside text fields; a real "
+            "text_cursor is always inside text_input or textarea bounds."
+        ),
+    },
+    {
         "canonical_name": "magnifier",
         "aliases": ["loupe", "zoom_bubble", "picker_zoom", "tooltip_magnifier", "tooltip_zoom"],
         "category": "content_and_display",

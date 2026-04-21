@@ -312,6 +312,14 @@ These priors are **tiebreakers**, not overrides. When the visual rendering clear
 
 7. **Corner / edge handles on a bounding box → `control_point`.** Small (typically 6-32px) filled squares, circles, or dots positioned at the corners or midpoints of an image's / shape's / selection's bounding rect — these are resize / rotate / transform handles in an editor, crop tool, or canvas. Even if the mark's name is auto-generated (`Frame 361`, `Frame 367`), classify as `control_point` — they do NOT trigger actions on tap; they drag to manipulate geometry. Sibling signal: another mark nearby that's an `image` or canvas being edited.
 
+7a. **Rectangular transform-widget outline around an image/shape → `control_box`.** The outlined RECTANGLE itself (with 4-8 corner/midpoint handles visible on its edges) is `control_box`, not the individual handles. A dashed or solid rect surrounding a selected image with small filled squares at corners → `control_box` as a whole; each corner square classified separately is `control_point`. Mark the container widget, not a frame behind it.
+
+8. **Zoom / loupe bubble showing magnified content → `magnifier`.** A floating circular or rounded-rect bubble that contains a zoomed-in copy of pixels from the canvas below (often with crosshairs or a centre indicator). Named `picker-zoom`, `loupe`, or a generic `Frame NNN` sitting above a colour picker / image editor. Do NOT classify as `popover`, `toast`, or `tooltip` — the diagnostic is that the bubble's contents are MAGNIFIED CANVAS PIXELS, not text or menu items.
+
+9. **On-screen keyboard rows → `keyboard`.** A row or stack of 8+ uniform keys at the bottom of the screen, with a wide spacebar and modifier keys (shift, delete, return, numbers/emoji toggle) → `keyboard`. The whole keyboard widget is `keyboard`; individual rows (named `Top Row`, `Row 1`, `Keys`, etc.) when marked alone are also `keyboard`, not `button_group`. Diagnostic: uniform key shape across the row + spacebar + return key.
+
+10. **Thin vertical insertion line inside a text field → `text_cursor`.** A 1-2px wide vertical bar inside `text_input` or `textarea` bounds indicates the caret / insertion point. Do NOT classify as `divider` or `control_point`. Distinguish from `mouse_cursor` (system pointer — can be arrow, ibeam, resize, grab) which lives outside text fields.
+
 ## Hidden-state marks
 
 Some marks represent UI that was hidden in the source file (visible=0) and has been explicitly toggled visible for classification. These typically correspond to state-variant UI: `error_state` dialogs, `success` toasts, expanded panels, selected tool overlays. For these:
