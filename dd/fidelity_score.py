@@ -358,6 +358,158 @@ def score_rootedness(
     )
 
 
+# ---------------------------------------------------------------
+# Dimension 6: canvas coverage (visual plausibility)
+# ---------------------------------------------------------------
+#
+# Added 2026-04-21 after the Tier D re-gate caught a subtree
+# scoring 10/10 structurally on a visually-blank output (a 396x20
+# toast strip in a 428x926 screen, ~2% coverage). All four
+# structural dims passed because coverage=1/1, rootedness=1.0,
+# no font errors, no appendChild errors, no leaf-with-children —
+# but there was literally nothing to see.
+#
+# Scoped per feedback_auto_inspect_before_human_rate.md:
+# "Structural parity is not visual plausibility." This dim is
+# rule-based (no VLM call) — just walk geometry.
+
+
+def score_canvas_coverage(
+    root_eid: str | None,
+    ir_elements: dict[str, Any],
+    walk_eid_map: dict[str, Any],
+    *,
+    threshold: float = 0.10,
+) -> DimensionScore:
+    """Fraction of the root's bbox covered by direct-child bboxes.
+
+    A screen whose only content is a tiny element (20px toast in
+    928px screen → ~2%) fails this dim. Catches outputs where
+    structural dims pass but visually the screen is empty.
+
+    Returns 1.0 (skip) when root is absent / unsized — those cases
+    are rootedness's concern, not this dim's.
+
+    ``threshold`` defaults to 0.10 — a screen root needs at least
+    10% painted area to be plausibly a rendered screen. Subtree
+    callers may want to tune higher.
+    """
+    if not root_eid:
+        return DimensionScore(
+            name="canvas_coverage", value=1.0, passed=True,
+            diagnostic="no root_eid (dim skipped)",
+        )
+    root = walk_eid_map.get(root_eid) or {}
+    rw = root.get("width") or 0
+    rh = root.get("height") or 0
+    if rw <= 0 or rh <= 0:
+        return DimensionScore(
+            name="canvas_coverage", value=1.0, passed=True,
+            diagnostic="root has no dimensions in walk (dim skipped)",
+        )
+    root_area = rw * rh
+
+    children_ids = (ir_elements.get(root_eid) or {}).get("children") or []
+    child_area = 0
+    for cid in children_ids:
+        c = walk_eid_map.get(cid) or {}
+        cw = c.get("width") or 0
+        ch = c.get("height") or 0
+        child_area += cw * ch
+
+    ratio = min(child_area / root_area, 1.0) if root_area else 1.0
+    passed = ratio >= threshold
+    # Convert raw ratio to a 0-1 goodness score. Below threshold,
+    # scale linearly (partial credit for being close); at/above,
+    # full 1.0. This mirrors content_richness so aggregate_min
+    # isn't dragged down by a dim that actually passed.
+    value = min(ratio / threshold, 1.0) if threshold > 0 else 1.0
+    diag = (
+        f"direct-children cover {int(child_area)}/{int(root_area)} "
+        f"({ratio:.1%}) of root"
+    )
+    if not passed:
+        diag += (
+            f" — below {threshold:.0%} threshold; visually sparse render"
+        )
+    return DimensionScore(
+        name="canvas_coverage", value=value, passed=passed,
+        diagnostic=diag,
+    )
+
+
+# ---------------------------------------------------------------
+# Dimension 7: content richness (visual plausibility)
+# ---------------------------------------------------------------
+
+
+def _walk_node_is_visible(node: dict[str, Any]) -> bool:
+    """True if a walked node carries some visible content.
+
+    Signals (any one is enough):
+    - ``fills`` — the walker only surfaces fills when present
+    - ``strokes`` — same
+    - ``characters`` — TEXT node with actual text
+    - ``type == "INSTANCE"`` — paints from its master component
+    - ``effectCount > 0`` — drop-shadow / blur / etc.
+    """
+    if node.get("fills"):
+        return True
+    if node.get("strokes"):
+        return True
+    if node.get("characters"):
+        return True
+    if node.get("type") == "INSTANCE":
+        return True
+    if (node.get("effectCount") or 0) > 0:
+        return True
+    return False
+
+
+def score_content_richness(
+    walk_eid_map: dict[str, Any],
+    *,
+    min_visible: int = 3,
+) -> DimensionScore:
+    """Fraction of rendered nodes that carry visible content.
+
+    Value = ``min(visible_count / min_visible, 1.0)``. A render
+    with fewer than ``min_visible`` visible-content nodes almost
+    always reads as trivially empty to a human viewer — this dim
+    catches it when the other structural dims pass.
+
+    Passes at 0.7, so roughly ceil(``min_visible`` × 0.7) visible
+    elements are needed. Default ``min_visible=3`` means we need
+    at least 3 content-bearing elements for an honest pass.
+    """
+    if not walk_eid_map:
+        # Empty walk is a different failure (coverage dim's concern).
+        # Skip to avoid double-counting; a real "nothing rendered"
+        # lands on coverage and rootedness already.
+        return DimensionScore(
+            name="content_richness", value=1.0, passed=True,
+            diagnostic="no rendered nodes (dim skipped)",
+        )
+    visible = sum(
+        1 for n in walk_eid_map.values() if _walk_node_is_visible(n)
+    )
+    ratio = min(visible / min_visible, 1.0) if min_visible > 0 else 1.0
+    passed = ratio >= 0.7
+    diag = (
+        f"{visible}/{len(walk_eid_map)} rendered nodes carry visible "
+        f"content"
+    )
+    if not passed:
+        diag += (
+            f" — below ~{int(min_visible * 0.7)} minimum; "
+            "trivial output"
+        )
+    return DimensionScore(
+        name="content_richness", value=ratio, passed=passed,
+        diagnostic=diag,
+    )
+
+
 def score_leaf_type_structural(
     ir_elements: dict[str, Any],
 ) -> DimensionScore:
@@ -424,6 +576,11 @@ def score_fidelity(
             score_font_readiness(walk_errors),
             score_component_child_consistency(walk_errors),
             score_leaf_type_structural(ir_elements),
+            # Visual-plausibility dims — added 2026-04-21 to catch the
+            # Tier-D subtree case where structural dims all pass on a
+            # visually-blank output.
+            score_canvas_coverage(root_eid, ir_elements, walk_eid_map),
+            score_content_richness(walk_eid_map),
         ],
         vlm_dimension=vlm_score,
     )

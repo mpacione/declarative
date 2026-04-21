@@ -15,7 +15,9 @@ from dd.fidelity_score import (
     DimensionScore,
     FidelityReport,
     LEAF_TYPES,
+    score_canvas_coverage,
     score_component_child_consistency,
+    score_content_richness,
     score_coverage,
     score_fidelity,
     score_font_readiness,
@@ -196,10 +198,171 @@ class TestScoreLeafTypeStructural:
             assert d.passed is False, f"Expected {lt} to fail with children"
 
 
+class TestScoreCanvasCoverage:
+    """Canvas coverage dim: fraction of root's bbox covered by
+    direct-child bboxes. Catches the visually-blank render the
+    structural dims can't see (e.g. 20-px-tall toast in a 926-px
+    screen scoring 10/10 on structural alone).
+
+    Scoped to the Tier D re-gate subtree failure (2026-04-21)."""
+
+    def test_full_coverage_passes(self) -> None:
+        walk = {
+            "screen-1": {"type": "FRAME", "width": 400, "height": 800},
+            "card-1": {"type": "FRAME", "width": 400, "height": 800},
+        }
+        ir = {"screen-1": {"children": ["card-1"]}, "card-1": {}}
+        d = score_canvas_coverage("screen-1", ir, walk)
+        assert d.value == 1.0
+        assert d.passed is True
+
+    def test_subtree_tiny_toast_fails(self) -> None:
+        """Reproduce the Tier-D subtree case: 396x20 toast in a
+        428x926 screen = 2% coverage. Under the clamped scale,
+        value = 0.02/0.10 threshold = 0.20 — dramatic fail."""
+        walk = {
+            "screen-1": {"type": "FRAME", "width": 428, "height": 926},
+            "toast-1": {"type": "FRAME", "width": 396, "height": 20},
+        }
+        ir = {"screen-1": {"children": ["toast-1"]}, "toast-1": {}}
+        d = score_canvas_coverage("screen-1", ir, walk)
+        assert d.value < 0.30  # well below pass-band
+        assert d.passed is False
+        assert "sparse" in d.diagnostic.lower() or "below" in d.diagnostic.lower()
+
+    def test_partial_coverage_at_threshold(self) -> None:
+        """One card covering ~25% of the screen passes and scores
+        full credit (ratio >= threshold → value clamped to 1.0).
+        The raw ratio lives in the diagnostic for inspection."""
+        walk = {
+            "screen-1": {"type": "FRAME", "width": 400, "height": 800},
+            "card-1": {"type": "FRAME", "width": 400, "height": 200},
+        }
+        ir = {"screen-1": {"children": ["card-1"]}, "card-1": {}}
+        d = score_canvas_coverage("screen-1", ir, walk)
+        assert d.value == 1.0
+        assert d.passed is True
+        assert "25" in d.diagnostic  # raw ratio surfaced
+
+    def test_missing_root_skipped(self) -> None:
+        """No root_eid → dim skipped (rootedness covers this case)."""
+        d = score_canvas_coverage(None, {}, {})
+        assert d.value == 1.0
+        assert d.passed is True
+
+    def test_root_without_dimensions_skipped(self) -> None:
+        walk = {"screen-1": {"type": "FRAME"}}  # no width/height
+        ir = {"screen-1": {}}
+        d = score_canvas_coverage("screen-1", ir, walk)
+        assert d.value == 1.0
+        assert d.passed is True
+
+    def test_threshold_configurable(self) -> None:
+        """Caller can tune the threshold. Default 0.10 is for screen
+        roots; subtrees may want stricter."""
+        walk = {
+            "screen-1": {"type": "FRAME", "width": 400, "height": 800},
+            "card-1": {"type": "FRAME", "width": 400, "height": 60},  # 7.5%
+        }
+        ir = {"screen-1": {"children": ["card-1"]}, "card-1": {}}
+        assert score_canvas_coverage(
+            "screen-1", ir, walk, threshold=0.05,
+        ).passed is True
+        assert score_canvas_coverage(
+            "screen-1", ir, walk, threshold=0.10,
+        ).passed is False
+
+
+class TestScoreContentRichness:
+    """Content richness: count of rendered nodes that carry some
+    visible content. A node is 'visible' if it has fills, characters,
+    INSTANCE type (paints from master), or non-zero effects.
+
+    Catches trivial outputs (2-3 nodes, nothing to see) that pass
+    the structural dims trivially."""
+
+    def test_rich_render_passes(self) -> None:
+        walk = {
+            "a": {"type": "FRAME", "fills": [{"type": "solid"}]},
+            "b": {"type": "TEXT", "characters": "Hello"},
+            "c": {"type": "INSTANCE"},
+            "d": {"type": "FRAME", "effectCount": 1},
+        }
+        d = score_content_richness(walk)
+        assert d.value == 1.0
+        assert d.passed is True
+
+    def test_subtree_only_two_visible_fails(self) -> None:
+        """Reproduce Tier-D subtree: screen bg + icon instance,
+        toast frame has nothing. Must fail."""
+        walk = {
+            "screen-1": {"type": "FRAME", "fills": [{"type": "solid"}]},
+            "toast-1": {"type": "FRAME", "effectCount": 0},  # nothing visible
+            "icon_button-1": {"type": "INSTANCE"},
+        }
+        d = score_content_richness(walk)
+        # 2 visible out of min 3 → 0.67 → under 0.7 pass threshold
+        assert d.value < 0.7
+        assert d.passed is False
+
+    def test_empty_walk_skipped(self) -> None:
+        """Empty walk is coverage/rootedness's concern, not ours."""
+        d = score_content_richness({})
+        assert d.value == 1.0
+        assert d.passed is True
+        assert "skip" in d.diagnostic.lower()
+
+    def test_strokes_count_as_visible(self) -> None:
+        walk = {
+            "a": {"type": "FRAME", "strokes": [{"type": "solid"}]},
+            "b": {"type": "FRAME", "strokes": [{"type": "solid"}]},
+            "c": {"type": "FRAME", "strokes": [{"type": "solid"}]},
+        }
+        d = score_content_richness(walk)
+        assert d.value == 1.0
+
+    def test_nodes_without_any_visible_signal_fail(self) -> None:
+        walk = {
+            "a": {"type": "FRAME"},
+            "b": {"type": "FRAME"},
+            "c": {"type": "FRAME"},
+        }
+        d = score_content_richness(walk)
+        assert d.value == 0.0
+        assert d.passed is False
+        assert "0" in d.diagnostic
+
+    def test_min_visible_configurable(self) -> None:
+        walk = {"a": {"type": "INSTANCE"}, "b": {"type": "INSTANCE"}}
+        # Default min_visible=3 → 2/3 → fail
+        assert score_content_richness(walk).passed is False
+        # Caller relaxes to 2 → 2/2 → pass
+        assert score_content_richness(walk, min_visible=2).passed is True
+
+
 class TestScoreFidelityAggregate:
     def test_all_green(self) -> None:
-        ir = {"screen-1": {"type": "screen", "children": ["c"]}, "c": {"type": "card"}}
-        walk = {"screen-1": {"type": "FRAME"}, "c": {"type": "FRAME"}}
+        """Green when structural AND visual content are present."""
+        ir = {
+            "screen-1": {"type": "screen", "children": ["c"]},
+            "c": {"type": "card"},
+        }
+        walk = {
+            "screen-1": {
+                "type": "FRAME", "width": 400, "height": 800,
+                "fills": [{"type": "solid"}],
+            },
+            # Card fully covers the screen — content_richness +
+            # canvas_coverage both hit 1.0.
+            "c": {
+                "type": "FRAME", "width": 400, "height": 800,
+                "fills": [{"type": "solid"}],
+                "characters": "title text",
+            },
+        }
+        # Add 2 more visible nodes so content_richness passes
+        # (default min_visible=3).
+        walk["ic-1"] = {"type": "INSTANCE"}
         report = score_fidelity(
             ir_elements=ir, walk_eid_map=walk, walk_errors=[],
         )
@@ -260,6 +423,7 @@ class TestScoreFidelityAggregate:
         assert names == {
             "coverage", "rootedness", "font_readiness",
             "component_child_consistency", "leaf_type_structural",
+            "canvas_coverage", "content_richness",
         }
 
 
@@ -345,13 +509,30 @@ class TestScoreRenderResult:
 
     def test_adapts_walk_result_to_fidelity_report(self) -> None:
         from dd.render_protocol import WalkResult
+        # Realistic walk: nodes with visible content + dimensions so
+        # canvas_coverage and content_richness both pass.
         walk = WalkResult(
             ok=True,
-            eid_map={"s": {"type": "FRAME"}, "b": {"type": "FRAME"}},
+            eid_map={
+                "s": {
+                    "type": "FRAME", "width": 400, "height": 800,
+                    "fills": [{"type": "solid"}],
+                },
+                "b": {
+                    "type": "FRAME", "width": 400, "height": 800,
+                    "fills": [{"type": "solid"}],
+                    "characters": "body",
+                },
+                "ic-1": {"type": "INSTANCE"},
+            },
             errors=[],
             raw={},
         )
-        ir = {"s": {"type": "screen", "children": ["b"]}, "b": {"type": "card"}}
+        ir = {
+            "s": {"type": "screen", "children": ["b", "ic-1"]},
+            "b": {"type": "card"},
+            "ic-1": {"type": "icon"},
+        }
         report = score_render_result(ir, walk)
         assert isinstance(report, FidelityReport)
         assert report.all_passed is True
