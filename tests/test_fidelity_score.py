@@ -15,8 +15,11 @@ from dd.fidelity_score import (
     DimensionScore,
     FidelityReport,
     LEAF_TYPES,
+    build_som_annotations,
+    compute_coverage_from_types,
     score_canvas_coverage,
     score_component_child_consistency,
+    score_component_coverage,
     score_content_richness,
     score_coverage,
     score_fidelity,
@@ -338,6 +341,226 @@ class TestScoreContentRichness:
         assert score_content_richness(walk).passed is False
         # Caller relaxes to 2 → 2/2 → pass
         assert score_content_richness(walk, min_visible=2).passed is True
+
+
+class TestBuildSomAnnotations:
+    """Build SoM annotations from IR + walk payload. The annotations
+    format matches classify_vision_som's render_som_overlay:
+    {id, x, y, w, h, rotation}. id == integer sequential mark index.
+    """
+
+    def test_builds_annotations_from_walk_bboxes(self) -> None:
+        ir = {
+            "screen-1": {"type": "screen"},
+            "card-1": {"type": "card"},
+            "button-1": {"type": "button"},
+        }
+        walk = {
+            "screen-1": {"x": 0, "y": 0, "width": 400, "height": 800, "rotation": 0},
+            "card-1": {"x": 10, "y": 20, "width": 380, "height": 200, "rotation": 0},
+            "button-1": {"x": 150, "y": 160, "width": 100, "height": 40, "rotation": 0},
+        }
+        anns, id_to_eid = build_som_annotations(ir, walk)
+        # screen excluded by default (root, not a semantic component)
+        assert len(anns) == 2
+        assert all(
+            set(a.keys()) >= {"id", "x", "y", "w", "h", "rotation"}
+            for a in anns
+        )
+        # id_to_eid maps mark integer → IR eid
+        assert {id_to_eid[a["id"]] for a in anns} == {"card-1", "button-1"}
+
+    def test_missing_bbox_fields_default_to_zero(self) -> None:
+        """Walks without x/y (pre-change payloads) should not crash —
+        annotations fall back to 0. Callers can detect and skip."""
+        ir = {"card-1": {"type": "card"}}
+        walk = {"card-1": {"width": 100, "height": 50}}
+        anns, _ = build_som_annotations(ir, walk)
+        assert len(anns) == 1
+        assert anns[0]["x"] == 0
+        assert anns[0]["y"] == 0
+        assert anns[0]["w"] == 100
+        assert anns[0]["h"] == 50
+
+    def test_exclude_types_filters_annotations(self) -> None:
+        ir = {
+            "screen-1": {"type": "screen"},
+            "frame-1": {"type": "frame"},
+            "button-1": {"type": "button"},
+        }
+        walk = {
+            "screen-1": {"x": 0, "y": 0, "width": 400, "height": 800},
+            "frame-1": {"x": 0, "y": 0, "width": 100, "height": 50},
+            "button-1": {"x": 10, "y": 20, "width": 80, "height": 30},
+        }
+        anns, id_to_eid = build_som_annotations(
+            ir, walk, exclude_types=frozenset({"screen", "frame"}),
+        )
+        assert len(anns) == 1
+        assert id_to_eid[anns[0]["id"]] == "button-1"
+
+    def test_unrendered_elements_skipped(self) -> None:
+        """IR elements absent from the walk (Phase-2 orphan, leaf parent
+        violation, etc.) can't be marked. Skip them cleanly."""
+        ir = {
+            "card-1": {"type": "card"},
+            "orphan-1": {"type": "button"},
+        }
+        walk = {
+            "card-1": {"x": 0, "y": 0, "width": 100, "height": 50},
+            # no orphan-1 in walk
+        }
+        anns, id_to_eid = build_som_annotations(ir, walk)
+        assert len(anns) == 1
+        assert id_to_eid[anns[0]["id"]] == "card-1"
+
+
+class TestComputeCoverageFromTypes:
+    """Pure bag-match over expected/detected canonical types."""
+
+    def test_perfect_match(self) -> None:
+        precision, recall, info = compute_coverage_from_types(
+            expected=["button", "text_input", "link"],
+            detected=["button", "text_input", "link"],
+        )
+        assert precision == 1.0
+        assert recall == 1.0
+
+    def test_missing_one_reduces_recall_only(self) -> None:
+        precision, recall, info = compute_coverage_from_types(
+            expected=["button", "text_input", "link"],
+            detected=["button", "text_input"],
+        )
+        assert precision == 1.0  # both detected match
+        assert recall == pytest.approx(2 / 3)
+
+    def test_hallucinated_extra_reduces_precision_only(self) -> None:
+        precision, recall, info = compute_coverage_from_types(
+            expected=["button", "link"],
+            detected=["button", "link", "text_input"],
+        )
+        assert precision == pytest.approx(2 / 3)
+        assert recall == 1.0
+
+    def test_duplicate_types_bag_matched(self) -> None:
+        """Login has 2 text_inputs; if SoM sees only 1, recall
+        should reflect that (bag-match, not set-match)."""
+        precision, recall, info = compute_coverage_from_types(
+            expected=["text_input", "text_input", "button"],
+            detected=["text_input", "button"],
+        )
+        # 2 matches (1 text_input + 1 button) out of 2 detected + 3 expected
+        assert precision == 1.0
+        assert recall == pytest.approx(2 / 3)
+
+    def test_unsure_and_container_excluded_from_detected(self) -> None:
+        """SoM's sentinel classifications should not count as detection
+        (they signal unknown), else precision gets gamed."""
+        precision, recall, info = compute_coverage_from_types(
+            expected=["button", "link"],
+            detected=["button", "unsure", "container"],
+        )
+        # After exclude: detected = [button] → precision 1/1, recall 1/2
+        assert precision == 1.0
+        assert recall == 0.5
+
+    def test_empty_expected_is_noop(self) -> None:
+        precision, recall, info = compute_coverage_from_types(
+            expected=[], detected=["button"],
+        )
+        # no expectation → recall undefined; return 1.0 skip
+        assert recall == 1.0
+        # detected has stuff but nothing to match → precision 0
+        assert precision == 0.0
+
+    def test_info_exposes_match_counts(self) -> None:
+        _, _, info = compute_coverage_from_types(
+            expected=["button", "link", "text_input"],
+            detected=["button", "link"],
+        )
+        assert info["matches"] == 2
+        assert info["expected_count"] == 3
+        assert info["detected_count"] == 2
+        assert "missing" in info
+        assert info["missing"].get("text_input") == 1
+
+
+class TestScoreComponentCoverage:
+    """Top-level dim: emits two DimensionScore (precision + recall)
+    from IR + SoM classifications + walk bboxes."""
+
+    def test_perfect_match_both_dims_pass(self) -> None:
+        ir = {
+            "screen-1": {"type": "screen"},
+            "button-1": {"type": "button"},
+            "text-1": {"type": "text"},
+        }
+        walk = {
+            "screen-1": {"x": 0, "y": 0, "width": 400, "height": 800},
+            "button-1": {"x": 10, "y": 10, "width": 100, "height": 40},
+            "text-1": {"x": 10, "y": 60, "width": 100, "height": 20},
+        }
+        # Simulate SoM classifications; mark_id sequential from
+        # build_som_annotations' ordering.
+        anns, id_to_eid = build_som_annotations(ir, walk)
+        classifications = [
+            {"mark_id": anns[0]["id"], "canonical_type":
+             ir[id_to_eid[anns[0]["id"]]]["type"], "confidence": 0.9},
+            {"mark_id": anns[1]["id"], "canonical_type":
+             ir[id_to_eid[anns[1]["id"]]]["type"], "confidence": 0.9},
+        ]
+        prec, rec = score_component_coverage(
+            ir_elements=ir,
+            walk_eid_map=walk,
+            classifications=classifications,
+        )
+        assert prec.value == 1.0 and prec.passed is True
+        assert rec.value == 1.0 and rec.passed is True
+        assert prec.name == "component_precision"
+        assert rec.name == "component_recall"
+
+    def test_mismatch_reduces_precision_and_recall(self) -> None:
+        ir = {
+            "screen-1": {"type": "screen"},
+            "button-1": {"type": "button"},
+            "link-1": {"type": "link"},
+        }
+        walk = {
+            "screen-1": {"x": 0, "y": 0, "width": 400, "height": 800},
+            "button-1": {"x": 10, "y": 10, "width": 100, "height": 40},
+            "link-1": {"x": 10, "y": 60, "width": 100, "height": 20},
+        }
+        anns, id_to_eid = build_som_annotations(ir, walk)
+        # Both SoM calls misfire: button → text_input, link → unsure.
+        # Expected bag: [button, link]. Detected bag (after unsure-
+        # filter): [text_input]. Matches: 0.
+        classifications = [
+            {"mark_id": a["id"], "canonical_type": "text_input"
+             if id_to_eid[a["id"]] == "button-1" else "unsure",
+             "confidence": 0.5}
+            for a in anns
+        ]
+        prec, rec = score_component_coverage(
+            ir_elements=ir,
+            walk_eid_map=walk,
+            classifications=classifications,
+        )
+        assert prec.passed is False
+        assert rec.passed is False
+
+    def test_no_expected_types_is_graceful(self) -> None:
+        """IR with only a screen root → nothing to match. Both dims
+        pass-through (1.0) rather than /0."""
+        ir = {"screen-1": {"type": "screen"}}
+        walk = {"screen-1": {"x": 0, "y": 0, "width": 400, "height": 800}}
+        prec, rec = score_component_coverage(
+            ir_elements=ir,
+            walk_eid_map=walk,
+            classifications=[],
+        )
+        assert prec.value == 1.0 and prec.passed is True
+        assert rec.value == 1.0 and rec.passed is True
+        assert "skip" in prec.diagnostic.lower()
 
 
 class TestScoreFidelityAggregate:

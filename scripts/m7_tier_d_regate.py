@@ -69,11 +69,18 @@ class RegateResult:
     vlm_score: int = 0
     vlm_verdict: str = "unknown"
     vlm_reason: str = ""
+    # SoM component coverage (D2 per scorer-calibration research)
+    som_ran: bool = False
+    som_precision: float = 0.0
+    som_recall: float = 0.0
+    som_classifications: list[dict] = field(default_factory=list)
+    som_note: str = ""
     # timing
     compose_sec: float = 0.0
     walk_sec: float = 0.0
     screenshot_sec: float = 0.0
     vlm_sec: float = 0.0
+    som_sec: float = 0.0
     # diagnostics
     notes: str = ""
 
@@ -114,6 +121,7 @@ def run_one_regate(
     scope: str, prompt: str, *,
     conn, client, out_dir: Path, ws_port: int,
     gemini_api_key: str | None,
+    use_som: bool = True,
 ) -> RegateResult:
     from dd.compose import generate_from_prompt
     from dd.prompt_parser import parse_prompt
@@ -170,26 +178,9 @@ def run_one_regate(
         result.notes = f"walk bridge failed: {e}"[:200]
     result.walk_sec = time.monotonic() - t0
 
-    # -------------------- structural score --------------------
-    report = score_fidelity(
-        ir_elements=ir_elements,
-        walk_eid_map=walk_eid_map,
-        walk_errors=walk_errors,
-        root_eid=root_eid,
-    )
-    result.struct_score = report.to_ten(mode="min")
-    result.struct_passed = report.to_ten() >= 7.0
-    result.struct_dims = [
-        {
-            "name": d.name,
-            "value": round(d.value, 2),
-            "passed": d.passed,
-            "diagnostic": d.diagnostic[:160],
-        }
-        for d in report.dimensions
-    ]
-
     # -------------------- screenshot via bridge --------------------
+    # Shot first so SoM can consume the PNG. Structural score runs
+    # without the shot; we attach SoM dims to the report afterwards.
     png_path = scope_dir / "screenshot.png"
     t0 = time.monotonic()
     ok, err = _screenshot_via_bridge(script_path, png_path, ws_port)
@@ -201,7 +192,83 @@ def run_one_regate(
         result.notes = (result.notes + " | " if result.notes else "") + \
             f"screenshot: {err}"
 
-    # -------------------- VLM score --------------------
+    # -------------------- SoM coverage (D2) --------------------
+    som_classifications: list[dict] | None = None
+    if use_som and ok and walk_eid_map:
+        from dd.classify_vision_som import classify_screen_som
+        from dd.catalog import get_catalog
+        from dd.fidelity_score import build_som_annotations
+
+        t0 = time.monotonic()
+        try:
+            annotations, id_to_eid = build_som_annotations(
+                ir_elements, walk_eid_map,
+            )
+            (scope_dir / "som_annotations.json").write_text(
+                json.dumps({
+                    "annotations": annotations,
+                    "id_to_eid": id_to_eid,
+                }, indent=2)
+            )
+            if annotations:
+                catalog = get_catalog(conn)
+                # screen_width/height = rendered root's dims (anchors
+                # SoM's scale factor against the PNG).
+                root_walk = walk_eid_map.get(root_eid) or {}
+                scr_w = float(root_walk.get("width") or 428)
+                scr_h = float(root_walk.get("height") or 926)
+                png_bytes = png_path.read_bytes()
+                som_classifications = classify_screen_som(
+                    screen_png=png_bytes,
+                    annotations=annotations,
+                    client=client,
+                    catalog=catalog,
+                    screen_width=scr_w,
+                    screen_height=scr_h,
+                )
+                (scope_dir / "som_classifications.json").write_text(
+                    json.dumps(som_classifications, indent=2)
+                )
+                result.som_ran = True
+                result.som_classifications = [
+                    {**c, "eid": id_to_eid.get(c.get("mark_id", -1))}
+                    for c in som_classifications
+                ]
+            else:
+                result.som_note = "no annotations built (only excluded types in IR)"
+        except Exception as e:  # noqa: BLE001
+            result.som_note = f"SoM error: {e}"[:300]
+        result.som_sec = time.monotonic() - t0
+    elif not use_som:
+        result.som_note = "SoM skipped via flag"
+
+    # -------------------- structural + SoM score --------------------
+    report = score_fidelity(
+        ir_elements=ir_elements,
+        walk_eid_map=walk_eid_map,
+        walk_errors=walk_errors,
+        root_eid=root_eid,
+        som_classifications=som_classifications,
+    )
+    result.struct_score = report.to_ten(mode="min")
+    result.struct_passed = report.to_ten() >= 7.0
+    result.struct_dims = [
+        {
+            "name": d.name,
+            "value": round(d.value, 2),
+            "passed": d.passed,
+            "diagnostic": d.diagnostic[:200],
+        }
+        for d in report.dimensions
+    ]
+    # Surface SoM precision + recall at the top level for fast scan.
+    for d in report.dimensions:
+        if d.name == "component_precision":
+            result.som_precision = round(d.value, 2)
+        if d.name == "component_recall":
+            result.som_recall = round(d.value, 2)
+
+    # -------------------- VLM 1-10 score (legacy comparator) --------
     if ok and gemini_api_key:
         from dd.visual_inspect import inspect_screenshot
         t0 = time.monotonic()
@@ -233,6 +300,14 @@ def main(argv: list[str] | None = None) -> int:
         "--scopes", nargs="*", default=None,
         help="Subset of scopes to run (default: all 3).",
     )
+    parser.add_argument(
+        "--no-som", action="store_true",
+        help="Skip the SoM component-coverage pass (D2).",
+    )
+    parser.add_argument(
+        "--no-vlm", action="store_true",
+        help="Skip the legacy Gemini 1-10 VLM rating.",
+    )
     args = parser.parse_args(argv)
 
     if not Path(args.db).exists():
@@ -242,10 +317,10 @@ def main(argv: list[str] | None = None) -> int:
         print("ANTHROPIC_API_KEY not set.", file=sys.stderr)
         return 1
 
-    gemini_key = os.environ.get("GOOGLE_API_KEY")
-    if not gemini_key:
+    gemini_key = os.environ.get("GOOGLE_API_KEY") if not args.no_vlm else None
+    if gemini_key is None and not args.no_vlm:
         print(
-            "WARN: GOOGLE_API_KEY not set — VLM dimension will be skipped.",
+            "WARN: GOOGLE_API_KEY not set — legacy VLM rating will be skipped.",
             file=sys.stderr,
         )
 
@@ -272,17 +347,29 @@ def main(argv: list[str] | None = None) -> int:
                 scope, prompt, conn=conn, client=client,
                 out_dir=out_dir, ws_port=args.ws_port,
                 gemini_api_key=gemini_key,
+                use_som=not args.no_som,
             )
             results.append(r)
             print(
                 f"  compose={r.compose_sec:.1f}s "
                 f"walk={r.walk_sec:.1f}s "
                 f"shot={r.screenshot_sec:.1f}s "
+                f"som={r.som_sec:.1f}s "
                 f"vlm={r.vlm_sec:.1f}s"
             )
             print(
-                f"  struct={r.struct_score:.1f}/10 passed={r.struct_passed} "
-                f"| vlm={r.vlm_score}/10 verdict={r.vlm_verdict}"
+                f"  struct={r.struct_score:.1f}/10 passed={r.struct_passed}"
+            )
+            if r.som_ran:
+                print(
+                    f"  SoM: precision={r.som_precision:.2f} "
+                    f"recall={r.som_recall:.2f}"
+                )
+            elif r.som_note:
+                print(f"  SoM: {r.som_note}")
+            print(
+                f"  VLM(1-10): score={r.vlm_score}/10 "
+                f"verdict={r.vlm_verdict}"
             )
             if r.notes:
                 print(f"  NOTE: {r.notes}")
@@ -292,14 +379,20 @@ def main(argv: list[str] | None = None) -> int:
         conn.close()
 
     # -------------------- summary --------------------
-    print("\n" + "=" * 72)
-    print(f"{'scope':20s} {'struct':>8s} {'vlm':>8s} {'verdict':>10s} {'screenshot':>12s}")
-    print("-" * 72)
+    print("\n" + "=" * 84)
+    print(
+        f"{'scope':20s} {'struct':>8s} {'SoM-P':>6s} {'SoM-R':>6s} "
+        f"{'VLM':>6s} {'verdict':>10s} {'shot':>6s}"
+    )
+    print("-" * 84)
     for r in results:
         shot = "ok" if r.screenshot_ok else "FAIL"
+        som_p = f"{r.som_precision:.2f}" if r.som_ran else "  — "
+        som_r = f"{r.som_recall:.2f}" if r.som_ran else "  — "
         print(
-            f"{r.scope:20s} {r.struct_score:>7.1f}  "
-            f"{r.vlm_score:>6}/10  {r.vlm_verdict:>10s}  {shot:>12s}"
+            f"{r.scope:20s} {r.struct_score:>7.1f} {som_p:>6s} "
+            f"{som_r:>6s} {r.vlm_score:>4}/10 "
+            f"{r.vlm_verdict:>10s} {shot:>6s}"
         )
 
     # -------------------- divergence diagnostic --------------------

@@ -9,15 +9,28 @@
 //     __ok: true,
 //     errors: [...],
 //     rendered_root: "<figma-node-id>",
+//     rendered_root_width, rendered_root_height,
 //     eid_map: {
 //       "<eid>": {
 //         type: "<FIGMA_TYPE>",
 //         name, width, height,
+//         x, y,                              // post-rotation AABB TL, relative to root TL
+//         rotation,                          // radians (0 for non-rotated)
 //         characters, textAutoResize,        // TEXT only
 //         fillGeometryCount, strokeGeometryCount,  // VECTOR / BOOLEAN_OPERATION
 //       }
 //     }
 //   }
+//
+// x / y / rotation were added 2026-04-21 to support SoM-based
+// component-coverage fidelity scoring (docs/research/scorer-calibration
+// -and-som-fidelity.md). `dd/classify_vision_som.py`'s annotations
+// format expects: {id, x, y, w, h, rotation} where x/y are post-rotation
+// AABB TL relative to the screenshot's origin (which is the rendered
+// root's TL for the screenshot we export). rotation is radians.
+//
+// Additive change only — existing consumers reading width/height/fills
+// are unaffected; the new fields are present but ignored by them.
 
 // Resolve `ws` via Node module resolution (see package.json).
 const WebSocket = require('ws');
@@ -66,6 +79,13 @@ for (const k of Object.keys(M)) {
 const rootId = M['screen-1'] || (__page.children[0] && __page.children[0].id);
 const rootNode = rootId ? await figma.getNodeByIdAsync(rootId) : null;
 
+// Capture the root's absolute bounding box so per-node x/y can be
+// emitted relative to it. exportAsync renders a PNG whose origin is
+// the root's TL, so screenshot-relative coords == root-relative coords.
+const rootAbs = rootNode && rootNode.absoluteBoundingBox
+  ? rootNode.absoluteBoundingBox
+  : null;
+
 const eid_map = {};
 if (rootNode) {
   const stack = [rootNode];
@@ -79,6 +99,32 @@ if (rootNode) {
         width: n.width,
         height: n.height,
       };
+      // Post-rotation AABB TL relative to the root's TL. When either
+      // absoluteBoundingBox is null (unusual — detached node), we fall
+      // back to 0,0 so downstream consumers don't see NaN, but flag via
+      // the diagnostic channel for auditability.
+      try {
+        const ab = n.absoluteBoundingBox;
+        if (ab && rootAbs) {
+          entry.x = ab.x - rootAbs.x;
+          entry.y = ab.y - rootAbs.y;
+        } else {
+          entry.x = 0;
+          entry.y = 0;
+        }
+      } catch (_) {
+        entry.x = 0;
+        entry.y = 0;
+      }
+      // Figma's node.rotation is in degrees; classify_vision_som
+      // render_som_overlay wants radians. Convert here so downstream
+      // consumers do not need to know the Figma-specific unit.
+      try {
+        const deg = (typeof n.rotation === 'number') ? n.rotation : 0;
+        entry.rotation = deg * Math.PI / 180;
+      } catch (_) {
+        entry.rotation = 0;
+      }
       if (n.type === 'TEXT') {
         entry.characters = n.characters || '';
         entry.textAutoResize = n.textAutoResize;
@@ -131,6 +177,8 @@ return {
   __ok: true,
   errors: M['__errors'] || [],
   rendered_root: rootId,
+  rendered_root_width: rootNode ? rootNode.width : 0,
+  rendered_root_height: rootNode ? rootNode.height : 0,
   eid_map,
 };
 `;

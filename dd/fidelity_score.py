@@ -537,6 +537,254 @@ def score_leaf_type_structural(
 
 
 # ---------------------------------------------------------------
+# Dimensions 8 + 9: SoM-based component coverage (precision + recall)
+# ---------------------------------------------------------------
+#
+# Per docs/research/scorer-calibration-and-som-fidelity.md §4 (D2):
+# replace the noisy 1-10 Gemini "rate the screenshot" pass with a
+# structured enum-constrained classification over rendered regions,
+# compared against the IR's declared canonical types.
+#
+# Pattern matches GenEval (NeurIPS 2023, 83% human agreement on
+# natural images) and Design2Code Block-Match (ACL 2025 for HTML
+# screenshot-to-code). Our substrate is SoM classification over our
+# 54+ canonical UI catalog — the unpublished combination.
+#
+# Split into three pure/testable pieces:
+# 1. ``build_som_annotations`` — IR + walk bboxes → SoM annotations
+# 2. ``compute_coverage_from_types`` — bag-match expected vs detected
+#    → (precision, recall, info)
+# 3. ``score_component_coverage`` — top-level dim pair; takes SoM
+#    classifications (either precomputed or via an injectable call)
+
+# Types excluded by default when building expected / detected bags.
+# - ``screen``: the root; generic, not a semantic component.
+# - ``frame``: structural wrapper with no declared semantic type.
+# - ``container``: SoM sentinel for abstract groupings.
+# - ``unsure``: SoM sentinel for ambiguous regions.
+_DEFAULT_COVERAGE_EXCLUDE: frozenset[str] = frozenset({
+    "screen", "frame", "container", "unsure",
+})
+
+
+def build_som_annotations(
+    ir_elements: dict[str, Any],
+    walk_eid_map: dict[str, Any],
+    *,
+    exclude_types: frozenset[str] = _DEFAULT_COVERAGE_EXCLUDE,
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    """Build SoM annotations from IR + walk bboxes.
+
+    Annotation format matches ``dd.classify_vision_som.render_som_overlay``:
+    ``{id: int, x, y, w, h, rotation}``. ``id`` is a sequential mark
+    index; ``id_to_eid`` maps it back to the IR eid so callers can
+    correlate classifications with the IR's declared type.
+
+    Elements whose ``type`` is in ``exclude_types`` (screen root, frame
+    wrappers, sentinel-like terms) are skipped — SoM shouldn't be
+    asked to classify structural shells as semantic components.
+
+    Elements absent from the walk are skipped silently (the walker
+    couldn't render them; nothing to mark).
+    """
+    annotations: list[dict[str, Any]] = []
+    id_to_eid: dict[int, str] = {}
+    mark_id = 1
+    for eid, elem in ir_elements.items():
+        etype = (elem.get("type") or "").lower()
+        if etype in exclude_types:
+            continue
+        walked = walk_eid_map.get(eid)
+        if not walked:
+            continue
+        annotations.append({
+            "id": mark_id,
+            "x": float(walked.get("x") or 0),
+            "y": float(walked.get("y") or 0),
+            "w": float(walked.get("width") or 0),
+            "h": float(walked.get("height") or 0),
+            "rotation": float(walked.get("rotation") or 0),
+        })
+        id_to_eid[mark_id] = eid
+        mark_id += 1
+    return annotations, id_to_eid
+
+
+def compute_coverage_from_types(
+    expected: list[str],
+    detected: list[str],
+    *,
+    exclude: frozenset[str] = _DEFAULT_COVERAGE_EXCLUDE,
+) -> tuple[float, float, dict[str, Any]]:
+    """Bag-match expected vs detected canonical-type lists.
+
+    Returns ``(precision, recall, info)`` where:
+    - ``precision = matches / max(1, |detected|)``
+    - ``recall    = matches / max(1, |expected|)``
+    - ``info`` carries match counts + the missing-type histogram for
+      diagnostic display.
+
+    Types in ``exclude`` are filtered from BOTH sides before matching
+    (screen roots, frame wrappers, SoM sentinels).
+
+    When ``expected`` is empty, recall returns 1.0 (skip — nothing
+    to match against). Precision is computed against detected as
+    usual, which correctly flags "SoM saw stuff, IR expected nothing"
+    as 0 unless detected is also empty.
+    """
+    from collections import Counter
+
+    exp_filtered = [t.lower() for t in expected if t and t.lower() not in exclude]
+    det_filtered = [t.lower() for t in detected if t and t.lower() not in exclude]
+
+    exp_ct = Counter(exp_filtered)
+    det_ct = Counter(det_filtered)
+
+    matches = 0
+    for t, n in det_ct.items():
+        matches += min(n, exp_ct.get(t, 0))
+
+    # Diagnostic: what we expected but didn't see.
+    missing: dict[str, int] = {}
+    for t, n in exp_ct.items():
+        deficit = n - det_ct.get(t, 0)
+        if deficit > 0:
+            missing[t] = deficit
+
+    # Diagnostic: what we saw but didn't expect.
+    extra: dict[str, int] = {}
+    for t, n in det_ct.items():
+        surplus = n - exp_ct.get(t, 0)
+        if surplus > 0:
+            extra[t] = surplus
+
+    if len(exp_filtered) == 0:
+        recall = 1.0
+    else:
+        recall = matches / len(exp_filtered)
+
+    if len(det_filtered) == 0:
+        precision = 1.0 if len(exp_filtered) == 0 else 0.0
+    else:
+        precision = matches / len(det_filtered)
+
+    info = {
+        "matches": matches,
+        "expected_count": len(exp_filtered),
+        "detected_count": len(det_filtered),
+        "missing": missing,
+        "extra": extra,
+    }
+    return precision, recall, info
+
+
+def score_component_coverage(
+    ir_elements: dict[str, Any],
+    walk_eid_map: dict[str, Any],
+    *,
+    classifications: list[dict[str, Any]],
+    exclude_types: frozenset[str] = _DEFAULT_COVERAGE_EXCLUDE,
+    pass_threshold: float = 0.7,
+) -> tuple[DimensionScore, DimensionScore]:
+    """Emit ``(component_precision, component_recall)`` from IR +
+    SoM-classified regions.
+
+    ``classifications`` is the list returned by
+    ``dd.classify_vision_som.classify_screen_som`` (or an equivalent
+    shape from a test fixture): ``[{mark_id, canonical_type, ...}]``.
+    The caller is responsible for running the SoM pass; this keeps
+    the dim fast to unit-test without mocking a Claude client.
+
+    Empty-IR case: both dims skip (1.0) — no expectations, nothing
+    to measure. The caller should gate with other dims to catch
+    "nothing rendered" separately.
+
+    ``pass_threshold`` default 0.7 matches GenEval / Design2Code
+    practice (~80% target; 70% is the pass band we use elsewhere).
+    """
+    # Expected types: each non-excluded IR element's declared type.
+    expected: list[str] = []
+    for eid, elem in ir_elements.items():
+        etype = (elem.get("type") or "").lower()
+        if etype in exclude_types:
+            continue
+        # Only count elements that were actually rendered (else we
+        # over-penalize: if the renderer dropped an element, it's
+        # already captured by coverage dim).
+        if eid not in walk_eid_map:
+            continue
+        expected.append(etype)
+
+    detected: list[str] = [
+        (c.get("canonical_type") or "").lower()
+        for c in classifications
+        if c.get("canonical_type")
+    ]
+
+    if not expected and not detected:
+        return (
+            DimensionScore(
+                name="component_precision",
+                value=1.0, passed=True,
+                diagnostic="no expected + no detected (dim skipped)",
+            ),
+            DimensionScore(
+                name="component_recall",
+                value=1.0, passed=True,
+                diagnostic="no expected + no detected (dim skipped)",
+            ),
+        )
+
+    if not expected:
+        return (
+            DimensionScore(
+                name="component_precision",
+                value=1.0, passed=True,
+                diagnostic="no expected (dim skipped)",
+            ),
+            DimensionScore(
+                name="component_recall",
+                value=1.0, passed=True,
+                diagnostic="no expected (dim skipped)",
+            ),
+        )
+
+    precision, recall, info = compute_coverage_from_types(
+        expected=expected,
+        detected=detected,
+        exclude=exclude_types,
+    )
+
+    def _diag(value: float, label: str, info: dict[str, Any]) -> str:
+        parts = [
+            f"{info['matches']}/{info['detected_count']} detected match "
+            f"expected ({info['expected_count']} expected)",
+        ]
+        if info.get("missing"):
+            miss = ", ".join(f"{k}×{v}" for k, v in list(info["missing"].items())[:3])
+            parts.append(f"missing: {miss}")
+        if info.get("extra"):
+            ex = ", ".join(f"{k}×{v}" for k, v in list(info["extra"].items())[:3])
+            parts.append(f"extra: {ex}")
+        return f"{label}={value:.2f}; " + "; ".join(parts)
+
+    return (
+        DimensionScore(
+            name="component_precision",
+            value=precision,
+            passed=precision >= pass_threshold,
+            diagnostic=_diag(precision, "precision", info),
+        ),
+        DimensionScore(
+            name="component_recall",
+            value=recall,
+            passed=recall >= pass_threshold,
+            diagnostic=_diag(recall, "recall", info),
+        ),
+    )
+
+
+# ---------------------------------------------------------------
 # Aggregate scorer
 # ---------------------------------------------------------------
 
@@ -549,6 +797,7 @@ def score_fidelity(
     root_eid: str | None = None,
     vlm_score: Optional[DimensionScore] = None,
     coverage_threshold: float = 0.8,
+    som_classifications: Optional[list[dict[str, Any]]] = None,
 ) -> FidelityReport:
     """Run all structural dimensions + optional VLM. Returns a
     ``FidelityReport`` the caller can aggregate or filter.
@@ -567,21 +816,32 @@ def score_fidelity(
         # should pass an explicit root_eid.
         root_eid = next(iter(ir_elements), None)
 
+    dims = [
+        score_coverage(
+            ir_elements, walk_eid_map, threshold=coverage_threshold,
+        ),
+        score_rootedness(root_eid, walk_eid_map, walk_errors),
+        score_font_readiness(walk_errors),
+        score_component_child_consistency(walk_errors),
+        score_leaf_type_structural(ir_elements),
+        # Visual-plausibility dims — added 2026-04-21 to catch the
+        # Tier-D subtree case where structural dims all pass on a
+        # visually-blank output.
+        score_canvas_coverage(root_eid, ir_elements, walk_eid_map),
+        score_content_richness(walk_eid_map),
+    ]
+    # SoM-based component coverage — opt-in via precomputed
+    # classifications. Caller runs the SoM pass; see
+    # docs/research/scorer-calibration-and-som-fidelity.md §D2.
+    if som_classifications is not None:
+        prec, rec = score_component_coverage(
+            ir_elements=ir_elements,
+            walk_eid_map=walk_eid_map,
+            classifications=som_classifications,
+        )
+        dims.extend([prec, rec])
     return FidelityReport(
-        dimensions=[
-            score_coverage(
-                ir_elements, walk_eid_map, threshold=coverage_threshold,
-            ),
-            score_rootedness(root_eid, walk_eid_map, walk_errors),
-            score_font_readiness(walk_errors),
-            score_component_child_consistency(walk_errors),
-            score_leaf_type_structural(ir_elements),
-            # Visual-plausibility dims — added 2026-04-21 to catch the
-            # Tier-D subtree case where structural dims all pass on a
-            # visually-blank output.
-            score_canvas_coverage(root_eid, ir_elements, walk_eid_map),
-            score_content_richness(walk_eid_map),
-        ],
+        dimensions=dims,
         vlm_dimension=vlm_score,
     )
 
