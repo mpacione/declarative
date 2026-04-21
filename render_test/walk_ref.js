@@ -138,9 +138,20 @@ return {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket('ws://localhost:' + port);
     const id = 'walk_' + Date.now();
-    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 180000);
+    // Timeout is configurable via BRIDGE_TIMEOUT_MS env var (applies
+    // to both the PROXY_EXECUTE server-side timeout sent to the
+    // Figma plugin AND the WebSocket client-side watchdog). Default
+    // 170000ms — plugin-side enforced timeout is 170s, and the
+    // watchdog gives a 10s tail for JSON write + disconnect. Tier E.5
+    // env-config fix for `feedback_sweep_transient_timeouts.md`'s
+    // cumulative-plugin-load hazard; iPad-sized screens under heavy
+    // plugin load can legitimately need 300-600s — export
+    // BRIDGE_TIMEOUT_MS=500000 in those cases.
+    const proxyTimeoutMs = parseInt(process.env.BRIDGE_TIMEOUT_MS || '170000', 10);
+    const watchdogMs = proxyTimeoutMs + 10000;
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, watchdogMs);
     ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'PROXY_EXECUTE', id, code: wrapped, timeout: 170000 }));
+      ws.send(JSON.stringify({ type: 'PROXY_EXECUTE', id, code: wrapped, timeout: proxyTimeoutMs }));
     });
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString());

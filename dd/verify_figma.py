@@ -206,6 +206,17 @@ class FigmaRenderVerifier:
                         f"render produced FRAME (ADR-007 Defect 1)"
                     ),
                     context={"ir_type": ir_type, "rendered_type": rendered_type},
+                    hint=(
+                        f"@{eid} is classified as {ir_type} and is "
+                        "Mode-1 eligible, but the render degraded to "
+                        "FRAME. Likely the library component went "
+                        "missing or the CKR lookup failed. Options: "
+                        f"(a) `swap @{eid} with=-> <known-master>` "
+                        "to a valid library component; (b) check the "
+                        "CKR is populated (`component_key_registry` "
+                        "table); (c) delete the node if its semantic "
+                        "classification was wrong."
+                    ),
                 ))
                 continue
 
