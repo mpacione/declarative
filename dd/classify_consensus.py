@@ -56,7 +56,14 @@ UNSURE = "unsure"
 # Rule v2 source weights. Derived from the 2026-04-20 full-corpus
 # run: Vision CS was ~17 pts more accurate than PS/LLM on the
 # user's `accept_source` review corpus. Later found to over-fit.
-V2_WEIGHTS = {"llm": 1, "vision_ps": 1, "vision_cs": 2}
+# 2026-04-21: vision_som added as 4th source at weight 2 (equal to
+# CS). Adjudication on full-corpus showed SoM winning 62-69% of
+# head-to-head disagreements against PS, so it earns tied-top
+# weight with CS. Calibrated weights (rule v3) are the right long-
+# term answer; this is a sane starting point.
+V2_WEIGHTS = {
+    "llm": 1, "vision_ps": 1, "vision_cs": 2, "vision_som": 2,
+}
 
 # Rule v3 defaults. Laplace smoothing strength; higher α pulls
 # low-sample weights harder toward 0.5.
@@ -72,57 +79,79 @@ def compute_consensus_v1(
     llm_type: str | None,
     vision_ps_type: str | None,
     vision_cs_type: str | None,
+    vision_som_type: str | None = None,
 ) -> tuple[str | None, str, bool]:
-    """Apply rule v1 to three source verdicts.
+    """Apply rule v1 to up to four source verdicts.
 
     Returns ``(canonical_type, consensus_method, flagged_for_review)``.
 
     Arguments may be ``None`` when a source didn't produce a verdict
     (stage skipped, model failed to emit a parseable tool_use, network
-    error, etc.). Rule v1 doesn't interrogate confidence — rule v2
-    will.
+    error, etc.). ``vision_som_type`` is the newest source and
+    defaults to None so pre-SoM callers / tests keep working.
+
+    Rule v1 with N sources (plurality, tie flags):
+      - 0 present → flag (no sources)
+      - any unsure → flag (any_unsure)
+      - 1 present → single_source (flag iff unsure)
+      - 2+ present → plurality wins IFF strictly greater than
+        runner-up; equal top counts flag as two_way / multi_way
+        disagreement.
     """
-    verdicts = [llm_type, vision_ps_type, vision_cs_type]
-    present = [v for v in verdicts if v is not None]
+    verdicts = {
+        "llm": llm_type,
+        "vision_ps": vision_ps_type,
+        "vision_cs": vision_cs_type,
+        "vision_som": vision_som_type,
+    }
+    present = {k: v for k, v in verdicts.items() if v is not None}
 
     if not present:
         return (None, "no_sources", True)
 
-    if len(present) == 1:
-        only = present[0]
-        return (only, "single_source", only == UNSURE)
-
-    if len(present) == 2:
-        a, b = present
-        if a == UNSURE or b == UNSURE:
-            return (UNSURE, "any_unsure", True)
-        if a == b:
-            return (a, "two_source_unanimous", False)
-        return (UNSURE, "two_way_disagreement", True)
-
-    # Three sources present — the canonical rule v1 branches. Order
-    # matters: `any_unsure` is checked FIRST so "unanimous on unsure"
-    # still flags for review. `unsure` as a final type always means
-    # "needs review"; treating it as an agreement would silently bury
-    # low-confidence cases.
-    a, b, c = present
-    if UNSURE in (a, b, c):
+    if any(v == UNSURE for v in present.values()):
+        if len(present) == 1:
+            return (UNSURE, "single_source", True)
         return (UNSURE, "any_unsure", True)
-    if a == b == c:
-        return (a, "unanimous", False)
-    if a == b or a == c:
-        return (a, "majority", False)
-    if b == c:
-        return (b, "majority", False)
-    return (UNSURE, "three_way_disagreement", True)
+
+    if len(present) == 1:
+        only = next(iter(present.values()))
+        return (only, "single_source", False)
+
+    counts = Counter(present.values())
+    ranked = counts.most_common()
+    winner, winner_count = ranked[0]
+
+    if len(ranked) == 1:
+        method = "unanimous" if len(present) >= 3 else "two_source_unanimous"
+        return (winner, method, False)
+
+    runner_up_count = ranked[1][1]
+    if winner_count > runner_up_count:
+        method = "majority" if len(present) >= 3 else "two_source_unanimous"
+        return (winner, method, False)
+
+    # Tie at the top — disagree. Name the method by source count so
+    # downstream reporting can distinguish two-way from four-way.
+    disagreement_methods = {
+        2: "two_way_disagreement",
+        3: "three_way_disagreement",
+        4: "four_way_disagreement",
+    }
+    return (
+        UNSURE,
+        disagreement_methods.get(len(present), "multi_way_disagreement"),
+        True,
+    )
 
 
 def compute_consensus_v2(
     llm_type: str | None,
     vision_ps_type: str | None,
     vision_cs_type: str | None,
+    vision_som_type: str | None = None,
 ) -> tuple[str | None, str, bool]:
-    """Apply rule v2 (weighted) to three source verdicts.
+    """Apply rule v2 (weighted) to up to four source verdicts.
 
     Weights in ``V2_WEIGHTS``. A verdict wins if its total weight is
     strictly greater than the next highest; ties flag. ``unsure``
@@ -135,6 +164,7 @@ def compute_consensus_v2(
         "llm": llm_type,
         "vision_ps": vision_ps_type,
         "vision_cs": vision_cs_type,
+        "vision_som": vision_som_type,
     }
     present = {k: v for k, v in verdicts.items() if v is not None}
 
@@ -172,10 +202,12 @@ def compute_consensus_v3(
     llm_type: str | None,
     vision_ps_type: str | None,
     vision_cs_type: str | None,
+    vision_som_type: str | None = None,
     *,
     weights: WeightsTable,
 ) -> tuple[str | None, str, bool]:
-    """Apply rule v3 (per-type calibrated) to three source verdicts.
+    """Apply rule v3 (per-type calibrated) to up to four source
+    verdicts.
 
     Each ``(source, predicted_type)`` pair has a weight looked up from
     ``weights``. Missing entries default to ``V3_DEFAULT_WEIGHT``. If
@@ -190,6 +222,7 @@ def compute_consensus_v3(
         "llm": llm_type,
         "vision_ps": vision_ps_type,
         "vision_cs": vision_cs_type,
+        "vision_som": vision_som_type,
     }
     present = {k: v for k, v in verdicts.items() if v is not None}
 

@@ -63,6 +63,8 @@ class TestClassificationSchema:
             "vision_ps_type", "vision_ps_confidence", "vision_ps_reason",
             "vision_cs_type", "vision_cs_confidence", "vision_cs_reason",
             "vision_cs_evidence_json",
+            # Migration 017: SoM as 4th per-source verdict.
+            "vision_som_type", "vision_som_confidence", "vision_som_reason",
             "consensus_method",
             "created_at",
         }

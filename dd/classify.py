@@ -363,27 +363,29 @@ def apply_consensus_to_screen(
     orchestrator) can print a progress line.
     """
     if rule == "v1":
-        def compute(llm, ps, cs):
-            return compute_consensus_v1(llm, ps, cs)
+        def compute(llm, ps, cs, som):
+            return compute_consensus_v1(llm, ps, cs, som)
     elif rule == "v2":
-        def compute(llm, ps, cs):
-            return compute_consensus_v2(llm, ps, cs)
+        def compute(llm, ps, cs, som):
+            return compute_consensus_v2(llm, ps, cs, som)
     elif rule == "v3":
         w: WeightsTable = weights if weights is not None else {}
-        def compute(llm, ps, cs):
-            return compute_consensus_v3(llm, ps, cs, weights=w)
+        def compute(llm, ps, cs, som):
+            return compute_consensus_v3(llm, ps, cs, som, weights=w)
     else:
         raise ValueError(f"unknown consensus rule: {rule!r}")
 
     rows = conn.execute(
         "SELECT id, classification_source, canonical_type, "
-        "       llm_type, vision_ps_type, vision_cs_type "
+        "       llm_type, vision_ps_type, vision_cs_type, "
+        "       vision_som_type "
         "FROM screen_component_instances WHERE screen_id = ?",
         (screen_id,),
     ).fetchall()
 
     counts: dict[str, int] = {}
-    for sci_id, source, canonical_type, llm_type, ps_type, cs_type in rows:
+    for (sci_id, source, canonical_type, llm_type, ps_type, cs_type,
+         som_type) in rows:
         if source in ("formal", "heuristic"):
             conn.execute(
                 "UPDATE screen_component_instances "
@@ -399,7 +401,7 @@ def apply_consensus_to_screen(
         # written before migration 015 still work.
         llm_verdict = llm_type if llm_type is not None else canonical_type
         result_type, method, flagged = compute(
-            llm_verdict, ps_type, cs_type,
+            llm_verdict, ps_type, cs_type, som_type,
         )
         conn.execute(
             "UPDATE screen_component_instances "

@@ -559,6 +559,9 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     vision_cs_confidence  REAL,
     vision_cs_reason      TEXT,
     vision_cs_evidence_json TEXT,
+    vision_som_type       TEXT,
+    vision_som_confidence REAL,
+    vision_som_reason     TEXT,
     consensus_method      TEXT,
     created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, node_id)
