@@ -25,6 +25,13 @@ enough that real duplicates dedup. Keys used:
 - `component_key` — Figma master key (INSTANCE nodes). Two instances
   of different masters are never the same pattern regardless of
   displayed name.
+- `aspect_bucket` — tall / square / wide. Added 2026-04-20 after
+  dedup collapsed 6x32 sliver + 64x64 square under name "Frame 373";
+  vision's verdict on one didn't apply to the other.
+- `size_bucket` — tiny / small / medium / large (max of width,
+  height). Added same day for the Frame 362/366 case where 16x16
+  icon and 108x108 avatar both hit `square` aspect but obviously
+  aren't the same component.
 
 None values in any position are normalised (None ≡ "") so
 candidates with the same "nothing here" shape dedup.
@@ -33,7 +40,74 @@ candidates with the same "nothing here" shape dedup.
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Optional
+
+
+_ASPECT_TALL_MAX = 0.7
+_ASPECT_WIDE_MIN = 1.4
+
+_SIZE_TINY_MAX = 32
+_SIZE_SMALL_MAX = 96
+_SIZE_MEDIUM_MAX = 300
+
+
+def aspect_bucket(
+    width: Optional[float], height: Optional[float],
+) -> str:
+    """Coarse aspect-ratio bucket: tall | square | wide | unknown.
+
+    Thresholds:
+    - tall: width/height < 0.7 (catches 6x32 sliver)
+    - square: 0.7 ≤ ratio ≤ 1.4 (caters for near-square icons/avatars)
+    - wide: ratio > 1.4 (toolbar / bar patterns)
+    """
+    if not width or not height:
+        return "unknown"
+    try:
+        w = float(width)
+        h = float(height)
+    except (TypeError, ValueError):
+        return "unknown"
+    if w <= 0 or h <= 0:
+        return "unknown"
+    ratio = w / h
+    if ratio < _ASPECT_TALL_MAX:
+        return "tall"
+    if ratio > _ASPECT_WIDE_MIN:
+        return "wide"
+    return "square"
+
+
+def size_bucket(
+    width: Optional[float], height: Optional[float],
+) -> str:
+    """Coarse size bucket by max dimension: tiny | small | medium |
+    large | unknown.
+
+    Thresholds chosen to match the scale breakpoints in the Dank
+    corpus:
+    - tiny: max < 32 (inline icons / glyphs)
+    - small: 32 ≤ max < 96 (icon buttons / small avatars)
+    - medium: 96 ≤ max < 300 (cards / list rows / large avatars)
+    - large: ≥ 300 (banners / hero images / sections)
+    """
+    if not width or not height:
+        return "unknown"
+    try:
+        w = float(width)
+        h = float(height)
+    except (TypeError, ValueError):
+        return "unknown"
+    if w <= 0 or h <= 0:
+        return "unknown"
+    m = max(w, h)
+    if m < _SIZE_TINY_MAX:
+        return "tiny"
+    if m < _SIZE_SMALL_MAX:
+        return "small"
+    if m < _SIZE_MEDIUM_MAX:
+        return "medium"
+    return "large"
 
 
 def dedup_key(candidate: dict[str, Any]) -> tuple:
@@ -42,7 +116,8 @@ def dedup_key(candidate: dict[str, Any]) -> tuple:
     ``candidate`` is the same shape ``_fetch_unclassified_for_screen``
     emits: a dict with keys ``name``, ``node_type``,
     ``parent_classified_as``, ``child_type_dist``, ``sample_text``,
-    ``component_key``. Missing keys are treated as None / empty.
+    ``component_key``, ``width``, ``height``. Missing keys are
+    treated as None / empty.
     """
     name = candidate.get("name") or ""
     node_type = candidate.get("node_type") or ""
@@ -55,6 +130,14 @@ def dedup_key(candidate: dict[str, Any]) -> tuple:
     # doesn't matter.
     children_tuple = tuple(sorted(children.items()))
 
+    # Visual buckets — keep close-but-different geometry apart.
+    a_bucket = aspect_bucket(
+        candidate.get("width"), candidate.get("height"),
+    )
+    s_bucket = size_bucket(
+        candidate.get("width"), candidate.get("height"),
+    )
+
     return (
         name,
         node_type,
@@ -62,6 +145,8 @@ def dedup_key(candidate: dict[str, Any]) -> tuple:
         children_tuple,
         sample_text,
         component_key,
+        a_bucket,
+        s_bucket,
     )
 
 

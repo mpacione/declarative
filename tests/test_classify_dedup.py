@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from dd.classify_dedup import dedup_key, group_candidates
+from dd.classify_dedup import (
+    aspect_bucket, dedup_key, group_candidates, size_bucket,
+)
 
 
 def _mk_node(
@@ -22,6 +24,8 @@ def _mk_node(
     children: dict[str, int] | None = None,
     sample_text: str | None = None,
     component_key: str | None = None,
+    width: float | None = 100.0,
+    height: float | None = 100.0,
 ) -> dict:
     """Build a candidate-shaped dict like `_fetch_unclassified_for_screen`
     returns.
@@ -33,6 +37,8 @@ def _mk_node(
         "child_type_dist": children or {},
         "sample_text": sample_text,
         "component_key": component_key,
+        "width": width,
+        "height": height,
     }
 
 
@@ -147,6 +153,112 @@ class TestGroupCandidates:
         members = list(groups.values())[0]
         assert members[0] is x1
         assert members[-1] is x3
+
+
+class TestAspectBucket:
+    """Aspect ratio (width/height) bucketed into 3 coarse categories.
+    Solves the Frame 373 bug: 6x32 (aspect 0.19) collapsing with
+    square/wide 'Frame 373' instances whose verdict doesn't apply.
+    """
+
+    def test_very_tall_rectangle(self):
+        # aspect < 0.7 → "tall"
+        assert aspect_bucket(width=6, height=32) == "tall"
+        assert aspect_bucket(width=40, height=200) == "tall"
+
+    def test_square_ish(self):
+        # 0.7 ≤ aspect ≤ 1.4 → "square"
+        assert aspect_bucket(width=100, height=100) == "square"
+        assert aspect_bucket(width=108, height=108) == "square"
+        assert aspect_bucket(width=80, height=100) == "square"  # aspect 0.8
+        assert aspect_bucket(width=120, height=100) == "square"  # aspect 1.2
+
+    def test_wide_rectangle(self):
+        # aspect > 1.4 → "wide"
+        assert aspect_bucket(width=300, height=50) == "wide"
+        assert aspect_bucket(width=428, height=120) == "wide"
+
+    def test_zero_or_missing_dimensions_safe(self):
+        # Degenerate input shouldn't crash; bucket as "unknown".
+        assert aspect_bucket(width=0, height=100) == "unknown"
+        assert aspect_bucket(width=100, height=0) == "unknown"
+        assert aspect_bucket(width=None, height=100) == "unknown"
+        assert aspect_bucket(width=100, height=None) == "unknown"
+
+
+class TestSizeBucket:
+    """Max-dimension size bucket. Solves the Frame 366 / Frame 362 bug:
+    square 108x108 collapsing with square 16x16 — same aspect, very
+    different semantic (large content vs tiny icon).
+    """
+
+    def test_tiny(self):
+        # max dim < 32 → "tiny"
+        assert size_bucket(width=16, height=16) == "tiny"
+        assert size_bucket(width=24, height=24) == "tiny"
+
+    def test_small(self):
+        # 32 ≤ max dim < 96 → "small"
+        assert size_bucket(width=40, height=40) == "small"
+        assert size_bucket(width=64, height=32) == "small"
+
+    def test_medium(self):
+        # 96 ≤ max dim < 300 → "medium"
+        assert size_bucket(width=108, height=108) == "medium"
+        assert size_bucket(width=200, height=50) == "medium"
+
+    def test_large(self):
+        # max dim ≥ 300 → "large"
+        assert size_bucket(width=428, height=100) == "large"
+        assert size_bucket(width=400, height=400) == "large"
+
+    def test_zero_or_missing_dimensions_safe(self):
+        assert size_bucket(width=0, height=0) == "unknown"
+        assert size_bucket(width=None, height=100) == "unknown"
+        assert size_bucket(width=100, height=None) == "unknown"
+
+
+class TestDedupKeyVisualBuckets:
+    """dedup_key incorporates aspect + size buckets so visually-
+    different instances with the same structural signature no longer
+    collapse.
+    """
+
+    def test_same_name_different_aspect_split(self):
+        # Frame 373 bug: 6x32 (tall) vs 64x64 (square).
+        a = _mk_node(name="Frame 373", width=6, height=32)
+        b = _mk_node(name="Frame 373", width=64, height=64)
+        assert dedup_key(a) != dedup_key(b)
+
+    def test_same_name_different_size_split(self):
+        # Frame 362/366 bug: 16x16 (tiny square) vs 108x108 (medium sq).
+        a = _mk_node(name="Frame 362", width=16, height=16)
+        b = _mk_node(name="Frame 362", width=108, height=108)
+        assert dedup_key(a) != dedup_key(b)
+
+    def test_same_name_same_bucket_still_dedups(self):
+        # Two 100x100 squares still collapse.
+        a = _mk_node(name="Icon", width=100, height=100)
+        b = _mk_node(name="Icon", width=100, height=100)
+        assert dedup_key(a) == dedup_key(b)
+
+    def test_close_sizes_within_same_bucket_dedup(self):
+        # Both medium squares (108 and 120), dedup is desired.
+        a = _mk_node(name="Avatar", width=108, height=108)
+        b = _mk_node(name="Avatar", width=120, height=120)
+        assert dedup_key(a) == dedup_key(b)
+
+    def test_different_aspect_same_size_split(self):
+        # Same max-dim (200), different aspect (square vs wide).
+        a = _mk_node(name="Banner", width=200, height=200)  # square
+        b = _mk_node(name="Banner", width=200, height=50)   # wide
+        assert dedup_key(a) != dedup_key(b)
+
+    def test_missing_dimensions_fall_into_unknown_bucket(self):
+        # Two candidates with no geometry still group together.
+        a = _mk_node(name="Ghost", width=None, height=None)
+        b = _mk_node(name="Ghost", width=None, height=None)
+        assert dedup_key(a) == dedup_key(b)
 
     def test_deterministic_keys_across_calls(self):
         a = _mk_node()

@@ -87,7 +87,7 @@ def _find_screen_figma_id(figma_node_id: str) -> str | None:
     return row[0] if row else None
 
 
-def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float, float] | None:
+def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float, float, float] | None:
     """Look up crop metadata for a flagged sci row.
 
     Node x/y are stored in ABSOLUTE Figma canvas coords; to crop
@@ -95,15 +95,16 @@ def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float,
     own (x, y) origin.
 
     Returns (screen_figma_id, node_x_in_screen, node_y_in_screen,
-    node_width, node_height, screen_width, screen_height) — all in
-    Figma canvas pixels. Returns None if row missing / bbox null.
+    node_width, node_height, screen_width, screen_height, rotation)
+    — all in Figma canvas pixels, rotation in radians. Returns None
+    if row missing / bbox null.
     """
     conn = get_connection(DB_PATH)
     try:
         row = conn.execute(
             """
             SELECT s.figma_node_id, s.width, s.height,
-                   n.x, n.y, n.width, n.height,
+                   n.x, n.y, n.width, n.height, n.rotation,
                    root.x AS root_x, root.y AS root_y
             FROM screen_component_instances sci
             JOIN nodes n ON n.id = sci.node_id
@@ -118,13 +119,14 @@ def _get_crop_info(sci_id: int) -> tuple[str, float, float, float, float, float,
         conn.close()
     if row is None:
         return None
-    fig_id, sw, sh, nx, ny, nw, nh, rx, ry = row
+    fig_id, sw, sh, nx, ny, nw, nh, rot, rx, ry = row
     if None in (fig_id, sw, sh, nx, ny, nw, nh):
         return None
     rx = float(rx) if rx is not None else 0.0
     ry = float(ry) if ry is not None else 0.0
+    rotation = float(rot) if rot is not None else 0.0
     return (fig_id, float(nx) - rx, float(ny) - ry, float(nw),
-            float(nh), float(sw), float(sh))
+            float(nh), float(sw), float(sh), rotation)
 
 
 def _crop_to_bbox(
@@ -133,82 +135,21 @@ def _crop_to_bbox(
     screen_width: float, screen_height: float,
     *,
     padding_px: int = 40,
+    rotation: float = 0.0,
 ) -> bytes:
-    """Crop the screen PNG to the node's bbox + padding, with a
-    **spotlight effect**: everything outside the node's bbox is
-    dimmed to ~45% brightness; the bbox itself stays at full
-    brightness + gets a magenta stroke so the classification target
-    is visually unmissable.
-
-    Pattern from Google Research's Spotlight (arXiv 2209.14927) —
-    the standard for mobile-UI VLM tasks where "target vs
-    surrounding context" is the dominant failure mode.
-
-    Figma canvas pixels are scaled to the actual image's pixel
-    density (iPad retina screens can ship 2×).
+    """Delegate to ``dd.classify_vision_crop.crop_node_with_spotlight``
+    so the classifier pipeline and the review UI share one crop
+    implementation. When ``rotation`` is non-zero the spotlight draws
+    a rotated polygon matching the actual rendered element.
     """
-    from io import BytesIO
-    from PIL import Image, ImageDraw
-
-    img = Image.open(BytesIO(screen_png)).convert("RGBA")
-    iw, ih = img.size
-    scale_x = iw / screen_width if screen_width > 0 else 1.0
-    scale_y = ih / screen_height if screen_height > 0 else 1.0
-
-    # Node bbox in actual-image pixels.
-    nl = max(0, int(node_x * scale_x))
-    nt = max(0, int(node_y * scale_y))
-    nr = min(iw, int((node_x + node_width) * scale_x))
-    nb = min(ih, int((node_y + node_height) * scale_y))
-
-    # Crop bounds (padded).
-    crop_left = max(0, int((node_x - padding_px) * scale_x))
-    crop_top = max(0, int((node_y - padding_px) * scale_y))
-    crop_right = min(iw, int((node_x + node_width + padding_px) * scale_x))
-    crop_bottom = min(ih, int((node_y + node_height + padding_px) * scale_y))
-    if crop_right <= crop_left or crop_bottom <= crop_top:
-        return screen_png
-
-    # Spotlight: build a dim-everywhere-mask, then paste the bbox
-    # region back at full brightness before drawing the stroke.
-    dim = Image.new("RGBA", img.size, (0, 0, 0, 140))  # ~55% alpha
-    dimmed = Image.alpha_composite(img, dim)
-    # Restore the bbox region.
-    if nr > nl and nb > nt:
-        bbox_region = img.crop((nl, nt, nr, nb))
-        dimmed.paste(bbox_region, (nl, nt))
-    img = dimmed
-
-    # Draw stroke + halo on the bbox edge.
-    draw = ImageDraw.Draw(img)
-    halo = (255, 255, 255, 255)
-    stroke = (255, 0, 180, 255)  # bright magenta
-    halo_w = 5
-    stroke_w = 3
-    draw.rectangle(
-        (nl - halo_w, nt - halo_w, nr + halo_w, nb + halo_w),
-        outline=halo, width=halo_w,
+    from dd.classify_vision_crop import crop_node_with_spotlight
+    return crop_node_with_spotlight(
+        screen_png=screen_png,
+        node_x=node_x, node_y=node_y,
+        node_width=node_width, node_height=node_height,
+        screen_width=screen_width, screen_height=screen_height,
+        padding_px=padding_px, rotation=rotation,
     )
-    draw.rectangle(
-        (nl, nt, nr, nb), outline=stroke, width=stroke_w,
-    )
-
-    cropped = img.crop((crop_left, crop_top, crop_right, crop_bottom))
-
-    # Upscale tiny crops to 400px min-side for legibility.
-    min_side = 400
-    cw, ch = cropped.size
-    smaller = min(cw, ch)
-    if smaller < min_side:
-        factor = min_side / smaller
-        cropped = cropped.resize(
-            (int(cw * factor), int(ch * factor)),
-            Image.Resampling.LANCZOS,
-        )
-
-    out = BytesIO()
-    cropped.save(out, format="PNG")
-    return out.getvalue()
 
 
 _CROP_CACHE: dict[int, bytes] = {}
@@ -230,7 +171,7 @@ def _fetch_crop_for_sci(sci_id: int) -> bytes | None:
     info = _get_crop_info(sci_id)
     if info is None:
         return None
-    fig_id, nx, ny, nw, nh, sw, sh = info
+    fig_id, nx, ny, nw, nh, sw, sh, rotation = info
 
     # Fetch the SCREEN's screenshot (cached in _SCREENSHOT_CACHE).
     with _CACHE_LOCK:
@@ -248,7 +189,9 @@ def _fetch_crop_for_sci(sci_id: int) -> bytes | None:
             _SCREENSHOT_CACHE[fig_id] = screen_png
 
     try:
-        cropped = _crop_to_bbox(screen_png, nx, ny, nw, nh, sw, sh)
+        cropped = _crop_to_bbox(
+            screen_png, nx, ny, nw, nh, sw, sh, rotation=rotation,
+        )
     except Exception:
         return None
 
@@ -531,6 +474,7 @@ function overrideType(el) {{
   update(card, 'override', null, type, null);
 }}
 function markUnsure(el) {{ update(cardOf(el), 'unsure', null, null, null); }}
+function markNotUi(el) {{ update(cardOf(el), 'override', null, 'not_ui', 'not a UI element'); }}
 function skipRow(el)   {{ update(cardOf(el), 'skip', null, null, null); }}
 
 document.addEventListener('keydown', (e) => {{
@@ -542,6 +486,7 @@ document.addEventListener('keydown', (e) => {{
   if (e.key === '2') firstOpen.querySelector('.source-ps').click();
   if (e.key === '3') firstOpen.querySelector('.source-cs').click();
   if (e.key === 'u') markUnsure(firstOpen);
+  if (e.key === 'n') markNotUi(firstOpen);
   if (e.key === 's') skipRow(firstOpen);
 }});
 </script>
@@ -615,6 +560,7 @@ def _render_card(row: dict[str, Any]) -> str:
              placeholder="override type (type to filter catalog)"
              autocomplete="off"/>
       <button onclick="overrideType(this)">Override all {group_size}</button>
+      <button onclick="markNotUi(this)" title="Flag as not-UI (press N)">Not UI</button>
       <button onclick="markUnsure(this)">Unsure</button>
       <button onclick="skipRow(this)">Skip</button>
     </div>

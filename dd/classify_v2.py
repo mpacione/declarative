@@ -363,7 +363,9 @@ def _build_crop(
 ) -> Optional[bytes]:
     """Spotlight-crop a single candidate's node region from its
     screen screenshot. Returns None if we don't have the screen's
-    PNG or if the bbox is degenerate.
+    PNG or if the bbox is degenerate. Passes ``rotation`` through so
+    rotated nodes get a polygon highlight matching the rendered
+    shape (not an axis-aligned box around pre-rotation dims).
     """
     fig_id = _screen_figma_id(conn, candidate["screen_id"])
     if fig_id is None:
@@ -380,6 +382,7 @@ def _build_crop(
         return None
     sw = float(screen_dims[0] or 0)
     sh = float(screen_dims[1] or 0)
+    rotation = float(candidate.get("rotation") or 0.0)
     try:
         return crop_node_with_spotlight(
             screen_png=screen_png,
@@ -388,6 +391,7 @@ def _build_crop(
             node_width=float(candidate.get("width") or 0),
             node_height=float(candidate.get("height") or 0),
             screen_width=sw, screen_height=sh,
+            rotation=rotation,
         )
     except Exception:
         return None

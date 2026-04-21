@@ -11,10 +11,18 @@ The pattern — dim-everything-except-target + colored stroke — is
 from Google Research's Spotlight paper (arXiv 2209.14927) for
 mobile-UI VLM tasks.
 
+Rotation handling (added 2026-04-20): 734 classifiable nodes in the
+Dank corpus have non-zero rotation (mostly ±π/2). Figma's Plugin API
+reports ``width``/``height`` as PRE-rotation dimensions — a 32×6
+horizontal bar rotated 90° is stored as ``(w=6, h=32, rotation=π/2)``.
+When ``rotation`` is non-zero, the spotlight draws the rotated polygon
+and the dim mask is polygonal; otherwise behavior is identical to the
+pre-rotation path.
+
 Primary API:
     crop_node_with_spotlight(screen_png, node_x, node_y, node_width,
                              node_height, screen_width, screen_height,
-                             *, padding_px=40) -> bytes
+                             *, padding_px=40, rotation=0.0) -> bytes
     crops_for_nodes(screens: dict[str, bytes],
                     nodes: list[dict]) -> dict[key, bytes]
 
@@ -26,10 +34,39 @@ bbox + screen-dims the crop function needs.
 
 from __future__ import annotations
 
+import math
 from io import BytesIO
 from typing import Any
 
 from PIL import Image, ImageDraw
+
+
+def _rotated_corners(
+    x: float, y: float, w: float, h: float, rotation: float,
+) -> list[tuple[float, float]]:
+    """Return the 4 corners of a rectangle rotated around its center,
+    in the rectangle's parent coordinate space. Order: TL, TR, BR, BL
+    (pre-rotation order preserved so polygon winds clockwise).
+
+    Figma Plugin API's ``rotation`` is in radians. Positive rotation is
+    counter-clockwise in Plugin coordinates. Center-origin is the
+    convention that matches the visible AABB for our rotated-90°
+    Frame 372 fixture.
+    """
+    cos_r = math.cos(rotation)
+    sin_r = math.sin(rotation)
+    cx, cy = x + w / 2.0, y + h / 2.0
+    # Corners relative to center (TL, TR, BR, BL).
+    local = [
+        (-w / 2.0, -h / 2.0),
+        (w / 2.0, -h / 2.0),
+        (w / 2.0, h / 2.0),
+        (-w / 2.0, h / 2.0),
+    ]
+    return [
+        (cx + lx * cos_r - ly * sin_r, cy + lx * sin_r + ly * cos_r)
+        for lx, ly in local
+    ]
 
 
 def crop_node_with_spotlight(
@@ -42,6 +79,7 @@ def crop_node_with_spotlight(
     screen_height: float,
     *,
     padding_px: int = 40,
+    rotation: float = 0.0,
 ) -> bytes:
     """Return a PNG of the screen cropped to the node's bbox + padding,
     with pixels outside the bbox dimmed (~45% brightness) and the
@@ -53,48 +91,69 @@ def crop_node_with_spotlight(
     ``screen_height`` are the Figma canvas dimensions; the rendered
     PNG may be at 2x density for retina iPads, and we scale the
     bbox by the actual/canvas ratio.
+
+    ``rotation`` (radians, default 0) rotates the bbox around its
+    center. Non-zero values draw a polygon highlight matching the
+    actual rendered shape instead of an axis-aligned rectangle.
     """
     img = Image.open(BytesIO(screen_png)).convert("RGBA")
     iw, ih = img.size
     scale_x = iw / screen_width if screen_width > 0 else 1.0
     scale_y = ih / screen_height if screen_height > 0 else 1.0
 
-    # Node bbox in actual-image pixels.
-    nl = max(0, int(node_x * scale_x))
-    nt = max(0, int(node_y * scale_y))
-    nr = min(iw, int((node_x + node_width) * scale_x))
-    nb = min(ih, int((node_y + node_height) * scale_y))
+    # For non-rotated nodes, behavior is unchanged.
+    if not rotation:
+        corners = [
+            (node_x, node_y),
+            (node_x + node_width, node_y),
+            (node_x + node_width, node_y + node_height),
+            (node_x, node_y + node_height),
+        ]
+    else:
+        corners = _rotated_corners(
+            node_x, node_y, node_width, node_height, rotation,
+        )
 
-    # Crop bounds (padded).
-    crop_left = max(0, int((node_x - padding_px) * scale_x))
-    crop_top = max(0, int((node_y - padding_px) * scale_y))
-    crop_right = min(iw, int((node_x + node_width + padding_px) * scale_x))
-    crop_bottom = min(ih, int((node_y + node_height + padding_px) * scale_y))
+    # Corners in image pixels (for polygon drawing + mask).
+    img_corners = [(c[0] * scale_x, c[1] * scale_y) for c in corners]
+    xs = [p[0] for p in img_corners]
+    ys = [p[1] for p in img_corners]
+    # Post-rotation AABB in image pixels.
+    nl = max(0, int(min(xs)))
+    nt = max(0, int(min(ys)))
+    nr = min(iw, int(max(xs)))
+    nb = min(ih, int(max(ys)))
+
+    # Crop bounds (padded AABB).
+    crop_left = max(0, int(min(xs) - padding_px * scale_x))
+    crop_top = max(0, int(min(ys) - padding_px * scale_y))
+    crop_right = min(iw, int(max(xs) + padding_px * scale_x))
+    crop_bottom = min(ih, int(max(ys) + padding_px * scale_y))
     if crop_right <= crop_left or crop_bottom <= crop_top:
         # Bbox outside the screen image — return the full screen.
         return screen_png
 
-    # Spotlight: dim everywhere; restore the bbox at full brightness.
+    # Spotlight: dim everywhere; restore the bbox (or rotated polygon)
+    # at full brightness using a polygon mask.
     dim = Image.new("RGBA", img.size, (0, 0, 0, 140))
     dimmed = Image.alpha_composite(img, dim)
     if nr > nl and nb > nt:
-        bbox_region = img.crop((nl, nt, nr, nb))
-        dimmed.paste(bbox_region, (nl, nt))
+        # Build a polygon mask so rotated boxes don't leak background
+        # from the AABB corners into the "bright" region.
+        mask = Image.new("L", img.size, 0)
+        ImageDraw.Draw(mask).polygon(img_corners, fill=255)
+        dimmed.paste(img, (0, 0), mask)
     img = dimmed
 
-    # Draw stroke + halo on the bbox edge.
+    # Draw stroke + halo on the polygon edge (rotated correctly).
     draw = ImageDraw.Draw(img)
     halo = (255, 255, 255, 255)
     stroke = (255, 0, 180, 255)  # magenta
     halo_w = 5
     stroke_w = 3
-    draw.rectangle(
-        (nl - halo_w, nt - halo_w, nr + halo_w, nb + halo_w),
-        outline=halo, width=halo_w,
-    )
-    draw.rectangle(
-        (nl, nt, nr, nb), outline=stroke, width=stroke_w,
-    )
+    closed_poly = img_corners + [img_corners[0]]
+    draw.line(closed_poly, fill=halo, width=halo_w, joint="curve")
+    draw.line(closed_poly, fill=stroke, width=stroke_w, joint="curve")
 
     cropped = img.crop((crop_left, crop_top, crop_right, crop_bottom))
 

@@ -754,6 +754,38 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         },
         "related_types": ["icon"],
     },
+    {
+        "canonical_name": "not_ui",
+        "aliases": ["non_ui", "decorative", "artifact", "exclude"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Explicit non-UI marker — a frame / instance that exists in "
+            "the Figma file but is NOT a semantic UI component. "
+            "Examples: design-tool artifacts, decorative background "
+            "elements, empty layout wrappers reviewers have confirmed "
+            "carry no interactive or informational identity, test / "
+            "scratch frames left by the designer. Downstream synthesis "
+            "should exclude these from generated output rather than "
+            "try to render them as a component."
+        ),
+        "semantic_role": "none",
+        "recognition_heuristics": {
+            "patterns": ["human_confirmed_exclusion"],
+            "note": (
+                "This type is almost always set by a human reviewer via "
+                "the 'Not UI' button; automated classifiers should NOT "
+                "pick it — prefer `container` or `unsure` unless a "
+                "reviewer has explicitly confirmed exclusion."
+            ),
+        },
+        "disambiguation_notes": (
+            "NOT a `container` (which is a generic layout wrapper that "
+            "still renders). NOT `unsure` (which means 'I don't know "
+            "what this is'). `not_ui` means 'I know what this is — "
+            "it's not UI and should be excluded.'"
+        ),
+        "related_types": ["container", "unsure"],
+    },
 )
 
 

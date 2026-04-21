@@ -294,7 +294,7 @@ def _get_unclassified_for_llm(
     cursor = conn.execute(
         """
         SELECT n.id AS node_id, n.name, n.node_type, n.depth,
-               n.width, n.height, n.y, n.layout_mode,
+               n.width, n.height, n.x, n.y, n.rotation, n.layout_mode,
                n.parent_id, n.component_key
         FROM nodes n
         LEFT JOIN screen_component_instances sci
