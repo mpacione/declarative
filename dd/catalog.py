@@ -911,6 +911,136 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         ),
     },
     {
+        "canonical_name": "magnifier",
+        "aliases": ["loupe", "zoom_bubble", "picker_zoom", "tooltip_magnifier", "tooltip_zoom"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Floating bubble that shows a magnified view of the content "
+            "below. Appears during fine-adjustment operations such as "
+            "image cropping, text cursor placement, colour picking, or "
+            "precision dragging. Usually circular or rounded-rect, with "
+            "a crosshair or centred indicator, and often a small arrow "
+            "pointing to the exact pixel being inspected. Non-interactive "
+            "itself — it tracks the user's input position."
+        ),
+        "prop_definitions": {
+            "shape": "enum:circle|rect",
+            "zoom_level": "number",
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "circular_zoom_bubble",
+                "rounded_rect_loupe",
+                "offset_above_cursor_or_finger",
+                "shows_zoomed_content",
+            ],
+            "has_arrow_pointer": True,
+        },
+        "related_types": ["tooltip", "popover", "control_point"],
+        "disambiguation_notes": (
+            "Magnifier shows a zoomed copy of the content below it; "
+            "tooltip shows an explanatory text label. A 'picker-zoom' or "
+            "'tooltip_magnifier' is the magnifier variant used in colour "
+            "pickers and crop tools. If the bubble contains pixels from "
+            "the canvas (zoomed), it's `magnifier`; if it contains text "
+            "explaining a control, it's `tooltip`."
+        ),
+    },
+    {
+        "canonical_name": "mouse_cursor",
+        "aliases": ["cursor", "pointer", "caret", "text_cursor", "ibeam"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Visible cursor / pointer icon indicating input position on "
+            "a canvas. Design tools render these to mock up interaction "
+            "states — arrow, I-beam, crosshair, resize arrows, grab "
+            "hand, etc. A mouse_cursor is a system affordance, not a "
+            "tappable control. It has no hit-test; it visualises where "
+            "input WILL land, not what responds to tap."
+        ),
+        "prop_definitions": {
+            "variant": (
+                "enum:arrow|ibeam|crosshair|resize|move|text|hand|default"
+            ),
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "arrow_cursor_shape",
+                "ibeam_text_cursor",
+                "double_headed_resize_arrow",
+                "crosshair",
+                "grab_hand",
+            ],
+            "typical_size_range": [12, 32],
+        },
+        "related_types": ["control_point", "icon"],
+        "disambiguation_notes": (
+            "mouse_cursor vs `icon`: mouse_cursor is a system-rendered "
+            "input affordance (arrow, ibeam, resize, etc); icon is a "
+            "UI glyph that belongs to a button or label. mouse_cursor "
+            "vs `control_point`: mouse_cursor moves with the pointer; "
+            "control_point is attached to a bounding-box corner and "
+            "drags to resize."
+        ),
+    },
+    {
+        "canonical_name": "coach_mark",
+        "aliases": [
+            "onboarding_callout", "spotlight", "feature_discovery",
+            "tour_step", "walkthrough_step",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "One-shot onboarding callout that highlights a specific "
+            "feature. Typically a dark scrim over the rest of the UI "
+            "with a spotlight cutout around the target element, plus a "
+            "floating explanatory label (title + body) and an action "
+            "button (Next / Got it / Skip). Used in first-use flows or "
+            "feature-discovery tours. Non-persistent — dismisses on tap."
+        ),
+        "prop_definitions": {
+            "title": "text",
+            "body": "text",
+            "variant": "enum:spotlight|arrow|tour_step",
+        },
+        "slot_definitions": {
+            "title": {
+                "allowed": ["heading", "text"], "required": False,
+                "position": "top", "quantity": "single",
+            },
+            "body": {
+                "allowed": ["text"], "required": True,
+                "position": "fill", "quantity": "single",
+            },
+            "action": {
+                "allowed": ["button"], "required": False,
+                "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "dark_overlay_with_spotlight_cutout",
+                "arrow_pointing_to_feature",
+                "next_or_gotit_button",
+            ],
+            "has_backdrop": True,
+        },
+        "related_types": ["tooltip", "popover", "dialog"],
+        "disambiguation_notes": (
+            "coach_mark is an onboarding callout with scrim + spotlight "
+            "cutout targeting a specific feature; tooltip is a per-"
+            "element hover hint; popover is an anchored contextual menu; "
+            "dialog is a centred modal requiring decision. A 'Next' or "
+            "'Got it' action button + a dark scrim with a cut-out ring "
+            "is the diagnostic signal for coach_mark."
+        ),
+    },
+    {
         "canonical_name": "not_ui",
         "aliases": ["non_ui", "decorative", "artifact", "exclude"],
         "category": "content_and_display",
