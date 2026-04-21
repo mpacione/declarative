@@ -436,6 +436,22 @@ def derive_slots_for_canonical_type(
             ),
         }
 
+    # 2b. Leaf canonical_types (icon, grabber, divider, etc.) have
+    # zero children by definition — no slots to derive. Return
+    # cleanly without burning an LLM call.
+    if len(shape) == 0:
+        return {
+            "canonical_type": canonical_type,
+            "masters": len(_master_component_ids(
+                conn, canonical_type, file_id=file_id,
+            )),
+            "slots_inserted": 0,
+            "dominant_shape": shape,
+            "cluster_share": 1.0,
+            "sample_size": sum(counts.values()),
+            "note": "leaf canonical_type, no slots to derive",
+        }
+
     total = sum(counts.values())
     cluster_n = counts[shape]
 

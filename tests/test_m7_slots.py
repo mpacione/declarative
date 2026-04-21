@@ -443,6 +443,41 @@ class TestDeriveSlotsForCanonicalType:
         assert stats["slots_inserted"] == 0
         assert "no slots" in stats["error"]
 
+    def test_leaf_canonical_type_emits_no_slots(self):
+        """Leaf types (no children — e.g. icon, grabber) cluster to
+        the empty shape. Return cleanly, don't burn an LLM call.
+        """
+        conn = _fresh_db()
+        conn.execute(
+            "INSERT INTO component_type_catalog (canonical_name, category) "
+            "VALUES ('icon', 'content_and_display')"
+        )
+        _add_master(conn, component_id=2000, figma_id="i:1",
+                    name="icon/x", canonical_type="icon")
+        # Three childless instances.
+        for nid in range(2000, 2003):
+            conn.execute(
+                "INSERT INTO nodes (id, screen_id, node_type, name) "
+                "VALUES (?, 1, 'VECTOR', 'icon-leaf')",
+                (nid,),
+            )
+            conn.execute(
+                "INSERT INTO screen_component_instances "
+                "(screen_id, node_id, canonical_type, "
+                " classification_source, consensus_method) "
+                "VALUES (1, ?, 'icon', 'llm', 'formal')",
+                (nid,),
+            )
+
+        def stub(_p: str):
+            raise AssertionError("llm should not be called for leaves")
+        stats = derive_slots_for_canonical_type(
+            conn, "icon", file_id=1, llm_invoker=stub,
+        )
+        assert stats["slots_inserted"] == 0
+        assert stats["dominant_shape"] == ()
+        assert "leaf canonical_type" in stats.get("note", "")
+
     def test_llm_requires_invoker(self):
         conn = _fresh_db()
         _add_master(conn, component_id=700, figma_id="6:6",
