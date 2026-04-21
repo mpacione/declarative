@@ -200,3 +200,31 @@ def test_proposer_returning_empty_list_fails_cleanly() -> None:
     assert outcome.succeeded is False
     assert outcome.iterations == 1
     assert proposer.calls == 1
+
+
+def test_initial_edits_parse_error_is_recorded_and_loop_continues() -> None:
+    """A corrupt initial-edit source doesn't abort the loop — it's
+    recorded in parse_errors and apply_edits proceeds with the
+    rest. The loop then proceeds to verify/propose as normal.
+    """
+    doc = _fixture_doc()
+    verifier = _StubVerifier([RepairReport(is_ok=True, errors=())])
+    proposer = _StubProposer([])
+    outcome = run_repair_loop(
+        doc=doc,
+        initial_edits=(
+            'this is not valid grammar',
+            'delete @badge',  # this one should still apply
+        ),
+        verifier=verifier, proposer=proposer, max_iterations=3,
+    )
+    assert outcome.succeeded is True
+    assert len(outcome.parse_errors) == 1
+    assert outcome.parse_errors[0].startswith("initial:")
+    # The valid initial edit DID land (badge removed from frame).
+    frame = outcome.final_doc.top_level[0].block.statements[0]
+    eids = [
+        s.head.eid for s in frame.block.statements
+        if hasattr(s, "head")
+    ]
+    assert "badge" not in eids

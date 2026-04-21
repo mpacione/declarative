@@ -32,6 +32,7 @@ from dd.structural_verbs import (
     collect_move_candidates,
     collect_parent_candidates,
     collect_removable_candidates,
+    existing_eids,
     extract_tool_call,
     verify_appended,
     verify_deleted,
@@ -300,6 +301,22 @@ def main(argv: list[str] | None = None) -> int:
         if call is None:
             print(f"Demo aborted: {edit_src}", file=sys.stderr)
             return 1
+        # S1 security guard: append / insert introduce new eids —
+        # reject if the LLM proposed one that already lives on the
+        # donor. Would otherwise create a duplicate-eid tree and
+        # every bare @X reference after this edit fires
+        # KIND_AMBIGUOUS_EREF.
+        if args.verb in ("append", "insert"):
+            existing = existing_eids(doc)
+            proposed_eid = call.get("child_eid")
+            if proposed_eid in existing:
+                print(
+                    f"Rejecting: LLM proposed child_eid="
+                    f"{proposed_eid!r} which already exists on the "
+                    f"donor (would produce ambiguous eid).",
+                    file=sys.stderr,
+                )
+                return 1
         print(f"\nEdit source:\n{edit_src}")
         print(
             f"Tool call: {json.dumps({k:v for k,v in call.items() if not k.startswith('_')}, indent=2)}"

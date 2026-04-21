@@ -55,6 +55,22 @@ def unique_eids(doc) -> list[str]:
     return [e for e, c in counts.items() if c == 1]
 
 
+def existing_eids(doc) -> set[str]:
+    """Return every eid present in ``doc`` regardless of multiplicity.
+
+    Used as a collision-guard for LLM-proposed new eids (append /
+    insert / compose). If the LLM invents ``new-child`` and the
+    donor already has a ``#new-child`` node somewhere, the post-
+    apply doc would have two ``@new-child`` nodes and every
+    subsequent bare reference fires KIND_AMBIGUOUS_EREF. Call
+    sites should reject the proposal before apply."""
+    out: set[str] = set()
+    for n in _walk_nodes(doc):
+        if n.head.eid:
+            out.add(n.head.eid)
+    return out
+
+
 def collect_removable_candidates(doc) -> list[dict[str, Any]]:
     """Nodes eligible for ``delete @X``.
 

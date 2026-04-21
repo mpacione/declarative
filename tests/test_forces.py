@@ -232,6 +232,34 @@ class TestLabelInstancesBatch:
         assert result.labels == {}
         assert result.missing_count == 1
 
+    def test_ignores_foreign_sci_id_in_llm_response(self) -> None:
+        """Defence-in-depth: the tool schema pins ``sci_id`` to an
+        enum, but if the LLM emits a foreign id anyway (or future
+        SDK behavior shifts), label_instances_batch must drop it
+        silently rather than apply it to a non-candidate row."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        _minimal_schema(conn)
+        _seed_login_screen(conn)
+
+        client = MagicMock()
+        tool_block = MagicMock(type="tool_use")
+        tool_block.name = "emit_forces_labels"
+        tool_block.input = {"labels": [
+            {"sci_id": 9999, "role": "stray", "context": "ghost"},
+            {"sci_id": 102, "role": "main-cta",
+             "context": "login-form"},
+        ]}
+        response = MagicMock()
+        response.content = [tool_block]
+        client.messages.create.return_value = response
+        result = label_instances_batch(
+            client, [collect_instance_context(conn, 102)],
+        )
+        assert result.labels == {102: "main-cta in login-form"}
+        # The foreign id did not leak into the label map.
+        assert 9999 not in result.labels
+
     def test_sanitises_roles_and_contexts(self) -> None:
         """The LLM can return quoted / leading-@ / whitespacey
         strings. Normalise to kebab-case alphanumerics so downstream
@@ -276,6 +304,51 @@ class TestRunForcesLabeling:
             "WHERE id = 102"
         ).fetchone()
         assert row[0] is None
+
+    def test_per_batch_exception_is_counted_and_loop_continues(
+        self,
+    ) -> None:
+        """A client failure in one batch shouldn't take the whole
+        run down. The orchestrator catches broad Exception,
+        increments summary.errors, and moves to the next batch.
+        """
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        _minimal_schema(conn)
+        _seed_login_screen(conn)
+
+        client = MagicMock()
+        call_count = {"n": 0}
+
+        def fake_create(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("simulated API failure")
+            # Second batch succeeds normally.
+            messages = kwargs["messages"]
+            user = messages[-1]["content"]
+            labels = []
+            for sci_id in (100, 101, 102, 103):
+                if f"sci_id={sci_id}" in user:
+                    labels.append({
+                        "sci_id": sci_id,
+                        "role": "role", "context": "ctx",
+                    })
+            tool_block = MagicMock(type="tool_use")
+            tool_block.name = "emit_forces_labels"
+            tool_block.input = {"labels": labels}
+            return MagicMock(content=[tool_block])
+
+        client.messages.create.side_effect = fake_create
+
+        summary = run_forces_labeling(
+            conn, limit=10, dry_run=False, client=client,
+            batch_size=2,
+        )
+        # First batch failed → errors=1. Second batch succeeded
+        # and labeled 2 rows.
+        assert summary.errors == 1
+        assert summary.labeled == 2
 
     def test_live_path_writes_and_is_idempotent(self) -> None:
         """With a mocked client, run_forces_labeling writes the

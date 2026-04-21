@@ -37,7 +37,15 @@ class StickerSheetSummary:
     candidate_keys: int = 0
     tagged: int = 0
     already_tagged: int = 0
+    # Two distinct "not found" kinds; previously squashed into one
+    # counter. ``unknown_component_keys`` is the CKR miss
+    # (component_key not in component_key_registry); the newer
+    # ``unregistered_components`` is the CKR hit, components miss
+    # (CKR has the key but `components` doesn't have a matching
+    # figma_node_id row). Downstream callers use the split to tell
+    # "remote-library usage" from "extraction missed a masters row".
     unknown_component_keys: int = 0
+    unregistered_components: int = 0
 
 
 def find_sticker_sheet_screens(
@@ -129,6 +137,9 @@ def tag_authoritative_components(
                 (ck,),
             ).fetchone()
             if fk is None:
+                # CKR doesn't know the component_key — usually a
+                # remote-library reference the project never
+                # ingested.
                 summary.unknown_component_keys += 1
                 continue
             figma_node_id = fk["figma_node_id"]
@@ -142,7 +153,16 @@ def tag_authoritative_components(
                 "WHERE figma_node_id = ?"
             )
             update_args = (source_label, figma_node_id)
+            if current is None:
+                # CKR has the key but the components table lacks
+                # a matching row. Usually "extraction missed the
+                # master" — a follow-up could file it as a
+                # components backfill target.
+                summary.unregistered_components += 1
+                continue
         if current is None:
+            # has_ck_col path: `components.component_key = ck` row
+            # doesn't exist.
             summary.unknown_component_keys += 1
             continue
         if current["authoritative_source"] is not None:

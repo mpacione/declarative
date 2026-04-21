@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 
 from dd.structural_verbs import (
     collect_parent_candidates,
+    existing_eids,
     extract_tool_call,
 )
 
@@ -57,14 +58,19 @@ def _build_compose_tool_schema(
     parent_eids: list[str],
     types: tuple[str, ...] = _APPENDABLE_TYPES,
 ) -> dict:
-    """Schema for one `append` whose block may contain multiple
-    typed nodes, each with its own eid + optional text."""
+    """Schema for one `append` whose block contains 2-6 flat
+    typed nodes, each with its own eid + optional text.
+
+    Nested children in the emitted block are NOT supported in this
+    shipment (the schema + emitter are single-level). A recursive
+    schema is tracked as future work.
+    """
     return {
         "name": "emit_compose_subtree",
         "description": (
             "Emit a single `append to=@parent { ... }` statement "
-            "whose block contains 2-6 child nodes. The block may "
-            "nest (a frame containing a heading + text)."
+            "whose block contains 2-6 child nodes at a single "
+            "nesting level (no grandchildren in this shipment)."
         ),
         "input_schema": {
             "type": "object",
@@ -229,6 +235,27 @@ def run_demo(db_path, *, screen_id, dry_run, prompt, model):
                     "LLM did not emit tool call.", file=sys.stderr,
                 )
                 return 1
+        # S1 security guard: LLM-invented eids must not collide
+        # with any existing donor eid. Collision would produce a
+        # duplicate-eid doc (KIND_AMBIGUOUS_EREF on any later
+        # bare reference).
+        existing = existing_eids(doc)
+        proposed = [n["eid"] for n in call["nodes"]]
+        dupes = [e for e in proposed if e in existing]
+        if dupes:
+            print(
+                f"Rejecting: LLM proposed eids {dupes} that "
+                "already exist on the donor.",
+                file=sys.stderr,
+            )
+            return 1
+        if len(set(proposed)) != len(proposed):
+            print(
+                "Rejecting: LLM proposed duplicate eids within "
+                "the same compose call.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"\nCompose call: {json.dumps(call, indent=2)}")
 
         src = _append_source(call["parent_eid"], call["nodes"])

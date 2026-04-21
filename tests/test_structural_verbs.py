@@ -10,6 +10,7 @@ from dd.structural_verbs import (
     collect_move_candidates,
     collect_parent_candidates,
     collect_removable_candidates,
+    existing_eids,
     unique_eids,
     verify_appended,
     verify_deleted,
@@ -136,3 +137,66 @@ def test_verify_moved_after_apply() -> None:
         ),
         "frame-1",
     ) is False
+
+
+def test_verify_moved_position_last() -> None:
+    """Position='last' branch — target lands at end of dest block."""
+    # Archive already has title + subtitle; move badge there to
+    # be last.
+    src = (
+        "screen #screen-1 {\n"
+        "  frame #frame-1 {\n"
+        "    rectangle #badge\n"
+        "  }\n"
+        "  frame #archive {\n"
+        "    text #note \"existing\"\n"
+        "  }\n"
+        "}\n"
+    )
+    doc = parse_l3(src)
+    applied = apply_edits(
+        doc,
+        list(
+            parse_l3(
+                "move @badge to=@archive position=last"
+            ).edits
+        ),
+    )
+    assert verify_moved(applied, "badge", "archive", "last") is True
+    # And NOT at 'first' — the check is position-sensitive.
+    assert verify_moved(applied, "badge", "archive", "first") is False
+
+
+def test_unique_eids_on_empty_doc_returns_empty_list() -> None:
+    """Edge case: a doc with no top-level nodes returns [] without
+    raising. Useful for the structural-verb helpers that call this
+    before iterating."""
+    from dd.markup_l3 import L3Document
+    empty = L3Document(namespace=None, top_level=())
+    assert unique_eids(empty) == []
+    assert existing_eids(empty) == set()
+
+
+def test_existing_eids_includes_cousin_duplicates() -> None:
+    """existing_eids returns every eid (not filtered by uniqueness).
+    Grammar §2.3.1 allows cousin eids to collide (same eid under
+    different parents); collision guard must flag those when a
+    new-eid proposal picks the same name."""
+    src = (
+        "screen #screen-1 {\n"
+        "  frame #left {\n"
+        "    text #twin \"a\"\n"
+        "  }\n"
+        "  frame #right {\n"
+        "    text #twin \"b\"\n"
+        "  }\n"
+        "}\n"
+    )
+    doc = parse_l3(src)
+    eids = existing_eids(doc)
+    assert "twin" in eids
+    # unique_eids filters it out (twin appears twice globally).
+    assert "twin" not in unique_eids(doc)
+    # existing_eids is what the collision-guard checks against:
+    # even cousin duplicates count.
+    assert {"screen-1", "left", "right", "twin"}.issubset(eids)
