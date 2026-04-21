@@ -84,13 +84,16 @@ _SKIP_TYPES = frozenset({"screen"})
 
 
 def _collect_visibility_candidates(doc):
-    """Eid-bearing nodes that are safe to flip.
+    """Eid-bearing non-screen nodes safe to flip.
 
     Current visibility defaults to True when the compressor doesn't
     emit a `visible` prop (grammar §4.2 default), else the prop's
-    Boolean py value."""
-    out: list[dict] = []
-    seen: set[str] = set()
+    Boolean py value. Only GLOBALLY UNIQUE eids are returned —
+    duplicates would fire ``KIND_AMBIGUOUS_EREF`` at apply-time
+    because bare ``@X`` resolution walks every node, not a
+    dotted path."""
+    counts: dict[str, int] = {}
+    found: list[dict] = []
 
     def _current_visible(head):
         for p in getattr(head, "properties", ()) or ():
@@ -102,12 +105,10 @@ def _collect_visibility_candidates(doc):
 
     def _walk(nodes):
         for n in nodes:
-            if not hasattr(n, "head"):
-                continue
-            if n.head.eid and n.head.eid not in seen:
+            if hasattr(n, "head") and n.head.eid:
+                counts[n.head.eid] = counts.get(n.head.eid, 0) + 1
                 if n.head.type_or_path not in _SKIP_TYPES:
-                    seen.add(n.head.eid)
-                    out.append({
+                    found.append({
                         "eid": n.head.eid,
                         "type": n.head.type_or_path,
                         "current_visible": _current_visible(n.head),
@@ -116,7 +117,14 @@ def _collect_visibility_candidates(doc):
                 _walk(n.block.statements)
 
     _walk(doc.top_level)
-    return out
+    dedup: dict[str, dict] = {}
+    for row in found:
+        if counts.get(row["eid"], 0) != 1:
+            continue
+        if row["eid"] in dedup:
+            continue
+        dedup[row["eid"]] = row
+    return list(dedup.values())
 
 
 def run_demo(

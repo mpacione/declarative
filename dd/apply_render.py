@@ -497,13 +497,12 @@ def walk_rendered_via_bridge(
             f"walk_ref.js wrote invalid JSON: {e}"
         ) from e
     if not keep_artifacts:
-        try:
-            script_path.unlink(missing_ok=True)
-            out_path.unlink(missing_ok=True)
-            workdir.rmdir()
-        except OSError:
-            # If cleanup fails, leave the artifacts in place rather
-            # than raising — the walk succeeded, the diagnostic isn't
-            # worth it.
-            pass
+        # When we own the tempdir (artifact_dir is None), shutil.rmtree
+        # handles any sidecar files walk_ref.js might write (stderr
+        # logs, partial payloads) without race-ing on rmdir. When the
+        # caller passed an artifact_dir, leave it intact — the
+        # sidecars belong to them.
+        if artifact_dir is None:
+            import shutil as _shutil
+            _shutil.rmtree(workdir, ignore_errors=True)
     return payload

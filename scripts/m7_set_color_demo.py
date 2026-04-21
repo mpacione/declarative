@@ -139,18 +139,20 @@ def _current_fill_description(head) -> str | None:
 
 
 def _collect_color_candidates(doc):
-    out: list[dict] = []
-    seen: set[str] = set()
+    """Eid-bearing nodes with a concrete fill. Only GLOBALLY UNIQUE
+    eids are returned — duplicates would fire
+    ``KIND_AMBIGUOUS_EREF`` at ``apply_edits`` time (the ``set @X``
+    resolution walks by bare eid, not dotted path)."""
+    counts: dict[str, int] = {}
+    found: list[dict] = []
 
     def _walk(nodes):
         for n in nodes:
-            if not hasattr(n, "head"):
-                continue
-            if n.head.eid and n.head.eid not in seen:
+            if hasattr(n, "head") and n.head.eid:
+                counts[n.head.eid] = counts.get(n.head.eid, 0) + 1
                 descr = _current_fill_description(n.head)
                 if descr:
-                    seen.add(n.head.eid)
-                    out.append({
+                    found.append({
                         "eid": n.head.eid,
                         "type": n.head.type_or_path,
                         "current_fill": descr,
@@ -159,7 +161,14 @@ def _collect_color_candidates(doc):
                 _walk(n.block.statements)
 
     _walk(doc.top_level)
-    return out
+    dedup: dict[str, dict] = {}
+    for row in found:
+        if counts.get(row["eid"], 0) != 1:
+            continue
+        if row["eid"] in dedup:
+            continue
+        dedup[row["eid"]] = row
+    return list(dedup.values())
 
 
 def run_demo(

@@ -15,7 +15,10 @@ here — the downstream round-trip test lives in the integration module.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -529,7 +532,8 @@ class TestRenderAppliedDoc:
 class TestWalkRenderedViaBridge:
     """Guard-rail tests for the bridge wrapper. The live-bridge smoke
     test is a separate integration asset — here we check error paths
-    that don't require a running WebSocket server."""
+    that don't require a running WebSocket server plus the
+    success-path contract via a subprocess stub."""
 
     def test_raises_when_walk_script_missing(self, tmp_path) -> None:
         bogus = tmp_path / "does-not-exist.js"
@@ -554,3 +558,102 @@ class TestWalkRenderedViaBridge:
                 walk_script=walk,
             )
         assert "node" in str(exc.value).lower()
+
+    def test_success_path_returns_parsed_json(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """Subprocess exits 0 + writes a valid JSON payload → the
+        wrapper returns the parsed dict."""
+        walk = tmp_path / "walk_ref.js"
+        walk.write_text("// stub")
+        fake_node = tmp_path / "node"
+        fake_node.write_text("#!/bin/sh\necho stub")
+        fake_node.chmod(0o755)
+        monkeypatch.setattr("shutil.which", lambda _: str(fake_node))
+
+        expected = {"__ok": True, "eid_map": {"screen-1": {"type": "FRAME"}}}
+
+        def fake_run(cmd, *args, **kwargs):
+            # cmd = [node_binary, walk_script, script_path, out_path, port]
+            out_path = Path(cmd[3])
+            out_path.write_text(json.dumps(expected))
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        payload = walk_rendered_via_bridge(
+            script="const x = 1;", walk_script=walk,
+        )
+        assert payload == expected
+
+    def test_raises_on_nonzero_exit(self, tmp_path, monkeypatch) -> None:
+        walk = tmp_path / "walk_ref.js"
+        walk.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            return subprocess.CompletedProcess(
+                cmd, returncode=1, stdout="",
+                stderr="FAIL: Execution timed out after 170000ms",
+            )
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            walk_rendered_via_bridge(
+                script="const x = 1;", walk_script=walk,
+            )
+        assert "exited 1" in str(exc.value)
+        assert "timed out" in str(exc.value)
+
+    def test_raises_on_timeout(self, tmp_path, monkeypatch) -> None:
+        walk = tmp_path / "walk_ref.js"
+        walk.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            walk_rendered_via_bridge(
+                script="const x = 1;", walk_script=walk, timeout=5.0,
+            )
+        assert "timed out after 5.0s" in str(exc.value)
+
+    def test_raises_when_output_is_invalid_json(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        walk = tmp_path / "walk_ref.js"
+        walk.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            Path(cmd[3]).write_text("not valid json {")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            walk_rendered_via_bridge(
+                script="const x = 1;", walk_script=walk,
+            )
+        assert "invalid JSON" in str(exc.value)
+
+    def test_raises_when_output_file_missing(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """Subprocess exits 0 but never wrote the output — usually
+        means the wrapper script died after the PROXY_EXECUTE reply
+        but before fs.writeFileSync. Surface a clear BridgeError."""
+        walk = tmp_path / "walk_ref.js"
+        walk.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            walk_rendered_via_bridge(
+                script="const x = 1;", walk_script=walk,
+            )
+        assert "no output JSON" in str(exc.value)

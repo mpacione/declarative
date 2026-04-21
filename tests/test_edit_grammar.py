@@ -467,6 +467,44 @@ class TestApplySetSimple:
         assert card.head.positional is None
         assert card.head.get_prop("text").value.py == "Caption"
 
+    def test_set_text_tokenref_on_text_node_falls_through_to_prop(self):
+        """A TokenRef value on a text-bearing node doesn't match the
+        positional-rewrite heuristic (which only accepts string
+        Literal_). The edit must fall through to a regular ``text=``
+        prop-add so the renderer has a chance to resolve the token;
+        overwriting positional with a TokenRef would break the
+        compressor's text-positional convention."""
+        doc = parse_l3(_doc('set @title text={content.greeting}'))
+        result = apply_edits(doc)
+        title = _find_node_by_eid(result, "title")
+        # Positional unchanged — still the original "Hello"
+        assert title.head.positional is not None
+        assert title.head.positional.py == "Hello"
+        # text= prop present, with TokenRef as value
+        text_prop = title.head.get_prop("text")
+        assert text_prop is not None
+        assert getattr(text_prop.value, "kind", None) == "token-ref"
+        assert text_prop.value.path == "content.greeting"
+
+    def test_set_mixed_props_with_text_on_text_node(self):
+        """`set @title text="New" visible=false` — one rewrites
+        positional, the other adds a prop. Neither interferes with
+        the other."""
+        doc = parse_l3(_doc(
+            'set @title text="New title" visible=false'
+        ))
+        result = apply_edits(doc)
+        title = _find_node_by_eid(result, "title")
+        # Positional updated
+        assert title.head.positional is not None
+        assert title.head.positional.py == "New title"
+        # text= prop dropped (consumed by positional rewrite)
+        assert title.head.get_prop("text") is None
+        # visible= prop added (non-text key, regular path)
+        vis = title.head.get_prop("visible")
+        assert vis is not None
+        assert vis.value.py is False
+
     def test_set_color_token(self):
         # S1.3 — change a color token ref.
         doc = parse_l3(_doc(

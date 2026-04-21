@@ -3819,9 +3819,10 @@ def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
         ):
             new_value = new_p.value
             # Rebuild a string Literal_ so the emitted form stays
-            # canonical ``"..."``; reject TokenRef / non-string
-            # values at the positional boundary (grammar §2.5 only
-            # allows string positional on text-bearing types).
+            # canonical ``"..."``. Grammar §2.5 only allows string
+            # positional on text-bearing types — TokenRef or non-
+            # string Literal_ would leave the node with conflicting
+            # positional + prop, so raise instead.
             if (
                 isinstance(new_value, Literal_)
                 and new_value.lit_kind == "string"
@@ -3835,8 +3836,15 @@ def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
                     py=py_str,
                 )
                 continue
-            # Non-string value can't be a positional; fall through
-            # and keep the prop. Renderer will warn.
+            # TokenRef value on a text-bearing node's text= prop is
+            # a grammar gap we don't paper over — either the user
+            # means "bind positional to a string token" (not a thing
+            # in the current grammar) or they wanted a general prop
+            # on a non-text-bearing type. Fall through so the
+            # resulting doc has the TokenRef prop alongside the
+            # untouched positional; emit rejects this combination
+            # at parse-time so the problem surfaces on the next
+            # round-trip if it persists.
         remaining_new_props.append(new_p)
 
     for new_p in remaining_new_props:

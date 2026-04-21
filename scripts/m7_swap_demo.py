@@ -177,6 +177,24 @@ def _collect_button_candidates(conn, screen_id, limit=10):
     ]
 
 
+def _count_eids_globally(doc) -> dict[str, int]:
+    """Count eid occurrences across the compressed doc. Eids that
+    appear more than once would fire ``KIND_EID_AMBIGUOUS`` at
+    apply_edits time on bare ``@X`` references — drop them from
+    swap-target candidate sets so the LLM never picks one."""
+    counts: dict[str, int] = {}
+
+    def _walk(nodes):
+        for n in nodes:
+            if hasattr(n, "head") and n.head.eid:
+                counts[n.head.eid] = counts.get(n.head.eid, 0) + 1
+            if getattr(n, "block", None):
+                _walk(n.block.statements)
+
+    _walk(doc.top_level)
+    return counts
+
+
 def _find_eid_by_nid(doc, target_node_id: int, nid_map: dict[str, int]) -> str | None:
     """Reverse-look up the compressed L3 eid that maps to the given
     node_id. Returns None if the compressor didn't assign an eid for
@@ -203,6 +221,7 @@ def run_demo(
 ) -> int:
     from dd.apply_render import (
         BridgeError,
+        SwapUnresolvedInCKR,
         render_applied_doc,
         walk_rendered_via_bridge,
     )
@@ -264,6 +283,10 @@ def run_demo(
     nid_to_eid = {v: k for k, v in eid_to_nid.items()}
 
     # 3. Collect button candidates; match sci.node_id → eid.
+    # Drop eids that appear more than once in the compressed doc —
+    # bare `@X` resolution inside apply_edits walks every node, so
+    # cousin collisions fire KIND_EID_AMBIGUOUS at apply time.
+    eid_counts = _count_eids_globally(doc)
     candidates_sci = _collect_button_candidates(conn, screen_id, limit=50)
     candidates: list[dict] = []
     for c in candidates_sci:
@@ -272,13 +295,15 @@ def run_demo(
         eid = nid_to_eid.get(c["node_id"])
         if not eid:
             continue
+        if eid_counts.get(eid, 0) != 1:
+            continue
         candidates.append({
             "eid": eid,
             "current_master": c["current_master"],
             "context": c["inst_name"],
         })
     if not candidates:
-        print("No buttons with a resolved L3 eid on this screen.",
+        print("No buttons with a globally-unique L3 eid on this screen.",
               file=sys.stderr)
         return 1
     print(f"Button candidates: {len(candidates)}")
@@ -473,6 +498,14 @@ def run_demo(
             old_spec_key_map=old_spec_key_map,
             old_original_name_map=old_original_name_map,
         )
+    except SwapUnresolvedInCKR as e:
+        print(
+            f"render failed: swap references an out-of-catalog "
+            f"master — {e}",
+            file=sys.stderr,
+        )
+        conn.close()
+        return 1
     except Exception as e:
         print(f"render failed: {e}", file=sys.stderr)
         conn.close()
@@ -599,7 +632,9 @@ def main(argv: list[str] | None = None) -> int:
             "After structural verify, also render the applied doc as "
             "a Figma script, walk it via the plugin bridge, and run "
             "FigmaRenderVerifier to gate on is_parity=True + the "
-            "swap target rendering as INSTANCE. M7.2 exit bar."
+            "swap target rendering as INSTANCE. M7.2 exit bar. "
+            "Exit codes: 0 = is_parity pass; 1 = structural or "
+            "verify fail; 2 = render OK but bridge unavailable."
         ),
     )
     parser.add_argument(
