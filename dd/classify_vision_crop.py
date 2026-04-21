@@ -11,18 +11,20 @@ The pattern — dim-everything-except-target + colored stroke — is
 from Google Research's Spotlight paper (arXiv 2209.14927) for
 mobile-UI VLM tasks.
 
-Rotation handling (added 2026-04-20): 734 classifiable nodes in the
-Dank corpus have non-zero rotation (mostly ±π/2). Figma's Plugin API
-reports ``width``/``height`` as PRE-rotation dimensions — a 32×6
-horizontal bar rotated 90° is stored as ``(w=6, h=32, rotation=π/2)``.
-When ``rotation`` is non-zero, the spotlight draws the rotated polygon
-and the dim mask is polygonal; otherwise behavior is identical to the
-pre-rotation path.
+Rotation handling (revised 2026-04-20 after empirical check against
+``relative_transform`` on Frame 372): Figma reports ``(n.x, n.y)`` as
+the **post-rotation AABB top-left** and ``(n.w, n.h)`` as the
+**pre-rotation dimensions**. The AABB dimensions are
+``(w*|cos|+h*|sin|, w*|sin|+h*|cos|)``. For the 716 nodes at exactly
+±π/2 this reduces to a simple w/h swap; for the 18 at arbitrary angles
+the AABB over-covers the rotated rect slightly, which is fine — the
+spotlight shows the region where the element renders, axis-aligned.
 
 Primary API:
     crop_node_with_spotlight(screen_png, node_x, node_y, node_width,
                              node_height, screen_width, screen_height,
-                             *, padding_px=40, rotation=0.0) -> bytes
+                             *, padding_px=80, rotation=0.0,
+                             bbox_inflate_px=6) -> bytes
     crops_for_nodes(screens: dict[str, bytes],
                     nodes: list[dict]) -> dict[key, bytes]
 
@@ -41,32 +43,26 @@ from typing import Any
 from PIL import Image, ImageDraw
 
 
-def _rotated_corners(
-    x: float, y: float, w: float, h: float, rotation: float,
-) -> list[tuple[float, float]]:
-    """Return the 4 corners of a rectangle rotated around its center,
-    in the rectangle's parent coordinate space. Order: TL, TR, BR, BL
-    (pre-rotation order preserved so polygon winds clockwise).
+def rotated_aabb_dims(
+    w: float, h: float, rotation: float,
+) -> tuple[float, float]:
+    """Return the width/height of the axis-aligned bounding box that
+    fully contains a ``w × h`` rectangle rotated by ``rotation`` radians.
 
-    Figma Plugin API's ``rotation`` is in radians. Positive rotation is
-    counter-clockwise in Plugin coordinates. Center-origin is the
-    convention that matches the visible AABB for our rotated-90°
-    Frame 372 fixture.
+    For axis-aligned rotations (0, ±π, ±π/2) this is either the
+    original dims or a straight swap. For arbitrary angles the AABB
+    is always ≥ the original — we accept the mild over-cover so the
+    spotlight stays axis-aligned (easier to read at a glance than a
+    rotated polygon).
     """
-    cos_r = math.cos(rotation)
-    sin_r = math.sin(rotation)
-    cx, cy = x + w / 2.0, y + h / 2.0
-    # Corners relative to center (TL, TR, BR, BL).
-    local = [
-        (-w / 2.0, -h / 2.0),
-        (w / 2.0, -h / 2.0),
-        (w / 2.0, h / 2.0),
-        (-w / 2.0, h / 2.0),
-    ]
-    return [
-        (cx + lx * cos_r - ly * sin_r, cy + lx * sin_r + ly * cos_r)
-        for lx, ly in local
-    ]
+    if not rotation:
+        return (float(w), float(h))
+    cos_r = abs(math.cos(rotation))
+    sin_r = abs(math.sin(rotation))
+    return (
+        w * cos_r + h * sin_r,
+        w * sin_r + h * cos_r,
+    )
 
 
 def crop_node_with_spotlight(
@@ -78,8 +74,10 @@ def crop_node_with_spotlight(
     screen_width: float,
     screen_height: float,
     *,
-    padding_px: int = 40,
+    padding_px: int = 80,
+    min_side_px: int = 800,
     rotation: float = 0.0,
+    bbox_inflate_px: float = 6,
 ) -> bytes:
     """Return a PNG of the screen cropped to the node's bbox + padding,
     with pixels outside the bbox dimmed (~45% brightness) and the
@@ -92,79 +90,91 @@ def crop_node_with_spotlight(
     PNG may be at 2x density for retina iPads, and we scale the
     bbox by the actual/canvas ratio.
 
-    ``rotation`` (radians, default 0) rotates the bbox around its
-    center. Non-zero values draw a polygon highlight matching the
-    actual rendered shape instead of an axis-aligned rectangle.
+    ``rotation`` (radians, default 0): Figma reports (n.x, n.y) as
+    the POST-rotation AABB top-left and (n.w, n.h) as PRE-rotation
+    dims. For rotated nodes we compute the AABB width/height via
+    ``rotated_aabb_dims`` and draw the spotlight as an axis-aligned
+    rect (which matches the rendered element for ±π/2, over-covers
+    slightly for arbitrary angles — acceptable).
+
+    ``bbox_inflate_px`` (default 6) pushes the magenta stroke OUTWARD
+    so the element sits clearly inside the box with a small visible
+    margin, rather than having its edges cut by the stroke itself.
     """
     img = Image.open(BytesIO(screen_png)).convert("RGBA")
     iw, ih = img.size
     scale_x = iw / screen_width if screen_width > 0 else 1.0
     scale_y = ih / screen_height if screen_height > 0 else 1.0
 
-    # For non-rotated nodes, behavior is unchanged.
-    if not rotation:
-        corners = [
-            (node_x, node_y),
-            (node_x + node_width, node_y),
-            (node_x + node_width, node_y + node_height),
-            (node_x, node_y + node_height),
-        ]
-    else:
-        corners = _rotated_corners(
-            node_x, node_y, node_width, node_height, rotation,
-        )
+    # Compute the post-rotation AABB dimensions. For axis-aligned
+    # rotations this is either (w, h) or (h, w); for arbitrary angles
+    # we over-cover slightly.
+    aabb_w, aabb_h = rotated_aabb_dims(node_width, node_height, rotation)
 
-    # Corners in image pixels (for polygon drawing + mask).
-    img_corners = [(c[0] * scale_x, c[1] * scale_y) for c in corners]
-    xs = [p[0] for p in img_corners]
-    ys = [p[1] for p in img_corners]
-    # Post-rotation AABB in image pixels.
-    nl = max(0, int(min(xs)))
-    nt = max(0, int(min(ys)))
-    nr = min(iw, int(max(xs)))
-    nb = min(ih, int(max(ys)))
+    # AABB in Figma canvas coords, then scaled to image pixels.
+    bbox_l_canvas = node_x
+    bbox_t_canvas = node_y
+    bbox_r_canvas = node_x + aabb_w
+    bbox_b_canvas = node_y + aabb_h
 
-    # Crop bounds (padded AABB).
-    crop_left = max(0, int(min(xs) - padding_px * scale_x))
-    crop_top = max(0, int(min(ys) - padding_px * scale_y))
-    crop_right = min(iw, int(max(xs) + padding_px * scale_x))
-    crop_bottom = min(ih, int(max(ys) + padding_px * scale_y))
+    # Inflate outward (in canvas units so it scales with screen DPR).
+    infl_x = bbox_inflate_px
+    infl_y = bbox_inflate_px
+
+    # Bbox in actual-image pixels (tight + inflated).
+    nl = max(0, int((bbox_l_canvas - infl_x) * scale_x))
+    nt = max(0, int((bbox_t_canvas - infl_y) * scale_y))
+    nr = min(iw, int((bbox_r_canvas + infl_x) * scale_x))
+    nb = min(ih, int((bbox_b_canvas + infl_y) * scale_y))
+
+    # Adaptive padding — tiny nodes get extra surrounding context so
+    # the reviewer (and VLM) can see where they sit relative to the
+    # parent. For a 16x16 node the fixed ``padding_px=80`` becomes
+    # an 80/16=5x context window; for a 500x100 node we add another
+    # 50% of max dim so context doesn't shrink proportionally.
+    elem_max_dim = max(aabb_w, aabb_h)
+    adaptive_padding = max(padding_px, int(elem_max_dim * 0.5))
+
+    # Crop bounds (padded, in image pixels).
+    crop_left = max(0, int((bbox_l_canvas - adaptive_padding) * scale_x))
+    crop_top = max(0, int((bbox_t_canvas - adaptive_padding) * scale_y))
+    crop_right = min(iw, int((bbox_r_canvas + adaptive_padding) * scale_x))
+    crop_bottom = min(ih, int((bbox_b_canvas + adaptive_padding) * scale_y))
     if crop_right <= crop_left or crop_bottom <= crop_top:
         # Bbox outside the screen image — return the full screen.
         return screen_png
 
-    # Spotlight: dim everywhere; restore the bbox (or rotated polygon)
-    # at full brightness using a polygon mask.
+    # Spotlight: dim everywhere; restore the (inflated) bbox to full
+    # brightness.
     dim = Image.new("RGBA", img.size, (0, 0, 0, 140))
     dimmed = Image.alpha_composite(img, dim)
     if nr > nl and nb > nt:
-        # Build a polygon mask so rotated boxes don't leak background
-        # from the AABB corners into the "bright" region.
-        mask = Image.new("L", img.size, 0)
-        ImageDraw.Draw(mask).polygon(img_corners, fill=255)
-        dimmed.paste(img, (0, 0), mask)
+        bbox_region = img.crop((nl, nt, nr, nb))
+        dimmed.paste(bbox_region, (nl, nt))
     img = dimmed
 
-    # Draw stroke + halo on the polygon edge (rotated correctly).
+    # Stroke + halo on the inflated bbox edge. Stroke weight scales
+    # with crop size so thin strokes don't disappear after upscaling.
+    raw_w = crop_right - crop_left
+    raw_h = crop_bottom - crop_top
     draw = ImageDraw.Draw(img)
     halo = (255, 255, 255, 255)
     stroke = (255, 0, 180, 255)  # magenta
-    halo_w = 5
-    stroke_w = 3
-    closed_poly = img_corners + [img_corners[0]]
-    draw.line(closed_poly, fill=halo, width=halo_w, joint="curve")
-    draw.line(closed_poly, fill=stroke, width=stroke_w, joint="curve")
+    halo_w = max(6, int(min(raw_w, raw_h) * 0.012))
+    stroke_w = max(4, int(min(raw_w, raw_h) * 0.008))
+    draw.rectangle((nl, nt, nr, nb), outline=halo, width=halo_w)
+    draw.rectangle((nl, nt, nr, nb), outline=stroke, width=stroke_w)
 
     cropped = img.crop((crop_left, crop_top, crop_right, crop_bottom))
 
-    # Upscale tiny crops so the vision model has legible pixels to
-    # look at. 400px min-side is empirical — enough detail for most
-    # small-button classification tasks.
-    min_side = 400
+    # Upscale to ``min_side_px`` so the vision model (and human
+    # reviewer) have legible pixels. 800px default from the 2026-04-20
+    # crop-quality review; 400px was producing blurry results on
+    # 16x16 source crops even at scale=4 screenshots.
     cw, ch = cropped.size
     smaller = min(cw, ch)
-    if smaller < min_side:
-        factor = min_side / smaller
+    if smaller < min_side_px:
+        factor = min_side_px / smaller
         cropped = cropped.resize(
             (int(cw * factor), int(ch * factor)),
             Image.Resampling.LANCZOS,

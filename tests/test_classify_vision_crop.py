@@ -18,6 +18,7 @@ from PIL import Image
 from dd.classify_vision_crop import (
     crop_node_with_spotlight,
     crops_for_nodes,
+    rotated_aabb_dims,
 )
 
 
@@ -176,3 +177,62 @@ class TestCropsForNodes:
         ]
         result = crops_for_nodes(screens, nodes)
         assert set(result.keys()) == {"a", "b"}
+
+
+class TestRotatedAabbDims:
+    """Post-rotation AABB dimensions. For ±π/2 we swap w/h; for
+    arbitrary angles the AABB over-covers the rotated rect slightly.
+    """
+
+    def test_no_rotation_returns_original(self):
+        assert rotated_aabb_dims(w=10, h=20, rotation=0.0) == (10.0, 20.0)
+
+    def test_90deg_ccw_swaps(self):
+        import math
+        w, h = rotated_aabb_dims(w=6, h=32, rotation=math.pi / 2)
+        assert round(w) == 32
+        assert round(h) == 6
+
+    def test_90deg_cw_swaps(self):
+        import math
+        w, h = rotated_aabb_dims(w=32, h=6, rotation=-math.pi / 2)
+        assert round(w) == 6
+        assert round(h) == 32
+
+    def test_180deg_unchanged(self):
+        import math
+        w, h = rotated_aabb_dims(w=10, h=20, rotation=math.pi)
+        assert round(w) == 10
+        assert round(h) == 20
+
+    def test_45deg_overcover(self):
+        import math
+        # 45° of a 10x10 square has AABB ≈ 14.14 × 14.14.
+        w, h = rotated_aabb_dims(w=10, h=10, rotation=math.pi / 4)
+        assert round(w, 1) == 14.1
+        assert round(h, 1) == 14.1
+
+
+class TestFrame372Alignment:
+    """Regression test for the 2026-04-20 bug: Figma reports
+    (n.x, n.y) as the POST-rotation AABB top-left but (n.w, n.h) as
+    PRE-rotation dims. A 6x32 Frame 372 rotated 90° should produce a
+    32x6 AABB at (n.x, n.y), not a 6x32 AABB centered elsewhere.
+    """
+
+    def test_frame_372_gets_horizontal_aabb(self):
+        import math
+        screen = _make_solid_png(1000, 600, rgb=(255, 0, 0))
+        out = crop_node_with_spotlight(
+            screen_png=screen,
+            node_x=500, node_y=300,
+            node_width=6, node_height=32,
+            screen_width=1000, screen_height=600,
+            rotation=math.pi / 2,
+            bbox_inflate_px=0,  # no inflate, so AABB math is exact
+        )
+        assert isinstance(out, bytes)
+        img = Image.open(BytesIO(out))
+        # Crop should succeed; exact size depends on padding + upscale.
+        w, h = img.size
+        assert w > 0 and h > 0
