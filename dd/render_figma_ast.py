@@ -986,7 +986,21 @@ def _emit_phase2(
             continue
         child_var = var_map[id(node)]
         parent_var = var_map[id(parent)]
-        lines.append(f"{parent_var}.appendChild({child_var});")
+        # Per-op guard (Tier E follow-up to F3): without this, a
+        # single throw here aborts the rest of Phase 2 AND the
+        # final _rootPage.appendChild — orphaning the entire
+        # subtree from the page. User-visible symptom: "no
+        # nesting hierarchy" because Figma auto-parents every
+        # created node to currentPage, so un-re-parented nodes
+        # end up flat at page root. Canonical guard shape matches
+        # `dd/renderers/figma.py::_guarded_op` for byte parity.
+        err_eid_child = _escape_js(spec_key_map.get(id(node), eid))
+        lines.append(
+            f'try {{ {parent_var}.appendChild({child_var}); }} '
+            f'catch (__e) {{ __errors.push({{eid:"{err_eid_child}", '
+            f'kind:"append_child_failed", '
+            f'error: String(__e && __e.message || __e)}}); }}'
+        )
         if id(node) in text_chars:
             var, escaped = text_chars[id(node)]
             err_eid = spec_key_map.get(id(node), eid)
@@ -1024,21 +1038,42 @@ def _emit_phase2(
                 elem_sizing, db_sizing_h, db_sizing_v,
                 text_auto_resize, is_text, etype,
             )
+            # Per-op guards — layoutSizing ops are ordering-sensitive
+            # (feedback_text_layout_invariants.md) and can throw on
+            # Mode-1 placeholder frames subbed for missing INSTANCEs.
+            # Without guards they cascade (Tier E F3 follow-up).
+            err_eid_layout = _escape_js(spec_key_map.get(id(node), eid))
             if sizing_h:
                 figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
                 lines.append(
-                    f'{child_var}.layoutSizingHorizontal = "{figma_h}";'
+                    f'try {{ {child_var}.layoutSizingHorizontal = "{figma_h}"; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{err_eid_layout}", '
+                    f'kind:"layout_sizing_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
                 )
             if sizing_v:
                 figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
                 lines.append(
-                    f'{child_var}.layoutSizingVertical = "{figma_v}";'
+                    f'try {{ {child_var}.layoutSizingVertical = "{figma_v}"; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{err_eid_layout}", '
+                    f'kind:"layout_sizing_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
                 )
 
     if doc.top_level:
         root_node = doc.top_level[0]
         root_var = var_map.get(id(root_node))
         if root_var is not None:
+            # CRITICAL guard: this is the line that parents the
+            # whole rendered tree onto the page. If it throws and
+            # we're in the old naked-op regime, nothing ever
+            # reaches the page — user sees "flat hierarchy"
+            # because Figma's createFrame/etc. auto-parents to
+            # currentPage, and whatever appendChild never re-
+            # parented stays at the page root. Per-op guard keeps
+            # the diagnostic structured.
+            root_eid = spec_key_map.get(id(root_node), root_node.head.eid or "")
+            root_eid_js = _escape_js(root_eid)
             if page_name:
                 esc_name = _escape_js(page_name)
                 lines.append(
@@ -1049,15 +1084,35 @@ def _emit_phase2(
                     f'if (!_page) {{ _page = figma.createPage(); '
                     f'_page.name = "{esc_name}"; }}'
                 )
-                lines.append(f"_page.appendChild({root_var});")
+                lines.append(
+                    f'try {{ _page.appendChild({root_var}); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{root_eid_js}", '
+                    f'kind:"root_append_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
                 lines.append("await figma.setCurrentPageAsync(_page);")
             else:
-                lines.append(f"_rootPage.appendChild({root_var});")
+                lines.append(
+                    f'try {{ _rootPage.appendChild({root_var}); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{root_eid_js}", '
+                    f'kind:"root_append_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
 
             if canvas_position is not None:
                 cx, cy = canvas_position
-                lines.append(f"{root_var}.x = {cx};")
-                lines.append(f"{root_var}.y = {cy};")
+                lines.append(
+                    f'try {{ {root_var}.x = {cx}; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{root_eid_js}", '
+                    f'kind:"position_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+                lines.append(
+                    f'try {{ {root_var}.y = {cy}; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{root_eid_js}", '
+                    f'kind:"position_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
 
     return lines
 

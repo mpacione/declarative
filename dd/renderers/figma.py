@@ -1549,7 +1549,15 @@ def generate_figma_script(
             continue
 
         parent_var = var_map[resolved_parent_eid]
-        phase2_lines.append(f"{parent_var}.appendChild({var});")
+        # Per-op guard (Tier E F3 follow-up): naked appendChild
+        # cascades — a single throw aborts every subsequent op
+        # AND the final root attach. Createframe/etc auto-parent
+        # to currentPage, so un-re-parented nodes end up flat at
+        # page root — user-visible "no nesting hierarchy."
+        phase2_lines.append(_guarded_op(
+            f"{parent_var}.appendChild({var});",
+            eid, "append_child_failed",
+        ))
 
         # ADR-007 follow-up: emit text .characters BEFORE layoutSizing.
         # A later FILL sibling evaluating its share of remaining space
@@ -1599,10 +1607,16 @@ def generate_figma_script(
             )
             if sizing_h:
                 figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
-                phase2_lines.append(f'{var}.layoutSizingHorizontal = "{figma_h}";')
+                phase2_lines.append(_guarded_op(
+                    f'{var}.layoutSizingHorizontal = "{figma_h}";',
+                    eid, "layout_sizing_failed",
+                ))
             if sizing_v:
                 figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
-                phase2_lines.append(f'{var}.layoutSizingVertical = "{figma_v}";')
+                phase2_lines.append(_guarded_op(
+                    f'{var}.layoutSizingVertical = "{figma_v}";',
+                    eid, "layout_sizing_failed",
+                ))
             # Now that the text has content + layoutSizing-determined
             # width, apply the DB's textAutoResize mode (e.g. "HEIGHT")
             # to lock the width. Doing this earlier would have locked
@@ -1678,21 +1692,39 @@ def generate_figma_script(
 
     # Root element → page
     if root_id in var_map:
+        # Per-op guard (Tier E F3 follow-up): THIS IS THE CRITICAL
+        # ATTACH. If any earlier Phase-2 op threw, naked attach
+        # would itself cascade-abort and leave every Mode-1
+        # auto-parented node flat on the page root. Guarded, we at
+        # least know structurally whether attach succeeded from
+        # __errors.
         if page_name:
             escaped_name = _escape_js(page_name)
             phase2_lines.append(
                 f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
             )
             phase2_lines.append(f"if (!_page) {{ _page = figma.createPage(); _page.name = \"{escaped_name}\"; }}")
-            phase2_lines.append(f"_page.appendChild({var_map[root_id]});")
+            phase2_lines.append(_guarded_op(
+                f"_page.appendChild({var_map[root_id]});",
+                root_id, "root_append_failed",
+            ))
             phase2_lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
-            phase2_lines.append(f"_rootPage.appendChild({var_map[root_id]});")
+            phase2_lines.append(_guarded_op(
+                f"_rootPage.appendChild({var_map[root_id]});",
+                root_id, "root_append_failed",
+            ))
 
         if canvas_position is not None:
             cx, cy = canvas_position
-            phase2_lines.append(f"{var_map[root_id]}.x = {cx};")
-            phase2_lines.append(f"{var_map[root_id]}.y = {cy};")
+            phase2_lines.append(_guarded_op(
+                f"{var_map[root_id]}.x = {cx};",
+                root_id, "position_failed",
+            ))
+            phase2_lines.append(_guarded_op(
+                f"{var_map[root_id]}.y = {cy};",
+                root_id, "position_failed",
+            ))
 
     # Emit deferred GROUP creation — inner groups first (reverse BFS order)
     for group_eid in reversed(list(group_deferred)):
