@@ -747,12 +747,168 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
             "design systems' canvas surfaces) attached to selection "
             "bounding boxes or vector control points."
         ),
+        "prop_definitions": {"shape": "enum:circle|square"},
+        "slot_definitions": {},
         "semantic_role": "img",
         "recognition_heuristics": {
             "patterns": ["tiny_circle_or_square", "attached_to_selection_edge"],
             "typical_size_range": [6, 14],
         },
         "related_types": ["icon"],
+    },
+    {
+        "canonical_name": "chip",
+        "aliases": ["tag", "pill", "badge_interactive", "filter_chip", "choice_chip"],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Compact interactive label representing a choice, filter, "
+            "or category. Typically pill-shaped with a short text, "
+            "optional leading icon, and often a trailing close button. "
+            "Tappable to toggle selection or dismiss. Distinct from "
+            "`badge` (passive status display) and `button` (action "
+            "trigger, usually larger + labeled)."
+        ),
+        "prop_definitions": {"label": "text", "variant": "enum:filter|choice|input", "removable": "boolean", "selected": "boolean"},
+        "slot_definitions": {"label": {"allowed": ["text"], "required": True, "position": "fill", "quantity": "single"}, "icon": {"allowed": ["icon"], "required": False, "position": "start"}, "dismiss": {"allowed": ["icon_button"], "required": False, "position": "end"}},
+        "semantic_role": "option",
+        "recognition_heuristics": {"patterns": ["pill_shape_with_short_text", "rounded_rect_small_label"], "typical_height_range": [24, 36]},
+        "related_types": ["badge", "button", "toggle"],
+        "aria_role": "option",
+        "disambiguation_notes": (
+            "Chip vs `badge`: chip is tappable (interactive); badge is a "
+            "passive status/count indicator. Chip vs `button`: chip is "
+            "compact and represents a selection state; button triggers "
+            "an action."
+        ),
+    },
+    {
+        "canonical_name": "carousel",
+        "aliases": ["slider_gallery", "image_carousel", "pager", "swipeable_gallery"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Horizontally-scrolling sequence of content panels — images, "
+            "cards, or hero slides — that the user pages through with "
+            "swipe/drag gestures. Often paired with a `pager_indicator` "
+            "showing current position. Distinct from `list` (vertical, "
+            "unbounded scroll) and `tabs` (discrete category nav, not "
+            "swipeable content flow)."
+        ),
+        "prop_definitions": {"item_count": "integer", "autoplay": "boolean", "loop": "boolean"},
+        "slot_definitions": {"items": {"allowed": ["any"], "required": True, "position": "fill", "quantity": "multiple"}, "indicator": {"allowed": ["pager_indicator"], "required": False, "position": "below"}},
+        "semantic_role": "region",
+        "recognition_heuristics": {"patterns": ["horizontal_scroll_gallery", "equal_width_items_in_row"], "layout": "horizontal"},
+        "related_types": ["pager_indicator", "list", "tabs"],
+    },
+    {
+        "canonical_name": "pager_indicator",
+        "aliases": ["page_dots", "carousel_indicator", "step_indicator_dots", "pagination_dots"],
+        "category": "navigation",
+        "behavioral_description": (
+            "Row of small dots, lines, or pills indicating position within "
+            "a `carousel` or multi-step flow. Current page's indicator "
+            "is visually emphasized (filled, larger, different color). "
+            "Tappable indicators double as navigation; decorative-only "
+            "indicators still belong here."
+        ),
+        "prop_definitions": {"count": "integer", "current": "integer"},
+        "slot_definitions": {},
+        "semantic_role": "tablist",
+        "recognition_heuristics": {"patterns": ["row_of_small_dots", "2-10_small_circles_horizontally_aligned"], "typical_count_range": [2, 10], "typical_size_range": [4, 12]},
+        "related_types": ["carousel", "stepper", "tabs"],
+        "disambiguation_notes": (
+            "NOT `tabs` — pager_indicator has no text labels and indexes "
+            "a continuous content sequence. NOT `radio_group` — the "
+            "user doesn't 'pick one', the indicator reflects where "
+            "they are in a flow."
+        ),
+    },
+    {
+        "canonical_name": "chart",
+        "aliases": ["graph", "data_viz", "bar_chart", "line_chart", "pie_chart", "donut_chart"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Data visualization rendering — bar chart, line chart, pie/"
+            "donut, sparkline, area chart, etc. Distinct from `image` "
+            "(any raster) because the compiler should preserve data-"
+            "binding metadata rather than treat the node as a static "
+            "asset."
+        ),
+        "prop_definitions": {"chart_type": "enum:bar|line|pie|donut|area|scatter|sparkline", "data": "object", "axes_visible": "boolean"},
+        "slot_definitions": {"title": {"allowed": ["heading", "text"], "required": False, "position": "top"}, "legend": {"allowed": ["list", "container"], "required": False, "position": "side"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["repeating_vertical_or_horizontal_bars", "connected_line_plot", "circular_segmented_wheel", "axis_labels_visible"], "has_numeric_labels": True},
+        "related_types": ["image", "progress"],
+        "disambiguation_notes": (
+            "Chart vs `image`: chart has geometric structure (axes, bars, "
+            "arcs, data labels) that the compiler should preserve as "
+            "structured data. Chart vs `progress`: progress is a single "
+            "scalar bar; chart shows multi-valued comparison."
+        ),
+    },
+    {
+        "canonical_name": "rating",
+        "aliases": ["star_rating", "stars", "rating_display", "review_score"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Visual score display — typically a row of star glyphs "
+            "(filled/half/empty) representing a numeric rating. Can be "
+            "interactive (user taps to set rating) or read-only (shows "
+            "an average / fixed score). Sometimes paired with a numeric "
+            "score + count like '4.5 ★ (1,234 reviews)'."
+        ),
+        "prop_definitions": {"value": "number", "max": "integer", "interactive": "boolean", "show_count": "boolean"},
+        "slot_definitions": {"stars": {"allowed": ["icon"], "required": True, "position": "fill", "quantity": "multiple"}, "label": {"allowed": ["text"], "required": False, "position": "after"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["row_of_3_to_5_star_icons", "stars_with_numeric_label_after"], "typical_count_range": [3, 5]},
+        "related_types": ["icon", "progress"],
+        "aria_role": "img",
+    },
+    {
+        "canonical_name": "video_player",
+        "aliases": ["video", "player", "media_player", "video_embed"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Embedded video viewport with playback controls. Typically "
+            "a rectangular frame showing a video poster or frame, with "
+            "overlaid play/pause button, progress bar, duration text, "
+            "and optional volume / fullscreen icons. Distinct from "
+            "`image` because the compiler needs to emit a video "
+            "element, not an <img>."
+        ),
+        "prop_definitions": {"autoplay": "boolean", "loop": "boolean", "muted": "boolean", "controls_visible": "boolean", "duration": "text"},
+        "slot_definitions": {"poster": {"allowed": ["image"], "required": False, "position": "fill"}, "controls": {"allowed": ["container", "button", "progress"], "required": False, "position": "overlay_bottom"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["large_rect_with_centered_play_button", "rect_with_progress_bar_at_bottom", "duration_text_overlay"], "typical_aspect_ratio": "16:9"},
+        "related_types": ["image"],
+        "disambiguation_notes": (
+            "Video_player vs `image`: video_player has an interactive "
+            "playback affordance (play triangle, progress bar). A static "
+            "video still/thumbnail with NO controls is just an `image`."
+        ),
+    },
+    {
+        "canonical_name": "grabber",
+        "aliases": ["drag_handle", "pull_handle", "bottom_sheet_handle", "resize_handle"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Small horizontal or vertical bar used as a drag-handle "
+            "affordance, most commonly at the top of a bottom sheet / "
+            "drawer / modal to signal that the user can drag to dismiss "
+            "or resize. Usually 32-48px wide, 4-6px tall, rounded, low-"
+            "contrast fill."
+        ),
+        "prop_definitions": {"orientation": "enum:horizontal|vertical"},
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["small_thin_rounded_rect_centered_at_top_of_sheet", "aspect_ratio_5_to_10_to_1"], "typical_size_range": [24, 48], "position": "top_center_of_sheet"},
+        "related_types": ["divider", "control_point", "sheet", "drawer"],
+        "disambiguation_notes": (
+            "Grabber vs `divider`: grabber is centered on a sheet/"
+            "drawer top edge and signals a drag affordance; divider is "
+            "a full-width separator between content blocks. Grabber vs "
+            "`control_point`: grabber is sheet-specific; control_point "
+            "is a generic vector/selection handle."
+        ),
     },
     {
         "canonical_name": "not_ui",
@@ -768,6 +924,8 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
             "should exclude these from generated output rather than "
             "try to render them as a component."
         ),
+        "prop_definitions": {},
+        "slot_definitions": {},
         "semantic_role": "none",
         "recognition_heuristics": {
             "patterns": ["human_confirmed_exclusion"],

@@ -37,6 +37,8 @@ class TestCatalogSchema:
             "behavioral_description", "prop_definitions", "slot_definitions",
             "semantic_role", "recognition_heuristics", "related_types",
             "variant_axes",  # ADR-008 PR #0
+            # CLAY / ARIA alignment + disambiguation (migration 016)
+            "clay_equivalent", "aria_role", "disambiguation_notes",
             "created_at",
         }
         assert columns == expected
@@ -143,8 +145,10 @@ class TestCatalogData:
     def test_count_in_range(self):
         # ADR-008 PR #0: 48 base - 2 demoted (toggle_group, context_menu)
         # + 7 new (divider, progress, spinner, kbd, number_input, otp_input,
-        # command) = 53; tolerance band 50-60 for optional extended types.
-        assert 50 <= len(CATALOG_ENTRIES) <= 60
+        # command) = 53. 2026-04-20: control_point + not_ui + 7 CLAY /
+        # Ferret-UI-2 audit types (chip, carousel, pager_indicator,
+        # chart, rating, video_player, grabber) = 62. Tolerance 55-70.
+        assert 55 <= len(CATALOG_ENTRIES) <= 70
 
     def test_all_have_required_fields(self):
         for entry in CATALOG_ENTRIES:
