@@ -269,8 +269,18 @@ def collect_fonts(
             resolved_family, _ = resolve_style_value(family, tokens)
             family = resolved_family if resolved_family and isinstance(resolved_family, str) else "Inter"
 
+        # Capture the IR-resolved family BEFORE DB override. We emit
+        # BOTH variants to the manifest when they disagree — the
+        # subsequent `fontName = {...}` setter in the generated
+        # script reads from the IR style (resolved tokens), while
+        # legacy DB-driven paths use the DB font_family. Tier D F1
+        # fix: loading both keeps set_fontName from hitting an
+        # unloaded font regardless of which path the emitter takes.
+        ir_family = family
+
         # DB fallback for family and weight
         db_font_style = None
+        db_family: Any = None
         if db_visuals is not None:
             nid = node_id_map.get(eid)
             if nid:
@@ -280,6 +290,7 @@ def collect_fonts(
                     db_fam = font.get("font_family")
                     if db_fam:
                         family = db_fam
+                        db_family = db_fam
                 if weight is None:
                     weight = font.get("font_weight")
                 db_font_style = font.get("font_style")
@@ -299,6 +310,20 @@ def collect_fonts(
         if key not in seen:
             seen.add(key)
             result.append(key)
+
+        # Belt-and-suspenders for Mode-3 mismatches: when the IR
+        # style's resolved family differs from the DB-sourced one
+        # (synthetic visuals in build_template_visuals can have
+        # diverging data), also emit the IR variant with the
+        # weight-derived style so both preloads are in the manifest.
+        if db_family and ir_family and ir_family != db_family:
+            ir_style = normalize_font_style(
+                ir_family, font_weight_to_style(weight),
+            )
+            ir_key = (ir_family, ir_style)
+            if ir_key not in seen:
+                seen.add(ir_key)
+                result.append(ir_key)
 
     return result
 

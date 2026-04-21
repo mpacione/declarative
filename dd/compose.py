@@ -240,10 +240,22 @@ def compose_screen(
         if children:
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
-        elif not component_key and not _mode3_disabled():
+        elif (
+            not component_key
+            and not _mode3_disabled()
+            and comp_type not in _LEAF_TYPES_FOR_HOIST
+        ):
             # Mode-3 fall-through: synthesise children when the LLM
-            # provided none. Template-to-parent merge already happened
-            # above via _apply_template_to_parent.
+            # provided none AND the parent type can legitimately host
+            # children. Tier D.3 F4 gate: leaf types (button, icon,
+            # switch, chip, etc.) resolve Mode-1 to INSTANCE — their
+            # internal structure comes from the library master and
+            # they can't host added children (Figma Plugin API
+            # rejects `instance.appendChild`). If Mode-3 synthesises
+            # a text child here, Phase 2 would throw and cascade
+            # (F3). Template-to-parent merge already happened above
+            # via _apply_template_to_parent; leaf types get their
+            # visible text via props.text instead.
             synthetic_ids = _mode3_synthesise_children(
                 comp_type, variant, props or {}, elements, _allocate_id,
                 parent_element=None,
@@ -1241,17 +1253,108 @@ def resolve_type_aliases(
     return [_resolve(comp) for comp in components]
 
 
+# Types that resolve Mode-1 to INSTANCE and therefore can't host
+# children in the Figma Plugin API (F4 from
+# `docs/learnings-tier-b-failure-modes.md`). A child under one of
+# these produces an `appendChild: Cannot move node` throw in Phase
+# 2 of the render script (F2 — cascading).
+#
+# TODO(Tier E.3): derive from component_type_catalog.resolution_mode
+# instead of hardcoding; see note in dd/fidelity_score.py
+# LEAF_TYPES.
+_LEAF_TYPES_FOR_HOIST: frozenset[str] = frozenset({
+    "button", "icon_button", "icon", "chip",
+    "switch", "toggle", "checkbox", "radio",
+    "link", "badge",
+    "text", "heading",      # already leaves in the renderer
+    "avatar",
+})
+
+# Prop slot names we hoist children's text into, keyed on the
+# parent LEAF type. `text` is the universal slot; some parents
+# might use a different slot in the future.
+_HOIST_TEXT_PROP = "text"
+
+
+def _hoist_children_into_props(
+    comp: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    """Recursively hoist text content out of children of LEAF-typed
+    parents into ``props.text``.
+
+    Tier D.3 F4 fix. When the LLM emits ``{type: button, children:
+    [{type: text, props: {text: "Sign in"}}]}``, we rewrite to
+    ``{type: button, props: {text: "Sign in"}, children: []}``
+    before compose+render. Otherwise Phase 2 emits
+    ``instance.appendChild(text_node)`` which Figma rejects.
+
+    Returns ``(hoisted_comp, n_hoists_applied)``. The count is for
+    diagnostics + metrics; 0 means no change.
+    """
+    hoisted_count = 0
+    ctype = comp.get("type") or ""
+    children = comp.get("children") or []
+
+    if ctype in _LEAF_TYPES_FOR_HOIST and children:
+        props = dict(comp.get("props") or {})
+        # Find the first text-bearing child and pull its text.
+        for child in children:
+            if _HOIST_TEXT_PROP in props:
+                break
+            ch_props = child.get("props") or {}
+            if child.get("type") in ("text", "heading", "link"):
+                t = ch_props.get("text") or ""
+                if t:
+                    props[_HOIST_TEXT_PROP] = t
+                    break
+        # Drop children entirely — the leaf type can't host them.
+        new_comp = dict(comp)
+        new_comp["children"] = []
+        if props:
+            new_comp["props"] = props
+        hoisted_count += 1
+        return new_comp, hoisted_count
+
+    # Recurse into non-leaf parents' children.
+    if children:
+        new_children: list[dict[str, Any]] = []
+        total = 0
+        for child in children:
+            hoisted_child, n = _hoist_children_into_props(child)
+            new_children.append(hoisted_child)
+            total += n
+        if total:
+            new_comp = dict(comp)
+            new_comp["children"] = new_children
+            hoisted_count += total
+            return new_comp, hoisted_count
+
+    return comp, 0
+
+
 def validate_components(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Validate LLM-output components against available templates.
 
-    Resolves type aliases first, then checks remaining unsupported types.
-    Returns (components, warnings). Warnings list types that have
-    no template and will render as empty frames.
+    Resolves type aliases first, runs the F4 hoist pass (leaf-type
+    parents lose their children; first text-bearing child's text is
+    hoisted into ``props.text``), then checks remaining unsupported
+    types. Returns (components, warnings).
     """
     resolved = resolve_type_aliases(components, templates)
+
+    # Tier D.3 F4: hoist children from leaf-type parents. Must run
+    # BEFORE the template-availability check so hoisted components
+    # don't get flagged for types they no longer reference.
+    hoisted: list[dict[str, Any]] = []
+    total_hoists = 0
+    for comp in resolved:
+        new_comp, n = _hoist_children_into_props(comp)
+        hoisted.append(new_comp)
+        total_hoists += n
+
     available_types = set(templates.keys())
     warnings: list[str] = []
 
@@ -1264,10 +1367,16 @@ def validate_components(
         for child in comp.get("children", []):
             _check(child)
 
-    for comp in resolved:
+    for comp in hoisted:
         _check(comp)
 
-    return resolved, warnings
+    if total_hoists:
+        warnings.append(
+            f"Hoisted {total_hoists} leaf-type-parent child subtree(s) "
+            f"into `props.text` (F4 — leaf types can't host children)."
+        )
+
+    return hoisted, warnings
 
 
 def generate_from_prompt(
