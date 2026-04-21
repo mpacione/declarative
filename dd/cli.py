@@ -572,11 +572,15 @@ def _run_classify(
 
     print("\nClassification complete:")
     print(f"  Screens processed:     {result['screens_processed']}")
-    print(f"  Formal classified:     {result['formal_classified']}")
-    print(f"  Heuristic classified:  {result['heuristic_classified']}")
-    if use_llm:
-        print(f"  LLM classified:        {result['llm_classified']}")
-    print(f"  Parent links:          {result['parent_links']}")
+    # classifier_v2 returns a different summary shape — skip the
+    # per-stage counts (formal/heuristic/llm/parent_links) that only
+    # exist on the non-v2 result dict.
+    if not classifier_v2:
+        print(f"  Formal classified:     {result['formal_classified']}")
+        print(f"  Heuristic classified:  {result['heuristic_classified']}")
+        if use_llm:
+            print(f"  LLM classified:        {result['llm_classified']}")
+        print(f"  Parent links:          {result['parent_links']}")
     if use_vision and not three_source:
         v = result["vision"]
         print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
