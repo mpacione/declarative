@@ -3780,9 +3780,21 @@ def _replace_node_at_path(
     return replace(doc, top_level=tuple(new_top))
 
 
+_TEXT_BEARING_TYPES: frozenset[str] = frozenset({
+    "text", "heading", "link",
+})
+
+
 def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
     """Merge new properties into the existing node head, last-wins per
     key. Returns a fresh Node with the merged head.
+
+    Positional-rewrite carve-out for text-bearing types (M7.3 S1.1):
+    text / heading / link nodes carry their content in
+    ``head.positional``, not as a ``text=`` prop. A
+    ``set @X text="..."`` statement must rewrite the positional so
+    the renderer emits the new string; otherwise the positional
+    stays stale and the ``text=`` prop is dead weight alongside it.
     """
     existing_props = list(node.head.properties)
     by_key: dict[str, int] = {}
@@ -3792,7 +3804,42 @@ def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
         elif isinstance(p, PathOverride):
             by_key[p.path] = i
 
+    new_positional: Optional[Value] = node.head.positional
+
+    remaining_new_props: list[Union[PropAssign, PathOverride]] = []
     for new_p in stmt.properties:
+        key = new_p.key if isinstance(new_p, PropAssign) else new_p.path
+        # Text-positional rewrite: consume this PropAssign instead of
+        # adding it to the prop list.
+        if (
+            isinstance(new_p, PropAssign)
+            and key == "text"
+            and new_positional is not None
+            and node.head.type_or_path in _TEXT_BEARING_TYPES
+        ):
+            new_value = new_p.value
+            # Rebuild a string Literal_ so the emitted form stays
+            # canonical ``"..."``; reject TokenRef / non-string
+            # values at the positional boundary (grammar §2.5 only
+            # allows string positional on text-bearing types).
+            if (
+                isinstance(new_value, Literal_)
+                and new_value.lit_kind == "string"
+            ):
+                py_str = new_value.py
+                if not isinstance(py_str, str):
+                    py_str = str(py_str) if py_str is not None else ""
+                new_positional = Literal_(
+                    lit_kind="string",
+                    raw=f'"{py_str}"',
+                    py=py_str,
+                )
+                continue
+            # Non-string value can't be a positional; fall through
+            # and keep the prop. Renderer will warn.
+        remaining_new_props.append(new_p)
+
+    for new_p in remaining_new_props:
         key = new_p.key if isinstance(new_p, PropAssign) else new_p.path
         if key in by_key:
             existing_props[by_key[key]] = new_p
@@ -3800,7 +3847,11 @@ def _apply_set_to_node(node: Node, stmt: SetStatement) -> Node:
             existing_props.append(new_p)
             by_key[key] = len(existing_props) - 1
 
-    new_head = replace(node.head, properties=tuple(existing_props))
+    new_head = replace(
+        node.head,
+        properties=tuple(existing_props),
+        positional=new_positional,
+    )
     return replace(node, head=new_head)
 
 

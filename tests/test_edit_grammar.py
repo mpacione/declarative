@@ -441,14 +441,31 @@ class TestApplySetSimple:
         # `false` is a Literal_ with .py == False.
         assert vis.value.py is False
 
-    def test_set_text_string(self):
-        # S1.1 — change a text string.
+    def test_set_text_string_updates_positional(self):
+        # S1.1 — change a text string. The compressor puts text
+        # literals in `head.positional` (the canonical form for
+        # text-bearing types). `set @X text="..."` must rewrite
+        # the positional so the renderer sees the new string; it
+        # should NOT leave a dangling `text=` prop alongside the
+        # positional (the renderer prefers positional, so the prop
+        # would be dead weight at best and ambiguous at worst).
         doc = parse_l3(_doc('set @title text="New title"'))
         result = apply_edits(doc)
         title = _find_node_by_eid(result, "title")
-        text_prop = title.head.get_prop("text")
-        assert text_prop is not None
-        assert text_prop.value.py == "New title"
+        assert title.head.positional is not None
+        assert title.head.positional.py == "New title"
+        # No dangling text= prop
+        assert title.head.get_prop("text") is None
+
+    def test_set_text_on_non_text_node_falls_through_to_prop(self):
+        """Nodes without a positional (e.g. a card) accept
+        `text="..."` as a regular prop. Only text-bearing types
+        (text / heading / link) have the positional rewrite."""
+        doc = parse_l3(_doc('set @card-1 text="Caption"'))
+        result = apply_edits(doc)
+        card = _find_node_by_eid(result, "card-1")
+        assert card.head.positional is None
+        assert card.head.get_prop("text").value.py == "Caption"
 
     def test_set_color_token(self):
         # S1.3 — change a color token ref.
@@ -500,7 +517,10 @@ class TestApplySetSequential:
         title = _find_node_by_eid(result, "title")
         assert card.head.get_prop("radius").value.path == "radius.xl"
         assert card.head.get_prop("visible").value.py is False
-        assert title.head.get_prop("text").value.py == "Title 2"
+        # S1.1: text-bearing nodes' text= rewrites head.positional,
+        # not a prop. See test_set_text_string_updates_positional.
+        assert title.head.positional is not None
+        assert title.head.positional.py == "Title 2"
 
     def test_later_set_overrides_earlier_on_same_key(self):
         doc = parse_l3(_doc(
@@ -694,7 +714,9 @@ class TestApplyAppend:
         ))
         result = apply_edits(doc)
         later = _find_node_by_eid(result, "later")
-        assert later.head.get_prop("text").value.py == "y"
+        # S1.1: text= on a text-bearing node rewrites positional.
+        assert later.head.positional is not None
+        assert later.head.positional.py == "y"
 
 
 # ---------------------------------------------------------------------------
