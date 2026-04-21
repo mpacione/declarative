@@ -215,14 +215,92 @@ def _run_som_prepared(
                 "path": "hidden_pernode",
             }
 
-    # 3. Self-hidden reps get auto-classified as not_ui.
+    # 3. Self-hidden reps: Figma REST refuses to render them (visible=0
+    # on the node itself), but they're STILL UI \u2014 hidden state variants
+    # like "error_state" dialogs, "success" toasts, etc. Two-path
+    # fallback (no vision call, no API cost):
+    #   3a. Dedup-twin propagation: if another rep in this batch has
+    #       the same dedup signature AND a vision verdict already
+    #       computed (via som or hidden_pernode), copy that verdict.
+    #   3b. LLM-text-only: use the rep's sci.llm_type as the final
+    #       verdict with the sci.llm_confidence. That signal was
+    #       computed earlier in the pipeline from name + parent +
+    #       children + sample_text; it's structural, not visual, but
+    #       it's still real information.
+    from dd.classify_dedup import dedup_key
+    all_classified = list(visible_reps_by_sci := {})
+    # Build a lookup of (dedup_sig) -> already-classified verdict.
+    sig_to_verdict: dict[tuple, dict] = {}
+    for r in (annotations if annotations else []):
+        verdict = out.get(r["sci_id"])
+        if verdict:
+            try:
+                sig = dedup_key({
+                    "name": r.get("name"),
+                    "node_type": r.get("node_type"),
+                    "parent_classified_as": r.get("parent_classified_as"),
+                    "child_type_dist": {},
+                    "sample_text": r.get("sample_text"),
+                    "component_key": None,
+                    "width": r.get("w"),
+                    "height": r.get("h"),
+                })
+                sig_to_verdict.setdefault(sig, verdict)
+            except Exception:
+                pass
+    for r in anc_hidden_reps:
+        verdict = out.get(r["sci_id"])
+        if verdict:
+            try:
+                sig = dedup_key(r)
+                sig_to_verdict.setdefault(sig, verdict)
+            except Exception:
+                pass
+
     for r in self_hidden_reps:
-        out[r["sci_id"]] = {
-            "canonical_type": "not_ui",
-            "confidence": 1.0,
-            "reason": "Self-hidden node (visible=0 in Figma); auto-classified as not_ui.",
-            "path": "self_hidden_auto",
-        }
+        # 3a: try twin propagation.
+        propagated = None
+        try:
+            sig = dedup_key(r)
+            if sig in sig_to_verdict:
+                propagated = sig_to_verdict[sig]
+        except Exception:
+            propagated = None
+        if propagated:
+            out[r["sci_id"]] = {
+                "canonical_type": propagated["canonical_type"],
+                "confidence": float(propagated.get("confidence", 0.75)),
+                "reason": (
+                    "Self-hidden node; propagated from visible twin "
+                    "with matching dedup signature."
+                ),
+                "path": "self_hidden_twin",
+            }
+            continue
+        # 3b: LLM-text-only fallback.
+        llm_type = r.get("llm_type")
+        if llm_type:
+            out[r["sci_id"]] = {
+                "canonical_type": llm_type,
+                "confidence": 0.6,  # lower because no vision signal
+                "reason": (
+                    "Self-hidden node (visible=0); classified from "
+                    "LLM text signal alone (no vision). Verdict copied "
+                    f"from sci.llm_type={llm_type!r}."
+                ),
+                "path": "self_hidden_llm_only",
+            }
+        else:
+            # No vision AND no LLM verdict \u2014 flag for human.
+            out[r["sci_id"]] = {
+                "canonical_type": "unsure",
+                "confidence": 0.0,
+                "reason": (
+                    "Self-hidden node with no usable signals (no "
+                    "vision render possible, no LLM verdict)."
+                ),
+                "path": "self_hidden_unsure",
+            }
 
     return out
 
@@ -395,7 +473,10 @@ def _render_report(
         "## Classifications by path",
         "",
     ]
-    for p in ("som", "hidden_pernode", "self_hidden_auto"):
+    for p in (
+        "som", "hidden_pernode",
+        "self_hidden_twin", "self_hidden_llm_only", "self_hidden_unsure",
+    ):
         n = path_counts.get(p, 0)
         lines.append(f"- `{p}`: {n}")
     lines.append("")
