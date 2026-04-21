@@ -53,6 +53,16 @@ import sqlite3
 from typing import Any, Iterable, Optional
 
 
+# Canonical prefix of an L3 CompRef literal (grammar spec §7).
+# Factored so the serialiser + any doc-generation pinning stays in
+# sync if the grammar ever evolves.
+COMP_REF_PREFIX = "-> "
+
+# Serializer output shape version. Bump when a consumer depends on
+# breaking-change fields (e.g., variants added under a different key).
+LIBRARY_SCHEMA_VERSION = 1
+
+
 def _fetch_slots(
     conn: sqlite3.Connection, component_id: int,
 ) -> list[dict[str, Any]]:
@@ -77,10 +87,36 @@ def _fetch_slots(
 
 def _comp_ref_for(name: str) -> str:
     """Render the CompRef literal the LLM should emit to swap in this
-    master. ``-> name`` matches the L3 markup spec's CompRef syntax
-    (`docs/spec-dd-markup-grammar.md` §7).
+    master (`docs/spec-dd-markup-grammar.md` §7).
     """
-    return f"-> {name}"
+    return f"{COMP_REF_PREFIX}{name}"
+
+
+def _prop_defs_by_type(
+    conn: sqlite3.Connection,
+) -> dict[str, dict[str, Any]]:
+    """Return canonical_name → prop_definitions for catalog rows.
+
+    ``prop_definitions`` is stored as a JSON string in
+    ``component_type_catalog``; decoded here so callers can include
+    it in the LLM tool context (M7.3 set-edits need to know valid
+    property names + types).
+    """
+    rows = conn.execute(
+        "SELECT canonical_name, prop_definitions "
+        "FROM component_type_catalog"
+    ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for name, pd in rows:
+        if not pd:
+            continue
+        try:
+            decoded = json.loads(pd) if isinstance(pd, str) else pd
+        except (ValueError, TypeError):
+            decoded = None
+        if isinstance(decoded, dict):
+            out[name] = decoded
+    return out
 
 
 def serialize_library(
@@ -89,6 +125,8 @@ def serialize_library(
     canonical_types: Optional[Iterable[str]] = None,
     file_id: Optional[int] = None,
     include_slots: bool = True,
+    include_prop_defs: bool = False,
+    include_figma_ids: bool = False,
 ) -> dict[str, Any]:
     """Return a JSON-serialisable catalog description.
 
@@ -97,8 +135,15 @@ def serialize_library(
     ``file_id``: filter by file (Dank has only 1; pass when scaling
     to multi-file DBs).
     ``include_slots``: set False to skip per-component slot lookup when
-    the LLM task doesn't need slot information (e.g., a whole-screen
-    structural-similarity swap where only the CompRef path matters).
+    the LLM task doesn't need slot information (e.g., swap-only flows
+    where only the CompRef path matters).
+    ``include_prop_defs``: set True when downstream LLM flows emit
+    `set` verbs — gives each entry a ``prop_definitions`` field
+    describing valid property names + types from the catalog. Off
+    by default to keep the swap-only demo lean.
+    ``include_figma_ids``: set True to include the master's
+    figma_node_id. Off by default — the LLM selects via name /
+    CompRef and doesn't need raw node ids.
     """
     clauses: list[str] = ["c.canonical_type IS NOT NULL"]
     params: list[Any] = []
@@ -122,6 +167,8 @@ def serialize_library(
     )
     rows = conn.execute(sql, params).fetchall()
 
+    prop_defs = _prop_defs_by_type(conn) if include_prop_defs else {}
+
     entries: list[dict[str, Any]] = []
     for cid, name, ctype, category, fid in rows:
         entry: dict[str, Any] = {
@@ -129,13 +176,19 @@ def serialize_library(
             "canonical_type": ctype,
             "category": category,
             "comp_ref": _comp_ref_for(name),
-            "figma_node_id": fid,
         }
+        if include_figma_ids:
+            entry["figma_node_id"] = fid
         if include_slots:
             entry["slots"] = _fetch_slots(conn, cid)
+        if include_prop_defs:
+            pd = prop_defs.get(ctype)
+            if pd:
+                entry["prop_definitions"] = pd
         entries.append(entry)
 
     return {
+        "_version": LIBRARY_SCHEMA_VERSION,
         "total_components": len(entries),
         "components": entries,
     }

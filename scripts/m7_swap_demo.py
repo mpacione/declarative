@@ -39,41 +39,53 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-_SWAP_TOOL_SCHEMA = {
-    "name": "emit_swap_edit",
-    "description": (
-        "Emit one `swap` statement from the L3 edit grammar. The "
-        "swap changes the COMPONENT at the given eid to a different "
-        "master from the library catalog."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "target_eid": {
-                "type": "string",
-                "description": (
-                    "The @eid of the current button in the screen's "
-                    "L3 document (e.g. 'button-1'). MUST match one "
-                    "of the candidates listed in the prompt."
-                ),
+def _build_swap_tool_schema(
+    candidate_eids: list[str], master_names: list[str],
+) -> dict:
+    """Tool schema pinned to the specific candidate eids + library
+    master names for THIS run. Enum constraints enforce the LLM
+    picks valid values — the demo no longer has to strip a stray
+    `@` or catch a typo'd master.
+    """
+    return {
+        "name": "emit_swap_edit",
+        "description": (
+            "Emit one `swap` statement from the L3 edit grammar. The "
+            "swap changes the COMPONENT at the given eid to a "
+            "different master from the library catalog."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target_eid": {
+                    "type": "string",
+                    "enum": candidate_eids,
+                    "description": (
+                        "The eid of the button to swap (no leading "
+                        "`@` in the value — choose from the enum)."
+                    ),
+                },
+                "new_master_name": {
+                    "type": "string",
+                    "enum": master_names,
+                    "description": (
+                        "The 'name' of the library component to "
+                        "swap IN. MUST be a different master than "
+                        "the current one."
+                    ),
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": (
+                        "One-sentence reason for the choice."
+                    ),
+                },
             },
-            "new_master_name": {
-                "type": "string",
-                "description": (
-                    "The 'name' of the library component to swap "
-                    "IN. MUST match one of the names in the "
-                    "library catalog (e.g. 'button/large/translucent'). "
-                    "Pick a DIFFERENT master than the current one."
-                ),
-            },
-            "rationale": {
-                "type": "string",
-                "description": "One-sentence reason for the choice.",
-            },
+            "required": [
+                "target_eid", "new_master_name", "rationale",
+            ],
         },
-        "required": ["target_eid", "new_master_name", "rationale"],
-    },
-}
+    }
 
 
 def _build_system_prompt() -> str:
@@ -109,11 +121,11 @@ def _build_user_prompt(
     )
 
 
-def _extract_swap_call(response) -> dict | None:
+def _extract_swap_call(response, tool_name: str) -> dict | None:
     for block in getattr(response, "content", []) or []:
         if getattr(block, "type", None) != "tool_use":
             continue
-        if getattr(block, "name", None) != _SWAP_TOOL_SCHEMA["name"]:
+        if getattr(block, "name", None) != tool_name:
             continue
         inp = getattr(block, "input", None)
         if isinstance(inp, dict):
@@ -121,13 +133,22 @@ def _extract_swap_call(response) -> dict | None:
     return None
 
 
+# SD-3 trust set — same as slot derivation + backfill. NULL keeps
+# pre-M7.0.a rows that have a formal / heuristic source but no
+# consensus_method populated.
+_TRUSTED_CONSENSUS_METHODS = (
+    "formal", "heuristic", "unanimous", "two_source_unanimous",
+)
+
+
 def _collect_button_candidates(conn, screen_id, limit=10):
-    """Fetch button instances on the screen with their sci.id, node_id,
-    current master name (from CKR), and the instance's own node name
-    (context).
+    """Fetch trust-filtered button instances on the screen with their
+    sci.id, node_id, current master name (from CKR), and the
+    instance's own node name (context).
     """
+    trust_placeholders = ",".join("?" * len(_TRUSTED_CONSENSUS_METHODS))
     rows = conn.execute(
-        """
+        f"""
         SELECT sci.id, sci.node_id, n.name AS inst_name,
                ckr.name AS master_name
         FROM screen_component_instances sci
@@ -137,9 +158,13 @@ def _collect_button_candidates(conn, screen_id, limit=10):
         WHERE sci.screen_id = ?
           AND sci.canonical_type = 'button'
           AND ckr.name IS NOT NULL
+          AND (
+              sci.consensus_method IS NULL
+              OR sci.consensus_method IN ({trust_placeholders})
+          )
         ORDER BY sci.id LIMIT ?
         """,
-        (screen_id, limit),
+        (screen_id, *_TRUSTED_CONSENSUS_METHODS, limit),
     ).fetchall()
     return [
         {
@@ -287,30 +312,61 @@ def run_demo(
         user_prompt = _build_user_prompt(
             screen_summary, llm_candidates, library_json,
         )
+        tool_schema = _build_swap_tool_schema(
+            candidate_eids=[c["eid"] for c in llm_candidates],
+            master_names=sorted(master_names),
+        )
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=_build_system_prompt(),
-            tools=[_SWAP_TOOL_SCHEMA],
-            tool_choice={
-                "type": "tool", "name": _SWAP_TOOL_SCHEMA["name"],
-            },
+            tools=[tool_schema],
+            tool_choice={"type": "tool", "name": tool_schema["name"]},
             messages=[{"role": "user", "content": user_prompt}],
         )
-        swap = _extract_swap_call(response)
+        swap = _extract_swap_call(response, tool_schema["name"])
         if swap is None:
             print("LLM did not emit a swap tool call.", file=sys.stderr)
             return 1
         print(f"\nLLM swap: {json.dumps(swap, indent=2)}")
 
-    # 6. Build the swap edit statement in L3 and apply. Edit
-    # statements live at the top level of an L3 document (grammar
-    # §8.6) — no wrapper block.
-    # Normalise the LLM's target: strip leading `@` if the model
-    # included it (the tool schema says 'button-1' but it's a
-    # forgivable formatting drift).
+    # 6. Pre-apply validation + build the swap statement. The
+    # tool-use enums should keep the LLM honest, but validate
+    # defensively — we never want apply_edits silently mutating
+    # a node to an out-of-catalog CompRef (structural verify
+    # would pass but the rendered output would break).
     target_eid_str = swap["target_eid"].lstrip("@").strip()
     new_master = swap["new_master_name"].strip()
+    candidate_eids = {c["eid"] for c in candidates}
+    if target_eid_str not in candidate_eids:
+        print(
+            f"Rejecting swap: target_eid {target_eid_str!r} not in "
+            f"candidate set ({sorted(candidate_eids)[:5]}…).",
+            file=sys.stderr,
+        )
+        return 1
+    if new_master not in master_names:
+        print(
+            f"Rejecting swap: new_master {new_master!r} not in "
+            f"library catalog.",
+            file=sys.stderr,
+        )
+        return 1
+    current_master_for_target = next(
+        (c["current_master"] for c in candidates
+         if c["eid"] == target_eid_str),
+        None,
+    )
+    if current_master_for_target == new_master:
+        print(
+            f"Rejecting swap: new_master matches current "
+            f"({new_master!r}) — no-op.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Edit statements live at the top level of an L3 document
+    # (grammar §8.6) — no wrapper block.
     edit_doc_src = f"swap @{target_eid_str} with=-> {new_master}\n"
     try:
         edit_doc = parse_l3(edit_doc_src)

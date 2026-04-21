@@ -12,6 +12,8 @@ import sqlite3
 import pytest
 
 from dd.library_catalog import (
+    COMP_REF_PREFIX,
+    LIBRARY_SCHEMA_VERSION,
     serialize_library,
     serialize_library_json,
 )
@@ -22,6 +24,13 @@ def _fresh_db() -> sqlite3.Connection:
     conn.executescript("""
         CREATE TABLE files (id INTEGER PRIMARY KEY, file_key TEXT);
         INSERT INTO files (id, file_key) VALUES (1, 'dank');
+
+        CREATE TABLE component_type_catalog (
+            id INTEGER PRIMARY KEY,
+            canonical_name TEXT UNIQUE NOT NULL,
+            category TEXT,
+            prop_definitions TEXT
+        );
 
         CREATE TABLE components (
             id INTEGER PRIMARY KEY,
@@ -194,6 +203,57 @@ class TestSerializeLibrary:
         assert names == [
             "button/large/solid", "button/small/solid", "icon/back",
         ]
+
+
+    def test_figma_id_off_by_default(self):
+        """The LLM selects masters by name / CompRef — raw Figma IDs
+        just add noise. Default serialization omits them.
+        """
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn)
+        assert "figma_node_id" not in catalog["components"][0]
+
+    def test_figma_id_opt_in(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn, include_figma_ids=True)
+        assert catalog["components"][0]["figma_node_id"] == "1:1"
+
+    def test_prop_definitions_off_by_default(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn)
+        assert "prop_definitions" not in catalog["components"][0]
+
+    def test_prop_definitions_opt_in(self):
+        """When M7.3 set-edit flows turn on prop_definitions, the
+        LLM sees valid property names + types from the catalog.
+        """
+        conn = _fresh_db()
+        conn.execute(
+            "INSERT INTO component_type_catalog "
+            "(canonical_name, category, prop_definitions) "
+            "VALUES ('button', 'actions', "
+            "        '{\"label\":\"text\",\"size\":\"enum:sm|md|lg\"}')"
+        )
+        _seed_button(conn)
+        catalog = serialize_library(conn, include_prop_defs=True)
+        pd = catalog["components"][0]["prop_definitions"]
+        assert pd == {"label": "text", "size": "enum:sm|md|lg"}
+
+    def test_schema_version_field_present(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn)
+        assert catalog["_version"] == LIBRARY_SCHEMA_VERSION
+
+    def test_comp_ref_uses_constant_prefix(self):
+        conn = _fresh_db()
+        _seed_button(conn)
+        catalog = serialize_library(conn)
+        cr = catalog["components"][0]["comp_ref"]
+        assert cr.startswith(COMP_REF_PREFIX)
 
 
 class TestSerializeLibraryJson:
