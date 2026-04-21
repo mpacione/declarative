@@ -4,6 +4,12 @@
 **Scope:** Priority 1 on the roadmap. Builds on the v0.3 markup-native foundation (complete 2026-04-19).
 **Successor to:** the archived `docs/archive/t5-delivery-plan.md`. This doc is the current authoritative plan; the archived one predates the v0.3 cutover and should be consulted only for historical intent.
 
+**Execution layer:** [`docs/plan-burndown.md`](plan-burndown.md) is the
+active sequence of work (Tier A–F). This doc defines *what* the M7
+milestones are; the burn-down orders *when* they get built, through
+the vision / Alexander / multi-backend / performance lenses applied
+in the 2026-04-21 deep-dive review.
+
 **Envelope:** ~5–8 months calendar at full commitment. Not a weekend project.
 
 ---
