@@ -274,28 +274,49 @@ def _build_som_prompt(
         )
     descriptions = "\n".join(mark_lines)
     n = len(annotations)
-    return f"""You are classifying UI components on a mobile app screen. Each component has been outlined in magenta with a numbered label at its top-left corner.
+    return f"""You are classifying UI components on a mobile app screen. Each component has been outlined in magenta with a numbered label at its top-left corner. You can see the ENTIRE screen — use sibling and parent context aggressively.
 
 ## Canonical types (pick exactly one per mark)
 
 Use the behavioral description to disambiguate. The UI component that matches the *function* shown in the marked region wins, not one that merely looks similar.
 {catalog_block}
 
-## Rules
+## Naming-based overrides (apply FIRST, before visual inference)
 
-1. **One canonical type per mark_id.** Prefer a specific catalog type when the evidence is strong. `container` and `unsure` are valid; prefer `unsure` only when the crop is truly ambiguous.
+These rules override visual evidence — when the mark's `name` matches a pattern below, classify by the name regardless of how the region renders. Designer-assigned names in Figma are almost always ground truth for these cases.
 
-2. **Use siblings and parent context.** You can see the ENTIRE screen — exploit it. A mark inside a `bottom_nav`-shaped row is likely `navigation_row`. A mark sitting in a horizontal row of 3 similar elements is probably a `button_group` member, not a standalone `button`.
+1. **Wordmark / logo / brand → `image`.** Marks named `wordmark`, `logo`, `brand`, `logomark` are **always** classified as `image`, no matter how visually prominent or button-like they appear. The compiler renders these as static assets, not interactive controls. A `wordmark` that LOOKS like a brightly-colored pill is STILL an `image` — do NOT classify it as `button`.
 
-3. **Layout-slot names default to `container`.** Marks named `Left`, `Right`, `Center`, `Titles`, `Frame 267`, `Group 4` are almost always pure layout wrappers — classify as `container` unless the region shows unambiguous interactive or informational content.
+2. **Grabber / drag-handle → `grabber`.** Marks named `grabber`, `drag_handle`, `pull_handle`, typically a small horizontal bar at the top of a bottom sheet or drawer.
 
-4. **Wordmarks and logos → `image`.** A region named `wordmark`, `logo`, `brand`, `logomark` renders as an asset, not text.
+3. **Generic layout-slot names → `container`.** Marks named `Left`, `Right`, `Center`, `Titles`, `Frame NNN`, `Group NNN` (auto-generated names with no semantic meaning) are almost always pure layout wrappers — classify as `container` UNLESS their children collectively form an unambiguous component (e.g. 3+ icon buttons arranged in a row → `button_group`; clearly-tabbed titles → `tabs`).
 
-5. **Empty-frame placeholders → `skeleton`.** Stacks of empty rounded rectangles, shimmer blocks, repeating grey placeholder rows.
+3a. **BUT: names with semantic suffixes are NOT layout slots.** Names containing `controls` (e.g. `right controls`, `left controls`, `title and controls`), `nav`, `header`, `footer`, `toolbar`, `action bar`, `bottom bar`, `buttons` carry meaning — classify by their content, not as generic container. A `right controls` containing 3 icon buttons is `button_group`, NOT `container`. A `title and controls` mark at the top of the screen is `header`.
 
-6. **Reasons cite visual + structural signals.** One short sentence referencing shape, content, siblings, parent, or sample text.
+3b. **`artboard` → `container`.** A Figma artboard is the root canvas — always classify as `container`, regardless of what it contains. Never classify an `artboard` as `card` or any other specific type.
 
-7. **Confidence is calibrated.** 0.95+ for unambiguous, 0.85-0.94 for strong signal + minor alternative, 0.75-0.84 for real evidence + plausible alternative, below 0.75 → prefer `unsure`.
+3c. **Repeated `Frame NNN` siblings that all contain similar content → `card` (or `list_item` in a list).** Three identical `Frame 267`-named blocks arranged as rows/grid are the usual card or list_item pattern. Use `card` when they're in a grid/gallery, `list_item` when they're in a vertical list. Use `container` only when they're TRULY EMPTY with no children or only decoration.
+
+## Visual-pattern rules
+
+4. **Empty-frame placeholders → `skeleton`.** A stack of empty rounded rectangles of similar size and spacing, especially with no text content and with a parent named like `Frame 350`, `Skeleton`, `Loading`, is a loading placeholder. Classify as `skeleton`, NOT `image` (even if they appear to have content — the content is a low-opacity placeholder). Multiple identical empty rows stacked vertically is the diagnostic signal.
+
+5. **Decorative-child pattern → single `icon`.** 3 ellipses, 2 chevrons, 4 dots arranged tightly — treat the whole group as one `icon`, not `container` of N things.
+
+6. **Sibling context disambiguates.** A mark inside a `bottom_nav`-shaped row is likely `navigation_row`. A mark in a row of 3+ similar pills is `button_group` or a member of one. A mark directly below a `carousel` is likely `pager_indicator`.
+
+## Confidence is calibrated and ANCHORED
+
+- **0.95+ — unambiguous.** *Example:* a pill-shaped region with primary fill, label `Continue`, in the footer — this is a `button` at 0.98.
+- **0.85–0.94 — strong signal + one minor alternative.** *Example:* a single line of sentence-case text in the page body — very likely `text`, could argue `heading` at the smallest sizes, at 0.88.
+- **0.75–0.84 — real evidence + plausible alternative.** *Example:* a small square glyph that could be `menu` (hamburger) OR `close` (X) depending on stroke detail — 0.78.
+- **Below 0.75 — prefer `unsure`.** `unsure` beats a coin-flip guess.
+
+Aim for a CALIBRATED distribution: if you're unsure of nothing, you're overconfident. If you're unsure of everything, you're not using the evidence. Typical output spreads across 0.85-0.99 with a few 0.75-0.84 and a handful of `unsure`.
+
+## Output rules
+
+7. **Reasons cite visual + structural signals.** One short sentence referencing shape, content, siblings, parent, or sample text.
 
 8. **Every mark_id below must appear in your output exactly once.** {n} marks total.
 
