@@ -34,7 +34,10 @@ from collections.abc import Callable
 from typing import Any
 
 from dd.catalog import get_catalog
-from dd.classify_llm import _format_catalog_for_prompt
+from dd.classify_llm import (
+    _format_catalog_for_prompt,
+    build_canonical_type_enum,
+)
 
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -131,6 +134,34 @@ CLASSIFY_ACROSS_SCREENS_TOOL_SCHEMA = {
         "required": ["classifications"],
     },
 }
+
+
+def _inject_canonical_type_enum(
+    schema: dict[str, Any], catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Copy a tool schema + add an ``enum`` constraint to its
+    ``canonical_type`` field, built from the catalog + sentinels.
+    Shared helper for the two vision schemas.
+    """
+    import copy
+    out = copy.deepcopy(schema)
+    item_props = out["input_schema"]["properties"][
+        "classifications"
+    ]["items"]["properties"]
+    item_props["canonical_type"] = {
+        "type": "string",
+        "enum": build_canonical_type_enum(catalog),
+    }
+    return out
+
+
+def build_classify_across_screens_tool_schema(
+    catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """``CLASSIFY_ACROSS_SCREENS_TOOL_SCHEMA`` with constrained enum."""
+    return _inject_canonical_type_enum(
+        CLASSIFY_ACROSS_SCREENS_TOOL_SCHEMA, catalog,
+    )
 
 
 def _describe_node_in_batch(node: dict[str, Any]) -> str:
@@ -504,13 +535,14 @@ def classify_batch(
     # which requires streaming. Use the streaming client and
     # collect the final accumulated message so we keep a single
     # code path for small + large batches.
+    tool_schema = build_classify_across_screens_tool_schema(catalog)
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        tools=[CLASSIFY_ACROSS_SCREENS_TOOL_SCHEMA],
+        tools=[tool_schema],
         tool_choice={
             "type": "tool",
-            "name": CLASSIFY_ACROSS_SCREENS_TOOL_SCHEMA["name"],
+            "name": tool_schema["name"],
         },
         messages=[{"role": "user", "content": content}],
     ) as stream:
@@ -597,6 +629,17 @@ CLASSIFY_CROPS_TOOL_SCHEMA = {
         "required": ["classifications"],
     },
 }
+
+
+def build_classify_crops_tool_schema(
+    catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """``CLASSIFY_CROPS_TOOL_SCHEMA`` with constrained ``canonical_type``
+    enum built from the catalog + sentinels.
+    """
+    return _inject_canonical_type_enum(
+        CLASSIFY_CROPS_TOOL_SCHEMA, catalog,
+    )
 
 
 def _describe_candidate_compact(c: dict[str, Any]) -> str:
@@ -767,13 +810,14 @@ def classify_crops_batch(
         })
     content.append({"type": "text", "text": prompt})
 
+    tool_schema = build_classify_crops_tool_schema(catalog)
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        tools=[CLASSIFY_CROPS_TOOL_SCHEMA],
+        tools=[tool_schema],
         tool_choice={
             "type": "tool",
-            "name": CLASSIFY_CROPS_TOOL_SCHEMA["name"],
+            "name": tool_schema["name"],
         },
         messages=[{"role": "user", "content": content}],
     ) as stream:

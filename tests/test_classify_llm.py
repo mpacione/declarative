@@ -20,7 +20,9 @@ from dd.catalog import seed_catalog
 from dd.classify_llm import (
     CLASSIFY_TOOL_SCHEMA,
     _extract_classifications_from_response,
+    build_canonical_type_enum,
     build_classification_prompt,
+    build_classify_tool_schema,
     classify_llm,
     parse_classification_response,
 )
@@ -464,3 +466,95 @@ class TestClassifyLLM:
         )
         result = classify_llm(db, screen_id=1, client=mock_client)
         assert result["classified"] == 0
+
+
+class TestConstrainedDecodingSchema:
+    """``build_classify_tool_schema`` produces a tool schema with the
+    catalog pinned as an enum constraint on ``canonical_type``.
+    Anthropic's Nov 2025 constrained-decoding GA enforces enum at the
+    token level — the model physically can't emit an out-of-catalog
+    value. Replaces prompt-based "pick from this list" with a hard
+    schema constraint.
+    """
+
+    def test_enum_includes_all_catalog_canonical_names(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+            {"canonical_name": "heading", "category": "content_and_display",
+             "behavioral_description": "label"},
+            {"canonical_name": "card", "category": "content_and_display",
+             "behavioral_description": "grouped content"},
+        ]
+        enum = build_canonical_type_enum(catalog)
+        for expected in ("button", "heading", "card"):
+            assert expected in enum
+
+    def test_enum_includes_container_and_unsure_sentinels(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+        ]
+        enum = build_canonical_type_enum(catalog)
+        assert "container" in enum
+        assert "unsure" in enum
+
+    def test_enum_dedupes_repeated_names(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap again"},  # duplicate name
+        ]
+        enum = build_canonical_type_enum(catalog)
+        assert enum.count("button") == 1
+
+    def test_enum_skips_malformed_entries(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+            {"category": "actions"},  # no canonical_name
+            {"canonical_name": None, "category": "actions"},  # None name
+        ]
+        enum = build_canonical_type_enum(catalog)
+        assert "button" in enum
+        assert None not in enum
+
+    def test_tool_schema_applies_enum_to_canonical_type(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+        ]
+        schema = build_classify_tool_schema(catalog)
+        item_props = schema["input_schema"]["properties"][
+            "classifications"
+        ]["items"]["properties"]
+        canonical_type = item_props["canonical_type"]
+        assert canonical_type["type"] == "string"
+        assert "enum" in canonical_type
+        assert "button" in canonical_type["enum"]
+        assert "container" in canonical_type["enum"]
+        assert "unsure" in canonical_type["enum"]
+
+    def test_tool_schema_preserves_name_description(self):
+        catalog = []
+        schema = build_classify_tool_schema(catalog)
+        assert schema["name"] == CLASSIFY_TOOL_SCHEMA["name"]
+        assert schema["description"] == CLASSIFY_TOOL_SCHEMA["description"]
+
+    def test_each_call_returns_fresh_dict(self):
+        catalog = [
+            {"canonical_name": "button", "category": "actions",
+             "behavioral_description": "tap"},
+        ]
+        a = build_classify_tool_schema(catalog)
+        b = build_classify_tool_schema(catalog)
+        assert a is not b
+        # Mutating one shouldn't affect the other.
+        a["input_schema"]["properties"]["classifications"]["items"][
+            "properties"
+        ]["canonical_type"]["enum"].append("mutated")
+        b_enum = b["input_schema"]["properties"]["classifications"][
+            "items"
+        ]["properties"]["canonical_type"]["enum"]
+        assert "mutated" not in b_enum

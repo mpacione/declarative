@@ -47,6 +47,7 @@ from dd.classify_llm import (
     _extract_classifications_from_response,
     _get_unclassified_for_llm,
     build_classification_prompt,
+    build_classify_tool_schema,
 )
 from dd.classify_rules import is_system_chrome
 from dd.classify_skeleton import extract_skeleton
@@ -175,11 +176,14 @@ def _llm_classify_batch(
         few_shot_block + "\n" + base_prompt
         if few_shot_block else base_prompt
     )
+    # Enum-constrained decoding: build the tool schema with catalog
+    # pinned in as an enum so the model can't emit free-text drift.
+    tool_schema = build_classify_tool_schema(catalog)
     response = client.messages.create(
         model=_LLM_MODEL,
         max_tokens=_LLM_MAX_TOKENS,
-        tools=[CLASSIFY_TOOL_SCHEMA],
-        tool_choice={"type": "tool", "name": CLASSIFY_TOOL_SCHEMA["name"]},
+        tools=[tool_schema],
+        tool_choice={"type": "tool", "name": tool_schema["name"]},
         messages=[{"role": "user", "content": prompt}],
     )
     classifications = _extract_classifications_from_response(response)

@@ -78,6 +78,98 @@ CLASSIFY_TOOL_SCHEMA = {
 }
 
 
+# Catalog-adjacent sentinels that are always valid canonical types
+# even though they're not stored as rows in ``component_type_catalog``.
+# - container: generic layout frame with no specific identity.
+# - unsure: reviewer-visible "couldn't decide" signal.
+_CATALOG_SENTINEL_TYPES = ("container", "unsure")
+
+
+def build_canonical_type_enum(
+    catalog: list[dict[str, Any]],
+) -> list[str]:
+    """Return the full list of valid ``canonical_type`` values — every
+    catalog row's ``canonical_name`` plus ``container`` and ``unsure``.
+
+    Order-preserving dedup so the same catalog always produces an
+    identical enum (important for caching and response reproducibility
+    across runs). Missing / malformed entries are silently skipped.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for entry in catalog:
+        name = entry.get("canonical_name")
+        if isinstance(name, str) and name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    for sentinel in _CATALOG_SENTINEL_TYPES:
+        if sentinel not in seen:
+            seen.add(sentinel)
+            out.append(sentinel)
+    return out
+
+
+def build_classify_tool_schema(
+    catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return ``CLASSIFY_TOOL_SCHEMA`` with an ``enum`` constraint on
+    ``canonical_type`` built from the current catalog + sentinels.
+
+    Anthropic's tool-use constrained decoding (Nov 2025 GA) enforces
+    the schema at the token level — if we pass an enum, the model
+    physically cannot emit a value outside the allowed set. Drops
+    whole classes of free-text drift ("Button", "btn",
+    "action_button", etc.) and gives us one less validation layer to
+    maintain. Requires Sonnet 4.5+/Haiku 4.5+/Opus 4.6+.
+
+    Returns a fresh dict each call so callers can mutate without side
+    effects on the module-level constant.
+    """
+    enum = build_canonical_type_enum(catalog)
+    return {
+        "name": CLASSIFY_TOOL_SCHEMA["name"],
+        "description": CLASSIFY_TOOL_SCHEMA["description"],
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "classifications": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "node_id": {"type": "integer"},
+                            "canonical_type": {
+                                "type": "string",
+                                "enum": enum,
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "One short sentence citing the "
+                                    "signals that led to this "
+                                    "classification (layout, text, "
+                                    "parent, size, etc.). Evidence-"
+                                    "based; no speculation."
+                                ),
+                            },
+                        },
+                        "required": [
+                            "node_id", "canonical_type",
+                            "confidence", "reason",
+                        ],
+                    },
+                },
+            },
+            "required": ["classifications"],
+        },
+    }
+
+
 def _format_catalog_for_prompt(catalog: list[dict[str, Any]]) -> str:
     """Render the catalog by category with one line per type.
 
@@ -416,11 +508,12 @@ def classify_llm(
         skeleton_type=skel_type,
     )
 
+    tool_schema = build_classify_tool_schema(catalog)
     response = client.messages.create(
         model=_LLM_MODEL,
         max_tokens=4096,
-        tools=[CLASSIFY_TOOL_SCHEMA],
-        tool_choice={"type": "tool", "name": CLASSIFY_TOOL_SCHEMA["name"]},
+        tools=[tool_schema],
+        tool_choice={"type": "tool", "name": tool_schema["name"]},
         messages=[{"role": "user", "content": prompt}],
     )
     results = _extract_classifications_from_response(response)
