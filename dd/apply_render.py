@@ -88,6 +88,71 @@ def _bfs_nodes(doc: L3Document) -> list[Node]:
     return out
 
 
+def _index_by_path(doc: L3Document) -> dict[tuple, Node]:
+    """Index every node in ``doc`` by its eid-chain path from the
+    document root.
+
+    Path shape: ``(root_eid, child_eid, grandchild_eid, ...)``
+
+    Grammar §2.3.1 forbids duplicate eids WITHIN a parent block
+    (raises ``KIND_DUPLICATE_EID`` at parse time), so (parent_path,
+    eid) is unique within a parent. Cousin subtrees (different
+    parents with children sharing an eid) get distinct path keys
+    because their parent chain differs.
+
+    Sibling indices are deliberately NOT part of the key: insert /
+    move / delete shift sibling positions, but the eid stays stable.
+    Matching by eid-chain survives all three mutations.
+
+    Caveat: multiple top-level docs with the same root eid would
+    collide. The current grammar has a single top-level screen per
+    doc, so this isn't an issue.
+
+    Known limits (see tier-A review a333523d, documented here so
+    future sessions don't re-discover them):
+
+    - **move** is modeled as atomic delete+insert in
+      :func:`dd.markup_l3._apply_move`. When a node moves under a
+      different parent, its old path is absent from the applied
+      doc and its new path is absent from the original doc. The
+      move target is indexed as "new node" and loses its DB nid
+      (silent fidelity loss — renders via Mode-2 cheap-emit
+      instead of its DB style). Old positional-BFS algorithm had
+      the same behavior. Full fix: index by eid AND path, fall
+      back to eid-match when path-match fails, detect it as a
+      move and carry forward the DB nid from the original home.
+      Deferred until Tier D/E needs it.
+
+    - **swap-under-move** in the same edit sequence: the swap
+      target's new-path has no original counterpart, so the swap
+      handler's ``applied_node.head.eid in swapped_eids`` check
+      never fires. Silently rendered as Mode-2 plain node. Rare
+      in practice; flag for Tier D tests.
+
+    - **empty eids**: two sibling nodes with empty head.eid would
+      collide on the same path key. Grammar §2.3.1 forbids
+      duplicates but whether it catches empty-eid pairs is
+      parser-dependent. The walker below uses a stable index
+      tiebreak (``(eid or f"__anon_{idx}")``) to avoid silent
+      overwrite.
+    """
+    out: dict[tuple, Node] = {}
+
+    def walk(nodes, prefix):
+        for idx, n in enumerate(nodes):
+            if not isinstance(n, Node):
+                continue
+            eid_key = n.head.eid or f"__anon_{idx}"
+            key = prefix + (eid_key,)
+            out[key] = n
+            block = n.block
+            if block is not None:
+                walk(block.statements, key)
+
+    walk(doc.top_level, ())
+    return out
+
+
 def _collect_swap_statements(
     edits: list[object],
 ) -> list[SwapStatement]:
@@ -156,16 +221,21 @@ def rebuild_maps_after_edits(
             db_visuals_patch={},
         )
 
-    applied_nodes = _bfs_nodes(applied_doc)
-    original_nodes = _bfs_nodes(original_doc)
+    # Tier A.2: path-based matching (upgraded from the M7.2-era
+    # positional BFS). Insert / delete / move shift positions, so
+    # position-based pairing misaligns the moment one of those
+    # verbs fires mid-tree. Path keys — (eid, sibling_idx) chain
+    # from the root — are stable across additions/removals at
+    # sibling positions.
+    original_by_path = _index_by_path(original_doc)
 
     new_nid_map: dict[int, int] = {}
     new_spec_key_map: dict[int, str] = {}
     new_original_name_map: dict[int, str] = {}
     db_visuals_patch: dict[int, dict[str, Any]] = {}
 
-    # Synthetic nid allocator. Stays negative so it can't collide with
-    # any DB-assigned id.
+    # Synthetic nid allocator. Stays negative so it can't collide
+    # with any DB-assigned id.
     next_synth_nid = -1
 
     swap_stmts = _collect_swap_statements(edits)
@@ -173,73 +243,82 @@ def rebuild_maps_after_edits(
         s.target.path: s.with_node.head.type_or_path for s in swap_stmts
     }
 
-    # When the walks produce different lengths, siblings of the swap
-    # target are out of alignment. For M7.2 swap-only scope we require
-    # the shapes match; anything else falls through to a soft skip.
-    for idx, applied_node in enumerate(applied_nodes):
-        if idx >= len(original_nodes):
-            # No counterpart — extra node introduced by a non-swap verb
-            # that doesn't exist in the original tree. Skip silently.
-            continue
-        orig_node = original_nodes[idx]
+    def walk(nodes, prefix):
+        nonlocal next_synth_nid
+        for idx, applied_node in enumerate(nodes):
+            if not isinstance(applied_node, Node):
+                continue
+            eid_key = applied_node.head.eid or f"__anon_{idx}"
+            path = prefix + (eid_key,)
+            orig_node = original_by_path.get(path)
 
-        # Ancestor or unrelated node — same eid, same head type, same
-        # head_kind → identity-preserving. Carry maps forward.
-        same_head = (
-            orig_node.head.eid == applied_node.head.eid
-            and orig_node.head.head_kind == applied_node.head.head_kind
-            and orig_node.head.type_or_path == applied_node.head.type_or_path
-        )
-        if same_head:
-            oid = id(orig_node)
-            new_id = id(applied_node)
-            if oid in old_nid_map:
-                new_nid_map[new_id] = old_nid_map[oid]
-            if oid in old_spec_key_map:
-                new_spec_key_map[new_id] = old_spec_key_map[oid]
-            if oid in old_original_name_map:
-                new_original_name_map[new_id] = old_original_name_map[oid]
-            continue
-
-        # Same eid, different head → a swap fired here.
-        if orig_node.head.eid == applied_node.head.eid and \
-                applied_node.head.eid in swapped_eids:
-            new_master = applied_node.head.type_or_path
-            figma_id = _lookup_master_in_ckr(conn, new_master)
-            if not figma_id:
-                raise SwapUnresolvedInCKR(
-                    f"swap target `@{applied_node.head.eid}` references "
-                    f"master `{new_master}` which is not in the "
-                    "component_key_registry on this DB."
+            if orig_node is not None:
+                # Same path in both trees. Either identity-preserving
+                # (head equal → carry forward) or a swap target
+                # (head differs, eid preserved by the swap verb).
+                same_head = (
+                    orig_node.head.eid == applied_node.head.eid
+                    and orig_node.head.head_kind == applied_node.head.head_kind
+                    and orig_node.head.type_or_path == applied_node.head.type_or_path
                 )
-            synth_nid = next_synth_nid
-            next_synth_nid -= 1
-            new_id = id(applied_node)
-            new_nid_map[new_id] = synth_nid
-            # Preserve whatever spec_key the compressor originally
-            # assigned to this eid. In real Dank output, eid and
-            # spec_key are distinct (eid is name-derived, spec_key
-            # is the positional element-dict key like ``button-2``).
-            # Reusing the old spec_key keeps the renderer's
-            # baseline_walk_idx lookup valid — otherwise the swap
-            # target's ``var_map[new_id]`` collides with whichever
-            # node was at that BFS index, producing
-            # ``const n5`` twice in the emitted script.
-            new_spec_key_map[new_id] = old_spec_key_map.get(
-                id(orig_node), applied_node.head.eid,
-            )
-            new_original_name_map[new_id] = new_master
-            db_visuals_patch[synth_nid] = {
-                "component_figma_id": figma_id,
-                "component_key": None,
-                "node_type": "INSTANCE",
-                "figma_node_id": figma_id,
-            }
-            continue
+                new_id = id(applied_node)
+                if same_head:
+                    oid = id(orig_node)
+                    if oid in old_nid_map:
+                        new_nid_map[new_id] = old_nid_map[oid]
+                    if oid in old_spec_key_map:
+                        new_spec_key_map[new_id] = old_spec_key_map[oid]
+                    if oid in old_original_name_map:
+                        new_original_name_map[new_id] = old_original_name_map[oid]
+                elif applied_node.head.eid in swapped_eids:
+                    # Swap target — synth nid + CKR-resolved figma_id.
+                    new_master = applied_node.head.type_or_path
+                    figma_id = _lookup_master_in_ckr(conn, new_master)
+                    if not figma_id:
+                        raise SwapUnresolvedInCKR(
+                            f"swap target `@{applied_node.head.eid}` "
+                            f"references master `{new_master}` which "
+                            "is not in the component_key_registry "
+                            "on this DB."
+                        )
+                    synth_nid = next_synth_nid
+                    next_synth_nid -= 1
+                    new_nid_map[new_id] = synth_nid
+                    # Preserve the old spec_key so baseline_walk_idx
+                    # lookup stays valid (see M7.2 note).
+                    new_spec_key_map[new_id] = old_spec_key_map.get(
+                        id(orig_node), applied_node.head.eid,
+                    )
+                    new_original_name_map[new_id] = new_master
+                    db_visuals_patch[synth_nid] = {
+                        "component_figma_id": figma_id,
+                        "component_key": None,
+                        "node_type": "INSTANCE",
+                        "figma_node_id": figma_id,
+                    }
+                # (Else: path matches but head differs and no swap —
+                # shouldn't happen under current grammar; skip
+                # silently.)
+            else:
+                # No counterpart in original. This is a fresh node
+                # from append / insert / replace. No DB nid (never
+                # existed); no CKR lookup (it's a type-keyword new
+                # node, not a comp-ref swap target). Emit just
+                # spec_key + original_name so the renderer's
+                # M[<eid>] = nN.id emission reaches it. The
+                # renderer's Mode-2 cheap-emission path handles
+                # node materialisation (createFrame/createText/etc).
+                new_id = id(applied_node)
+                eid = applied_node.head.eid or ""
+                if eid:
+                    new_spec_key_map[new_id] = eid
+                    new_original_name_map[new_id] = eid
 
-        # Different eid: this is a replace/insert/append — out of
-        # scope for M7.2's swap-only closure. Skip silently.
-        continue
+            block = applied_node.block
+            if block is not None:
+                walk(block.statements, path)
+
+    walk(applied_doc.top_level, ())
 
     return AppliedRenderMaps(
         nid_map=new_nid_map,

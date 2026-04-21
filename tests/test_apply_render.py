@@ -226,6 +226,295 @@ class TestRebuildMapsAfterEdits:
         assert entry.get("component_figma_id") == "fig-md-NEW"
         assert entry.get("node_type") == "INSTANCE"
 
+    # ------------------------------------------------------------
+    # Tier A.2 — append / insert coverage
+    # ------------------------------------------------------------
+
+    def test_append_maps_carry_siblings_forward_and_mark_new_child(
+        self,
+    ) -> None:
+        """A new child appended to a parent must not disturb the
+        sibling maps. Existing nodes (screen/frame/button) keep
+        their old nid/spec_key/original_name entries onto the new
+        id(). The appended node itself gets a spec_key entry so
+        the renderer's M[] emission reaches it; no DB nid (not in
+        the original tree)."""
+        doc, screen, frame, button = _parse_fixture()
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(conn, [("k-lg", "fig-lg", "button/primary/lg")])
+
+        nid_map = {id(screen): 1001, id(frame): 1002, id(button): 1003}
+        spec_key_map = {
+            id(screen): "screen-1",
+            id(frame): "frame-1",
+            id(button): "button-1",
+        }
+        original_name_map = {
+            id(screen): "Screen",
+            id(frame): "Frame",
+            id(button): "Button",
+        }
+
+        edits = list(
+            parse_l3(
+                "append to=@frame-1 {\n  text #new-label \"hi\"\n}"
+            ).edits
+        )
+        applied = apply_edits(doc, edits)
+        a_screen = applied.top_level[0]
+        a_frame = a_screen.block.statements[0]
+        a_button = a_frame.block.statements[0]
+        a_new = a_frame.block.statements[1]
+
+        out = rebuild_maps_after_edits(
+            applied_doc=applied,
+            original_doc=doc,
+            edits=edits,
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=conn,
+        )
+        # Pre-existing nodes keep their maps, re-keyed on new id()
+        assert out.nid_map[id(a_screen)] == 1001
+        assert out.nid_map[id(a_frame)] == 1002
+        assert out.nid_map[id(a_button)] == 1003
+        # New node has NO nid entry (never existed in DB) but HAS
+        # a spec_key entry so renderer writes M["new-label"] = nN.id
+        assert id(a_new) not in out.nid_map
+        assert out.spec_key_map[id(a_new)] == "new-label"
+        # Original name = eid is fine (renderer uses this as node
+        # name on the Figma canvas).
+        assert out.original_name_map[id(a_new)] == "new-label"
+
+    def test_insert_after_anchor_keeps_alignment(self) -> None:
+        """Insert places a new sibling mid-block (after an anchor).
+        The applied tree has +1 node; positional BFS would go out
+        of alignment after the insertion point. Path-based matching
+        is what keeps siblings correctly paired."""
+        src = (
+            "screen #screen-1 {\n"
+            "  frame #frame-1 {\n"
+            "    text #title \"hi\"\n"
+            "    text #subtitle \"yo\"\n"
+            "  }\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        screen = doc.top_level[0]
+        frame = screen.block.statements[0]
+        title = frame.block.statements[0]
+        subtitle = frame.block.statements[1]
+
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(conn, [])
+        nid_map = {
+            id(screen): 100, id(frame): 101,
+            id(title): 102, id(subtitle): 103,
+        }
+        spec_key_map = {
+            id(screen): "screen-1", id(frame): "frame-1",
+            id(title): "title", id(subtitle): "subtitle",
+        }
+        original_name_map = dict(spec_key_map)
+
+        edits = list(
+            parse_l3(
+                "insert into=@frame-1 after=@title {\n"
+                "  text #pin \"pin\"\n"
+                "}"
+            ).edits
+        )
+        applied = apply_edits(doc, edits)
+        a_screen = applied.top_level[0]
+        a_frame = a_screen.block.statements[0]
+        a_title = a_frame.block.statements[0]
+        a_pin = a_frame.block.statements[1]
+        a_subtitle = a_frame.block.statements[2]
+
+        out = rebuild_maps_after_edits(
+            applied_doc=applied, original_doc=doc, edits=edits,
+            old_nid_map=nid_map, old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map, conn=conn,
+        )
+        # Every PRE-EXISTING node is re-keyed correctly — including
+        # subtitle, which shifted from position 1 to position 2.
+        assert out.nid_map[id(a_screen)] == 100
+        assert out.nid_map[id(a_frame)] == 101
+        assert out.nid_map[id(a_title)] == 102
+        assert out.nid_map[id(a_subtitle)] == 103
+        # The inserted node gets a spec_key + name; no DB nid.
+        assert id(a_pin) not in out.nid_map
+        assert out.spec_key_map[id(a_pin)] == "pin"
+
+    def test_append_nested_block_all_new_nodes_mapped(self) -> None:
+        """Append can introduce a WHOLE subtree — a frame with its
+        own children. Every new node needs a spec_key + name so the
+        renderer M[] emission reaches them."""
+        doc, screen, frame, button = _parse_fixture()
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(conn, [("k-lg", "fig-lg", "button/primary/lg")])
+        nid_map = {id(screen): 1, id(frame): 2, id(button): 3}
+        spec_key_map = {
+            id(screen): "screen-1", id(frame): "frame-1",
+            id(button): "button-1",
+        }
+        original_name_map = dict(spec_key_map)
+
+        edits = list(
+            parse_l3(
+                "append to=@frame-1 {\n"
+                "  frame #wrap {\n"
+                "    heading #wrap-title \"title\"\n"
+                "    text #wrap-body \"body\"\n"
+                "  }\n"
+                "}"
+            ).edits
+        )
+        applied = apply_edits(doc, edits)
+        a_frame = applied.top_level[0].block.statements[0]
+        a_wrap = a_frame.block.statements[1]  # after existing button
+        a_wrap_title = a_wrap.block.statements[0]
+        a_wrap_body = a_wrap.block.statements[1]
+
+        out = rebuild_maps_after_edits(
+            applied_doc=applied, original_doc=doc, edits=edits,
+            old_nid_map=nid_map, old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map, conn=conn,
+        )
+        # Every new node has a spec_key
+        assert out.spec_key_map[id(a_wrap)] == "wrap"
+        assert out.spec_key_map[id(a_wrap_title)] == "wrap-title"
+        assert out.spec_key_map[id(a_wrap_body)] == "wrap-body"
+
+    def test_cousin_eid_collision_resolved_by_path(self) -> None:
+        """Grammar §2.3.1 allows cousins (different parents, same
+        eid). Path-keyed index must keep them distinct — otherwise
+        the second cousin silently overwrites the first in
+        ``original_by_path``."""
+        src = (
+            "screen #screen-1 {\n"
+            "  frame #left {\n"
+            "    text #twin \"L\"\n"
+            "  }\n"
+            "  frame #right {\n"
+            "    text #twin \"R\"\n"
+            "  }\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        screen = doc.top_level[0]
+        left = screen.block.statements[0]
+        right = screen.block.statements[1]
+        left_twin = left.block.statements[0]
+        right_twin = right.block.statements[0]
+
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(conn, [])
+        nid_map = {
+            id(screen): 1, id(left): 2, id(right): 3,
+            id(left_twin): 10, id(right_twin): 20,
+        }
+        spec_key_map = {
+            id(screen): "screen-1", id(left): "left", id(right): "right",
+            id(left_twin): "twin-L", id(right_twin): "twin-R",
+        }
+        original_name_map = {
+            id(screen): "Screen", id(left): "Left", id(right): "Right",
+            id(left_twin): "Twin L", id(right_twin): "Twin R",
+        }
+
+        # No edits — identity. But the rebuild still exercises the
+        # path index, so cousin twins must be distinct.
+        applied = apply_edits(
+            doc,
+            list(parse_l3(
+                "append to=@left {\n  text #l-tail \"tail\"\n}"
+            ).edits),
+        )
+        a_left = applied.top_level[0].block.statements[0]
+        a_right = applied.top_level[0].block.statements[1]
+        a_left_twin = a_left.block.statements[0]
+        a_right_twin = a_right.block.statements[0]
+
+        out = rebuild_maps_after_edits(
+            applied_doc=applied, original_doc=doc,
+            edits=list(parse_l3(
+                "append to=@left {\n  text #l-tail \"tail\"\n}"
+            ).edits),
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=conn,
+        )
+        # Both cousin twins preserve their DISTINCT old nids /
+        # spec_keys / names — they didn't collide in the path index.
+        assert out.nid_map[id(a_left_twin)] == 10
+        assert out.nid_map[id(a_right_twin)] == 20
+        assert out.spec_key_map[id(a_left_twin)] == "twin-L"
+        assert out.spec_key_map[id(a_right_twin)] == "twin-R"
+
+    def test_multiple_swaps_get_distinct_synth_nids(self) -> None:
+        """Two swap statements in one edit sequence → two distinct
+        synthetic nids. Reuse would break Mode-1 createInstance
+        routing."""
+        src = (
+            "screen #screen-1 {\n"
+            "  frame #frame-1 {\n"
+            "    -> button/primary/lg #b-a\n"
+            "    -> button/primary/lg #b-b\n"
+            "  }\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        screen = doc.top_level[0]
+        frame = screen.block.statements[0]
+        ba = frame.block.statements[0]
+        bb = frame.block.statements[1]
+
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(
+            conn,
+            [
+                ("k-lg", "fig-lg", "button/primary/lg"),
+                ("k-sec", "fig-sec", "button/secondary/md"),
+                ("k-tert", "fig-tert", "button/tertiary/sm"),
+            ],
+        )
+        nid_map = {id(screen): 1, id(frame): 2, id(ba): 3, id(bb): 4}
+        spec_key_map = {
+            id(screen): "screen-1", id(frame): "frame-1",
+            id(ba): "b-a", id(bb): "b-b",
+        }
+        original_name_map = dict(spec_key_map)
+
+        edits = list(
+            parse_l3(
+                "swap @b-a with=-> button/secondary/md\n"
+                "swap @b-b with=-> button/tertiary/sm"
+            ).edits
+        )
+        applied = apply_edits(doc, edits)
+        a_frame = applied.top_level[0].block.statements[0]
+        a_ba = a_frame.block.statements[0]
+        a_bb = a_frame.block.statements[1]
+
+        out = rebuild_maps_after_edits(
+            applied_doc=applied, original_doc=doc, edits=edits,
+            old_nid_map=nid_map, old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map, conn=conn,
+        )
+        nid_a = out.nid_map[id(a_ba)]
+        nid_b = out.nid_map[id(a_bb)]
+        # Both swapped, both synth (negative), both distinct.
+        assert nid_a < 0
+        assert nid_b < 0
+        assert nid_a != nid_b
+        # Each gets its own CKR patch entry with the correct
+        # figma_id for its new master.
+        assert out.db_visuals_patch[nid_a]["component_figma_id"] == "fig-sec"
+        assert out.db_visuals_patch[nid_b]["component_figma_id"] == "fig-tert"
+
     def test_swap_to_master_not_in_ckr_raises(self) -> None:
         """If the LLM asked for a master the CKR doesn't know about,
         we refuse — the renderer would fall through to a wireframe
