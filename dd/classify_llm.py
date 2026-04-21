@@ -363,12 +363,18 @@ def _extract_classifications_from_response(response: Any) -> list[dict[str, Any]
 
 def _get_unclassified_for_llm(
     conn: sqlite3.Connection, screen_id: int,
+    *, force_reclassify: bool = False,
 ) -> list[dict[str, Any]]:
     """Fetch unclassified FRAME/INSTANCE/COMPONENT nodes at depth
     ≥1 on the given screen, enriched with the context the LLM
     prompt needs: parent classification (if any), sibling/child
     distribution, sample text, and the CKR-registered master name
     when the node has a ``component_key``.
+
+    ``force_reclassify``: when True, drop the "sci row doesn't
+    exist yet" filter so every eligible node is returned regardless
+    of prior classification. Used by rerun flows to re-classify the
+    whole corpus against an updated catalog.
     """
     screen = conn.execute(
         "SELECT name, width, height FROM screens WHERE id = ?",
@@ -395,8 +401,18 @@ def _get_unclassified_for_llm(
     #                               ancestor-hidden nodes standalone)
     #   self=False              -> LLM-text only, no vision (Figma
     #                               REST refuses to render self-hidden)
+    # Rerun mode: re-score nodes that are either unclassified OR
+    # previously LLM-classified. Formal / heuristic verdicts are
+    # deterministic rules (artboard → container etc.) that don't
+    # change with catalog expansion, so preserve them — don't let
+    # the LLM upsert overwrite them with classification_source='llm'.
+    sci_filter = (
+        "AND (sci.id IS NULL OR sci.classification_source = 'llm')"
+        if force_reclassify
+        else "AND sci.id IS NULL"
+    )
     cursor = conn.execute(
-        """
+        f"""
         WITH RECURSIVE invisible_subtree(id) AS (
             SELECT id FROM nodes
             WHERE screen_id = ? AND COALESCE(visible, 1) = 0
@@ -417,7 +433,7 @@ def _get_unclassified_for_llm(
         WHERE n.screen_id = ?
           AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT')
           AND n.depth >= 1
-          AND sci.id IS NULL
+          {sci_filter}
           AND NOT (
             COALESCE(n.width, 0) >= ? * 0.95
             AND COALESCE(n.height, 0) >= ? * 0.95

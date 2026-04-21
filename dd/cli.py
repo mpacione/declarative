@@ -471,6 +471,7 @@ def _run_classify(
     limit: int | None = None,
     three_source: bool = False,
     classifier_v2: bool = False,
+    force_reclassify: bool = False,
 ) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
@@ -554,6 +555,7 @@ def _run_classify(
             fetch_screenshot=fetch_screenshot,
             since_screen_id=since,
             limit=limit,
+            force_reclassify=force_reclassify,
         )
     else:
         result = run_classification(
@@ -1481,6 +1483,19 @@ def main(argv: list | None = None) -> None:
             "docs/plan-classifier-v2.md."
         ),
     )
+    classify_parser.add_argument(
+        "--rerun", action="store_true",
+        help=(
+            "Re-classify every eligible node regardless of existing "
+            "classifications. Uses UPSERT so existing sci rows are "
+            "updated in place — classification_reviews (human "
+            "decisions, FK'd via ON DELETE CASCADE) are preserved. "
+            "Only meaningful with --classifier-v2; typical use is "
+            "refreshing verdicts after a catalog expansion. Does NOT "
+            "touch node_id, screen_id, parent_instance_id, or the "
+            "review trail."
+        ),
+    )
 
     classify_review_parser = subparsers.add_parser(
         "classify-review",
@@ -1718,6 +1733,7 @@ def main(argv: list | None = None) -> None:
             limit=args.limit,
             three_source=args.three_source,
             classifier_v2=args.classifier_v2,
+            force_reclassify=args.rerun,
         )
     elif args.command == "classify-review":
         db_path = detect_db_path(args.db)

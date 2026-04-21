@@ -86,6 +86,8 @@ def _list_screens(
 def _collect_all_candidates(
     conn: sqlite3.Connection,
     screen_ids: list[int],
+    *,
+    force_reclassify: bool = False,
 ) -> list[dict[str, Any]]:
     """Pool unclassified candidates across every screen. Reuses
     `_get_unclassified_for_llm` per screen (already applies the
@@ -95,6 +97,9 @@ def _collect_all_candidates(
     prompt builders (classify_llm._describe_node) can compute
     geometric features (aspect ratio, position on screen,
     size-relative-to-viewport). v2.1 Phase C.
+
+    ``force_reclassify``: when True, return every eligible node
+    regardless of existing sci row. Used by rerun flows.
     """
     # Fetch screen metadata once per screen.
     pooled: list[dict[str, Any]] = []
@@ -110,7 +115,9 @@ def _collect_all_candidates(
             sw = float(screen_row[1] or 0)
             sh = float(screen_row[2] or 0)
             device_class = screen_row[3]
-        cands = _get_unclassified_for_llm(conn, sid)
+        cands = _get_unclassified_for_llm(
+            conn, sid, force_reclassify=force_reclassify,
+        )
         for c in cands:
             c["screen_id"] = sid
             c["screen_width"] = sw
@@ -291,12 +298,24 @@ def _insert_llm_verdicts(
                 conf, "llm", reason, ctype, conf,
             ))
     if inserts:
+        # UPSERT on (screen_id, node_id). Rerun flows pick up the same
+        # node and overwrite the LLM / canonical_type / confidence
+        # columns with the fresh verdict; vision_* columns are left
+        # alone here and refreshed by Pass 9.
         conn.executemany(
-            "INSERT OR IGNORE INTO screen_component_instances "
+            "INSERT INTO screen_component_instances "
             "(screen_id, node_id, catalog_type_id, canonical_type, "
             " confidence, classification_source, llm_reason, "
             " llm_type, llm_confidence) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(screen_id, node_id) DO UPDATE SET "
+            "  catalog_type_id = excluded.catalog_type_id, "
+            "  canonical_type = excluded.canonical_type, "
+            "  confidence = excluded.confidence, "
+            "  classification_source = excluded.classification_source, "
+            "  llm_reason = excluded.llm_reason, "
+            "  llm_type = excluded.llm_type, "
+            "  llm_confidence = excluded.llm_confidence",
             inserts,
         )
         conn.commit()
@@ -886,6 +905,7 @@ def run_classification_v2(
     limit: Optional[int] = None,
     progress_callback: Any = None,
     workers: int = _DEFAULT_WORKERS,
+    force_reclassify: bool = False,
 ) -> dict[str, Any]:
     """Orchestrate the full v2 cascade.
 
@@ -912,8 +932,12 @@ def run_classification_v2(
         classify_heuristics(conn, sid)
         link_parent_instances(conn, sid)
 
-    # Pass 2: collect candidates globally.
-    candidates = _collect_all_candidates(conn, screen_ids)
+    # Pass 2: collect candidates globally. force_reclassify drops the
+    # "no existing sci" filter so the whole corpus is re-scored
+    # against the current catalog (used after catalog expansions).
+    candidates = _collect_all_candidates(
+        conn, screen_ids, force_reclassify=force_reclassify,
+    )
 
     # Pass 3: dedup.
     groups_map = group_candidates(candidates)
