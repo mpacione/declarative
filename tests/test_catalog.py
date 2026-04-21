@@ -147,8 +147,14 @@ class TestCatalogData:
         # + 7 new (divider, progress, spinner, kbd, number_input, otp_input,
         # command) = 53. 2026-04-20: control_point + not_ui + 7 CLAY /
         # Ferret-UI-2 audit types (chip, carousel, pager_indicator,
-        # chart, rating, video_player, grabber) = 62. Tolerance 55-70.
-        assert 55 <= len(CATALOG_ENTRIES) <= 70
+        # chart, rating, video_player, grabber) = 62. 2026-04-21 AM:
+        # +3 (magnifier, mouse_cursor, coach_mark) = 65. +3 (keyboard,
+        # control_box, text_cursor) from adjudication = 68. +13 from
+        # Material 3 / Apple HIG / design-tool audit (sidebar, toolbar,
+        # bottom_sheet, color_picker, color_swatch, ruler, stepper_input,
+        # banner, snackbar, action_sheet, progress_ring, eyedropper,
+        # edit_menu) = 81. Tolerance 55-100.
+        assert 55 <= len(CATALOG_ENTRIES) <= 100
 
     def test_all_have_required_fields(self):
         for entry in CATALOG_ENTRIES:
@@ -286,8 +292,12 @@ class TestCatalogQueries:
 
     def test_get_catalog_filters_by_category(self, seeded_db: sqlite3.Connection):
         actions = get_catalog(seeded_db, category="actions")
-        assert len(actions) == 6
+        # Count grows with each catalog addition; check non-empty + tag
+        # consistency instead of hard-coded count.
+        assert len(actions) >= 6
         assert all(r["category"] == "actions" for r in actions)
+        names = {r["canonical_name"] for r in actions}
+        assert "button" in names and "icon_button" in names
 
     def test_get_catalog_empty_category_returns_empty(self, seeded_db: sqlite3.Connection):
         results = get_catalog(seeded_db, category="nonexistent")

@@ -911,6 +911,632 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
         ),
     },
     {
+        "canonical_name": "sidebar",
+        "aliases": [
+            "side_panel", "nav_rail", "split_nav_primary",
+            "inspector_sidebar", "rail", "navigation_sidebar",
+        ],
+        "category": "navigation",
+        "behavioral_description": (
+            "Persistent side-anchored navigation / inspector column, "
+            "typically on iPad or desktop split-view layouts. Stays "
+            "visible while the user interacts with the main canvas or "
+            "content area. May list top-level destinations (navigation "
+            "sidebar) or current-selection inspector sections "
+            "(inspector sidebar). Distinct from `drawer`, which slides "
+            "in over content and dismisses."
+        ),
+        "prop_definitions": {
+            "variant": "enum:navigation|inspector|split_primary",
+            "collapsible": "boolean",
+        },
+        "slot_definitions": {
+            "items": {
+                "allowed": [
+                    "list_item", "button", "toggle", "divider",
+                    "heading",
+                ],
+                "required": False,
+                "multiple": True,
+                "position": "fill",
+            },
+        },
+        "semantic_role": "complementary",
+        "recognition_heuristics": {
+            "patterns": [
+                "tall_narrow_column_anchored_to_edge",
+                "persistent_alongside_canvas",
+                "vertical_list_of_destinations_or_sections",
+            ],
+            "position": "leading_or_trailing_edge",
+            "typical_width_range": [200, 400],
+        },
+        "related_types": [
+            "drawer", "tabs", "navigation_row", "bottom_nav",
+        ],
+        "disambiguation_notes": (
+            "sidebar is persistent; drawer slides in and dismisses. "
+            "sidebar is vertical; navigation_row is horizontal. On iPad "
+            "split-view layouts the LEFT column (NavigationSplitView "
+            "primary) is sidebar. Inspector panels on the right edge "
+            "of design tools are also sidebar (variant=inspector)."
+        ),
+    },
+    {
+        "canonical_name": "toolbar",
+        "aliases": [
+            "action_bar", "command_bar", "contextual_toolbar",
+            "top_toolbar", "floating_toolbar", "canvas_toolbar",
+        ],
+        "category": "actions",
+        "behavioral_description": (
+            "Contextual row (or column) of task-specific action buttons "
+            "attached to the current view or canvas — NOT a page-level "
+            "navigation bar. May include toggles, selects, chips, and "
+            "dividers. Mounted to an edge (top / bottom / leading / "
+            "trailing) of the active content, sometimes floating above "
+            "it. iPad editors typically have multiple toolbars around "
+            "the canvas."
+        ),
+        "prop_definitions": {
+            "orientation": "enum:horizontal|vertical",
+            "position": (
+                "enum:top|bottom|leading|trailing|floating"
+            ),
+            "has_overflow_menu": "boolean",
+        },
+        "slot_definitions": {
+            "actions": {
+                "allowed": [
+                    "button", "icon_button", "toggle", "select",
+                    "chip", "divider",
+                ],
+                "required": True,
+                "multiple": True,
+                "position": "fill",
+            },
+        },
+        "semantic_role": "toolbar",
+        "recognition_heuristics": {
+            "patterns": [
+                "row_or_column_of_buttons",
+                "attached_to_content_edge",
+                "mixed_control_types_beyond_buttons",
+            ],
+        },
+        "related_types": [
+            "header", "button_group", "bottom_nav", "navigation_row",
+        ],
+        "disambiguation_notes": (
+            "header is page chrome with title + navigation; toolbar is "
+            "command-centric contextual actions. button_group is "
+            "peer-only (2+ buttons at the same level); toolbar may "
+            "include toggles, selects, dividers, chips. If there's a "
+            "mix of control types, it's a toolbar."
+        ),
+    },
+    {
+        "canonical_name": "bottom_sheet",
+        "aliases": [
+            "modal_sheet", "pull_up_sheet", "half_sheet",
+            "action_sheet_container", "bottom_drawer",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Modal overlay anchored to the bottom (and usually left + "
+            "right) edges, sliding up to reveal supplementary content "
+            "or settings. Typically includes a `grabber` handle at the "
+            "top and is draggable to resize / dismiss. Multiple detent "
+            "heights are common (small / medium / large). Distinct "
+            "from generic `sheet` (platform-neutral full-modal) and "
+            "`drawer` (side-anchored slide-in)."
+        ),
+        "prop_definitions": {
+            "detents": "array",
+            "has_grabber": "boolean",
+        },
+        "slot_definitions": {
+            "header": {
+                "allowed": ["heading", "text", "grabber"],
+                "required": False,
+                "position": "top",
+            },
+            "body": {
+                "allowed": ["any"],
+                "required": True,
+                "position": "fill",
+            },
+            "footer": {
+                "allowed": ["button", "button_group"],
+                "required": False,
+                "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "rounded_top_corners",
+                "anchored_to_bottom_edge",
+                "grabber_at_top",
+                "scrim_over_rest_of_screen",
+            ],
+        },
+        "related_types": ["sheet", "drawer", "dialog", "grabber"],
+        "disambiguation_notes": (
+            "sheet is generic / full-modal; bottom_sheet is "
+            "specifically edge-anchored with the grabber-drag pattern. "
+            "drawer is side-anchored (leading / trailing). If the "
+            "overlay fills the full screen, it's `sheet` or `dialog`; "
+            "if it hugs the bottom with rounded top corners + grabber, "
+            "it's `bottom_sheet`."
+        ),
+    },
+    {
+        "canonical_name": "color_picker",
+        "aliases": [
+            "color_chooser", "color_panel", "rgba_picker",
+            "color_input", "hsv_picker",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Composite input for picking a color — typically a wheel "
+            "or saturation-value square + hue / alpha / saturation "
+            "sliders + hex / RGB / RGBA input fields, optionally with "
+            "a recent-colors row and preset palette of color_swatches. "
+            "Classify the WHOLE composite widget as color_picker; "
+            "individual sliders inside are slots, not separate marks."
+        ),
+        "prop_definitions": {
+            "model": "enum:rgb|hsv|hsl|rgba",
+            "show_alpha": "boolean",
+            "show_hex_input": "boolean",
+            "show_recent": "boolean",
+        },
+        "slot_definitions": {
+            "surface": {
+                "allowed": ["image"], "required": False, "position": "top",
+            },
+            "sliders": {
+                "allowed": ["slider"], "required": False, "multiple": True,
+            },
+            "inputs": {
+                "allowed": ["text_input", "number_input"],
+                "required": False, "multiple": True,
+            },
+            "palette": {
+                "allowed": ["color_swatch"],
+                "required": False, "multiple": True,
+            },
+        },
+        "semantic_role": "group",
+        "recognition_heuristics": {
+            "patterns": [
+                "wheel_or_square_saturation_area",
+                "hue_slider_below_surface",
+                "hex_text_input",
+                "recent_swatch_row",
+            ],
+        },
+        "related_types": [
+            "slider", "color_swatch", "chip", "eyedropper",
+        ],
+        "disambiguation_notes": (
+            "color_swatch is a single color cell; color_picker is the "
+            "composite widget. Don't classify a color_picker as slider "
+            "even if you see sliders — they're slots inside. A flat "
+            "palette without a wheel / hex input is a row of "
+            "color_swatches, not a color_picker."
+        ),
+    },
+    {
+        "canonical_name": "color_swatch",
+        "aliases": [
+            "color_chip", "palette_swatch", "color_cell",
+            "color_tile", "paint_chip",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Small filled square, circle, or rounded shape representing "
+            "ONE selectable color in a palette or recent-colors row. "
+            "Tappable to apply that color. Often carries a selection "
+            "ring / checkmark when active. Distinct from `chip` — a "
+            "chip has a text label; color_swatch is a pure color cell."
+        ),
+        "prop_definitions": {
+            "shape": "enum:square|circle|rounded",
+            "selected": "boolean",
+            "show_check": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "option",
+        "recognition_heuristics": {
+            "patterns": [
+                "small_filled_shape_no_label",
+                "uniform_palette_grid",
+                "selected_ring_or_check_indicator",
+            ],
+            "typical_size_range": [16, 48],
+        },
+        "related_types": ["chip", "button", "color_picker", "toggle"],
+        "disambiguation_notes": (
+            "chip has a text label; color_swatch is pure color. "
+            "button has a visible control surface or label; "
+            "color_swatch IS the color. A palette of 6-30 uniform "
+            "colored tiles is a set of color_swatches, not a "
+            "button_group."
+        ),
+    },
+    {
+        "canonical_name": "ruler",
+        "aliases": [
+            "canvas_ruler", "measurement_ruler", "ruler_track",
+            "rotation_dial", "measure_track", "angle_dial",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Graduated tick track along a canvas edge or overlaid on "
+            "the canvas, showing measurements (pixels, points, "
+            "inches, degrees) OR serving as a fine-adjust dial "
+            "(rotation angle, crop rotation). Read-only for edge "
+            "rulers; draggable for dial variants. Design-tool "
+            "specific — appears in image editors, canvas tools, crop "
+            "interfaces."
+        ),
+        "prop_definitions": {
+            "orientation": "enum:horizontal|vertical|radial",
+            "unit": "enum:px|pt|in|cm|mm|deg",
+            "show_current_value": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "regular_tick_marks",
+                "graduated_major_minor_ticks",
+                "floating_near_canvas_edge",
+                "rotation_dial_with_degree_labels",
+            ],
+        },
+        "related_types": ["divider", "slider", "control_box"],
+        "disambiguation_notes": (
+            "divider separates content; ruler has tick marks and "
+            "measurements. slider has a thumb and a continuous value; "
+            "ruler is read-only OR dial-style. A horizontal track of "
+            "evenly spaced ticks with numeric labels (0, 10, 20, ...) "
+            "is a ruler."
+        ),
+    },
+    {
+        "canonical_name": "stepper_input",
+        "aliases": [
+            "numeric_stepper", "plus_minus_control",
+            "quantity_stepper", "number_stepper", "nudger",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Compact numeric increment / decrement control — typically "
+            "`[-] N [+]` with a central value and flanking buttons. "
+            "Common in inspector panels (font size, stroke width, "
+            "rotation angle, opacity) and quantity selectors. Apple "
+            "HIG calls this 'stepper'. Named stepper_input here to "
+            "avoid colliding with the existing `stepper` (flow "
+            "progress indicator)."
+        ),
+        "prop_definitions": {
+            "min": "number",
+            "max": "number",
+            "step": "number",
+            "value": "number",
+            "wrap": "boolean",
+        },
+        "slot_definitions": {
+            "decrement": {
+                "allowed": ["icon_button"],
+                "required": True, "position": "start",
+            },
+            "value": {
+                "allowed": ["text", "number_input"],
+                "required": True, "position": "fill",
+            },
+            "increment": {
+                "allowed": ["icon_button"],
+                "required": True, "position": "end",
+            },
+        },
+        "semantic_role": "spinbutton",
+        "recognition_heuristics": {
+            "patterns": [
+                "minus_button_number_plus_button",
+                "three_segment_horizontal",
+                "inside_inspector_row",
+            ],
+            "typical_width_range": [80, 200],
+        },
+        "related_types": [
+            "number_input", "slider", "button_group", "stepper",
+        ],
+        "disambiguation_notes": (
+            "number_input is a typeable text field with optional "
+            "arrows; stepper_input is +/- button-driven with no "
+            "text entry (or limited). slider is continuous drag; "
+            "stepper_input is discrete. The existing `stepper` is "
+            "a MULTI-STEP PROGRESS INDICATOR (checkout flow), not "
+            "this numeric control."
+        ),
+    },
+    {
+        "canonical_name": "banner",
+        "aliases": [
+            "inline_alert_banner", "announcement_banner",
+            "system_banner", "notice", "info_strip",
+            "notification_banner",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Full-width persistent notice strip, usually at the top "
+            "of a screen or container. Used for warnings (offline, "
+            "quota exceeded, payment required), promotions (upsell), "
+            "or system state. Stays visible until explicitly dismissed "
+            "or the state clears. Distinct from `alert` (inline "
+            "section-scoped), `toast` (transient auto-dismiss), and "
+            "`snackbar` (transient with action)."
+        ),
+        "prop_definitions": {
+            "variant": "enum:info|warning|error|success|promotional",
+            "dismissable": "boolean",
+            "has_action": "boolean",
+        },
+        "slot_definitions": {
+            "icon": {
+                "allowed": ["icon"],
+                "required": False, "position": "start",
+            },
+            "message": {
+                "allowed": ["text", "heading"],
+                "required": True, "position": "fill",
+            },
+            "action": {
+                "allowed": ["button", "link"],
+                "required": False, "position": "end",
+            },
+            "dismiss": {
+                "allowed": ["icon_button"],
+                "required": False, "position": "trailing",
+            },
+        },
+        "semantic_role": "status",
+        "recognition_heuristics": {
+            "patterns": [
+                "full_width_strip",
+                "top_of_screen_or_container",
+                "colored_background_semantic",
+                "dismiss_x_right",
+            ],
+        },
+        "related_types": ["alert", "toast", "snackbar"],
+        "disambiguation_notes": (
+            "alert is inline to a form / section; banner spans full "
+            "width at top. toast is transient; banner persists. "
+            "snackbar is transient with an action (Undo); banner "
+            "persists until dismissed."
+        ),
+    },
+    {
+        "canonical_name": "snackbar",
+        "aliases": ["action_toast", "snack", "feedback_bar"],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Transient bottom-anchored strip with a short message AND "
+            "1-2 inline actions (commonly Undo, Retry). Dismisses on "
+            "timeout or when the action is tapped. Distinct from "
+            "`toast` (no action slot) and `banner` (persistent, "
+            "top-anchored, full-width)."
+        ),
+        "prop_definitions": {
+            "duration_ms": "number",
+            "has_action": "boolean",
+        },
+        "slot_definitions": {
+            "message": {
+                "allowed": ["text"], "required": True,
+                "position": "fill",
+            },
+            "action": {
+                "allowed": ["button", "link"],
+                "required": False, "position": "end",
+            },
+        },
+        "semantic_role": "status",
+        "recognition_heuristics": {
+            "patterns": [
+                "bottom_anchored_pill_or_rounded_rect",
+                "action_button_on_right",
+                "text_plus_single_action",
+            ],
+        },
+        "related_types": ["toast", "banner", "alert"],
+        "disambiguation_notes": (
+            "toast has no action slot; snackbar has Undo / Retry. "
+            "banner is persistent; snackbar auto-dismisses. If the "
+            "strip has a button on the right (not just a close X), "
+            "it's a snackbar."
+        ),
+    },
+    {
+        "canonical_name": "action_sheet",
+        "aliases": [
+            "ios_action_sheet", "confirmation_sheet", "choice_sheet",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Modal list of 3-5 confirming / destructive choices "
+            "presented as a vertical stack of full-width buttons "
+            "(often floating or bottom-anchored), typically with a "
+            "separated Cancel button at the bottom. iOS HIG pattern — "
+            "a 'commit a decision' modal."
+        ),
+        "prop_definitions": {
+            "has_cancel": "boolean",
+            "destructive_action": "boolean",
+        },
+        "slot_definitions": {
+            "title": {
+                "allowed": ["heading", "text"],
+                "required": False, "position": "top",
+            },
+            "actions": {
+                "allowed": ["button"],
+                "required": True, "multiple": True,
+                "position": "fill",
+            },
+            "cancel": {
+                "allowed": ["button"],
+                "required": False, "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "vertical_stack_of_full_width_buttons",
+                "cancel_button_separated_at_bottom",
+                "floating_or_bottom_anchored_modal",
+            ],
+        },
+        "related_types": ["dialog", "bottom_sheet", "menu"],
+        "disambiguation_notes": (
+            "dialog has body copy + a horizontal footer button row; "
+            "action_sheet is a vertical stack of full-width buttons "
+            "where each button IS the content. menu is trigger-"
+            "anchored and general-purpose; action_sheet is modal and "
+            "decision-specific. bottom_sheet is generic content; "
+            "action_sheet is choice-specific."
+        ),
+    },
+    {
+        "canonical_name": "progress_ring",
+        "aliases": [
+            "circular_progress", "ring_progress", "donut_progress",
+            "activity_ring",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Circular progress indicator that fills an arc "
+            "(determinate 0-100%) or spins continuously "
+            "(indeterminate). Often with a centre label showing "
+            "percent or elapsed time. Distinct from linear `progress` "
+            "(bar) and `spinner` (indeterminate-only, no value)."
+        ),
+        "prop_definitions": {
+            "determinate": "boolean",
+            "value": "number",
+            "max": "number",
+            "show_label": "boolean",
+            "thickness": "number",
+        },
+        "slot_definitions": {
+            "label": {
+                "allowed": ["text", "heading"],
+                "required": False, "position": "center",
+            },
+        },
+        "semantic_role": "progressbar",
+        "recognition_heuristics": {
+            "patterns": [
+                "circular_arc_partial_fill",
+                "donut_shape",
+                "center_label_optional",
+            ],
+        },
+        "related_types": ["progress", "spinner"],
+        "disambiguation_notes": (
+            "progress is linear; progress_ring is circular. spinner "
+            "is indeterminate-only with no percent. An arc / donut "
+            "with a visible fill percentage is progress_ring."
+        ),
+    },
+    {
+        "canonical_name": "eyedropper",
+        "aliases": [
+            "color_picker_tool", "sample_color_button",
+            "pipette", "color_sampler",
+        ],
+        "category": "actions",
+        "behavioral_description": (
+            "Tool-mode button that, when activated, puts the UI into "
+            "a colour-sampling mode — cursor becomes a pipette and "
+            "the next tap samples a pixel's colour from the canvas / "
+            "image. Near a color_picker or color_swatch palette. "
+            "Distinct from a generic `icon_button` because it "
+            "triggers a sticky tool-mode state rather than a "
+            "one-shot action."
+        ),
+        "prop_definitions": {
+            "active": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "button",
+        "recognition_heuristics": {
+            "patterns": [
+                "pipette_or_dropper_icon",
+                "near_color_picker_or_swatch_palette",
+                "tool_mode_indicator_when_active",
+            ],
+        },
+        "related_types": [
+            "icon_button", "color_picker", "color_swatch",
+        ],
+        "disambiguation_notes": (
+            "icon_button fires once on tap; eyedropper enters a "
+            "sticky tool-mode. Near color UI, a pipette-shaped icon "
+            "is an eyedropper, not a generic icon_button."
+        ),
+    },
+    {
+        "canonical_name": "edit_menu",
+        "aliases": [
+            "text_selection_menu", "callout_bar",
+            "selection_popover", "text_action_bar",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Small horizontal pill of text-editing actions (Copy / "
+            "Paste / Look Up / Translate / Share / Cut) appearing "
+            "anchored to a text selection or insertion point. iOS "
+            "HIG 'edit menu' pattern — usually dark background, "
+            "rounded pill, 3-6 actions, with an arrow pointer at "
+            "the bottom."
+        ),
+        "prop_definitions": {},
+        "slot_definitions": {
+            "actions": {
+                "allowed": ["button", "icon_button"],
+                "required": True, "multiple": True,
+                "position": "fill",
+            },
+            "overflow": {
+                "allowed": ["icon_button"],
+                "required": False, "position": "end",
+            },
+        },
+        "semantic_role": "menu",
+        "recognition_heuristics": {
+            "patterns": [
+                "dark_rounded_pill",
+                "anchored_above_text_selection",
+                "three_to_six_actions_horizontal",
+                "arrow_pointing_down_to_selection",
+            ],
+        },
+        "related_types": ["menu", "tooltip", "popover", "toolbar"],
+        "disambiguation_notes": (
+            "menu is trigger-anchored and vertical; edit_menu is "
+            "selection-anchored and horizontal. tooltip is "
+            "informational and non-interactive; edit_menu is "
+            "actionable. popover is a general contextual container; "
+            "edit_menu is specifically for text editing."
+        ),
+    },
+    {
         "canonical_name": "keyboard",
         "aliases": [
             "on_screen_keyboard", "virtual_keyboard",
