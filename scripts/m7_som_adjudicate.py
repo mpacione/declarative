@@ -129,9 +129,33 @@ def _fetch_and_crop(sci_id: int) -> bytes | None:
 
     # Visibility dispatch — same strategy as the classifier path:
     # screen-crop for visible; per-node render for ancestor-hidden;
-    # placeholder for self-hidden.
+    # plugin render-toggle for self-hidden (with a placeholder as
+    # last-resort fallback when the plugin bridge is unavailable).
     if not vis_self:
-        out = _hidden_placeholder_png(float(nw), float(nh))
+        out: bytes | None = None
+        if node_fig_id:
+            try:
+                from dd.checkerboard import composite_on_checkerboard
+                from dd.classify_vision_crop import crop_node_with_spotlight
+                from dd.plugin_render import render_screen_with_visible_nodes
+                toggled = render_screen_with_visible_nodes(
+                    screen_figma_id=fig_id,
+                    hidden_node_figma_ids=[node_fig_id],
+                    scale=2,
+                )
+                if toggled is not None:
+                    composited = composite_on_checkerboard(toggled)
+                    out = crop_node_with_spotlight(
+                        screen_png=composited,
+                        node_x=float(nx) - rx, node_y=float(ny) - ry,
+                        node_width=float(nw), node_height=float(nh),
+                        screen_width=float(sw), screen_height=float(sh),
+                        rotation=float(rot) if rot else 0.0,
+                    )
+            except Exception:
+                out = None
+        if out is None:
+            out = _hidden_placeholder_png(float(nw), float(nh))
         with _CROP_LOCK:
             _CROP_CACHE[sci_id] = out
         return out
@@ -424,6 +448,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
             self.send_header("Content-Length", str(len(png)))
+            # Crops can change between sessions (e.g. plugin path
+            # toggled on for a previously-placeholder sci); disable
+            # the browser cache so stale placeholders don't persist.
+            self.send_header(
+                "Cache-Control", "no-store, no-cache, must-revalidate",
+            )
             self.end_headers()
             self.wfile.write(png)
             return

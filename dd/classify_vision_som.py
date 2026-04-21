@@ -286,21 +286,21 @@ def _build_som_prompt(
 Use the behavioral description to disambiguate. The UI component that matches the *function* shown in the marked region wins, not one that merely looks similar.
 {catalog_block}
 
-## Naming-based overrides (apply FIRST, before visual inference)
+## Naming-based priors
 
-These rules override visual evidence — when the mark's `name` matches a pattern below, classify by the name regardless of how the region renders. Designer-assigned names in Figma are almost always ground truth for these cases.
+These priors are **tiebreakers**, not overrides. When the visual rendering clearly shows a specific component type, trust the vision. Apply the naming prior only when the rendered region is visually ambiguous (small, generic, or unclear). Designer-assigned names in Figma are useful defaults but CAN be wrong — especially for auto-generated names like `Frame 292`.
 
-1. **Wordmark / logo / brand → `image`.** Marks named `wordmark`, `logo`, `brand`, `logomark` are **always** classified as `image`, no matter how visually prominent or button-like they appear. The compiler renders these as static assets, not interactive controls. A `wordmark` that LOOKS like a brightly-colored pill is STILL an `image` — do NOT classify it as `button`.
+1. **Wordmark / logo / brand → `image`.** Marks named `wordmark`, `logo`, `brand`, `logomark` are **always** classified as `image`, no matter how visually prominent or button-like they appear. (This one IS an override — brand assets are compiled as static images regardless of styling.) A `wordmark` that LOOKS like a brightly-colored pill is STILL an `image` — do NOT classify it as `button`.
 
 2. **Grabber / drag-handle → `grabber`.** Marks named `grabber`, `drag_handle`, `pull_handle`, typically a small horizontal bar at the top of a bottom sheet or drawer.
 
-3. **Generic layout-slot names → `container`.** Marks named `Left`, `Right`, `Center`, `Titles`, `Frame NNN`, `Group NNN` (auto-generated names with no semantic meaning) are almost always pure layout wrappers — classify as `container` UNLESS their children collectively form an unambiguous component (e.g. 3+ icon buttons arranged in a row → `button_group`; clearly-tabbed titles → `tabs`).
+3. **Generic auto-generated names (`Frame NNN`, `Group NNN`, `Left`, `Right`, `Center`, `Titles`) default to `container` ONLY when the rendered region gives no visual evidence.** If the region clearly shows a specific component — a corner/edge handle on a bounding box, a distinct button, a slider thumb, an icon with visible glyph — classify by what you SEE, not by the generic name. The container default is the last resort when the mark is empty, a blank layout wrapper, or too small to discern.
 
-3a. **BUT: names with semantic suffixes are NOT layout slots.** Names containing `controls` (e.g. `right controls`, `left controls`, `title and controls`), `nav`, `header`, `footer`, `toolbar`, `action bar`, `bottom bar`, `buttons` carry meaning — classify by their content, not as generic container. A `right controls` containing 3 icon buttons is `button_group`, NOT `container`. A `title and controls` mark at the top of the screen is `header`.
+3a. **Names with semantic suffixes are NOT generic layout slots.** Names containing `controls` (e.g. `right controls`, `left controls`, `title and controls`), `nav`, `header`, `footer`, `toolbar`, `action bar`, `bottom bar`, `buttons` carry meaning — classify by their content. A `right controls` containing 3 icon buttons is `button_group`, NOT `container`. A `title and controls` mark at the top of the screen is `header`.
 
 3b. **`artboard` → `container`.** A Figma artboard is the root canvas — always classify as `container`, regardless of what it contains. Never classify an `artboard` as `card` or any other specific type.
 
-3c. **Repeated `Frame NNN` siblings that all contain similar content → `card` (or `list_item` in a list).** Three identical `Frame 267`-named blocks arranged as rows/grid are the usual card or list_item pattern. Use `card` when they're in a grid/gallery, `list_item` when they're in a vertical list. Use `container` only when they're TRULY EMPTY with no children or only decoration.
+3c. **Repeated `Frame NNN` siblings that all contain similar content → `card` (or `list_item` in a list).** Three identical `Frame 267`-named blocks arranged as rows/grid are the usual card or list_item pattern. Use `card` when they're in a grid/gallery, `list_item` when they're in a vertical list.
 
 ## Visual-pattern rules
 
@@ -309,6 +309,15 @@ These rules override visual evidence — when the mark's `name` matches a patter
 5. **Decorative-child pattern → single `icon`.** 3 ellipses, 2 chevrons, 4 dots arranged tightly — treat the whole group as one `icon`, not `container` of N things.
 
 6. **Sibling context disambiguates.** A mark inside a `bottom_nav`-shaped row is likely `navigation_row`. A mark in a row of 3+ similar pills is `button_group` or a member of one. A mark directly below a `carousel` is likely `pager_indicator`.
+
+7. **Corner / edge handles on a bounding box → `control_point`.** Small (typically 6-32px) filled squares, circles, or dots positioned at the corners or midpoints of an image's / shape's / selection's bounding rect — these are resize / rotate / transform handles in an editor, crop tool, or canvas. Even if the mark's name is auto-generated (`Frame 361`, `Frame 367`), classify as `control_point` — they do NOT trigger actions on tap; they drag to manipulate geometry. Sibling signal: another mark nearby that's an `image` or canvas being edited.
+
+## Hidden-state marks
+
+Some marks represent UI that was hidden in the source file (visible=0) and has been explicitly toggled visible for classification. These typically correspond to state-variant UI: `error_state` dialogs, `success` toasts, expanded panels, selected tool overlays. For these:
+- Designer often never renamed the node because the hidden state was scaffolding — expect more `Frame NNN`-style generic names than on visible UI.
+- The rendered pixels ARE real; do not second-guess the vision with naming priors. Lean on visual evidence first, name rules last.
+- Checkerboard background visible in parts of the crop indicates transparent regions — this is normal; the component itself is whatever renders on top of that.
 
 ## Confidence is calibrated and ANCHORED
 
