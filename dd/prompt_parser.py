@@ -197,6 +197,27 @@ Notice:
 - `variant: "primary"` picks a named variant axis from the component
   catalog (see catalog variant_axes).
 
+## Variant-selection guidance (force-resolution)
+
+When the prompt implies a semantic force, pick the matching variant —
+don't default to `primary` or `secondary` for every button. This is
+what makes the same component TYPE produce DIFFERENT concrete output
+under different contexts (Alexander's force-resolution guard):
+
+- **destructive** actions (delete / remove / cancel account / wipe /
+  discard changes / force-logout) → `variant: "destructive"`. This
+  resolves to the danger/red palette. NEVER use `primary` or
+  `secondary` for destructive actions.
+- **primary calls-to-action** (sign up / log in / continue / save /
+  confirm / submit — the desired path forward) → `variant: "primary"`.
+- **secondary actions** (cancel a dialog without destruction / back /
+  alternative path) → `variant: "secondary"`.
+- **low-emphasis inline actions** (help / learn more / show details) →
+  `variant: "ghost"`.
+
+For `link`: use the default variant for standard links; `destructive`
+variant only for "Remove", "Delete account", etc. inline links.
+
 Rules:
 - Use ONLY the component types listed above
 - Group related items inside "card" containers
