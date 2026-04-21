@@ -485,6 +485,24 @@ def run_demo(
     db_visuals = query_screen_visuals(conn, screen_id)
     fonts = collect_fonts(spec, db_visuals=db_visuals)
 
+    # Build the VERIFY spec independently. The render path wants
+    # semantic+chrome IR (to populate Mode-1 library references);
+    # the verifier wants the default IR (no orphaned alternative-
+    # classification elements). This mirrors how the production
+    # sweep decouples them: `dd/renderers/figma.py:generate_screen`
+    # uses semantic=True, filter_chrome=False; `dd verify` uses
+    # default `generate_ir(conn, screen_id)`. On screen 183 the
+    # difference is 204 elements-all-reachable (default) vs 204
+    # elements with 162 orphans (semantic) — the orphans would
+    # fire spurious KIND_MISSING_CHILD for alt-classification
+    # subtrees the renderer never emits.
+    from dd.apply_render import adjust_spec_elements_for_edits as _adjust
+    verify_ir = generate_ir(conn, screen_id)
+    verify_spec = dict(verify_ir["spec"])
+    verify_spec["elements"] = _adjust(
+        verify_spec.get("elements") or {}, edits=edit_stmts,
+    )
+
     try:
         rendered = render_applied_doc(
             applied_doc=applied,
@@ -580,9 +598,10 @@ def run_demo(
         f"name={rendered_target.get('name')!r}"
     )
 
-    report = FigmaRenderVerifier().verify(
-        rendered.adjusted_spec, rendered_ref,
-    )
+    # Verify against the default-IR spec (adjusted), not the
+    # semantic one used for render — see comment at --- render
+    # pass --- above.
+    report = FigmaRenderVerifier().verify(verify_spec, rendered_ref)
     print(
         f"RenderReport: ir_nodes={report.ir_node_count} "
         f"rendered={report.rendered_node_count} "
