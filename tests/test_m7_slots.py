@@ -135,11 +135,14 @@ class TestClusterChildren:
         assert cluster_children(conn, []) == {}
 
     def test_identical_shapes_cluster_together(self):
+        """INSTANCE children with no component_key register as
+        COMPONENT; TEXT stays TEXT.
+        """
         conn = _fresh_db()
         for nid in (10, 11, 12):
             _add_button(conn, nid, shape=("INSTANCE", "TEXT", "INSTANCE"))
         counts = cluster_children(conn, [10, 11, 12])
-        assert counts == {("INSTANCE", "TEXT", "INSTANCE"): 3}
+        assert counts == {("COMPONENT", "TEXT", "COMPONENT"): 3}
 
     def test_different_shapes_land_in_different_clusters(self):
         conn = _fresh_db()
@@ -147,9 +150,44 @@ class TestClusterChildren:
         _add_button(conn, 21, shape=("TEXT",))
         _add_button(conn, 22, shape=("INSTANCE", "TEXT"))
         counts = cluster_children(conn, [20, 21, 22])
-        assert counts[("INSTANCE", "TEXT", "INSTANCE")] == 1
+        assert counts[("COMPONENT", "TEXT", "COMPONENT")] == 1
         assert counts[("TEXT",)] == 1
-        assert counts[("INSTANCE", "TEXT")] == 1
+        assert counts[("COMPONENT", "TEXT")] == 1
+
+    def test_icon_component_keys_cluster_as_ICON(self):
+        """When a child INSTANCE has a component_key pointing at a
+        component whose canonical_type is 'icon', the cluster
+        distinguishes it from a generic COMPONENT child.
+        """
+        conn = _fresh_db()
+        # Seed an icon master node + its component_key linkage.
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, node_type, "
+            "figma_node_id, component_key, name) "
+            "VALUES (9001, 1, 'COMPONENT', '99:99', 'ICONKEY', 'icon/x')"
+        )
+        conn.execute(
+            "INSERT INTO components (file_id, figma_node_id, name, "
+            "canonical_type) VALUES (1, '99:99', 'icon/x', 'icon')"
+        )
+        # Button with an icon-typed INSTANCE at position 0.
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, node_type, name) "
+            "VALUES (30, 1, 'INSTANCE', 'button/x')"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, parent_id, screen_id, node_type, "
+            "name, component_key, sort_order) "
+            "VALUES (3000, 30, 1, 'INSTANCE', 'icon/back', "
+            "'ICONKEY', 0)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (id, parent_id, screen_id, node_type, "
+            "name, text_content, sort_order) "
+            "VALUES (3001, 30, 1, 'TEXT', 'label', 'Continue', 1)"
+        )
+        counts = cluster_children(conn, [30])
+        assert counts == {("ICON", "TEXT"): 1}
 
 
 class TestDominantCluster:
@@ -219,14 +257,78 @@ class TestDeriveSlotsForCanonicalType:
         ).fetchall()
         assert len(rows) == 9
         # Each master has (leading_icon, label, trailing_icon).
+        # is_required comes from the LLM's semantic judgment:
+        # leading_icon/trailing_icon optional, label required.
         for start in (0, 3, 6):
             chunk = rows[start:start + 3]
             names = [r[1] for r in chunk]
             assert names == ["leading_icon", "label", "trailing_icon"]
+            # Without icon-typed component_keys these classify as
+            # COMPONENT, not ICON.
             assert [r[2] for r in chunk] == [
                 "component", "text", "component",
             ]
+            # LLM stub said required=[False, True, False].
             assert [r[3] for r in chunk] == [0, 1, 0]
+
+    def test_is_required_reports_llm_vs_data_mismatches(self):
+        """LLM's is_required claim is persisted (semantic judgment);
+        data cross-check lives in stats.is_required_mismatches.
+        """
+        conn = _fresh_db()
+        _add_master(conn, component_id=1000, figma_id="mx:1", name="b",
+                    canonical_type="button")
+        for nid in range(1500, 1505):
+            _add_button(conn, nid)  # every instance has 3 kids
+
+        def stub(_p: str):
+            return [
+                {"position": 0, "name": "leading_icon",
+                 "is_required": False, "description": "d"},
+                {"position": 1, "name": "label",
+                 "is_required": False, "description": "d"},
+                {"position": 2, "name": "trailing_icon",
+                 "is_required": False, "description": "d"},
+            ]
+        stats = derive_slots_for_canonical_type(
+            conn, "button", file_id=1, llm_invoker=stub,
+        )
+        # LLM said false for every position → persist false.
+        req = [r[0] for r in conn.execute(
+            "SELECT is_required FROM component_slots "
+            "ORDER BY sort_order"
+        ).fetchall()]
+        assert req == [0, 0, 0]
+        # Data says every position is filled (5/5 have 3 kids), so
+        # the LLM's "optional" claim mismatches data at 3 positions.
+        assert len(stats["is_required_mismatches"]) == 3
+
+    def test_out_of_bounds_llm_positions_counted(self):
+        """LLM returning position=5 for a 3-slot shape is tallied in
+        stats; only in-range positions produce slot rows.
+        """
+        conn = _fresh_db()
+        _add_master(conn, component_id=1100, figma_id="mx:2", name="b",
+                    canonical_type="button")
+        for nid in range(1600, 1605):
+            _add_button(conn, nid)
+
+        def stub(_p: str):
+            return [
+                {"position": 0, "name": "leading_icon",
+                 "is_required": True, "description": "d"},
+                {"position": 1, "name": "label",
+                 "is_required": True, "description": "d"},
+                {"position": 2, "name": "trailing_icon",
+                 "is_required": True, "description": "d"},
+                {"position": 5, "name": "phantom",
+                 "is_required": True, "description": "d"},
+            ]
+        stats = derive_slots_for_canonical_type(
+            conn, "button", file_id=1, llm_invoker=stub,
+        )
+        assert stats["slots_inserted"] == 3
+        assert stats["llm_out_of_bounds_entries"] == 1
 
     def test_rejects_type_with_no_dominant_cluster(self):
         """When the top cluster is < min_cluster_share, skip the
@@ -283,9 +385,10 @@ class TestDeriveSlotsForCanonicalType:
             conn, "button", file_id=1, llm_invoker=stub,
         )
         # Trusted cluster wins despite being outnumbered 5-to-100 in
-        # the raw data.
+        # the raw data. Shape uses semantic classes (COMPONENT for
+        # INSTANCE without icon-typed component_key).
         assert stats["dominant_shape"] == (
-            "INSTANCE", "TEXT", "INSTANCE"
+            "COMPONENT", "TEXT", "COMPONENT"
         )
         assert stats["slots_inserted"] == 3
 
