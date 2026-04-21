@@ -1,14 +1,15 @@
 # Continuation — M7 classifier improvements, next session
 
-**Written**: 2026-04-20 late-night. Session hand-off for the classifier
-improvement track.
+**Written**: 2026-04-20 late-night. **Revised after F3 validation**
+(same session). Session hand-off for the classifier improvement
+track.
 
 ---
 
 ## Where we landed
 
 **Branch**: `v0.3-integration`
-**Head commit**: `ba99dd5` fix(classify): self-hidden = UI — dedup-twin + LLM-text
+**Head commit**: `e52edf3` docs(classify): F3 bake-off — visibility dispatch validated on 2 new sets
 **Live DB**: `Dank-EXP-02.declarative.db` (backup files
 `.pre-v2.1-*.bak.db` still present; safe to delete once confident).
 
@@ -85,6 +86,27 @@ Eight-item plan, all **done**:
 
 ## Where to pick up next session
 
+### F3 validation — DONE (completed via parallel subagents, 2026-04-20)
+
+Ran the visibility-aware SoM bake-off on two additional screen sets
+via three parallel subagents (see
+`feedback_subagent_parallel_bakeoff.md`):
+
+- **Set A (screens 1-10)**: 0 reps (icon/primitives, filtered by
+  classifier). No-op.
+- **Set B (screens 260-269)**: 317 reps (187 visible, 32 ancestor-
+  hidden, 98 self-hidden). 100% coverage, 79.3s. SoM\u2194PS = 41.8%;
+  LLM-text-only carried all 98 self-hidden.
+- **Set C (screens 200-209)**: 208 reps (114 visible, 10 anc-hidden,
+  84 self-hidden). 100% coverage, 56.2s. SoM\u2194PS = 25.6%; twin
+  fallback fired 10x, LLM-text-only 74x.
+
+**Conclusion**: visibility dispatch is stable across distribution
+shift. Self-hidden rate varies 21-40% by screen type; fallback
+ladder adapts. The SoM\u2194PS drop is expected \u2014 dispatch actively
+changes verdicts where PS previously saw empty crops. No over-fit
+to 118-315 evident.
+
 ### Fast follow (deferred from this session)
 
 **F1. Figma Plugin render-toggle for self-hidden nodes** (option 1
@@ -109,6 +131,10 @@ Right answer long-term because dedup-twin + LLM-text is structural-
 signal-only; vision is stronger. ~2-3h including plugin changes +
 tests.
 
+Given F3 showed self-hidden rates as high as 40% on some screen
+sets, F1 is now higher priority than pre-F3 \u2014 LLM-text-only is
+carrying a lot of weight without vision confirmation.
+
 **F2. Ship SoM as the primary vision path, retire PS** (from 100%
 head-to-head win on the first 55 judgments + strong visibility
 dispatch on the second run). Refactor `run_classification_v2` to use
@@ -123,10 +149,6 @@ Order of work:
   per-crop on plugin-rendered standalone PNG.
 - Full-corpus re-run (~$10-15, ~15 min) to verify.
 - Measure accuracy vs user reviews on the new run.
-
-**F3. Bake-off #3 on a third screen set** before full corpus run to
-confirm visibility-aware + twin+LLM-text doesn't over-fit to 118-
-315. Pick e.g. 1-10, 80-89, 220-229 for diversity.
 
 **F4. Hierarchical two-stage classifier** (item 6 from the 8-item
 plan) \u2014 pick super-category from 8 buckets first, then leaf type
@@ -260,8 +282,10 @@ classify tests green at session end.
 ## Starter prompt for next session
 
 > Continue the M7 classifier track. Read
-> `docs/continuation-m7-classifier-next-session.md` first. Priority
-> is F1 (plugin render-toggle for self-hidden nodes) \u2192 F2 (ship SoM
-> as primary vision path) \u2192 F3 (third-set bake-off) \u2192 F4
-> (hierarchical two-stage). Everything we did this session is
-> committed on `v0.3-integration`; head is `ba99dd5`.
+> `docs/continuation-m7-classifier-next-session.md` first. F3
+> validation already done via parallel subagents. Priority is F1
+> (plugin render-toggle for self-hidden nodes) \u2192 F2 (ship SoM as
+> primary vision path) \u2192 F4 (hierarchical two-stage) \u2192 F5 (CLIP
+> few-shot) \u2192 F6 (OmniParser screenshot side-project).
+> Everything we did this session is committed on
+> `v0.3-integration`; head is `e52edf3`.
