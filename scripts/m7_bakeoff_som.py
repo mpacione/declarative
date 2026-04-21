@@ -160,10 +160,15 @@ def _compute_group_reps(
 
 def _build_screen_annotations(
     reps_on_screen: list[dict], root_x: float, root_y: float,
+    *, was_self_hidden: bool = False,
 ) -> list[dict]:
     """Convert rep rows → SoM annotation dicts (one per mark).
     Uses (1..N) ids scoped per screen so the model's mark labels stay
     short.
+
+    ``was_self_hidden`` marks annotations that were toggled visible
+    via the plugin render-toggle so the caller can label those
+    verdicts with a distinct path in the bake-off output.
     """
     annotations = []
     for i, r in enumerate(reps_on_screen, 1):
@@ -181,6 +186,7 @@ def _build_screen_annotations(
             "sample_text": r["sample_text"],
             "parent_classified_as": r["parent_classified_as"],
             "total_children": r["total_children"],
+            "was_self_hidden": was_self_hidden,
         })
     return annotations
 
@@ -234,7 +240,11 @@ def _run_som_prepared(
                 "canonical_type": c["canonical_type"],
                 "confidence": c["confidence"],
                 "reason": c["reason"],
-                "path": "som",
+                "path": (
+                    "self_hidden_plugin_som"
+                    if ann.get("was_self_hidden")
+                    else "som"
+                ),
             }
 
     # 2. Per-crop vision for ancestor-hidden reps. classify_crops_batch
@@ -367,6 +377,9 @@ def _prepare_screen_bundle(
     reps_on_screen: list[dict],
     file_key: str,
     fetch_screenshot,
+    *,
+    use_plugin_for_hidden: bool = True,
+    plugin_port: int = 9227,
 ) -> dict | None:
     """Pre-fetch everything the SoM worker needs. Called on the main
     thread before dispatch. Returns None if the screen is unusable.
@@ -375,8 +388,12 @@ def _prepare_screen_bundle(
     - ``visible_effective=1``: eligible for SoM overlay (screen-level).
     - ``visible_self=1, visible_effective=0``: ancestor-hidden \u2014 fetch
       per-node renders here, classify via per-crop vision later.
-    - ``visible_self=0``: self-hidden \u2014 auto-classify as ``not_ui``;
-      Figma REST refuses to render them.
+    - ``visible_self=0``: self-hidden \u2014 when ``use_plugin_for_hidden``
+      is set, try the plugin render-toggle to draw those nodes onto
+      the screen (and composite the result onto a checkerboard base
+      so transparent regions are visible). Nodes that render this
+      way join the main SoM annotation set; any that don't fall
+      through to the existing dedup-twin / LLM-text cascade.
     """
     row = conn.execute(
         "SELECT figma_node_id, width, height FROM screens WHERE id = ?",
@@ -403,7 +420,6 @@ def _prepare_screen_bundle(
         r for r in reps_on_screen if not r.get("visible_self", 1)
     ]
 
-    annotations = _build_screen_annotations(visible, rx, ry)
     try:
         screen_png = fetch_screenshot(file_key, fig_id)
     except Exception as e:
@@ -412,6 +428,59 @@ def _prepare_screen_bundle(
         return None
     if not screen_png:
         return None
+
+    # Self-hidden plugin path: toggle hidden nodes + ancestors visible,
+    # export the screen, composite on checkerboard. Self-hidden reps
+    # that successfully render this way enter the main SoM annotation
+    # set; the rest fall through to the dedup-twin / LLM-text cascade.
+    self_hidden_for_som: list[dict] = []
+    self_hidden_fallback: list[dict] = self_hidden
+    if use_plugin_for_hidden and self_hidden:
+        hidden_fig_ids = [
+            r.get("node_figma_id") for r in self_hidden
+            if r.get("node_figma_id")
+        ]
+        if hidden_fig_ids:
+            from dd.checkerboard import composite_on_checkerboard
+            from dd.plugin_render import render_screen_with_visible_nodes
+
+            toggled_png = render_screen_with_visible_nodes(
+                screen_figma_id=fig_id,
+                hidden_node_figma_ids=hidden_fig_ids,
+                scale=2,
+                port=plugin_port,
+            )
+            if toggled_png is not None:
+                screen_png = composite_on_checkerboard(toggled_png)
+                self_hidden_for_som = [
+                    r for r in self_hidden if r.get("node_figma_id")
+                ]
+                self_hidden_fallback = [
+                    r for r in self_hidden if not r.get("node_figma_id")
+                ]
+            else:
+                reason = getattr(
+                    render_screen_with_visible_nodes, "last_error", None,
+                )
+                print(
+                    f"  screen {screen_id}: plugin render-toggle "
+                    f"unavailable ({reason or 'unknown'}); self-hidden "
+                    f"reps use fallback cascade.",
+                    file=sys.stderr, flush=True,
+                )
+
+    # Build annotations. Self-hidden-that-got-toggled join the main
+    # list with was_self_hidden=True so the verdict is labelled
+    # distinctly downstream. IDs are a single 1..N namespace.
+    annotations = _build_screen_annotations(visible, rx, ry)
+    hidden_annotations = _build_screen_annotations(
+        self_hidden_for_som, rx, ry, was_self_hidden=True,
+    )
+    next_id = len(annotations) + 1
+    for a in hidden_annotations:
+        a["id"] = next_id
+        next_id += 1
+    annotations.extend(hidden_annotations)
 
     # Fetch per-node renders for ancestor-hidden reps on the main
     # thread so workers don't cross the SQLite connection boundary.
@@ -436,7 +505,7 @@ def _prepare_screen_bundle(
         "visible_reps": visible,
         "anc_hidden_reps": anc_hidden,
         "hidden_renders": hidden_renders,
-        "self_hidden_reps": self_hidden,
+        "self_hidden_reps": self_hidden_fallback,
     }
 
 
@@ -531,6 +600,7 @@ def _render_report(
     ]
     for p in (
         "som", "hidden_pernode",
+        "self_hidden_plugin_som",
         "self_hidden_twin", "self_hidden_llm_only", "self_hidden_unsure",
     ):
         n = path_counts.get(p, 0)
@@ -604,6 +674,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--copy-path", default="/tmp/dank_som_bakeoff.db",
     )
+    parser.add_argument(
+        "--no-plugin", action="store_true",
+        help=(
+            "Skip the plugin render-toggle path for self-hidden nodes "
+            "(useful when the Figma plugin isn't running; reps fall "
+            "through to the existing dedup-twin / LLM-text cascade)."
+        ),
+    )
+    parser.add_argument(
+        "--plugin-port", type=int, default=9227,
+        help="WebSocket port for the Figma plugin bridge.",
+    )
     args = parser.parse_args(argv)
 
     screen_ids = (
@@ -670,6 +752,8 @@ def main(argv: list[str] | None = None) -> int:
     for sid, ra in reps_by_screen.items():
         bundle = _prepare_screen_bundle(
             work_conn, sid, ra, file_key, fetch_screenshot,
+            use_plugin_for_hidden=not args.no_plugin,
+            plugin_port=args.plugin_port,
         )
         if bundle is not None:
             bundles.append(bundle)
