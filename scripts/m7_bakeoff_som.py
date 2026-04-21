@@ -158,6 +158,50 @@ def _compute_group_reps(
     return representatives, members_by_rep_sci
 
 
+def _persist_som_verdicts(
+    db_path: str,
+    members_by_rep_sci: dict[int, list[int]],
+    som_by_sci: dict[int, dict],
+) -> int:
+    """Propagate each rep's SoM verdict to every member sci_id in
+    its dedup group via UPDATE on the live DB.
+
+    Writes `vision_som_type`, `vision_som_confidence`, and
+    `vision_som_reason` (columns from migration 017). Returns the
+    total number of rows updated.
+    """
+    from dd.db import get_connection
+
+    rows_updated = 0
+    conn = get_connection(db_path)
+    try:
+        for rep_sci, member_sci_ids in members_by_rep_sci.items():
+            verdict = som_by_sci.get(rep_sci)
+            if not verdict:
+                continue
+            canonical = verdict.get("canonical_type")
+            if not canonical:
+                continue
+            confidence = float(verdict.get("confidence") or 0.0)
+            reason = verdict.get("reason") or ""
+            placeholders = ",".join("?" * len(member_sci_ids))
+            conn.execute(
+                f"""
+                UPDATE screen_component_instances
+                SET vision_som_type = ?,
+                    vision_som_confidence = ?,
+                    vision_som_reason = ?
+                WHERE id IN ({placeholders})
+                """,
+                [canonical, confidence, reason, *member_sci_ids],
+            )
+            rows_updated += len(member_sci_ids)
+        conn.commit()
+    finally:
+        conn.close()
+    return rows_updated
+
+
 def _build_screen_annotations(
     reps_on_screen: list[dict], root_x: float, root_y: float,
     *, was_self_hidden: bool = False,
@@ -686,6 +730,15 @@ def main(argv: list[str] | None = None) -> int:
         "--plugin-port", type=int, default=9227,
         help="WebSocket port for the Figma plugin bridge.",
     )
+    parser.add_argument(
+        "--persist-som", action="store_true",
+        help=(
+            "After the run completes, UPDATE screen_component_instances "
+            "in the LIVE DB with vision_som_type / _confidence / _reason. "
+            "Propagates each rep's verdict to every dedup-group member. "
+            "Requires migration 017 to have been applied."
+        ),
+    )
     args = parser.parse_args(argv)
 
     screen_ids = (
@@ -842,6 +895,16 @@ def main(argv: list[str] | None = None) -> int:
             }
             f.write(json.dumps(rec) + "\n")
     print(f"Wrote JSONL: {jsonl_path}", flush=True)
+
+    if args.persist_som:
+        rows = _persist_som_verdicts(
+            args.db, members_by_rep_sci, som_by_sci,
+        )
+        print(
+            f"Persisted SoM verdicts: updated {rows} "
+            f"screen_component_instances rows in {args.db}.",
+            flush=True,
+        )
 
     print("\n" + report, flush=True)
 

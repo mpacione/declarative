@@ -16,7 +16,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.m7_bakeoff_som import _compute_group_reps
+import sqlite3
+import tempfile
+from pathlib import Path
+
+from scripts.m7_bakeoff_som import _compute_group_reps, _persist_som_verdicts
 
 
 class _FakeConn:
@@ -109,3 +113,96 @@ class TestComputeGroupReps:
         assert len(reps) == 1
         assert reps[0]["sci_id"] == 10
         assert members[10] == [10, 20, 30]
+
+
+class TestPersistSomVerdicts:
+    """UPDATE vision_som_* columns across every member of a dedup
+    group via ``_persist_som_verdicts``.
+    """
+
+    def _seed_db(self, path: str, sci_ids: list[int]) -> None:
+        conn = sqlite3.connect(path)
+        conn.executescript("""
+            CREATE TABLE screen_component_instances (
+                id INTEGER PRIMARY KEY,
+                screen_id INTEGER,
+                vision_som_type TEXT,
+                vision_som_confidence REAL,
+                vision_som_reason TEXT
+            );
+        """)
+        for sid in sci_ids:
+            conn.execute(
+                "INSERT INTO screen_component_instances (id, screen_id) "
+                "VALUES (?, ?)", (sid, 1),
+            )
+        conn.commit()
+        conn.close()
+
+    def test_propagates_verdict_to_all_members(self):
+        """One group of 3 instances → all 3 sci rows updated with
+        the same SoM verdict.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            db = str(Path(d) / "t.db")
+            self._seed_db(db, [1, 2, 3])
+            rows = _persist_som_verdicts(
+                db,
+                members_by_rep_sci={1: [1, 2, 3]},
+                som_by_sci={1: {
+                    "canonical_type": "button",
+                    "confidence": 0.92, "reason": "pill with Continue label",
+                }},
+            )
+            assert rows == 3
+            conn = sqlite3.connect(db)
+            out = conn.execute(
+                "SELECT id, vision_som_type, vision_som_confidence "
+                "FROM screen_component_instances ORDER BY id"
+            ).fetchall()
+            conn.close()
+            assert out == [
+                (1, "button", 0.92),
+                (2, "button", 0.92),
+                (3, "button", 0.92),
+            ]
+
+    def test_only_updates_reps_with_verdicts(self):
+        """Rep 2's group has no verdict in som_by_sci — its members
+        must stay NULL. Rep 1's group gets the update.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            db = str(Path(d) / "t.db")
+            self._seed_db(db, [1, 2, 3, 4])
+            rows = _persist_som_verdicts(
+                db,
+                members_by_rep_sci={1: [1, 2], 3: [3, 4]},
+                som_by_sci={1: {
+                    "canonical_type": "button", "confidence": 0.9,
+                    "reason": "x",
+                }},
+            )
+            assert rows == 2
+            conn = sqlite3.connect(db)
+            types = [r[0] for r in conn.execute(
+                "SELECT vision_som_type FROM screen_component_instances "
+                "ORDER BY id"
+            ).fetchall()]
+            conn.close()
+            assert types == ["button", "button", None, None]
+
+    def test_skips_verdict_with_empty_canonical(self):
+        """A verdict that's missing canonical_type shouldn't clobber
+        existing rows — treat as a no-op.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            db = str(Path(d) / "t.db")
+            self._seed_db(db, [1])
+            rows = _persist_som_verdicts(
+                db,
+                members_by_rep_sci={1: [1]},
+                som_by_sci={1: {
+                    "canonical_type": None, "confidence": 0.0, "reason": "",
+                }},
+            )
+            assert rows == 0

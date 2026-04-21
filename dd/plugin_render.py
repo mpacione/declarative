@@ -30,7 +30,27 @@ import base64
 import json
 import os
 import subprocess
+import time
 from typing import Optional
+
+
+# Tokens that indicate a transient bridge / connection failure —
+# worth a single retry. Anything else is permanent and we return
+# None so the fallback cascade takes over.
+_TRANSIENT_ERROR_SUBSTRINGS = (
+    "establish connection",
+    "ECONNREFUSED",
+    "WebSocket",
+    "timeout",
+    "EPIPE",
+)
+
+
+def _is_transient(err: Optional[str]) -> bool:
+    if not err:
+        return False
+    s = err.lower()
+    return any(t.lower() in s for t in _TRANSIENT_ERROR_SUBSTRINGS)
 
 
 _DEFAULT_PORT = 9227
@@ -163,14 +183,31 @@ def render_screen_with_visible_nodes(
     plugin_code = _build_render_script(
         screen_figma_id, hidden_node_figma_ids, scale,
     )
-    try:
-        msg = _run_node_subprocess(
-            plugin_code, port=port, timeout_s=timeout_s,
-        )
-    except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired,
-            json.JSONDecodeError) as e:
-        render_screen_with_visible_nodes.last_error = str(e)  # type: ignore[attr-defined]
+
+    def _once() -> tuple[Optional[dict], Optional[str]]:
+        try:
+            return _run_node_subprocess(
+                plugin_code, port=port, timeout_s=timeout_s,
+            ), None
+        except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired,
+                json.JSONDecodeError) as e:
+            return None, str(e)
+
+    msg, exc_err = _once()
+    # A successful subprocess can still return a bridge-level error
+    # payload (e.g. "Unable to establish connection ..."). Detect
+    # and retry those once with a short backoff.
+    bridge_err = (msg or {}).get("error") if isinstance(msg, dict) else None
+    retryable = _is_transient(exc_err) or _is_transient(bridge_err)
+    if msg is None and not retryable:
+        render_screen_with_visible_nodes.last_error = exc_err  # type: ignore[attr-defined]
         return None
+    if retryable:
+        time.sleep(3)
+        msg, exc_err = _once()
+        if msg is None:
+            render_screen_with_visible_nodes.last_error = exc_err  # type: ignore[attr-defined]
+            return None
 
     # Bridge-level error (no file connected, disconnected, …).
     top_err = msg.get("error") if isinstance(msg, dict) else None

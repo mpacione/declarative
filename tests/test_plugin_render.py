@@ -98,12 +98,16 @@ class TestRenderScreenWithVisibleNodes:
     def test_returns_none_when_subprocess_nonzero(self):
         """Node subprocess fails (connection refused, timeout, …) →
         return None so the fallback ladder takes over. No raise.
+        ECONNREFUSED is transient so the function retries once; both
+        attempts fail here, so the net result is still None.
         """
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stdout = ""
         mock_result.stderr = "connect ECONNREFUSED"
-        with patch("dd.plugin_render.subprocess.run", return_value=mock_result):
+        with patch(
+            "dd.plugin_render.subprocess.run", return_value=mock_result,
+        ), patch("dd.plugin_render.time.sleep"):
             out = render_screen_with_visible_nodes(
                 screen_figma_id="1:2", hidden_node_figma_ids=[],
             )
@@ -120,3 +124,61 @@ class TestRenderScreenWithVisibleNodes:
                 screen_figma_id="1:2", hidden_node_figma_ids=[],
             )
         assert out is None
+
+    def test_retries_once_on_transient_connection_error(self):
+        """Bridge sometimes drops the plugin connection mid-run
+        ('Unable to establish connection'). A single retry recovers
+        without blowing through the fallback cascade.
+        """
+        dummy_png = b"\x89PNG\r\n\x1a\nfakebytes"
+        b64 = base64.b64encode(dummy_png).decode("ascii")
+
+        # First call: bridge connection error. Second call: success.
+        first = MagicMock()
+        first.returncode = 0
+        first.stdout = json.dumps({
+            "type": "PROXY_EXECUTE_RESULT",
+            "error": (
+                "Error: Unable to establish connection to Figma after "
+                "10 seconds. Please check your internet connection."
+            ),
+        })
+        second = MagicMock()
+        second.returncode = 0
+        second.stdout = json.dumps({
+            "type": "PROXY_EXECUTE_RESULT",
+            "result": {"success": True, "result": {"__ok": True, "b64": b64}},
+        })
+        with patch(
+            "dd.plugin_render.subprocess.run",
+            side_effect=[first, second],
+        ), patch("dd.plugin_render.time.sleep"):
+            out = render_screen_with_visible_nodes(
+                screen_figma_id="1:2", hidden_node_figma_ids=[],
+            )
+        assert out == dummy_png
+
+    def test_no_retry_on_permanent_error(self):
+        """A 'screen not found' error is permanent — retrying wastes
+        time and doesn't recover. Only transient connection errors
+        should trigger a retry.
+        """
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "type": "PROXY_EXECUTE_RESULT",
+            "result": {
+                "success": True,
+                "result": {"__ok": False, "reason": "screen not found"},
+            },
+        })
+        sleep_mock = MagicMock()
+        with patch(
+            "dd.plugin_render.subprocess.run", return_value=mock_result,
+        ), patch("dd.plugin_render.time.sleep", sleep_mock):
+            out = render_screen_with_visible_nodes(
+                screen_figma_id="1:2", hidden_node_figma_ids=[],
+            )
+        assert out is None
+        # No retry → sleep never called.
+        sleep_mock.assert_not_called()
