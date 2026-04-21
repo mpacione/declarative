@@ -21,7 +21,12 @@ from collections.abc import Iterable
 from typing import Any
 
 from dd.catalog import get_catalog
-from dd.classify_consensus import compute_consensus_v1, compute_consensus_v2
+from dd.classify_consensus import (
+    WeightsTable,
+    compute_consensus_v1,
+    compute_consensus_v2,
+    compute_consensus_v3,
+)
 from dd.classify_rules import is_system_chrome, parse_component_name
 
 
@@ -331,6 +336,7 @@ def apply_consensus_to_screen(
     screen_id: int,
     *,
     rule: str = "v1",
+    weights: WeightsTable | None = None,
 ) -> dict[str, int]:
     """Walk every row on the screen and compute consensus.
 
@@ -339,29 +345,33 @@ def apply_consensus_to_screen(
     for them is set to their `classification_source` and
     `flagged_for_review` to 0. `canonical_type` is preserved.
 
-    Rows classified by `llm` enter three-source voting. ``rule`` selects
-    ``v1`` (plain majority — the default) or ``v2`` (weighted, CS=2x).
-    v1 is the default after a 2026-04-20 broader review revealed the
-    initial CS=2x weighting was over-fit to a biased 266-review sample
-    that over-represented cross-screen-decided cases. On the expanded
-    980-review pool v1 hits 76.3% match vs v2's 17.4% — when LLM+PS
-    agree they're almost always right; CS as the dissenting third is
-    usually wrong. Keeping v2 available for rollback or for callers
-    with different source-accuracy profiles. The LLM's original
-    verdict is read from ``llm_type`` (preserved in migration 015) —
-    NOT from canonical_type, which consensus overwrites on this same
-    update. Vision sources contribute
-    their ``vision_ps_type`` + ``vision_cs_type``. The final
-    canonical_type, consensus_method, and flag are written in a
-    single UPDATE.
+    Rows classified by `llm` enter three-source voting. ``rule`` picks:
+      - ``v1`` (default) — plain majority.
+      - ``v2`` — fixed source weights (LLM=1, PS=1, CS=2). Kept for
+        rollback; was over-fit on a biased early sample.
+      - ``v3`` — per-type calibrated weights. Pass ``weights`` built
+        by ``build_calibrated_weights`` from the current review
+        corpus. Empty/missing weights degenerate to v1 behavior.
+
+    The LLM's original verdict is read from ``llm_type`` (preserved in
+    migration 015) — NOT from canonical_type, which consensus
+    overwrites on this same update. Vision sources contribute their
+    ``vision_ps_type`` + ``vision_cs_type``. The final canonical_type,
+    consensus_method, and flag are written in a single UPDATE.
 
     Returns a count summary per consensus_method so callers (CLI +
     orchestrator) can print a progress line.
     """
     if rule == "v1":
-        compute = compute_consensus_v1
+        def compute(llm, ps, cs):
+            return compute_consensus_v1(llm, ps, cs)
     elif rule == "v2":
-        compute = compute_consensus_v2
+        def compute(llm, ps, cs):
+            return compute_consensus_v2(llm, ps, cs)
+    elif rule == "v3":
+        w: WeightsTable = weights if weights is not None else {}
+        def compute(llm, ps, cs):
+            return compute_consensus_v3(llm, ps, cs, weights=w)
     else:
         raise ValueError(f"unknown consensus rule: {rule!r}")
 

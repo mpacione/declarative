@@ -22,7 +22,12 @@ from __future__ import annotations
 
 import pytest
 
-from dd.classify_consensus import compute_consensus_v1, compute_consensus_v2
+from dd.classify_consensus import (
+    build_calibrated_weights,
+    compute_consensus_v1,
+    compute_consensus_v2,
+    compute_consensus_v3,
+)
 
 
 class TestConsensusV1ThreeSources:
@@ -228,3 +233,181 @@ class TestConsensusV2Weighted:
         assert compute_consensus_v2("unsure", None, None) == (
             "unsure", "single_source", True,
         )
+
+
+class TestConsensusV3Calibrated:
+    """Rule v3 — per-type weighted consensus derived from review data.
+
+    Each (source, predicted_type) pair has a calibrated weight based on
+    historical acceptance rate. Voting sums the weights; winner commits
+    if strictly above runner-up AND the winning share exceeds a
+    minimum-confidence threshold.
+    """
+
+    def test_uniform_weights_behaves_like_v1_unanimous(self):
+        """With uniform weights (all 1.0), v3 on 3 agreeing sources
+        should commit unanimous — same as v1.
+        """
+        weights = {}  # empty → uniform default
+        assert compute_consensus_v3(
+            "button", "button", "button", weights=weights,
+        ) == ("button", "unanimous", False)
+
+    def test_uniform_weights_two_of_three_majority_commits(self):
+        weights = {}
+        # LLM=button, PS=button, CS=container. 2/3 → button wins.
+        assert compute_consensus_v3(
+            "button", "button", "container", weights=weights,
+        ) == ("button", "calibrated_majority", False)
+
+    def test_high_weight_source_can_overrule_majority(self):
+        """This is the whole point of v3: a source with very high
+        historical accuracy for a type should outvote a pair with
+        low weight for their type.
+        """
+        weights = {
+            ("llm", "container"): 0.3,       # LLM usually wrong on container
+            ("vision_ps", "container"): 0.3,
+            ("vision_cs", "list_item"): 0.95,  # CS is typically right on list_item
+        }
+        # LLM+PS say container (low weight each), CS says list_item (high).
+        # Weighted: container = 0.6, list_item = 0.95 → list_item wins.
+        assert compute_consensus_v3(
+            "container", "container", "list_item", weights=weights,
+        ) == ("list_item", "calibrated_majority", False)
+
+    def test_low_weight_source_cant_overrule_high_pair(self):
+        """If the "outvoted" source has a higher individual weight than
+        either of the pair, but the pair's COMBINED weight exceeds it,
+        the pair still wins. That's v3's protection against single-
+        source overconfidence."""
+        weights = {
+            ("llm", "button"): 0.5,
+            ("vision_ps", "button"): 0.5,
+            ("vision_cs", "card"): 0.7,
+        }
+        # LLM+PS = button (0.5+0.5=1.0). CS = card (0.7). button wins.
+        assert compute_consensus_v3(
+            "button", "button", "card", weights=weights,
+        ) == ("button", "calibrated_majority", False)
+
+    def test_any_unsure_short_circuits(self):
+        # v3 preserves "any unsure → flag" semantics from v1/v2.
+        weights = {("llm", "button"): 0.9, ("vision_cs", "button"): 0.95}
+        assert compute_consensus_v3(
+            "button", "unsure", "button", weights=weights,
+        ) == ("unsure", "any_unsure", True)
+
+    def test_three_way_disagreement_picks_highest_weighted(self):
+        """All three differ. v3 picks the source with the highest
+        weight for its verdict — no flag unless confidence is below
+        a threshold.
+        """
+        weights = {
+            ("llm", "container"): 0.4,
+            ("vision_ps", "button"): 0.6,
+            ("vision_cs", "list_item"): 0.85,
+        }
+        # 3 different types, weights 0.4 / 0.6 / 0.85 → list_item wins.
+        assert compute_consensus_v3(
+            "container", "button", "list_item", weights=weights,
+        ) == ("list_item", "calibrated_majority", False)
+
+    def test_tied_top_weights_flag_as_tie(self):
+        weights = {
+            ("llm", "button"): 0.5,
+            ("vision_ps", "card"): 0.5,
+        }
+        # 2 sources (CS absent), tied weights → flag.
+        assert compute_consensus_v3(
+            "button", "card", None, weights=weights,
+        ) == ("unsure", "calibrated_tie", True)
+
+    def test_missing_weight_uses_uniform_default(self):
+        """Untrained (source, type) pairs get a default weight of 0.5
+        so v3 degrades gracefully to something close to uniform for
+        novel types.
+        """
+        weights = {}  # no entries at all
+        # 3 different types with default 0.5 each — 3-way tie.
+        out = compute_consensus_v3(
+            "a", "b", "c", weights=weights,
+        )
+        # All equal → tie → flag.
+        assert out[2] is True  # flagged
+        assert out[1] == "calibrated_tie"
+
+    def test_no_sources_flags_no_sources(self):
+        assert compute_consensus_v3(
+            None, None, None, weights={},
+        ) == (None, "no_sources", True)
+
+    def test_single_source_passes_through(self):
+        weights = {("vision_cs", "button"): 0.9}
+        assert compute_consensus_v3(
+            None, None, "button", weights=weights,
+        ) == ("button", "single_source", False)
+
+
+class TestBuildCalibratedWeights:
+    """``build_calibrated_weights`` takes review history and produces
+    a (source, type) → weight dict. Weight is P(user accepted this
+    source | source predicted type T), with Laplace smoothing so
+    low-sample types don't swing to extremes.
+    """
+
+    def test_empty_reviews_returns_empty_dict(self):
+        """No reviews → no calibration data → empty weights. Callers
+        should fall back to uniform defaults.
+        """
+        weights = build_calibrated_weights(reviews=[])
+        assert weights == {}
+
+    def test_perfect_source_gets_weight_one(self):
+        """When the user accepted LLM every time LLM predicted button,
+        LLM's weight for button should be close to 1.0 (with some
+        smoothing pull toward 0.5 for small-sample types).
+        """
+        reviews = [
+            {"source_accepted": "llm", "llm_type": "button",
+             "vision_ps_type": "card", "vision_cs_type": "card"},
+        ] * 20  # 20 confirmations
+        weights = build_calibrated_weights(reviews=reviews)
+        # 20/20 acceptances — smoothing pulls slightly below 1.0.
+        assert weights[("llm", "button")] > 0.9
+
+    def test_unused_source_on_type_yields_low_weight(self):
+        """If the user always rejected LLM's button verdict (picked
+        another source), LLM's weight for button → near 0.
+        """
+        reviews = [
+            {"source_accepted": "vision_ps", "llm_type": "button",
+             "vision_ps_type": "card", "vision_cs_type": "card"},
+        ] * 20
+        weights = build_calibrated_weights(reviews=reviews)
+        # 0/20 acceptance for LLM's "button" — smoothed, should be low.
+        assert weights[("llm", "button")] < 0.2
+
+    def test_smoothing_protects_low_sample_types(self):
+        """A (source, type) seen only once should get a weight near
+        0.5, not 0.0 or 1.0, regardless of that single outcome.
+        """
+        reviews = [
+            {"source_accepted": "llm", "llm_type": "rare_type",
+             "vision_ps_type": "other", "vision_cs_type": "other"},
+        ]
+        weights = build_calibrated_weights(reviews=reviews)
+        # 1/1 accepted but smoothing keeps it near 0.5.
+        assert 0.4 < weights[("llm", "rare_type")] < 0.85
+
+    def test_ignores_non_accept_source_reviews(self):
+        """Only `accept_source` reviews contribute to weight. `override`,
+        `unsure`, `skip` don't tell us about source accuracy.
+        """
+        reviews = [
+            {"source_accepted": "llm", "llm_type": "button",
+             "vision_ps_type": "button", "vision_cs_type": "button",
+             "decision_type": "skip"},
+        ] * 10
+        weights = build_calibrated_weights(reviews=reviews)
+        assert ("llm", "button") not in weights
