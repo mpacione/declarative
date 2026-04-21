@@ -592,6 +592,7 @@ def _run_classify(
         print(f"  LLM inserts:           {result.get('llm_inserts', 0)}")
         print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
         print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
+        print(f"  Vision SoM applied:    {result.get('vision_som_applied', 0)}")
         consensus = result.get("consensus") or {}
         if consensus:
             print(f"  Consensus breakdown:")

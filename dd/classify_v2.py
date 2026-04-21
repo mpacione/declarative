@@ -714,23 +714,127 @@ def _vision_cs_classify(
     return results
 
 
+def _hydrate_reps_for_som(
+    conn: sqlite3.Connection, reps: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Re-fetch reps with every field the SoM worker needs.
+
+    The candidate dicts produced by ``_collect_all_candidates`` don't
+    carry the sci_id or visibility / figma-id fields the SoM pass
+    requires; they're pre-LLM-insert. This helper runs after Pass 5
+    so the sci rows exist, and JOINs them with ``nodes`` to get the
+    full rep shape the worker expects.
+    """
+    if not reps:
+        return []
+    # Screen id → effective-visibility subquery needs to run against
+    # the screens of interest only; batch by screen for efficiency.
+    screen_ids = sorted({r["screen_id"] for r in reps})
+    key_pairs = {(r["screen_id"], r["node_id"]) for r in reps}
+    placeholders = ",".join("?" * len(screen_ids))
+    rows = conn.execute(
+        f"""
+        WITH RECURSIVE invisible_subtree(id) AS (
+            SELECT id FROM nodes
+            WHERE screen_id IN ({placeholders})
+              AND COALESCE(visible, 1) = 0
+            UNION ALL
+            SELECT n.id FROM nodes n
+            JOIN invisible_subtree inv ON n.parent_id = inv.id
+        )
+        SELECT sci.id AS sci_id, sci.screen_id, sci.node_id,
+               n.name, n.node_type, n.x, n.y, n.width, n.height,
+               n.rotation, n.text_content AS sample_text,
+               sci.llm_type,
+               parent_sci.canonical_type AS parent_classified_as,
+               (SELECT COUNT(*) FROM nodes c WHERE c.parent_id = n.id)
+                 AS total_children,
+               COALESCE(n.visible, 1) AS visible_self,
+               CASE WHEN n.id IN (SELECT id FROM invisible_subtree)
+                    THEN 0 ELSE 1 END AS visible_effective,
+               n.figma_node_id AS node_figma_id
+        FROM screen_component_instances sci
+        JOIN nodes n ON n.id = sci.node_id
+        LEFT JOIN nodes parent_n ON parent_n.id = n.parent_id
+        LEFT JOIN screen_component_instances parent_sci
+          ON parent_sci.node_id = parent_n.id
+          AND parent_sci.screen_id = n.screen_id
+        WHERE sci.screen_id IN ({placeholders})
+          AND sci.classification_source = 'llm'
+        """,
+        [*screen_ids, *screen_ids],
+    ).fetchall()
+    cols = [
+        "sci_id", "screen_id", "node_id", "name", "node_type",
+        "x", "y", "width", "height", "rotation", "sample_text",
+        "llm_type", "parent_classified_as", "total_children",
+        "visible_self", "visible_effective", "node_figma_id",
+    ]
+    hydrated = [dict(zip(cols, r)) for r in rows]
+    # Keep only the reps we actually want (filter by the original
+    # (screen_id, node_id) keys).
+    return [h for h in hydrated if (h["screen_id"], h["node_id"]) in key_pairs]
+
+
+def _vision_som_classify(
+    conn: sqlite3.Connection,
+    reps: list[dict[str, Any]],
+    client: Any,
+    catalog: list[dict[str, Any]],
+    *,
+    workers: int,
+    fetch_screenshot: Callable,
+    file_key: str,
+    plugin_port: int = 9227,
+) -> dict[tuple[int, int], tuple[str, float, Optional[str]]]:
+    """SoM pass — one screen-level call per screen with representative
+    marks. Returns a ``{(screen_id, node_id): (type, conf, reason)}``
+    map shaped like PS/CS for symmetric propagation downstream.
+    """
+    from dd.classify_vision_som_worker import classify_reps_with_som
+
+    hydrated = _hydrate_reps_for_som(conn, reps)
+    if not hydrated:
+        return {}
+    verdicts = classify_reps_with_som(
+        conn, hydrated, client, catalog, fetch_screenshot, file_key,
+        workers=workers, plugin_port=plugin_port,
+    )
+    sci_to_pair = {h["sci_id"]: (h["screen_id"], h["node_id"]) for h in hydrated}
+    out: dict[tuple[int, int], tuple[str, float, Optional[str]]] = {}
+    for sci_id, verdict in verdicts.items():
+        pair = sci_to_pair.get(sci_id)
+        if pair is None:
+            continue
+        out[pair] = (
+            verdict.get("canonical_type"),
+            float(verdict.get("confidence") or 0.0),
+            verdict.get("reason"),
+        )
+    return out
+
+
 def _propagate_vision_to_members(
     conn: sqlite3.Connection,
     groups: list[list[dict[str, Any]]],
     reps: list[dict[str, Any]],
     ps: dict[tuple[int, int], tuple[str, float, Optional[str]]],
     cs: dict[tuple[int, int], tuple[str, float, Optional[str]]],
-) -> tuple[int, int]:
-    """Write vision_ps_* + vision_cs_* columns for every member of
-    every group where the representative got a verdict. Singletons
-    inherit PS for CS.
+    som: Optional[dict[tuple[int, int], tuple[str, float, Optional[str]]]] = None,
+) -> tuple[int, int, int]:
+    """Write vision_ps_* + vision_cs_* + vision_som_* columns for
+    every member of every group where the representative got a
+    verdict. Singletons inherit PS for CS. Returns
+    ``(ps_applied, cs_applied, som_applied)``.
     """
     ps_applied = 0
     cs_applied = 0
+    som_applied = 0
     for members, rep in zip(groups, reps):
         rep_key = (rep["screen_id"], rep["node_id"])
         ps_verdict = ps.get(rep_key)
         cs_verdict = cs.get(rep_key)
+        som_verdict = (som or {}).get(rep_key)
         # Singletons: CS has no meaningful distinct verdict. Inherit PS.
         if cs_verdict is None and ps_verdict is not None:
             cs_verdict = ps_verdict
@@ -756,8 +860,19 @@ def _propagate_vision_to_members(
                     (ctype, conf, reason, m["screen_id"], m["node_id"]),
                 )
                 cs_applied += 1
+            if som_verdict is not None:
+                ctype, conf, reason = som_verdict
+                if ctype:
+                    conn.execute(
+                        "UPDATE screen_component_instances "
+                        "SET vision_som_type = ?, vision_som_confidence = ?, "
+                        "    vision_som_reason = ? "
+                        "WHERE screen_id = ? AND node_id = ?",
+                        (ctype, conf, reason, m["screen_id"], m["node_id"]),
+                    )
+                    som_applied += 1
     conn.commit()
-    return (ps_applied, cs_applied)
+    return (ps_applied, cs_applied, som_applied)
 
 
 def run_classification_v2(
@@ -848,9 +963,19 @@ def run_classification_v2(
         fetch_screenshot=fetch_screenshot, file_key=file_key,
     )
 
+    # Pass 8b: vision SoM — one screen-level call per screen covering
+    # every rep living on that screen. Uses the same deduped rep set
+    # as PS/CS so one SoM verdict propagates to every member of the
+    # dedup group.
+    som_verdicts = _vision_som_classify(
+        conn, reps, client, catalog,
+        workers=workers,
+        fetch_screenshot=fetch_screenshot, file_key=file_key,
+    )
+
     # Pass 9: propagate vision verdicts.
-    ps_applied, cs_applied = _propagate_vision_to_members(
-        conn, groups_list, reps, ps_verdicts, cs_verdicts,
+    ps_applied, cs_applied, som_applied = _propagate_vision_to_members(
+        conn, groups_list, reps, ps_verdicts, cs_verdicts, som_verdicts,
     )
 
     # Pass 10: consensus + skeleton per screen.
@@ -873,6 +998,7 @@ def run_classification_v2(
         "llm_inserts": llm_inserts,
         "vision_ps_applied": ps_applied,
         "vision_cs_applied": cs_applied,
+        "vision_som_applied": som_applied,
         "consensus": consensus_counts,
         "skeletons_generated": skeletons_generated,
     }
