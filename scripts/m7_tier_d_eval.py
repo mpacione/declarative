@@ -64,6 +64,7 @@ class TierDResult:
 
 def run_one(
     scope: str, prompt: str, *, conn, client, use_bridge: bool,
+    ws_port: int = 9228,
 ) -> TierDResult:
     from dd.compose import generate_from_prompt
     from dd.prompt_parser import parse_prompt
@@ -100,7 +101,7 @@ def run_one(
         t0 = time.monotonic()
         try:
             payload = walk_rendered_via_bridge(
-                script=script, ws_port=9228, timeout=180.0,
+                script=script, ws_port=ws_port, timeout=180.0,
             )
             walk_eid_map = payload.get("eid_map") or {}
             walk_errors = list(payload.get("errors") or [])
@@ -145,6 +146,14 @@ def main(argv: list[str] | None = None) -> int:
         "--save-report", default=None,
         help="Write results JSON to this path.",
     )
+    parser.add_argument(
+        "--ws-port", type=int, default=9228,
+        help=(
+            "WebSocket port where the Figma plugin bridge listens. "
+            "Default 9228; observed as 9223-9225 in practice, "
+            "picked by Figma Desktop on startup."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not Path(args.db).exists():
@@ -168,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Prompt: {prompt}")
             r = run_one(
                 scope, prompt, conn=conn, client=client,
-                use_bridge=use_bridge,
+                use_bridge=use_bridge, ws_port=args.ws_port,
             )
             results.append(r)
             print(

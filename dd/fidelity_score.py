@@ -227,14 +227,28 @@ def score_font_readiness(errors: list[dict[str, Any]]) -> DimensionScore:
 def score_component_child_consistency(
     errors: list[dict[str, Any]],
 ) -> DimensionScore:
-    """Look for ``render_thrown`` + "appendChild" + "instance" in
-    the render-walk errors. F2 is the #1 blocker observed in Tier
-    B — one occurrence cascades (F3) so hard-fail."""
+    """Look for appendChild-into-instance failures in the render-
+    walk errors. F2 is the #1 blocker observed in Tier B.
+
+    Matches two error shapes:
+    - Legacy: ``kind='render_thrown'`` with "appendChild" +
+      "instance" in the error string (pre-guard cascade).
+    - Post-guard (b95d3bc + b26ddf7): ``kind='append_child_failed'``
+      with "instance" in the error string. Per-op guards turn the
+      cascade into a structured entry but the defect class is the
+      same."""
+
+    def _is_instance_append(e: dict[str, Any]) -> bool:
+        msg = (e.get("error") or "").lower()
+        if "appendchild" not in msg and "append child" not in msg:
+            return False
+        return "instance" in msg
+
     hits = [
         e for e in errors
-        if e.get("kind") == "render_thrown"
-        and "appendChild" in (e.get("error") or "")
-        and "instance" in (e.get("error") or "").lower()
+        if (e.get("kind") == "render_thrown"
+            or e.get("kind") == "append_child_failed")
+        and _is_instance_append(e)
     ]
     if not hits:
         return DimensionScore(
@@ -243,14 +257,15 @@ def score_component_child_consistency(
             diagnostic="no appendChild-into-instance errors",
         )
     # Single hit is fatal per Tier B observation.
+    affected = sorted({e.get("eid", "?") for e in hits})[:5]
     return DimensionScore(
         name="component_child_consistency",
         value=0.2, passed=False,
         diagnostic=(
-            f"{len(hits)} appendChild-into-instance throws — "
-            "Mode-3 emitted a CompRef parent with TEXT/ICON "
-            "children but INSTANCE nodes can't host children "
-            "(Figma Plugin API constraint). See "
+            f"{len(hits)} appendChild-into-instance error(s) "
+            f"[eids: {affected}] — Mode-3 emitted a CompRef parent "
+            "with a child subtree but INSTANCE nodes can't host "
+            "children (Figma Plugin API constraint). See "
             "docs/learnings-tier-b-failure-modes.md F2."
         ),
     )

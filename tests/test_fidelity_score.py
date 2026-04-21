@@ -132,6 +132,36 @@ class TestScoreComponentChildConsistency:
         }])
         assert d.passed is True
 
+    def test_post_guard_append_child_failed_with_instance_fails(
+        self,
+    ) -> None:
+        """After commits b95d3bc + b26ddf7, per-op guards catch
+        appendChild failures as `kind: 'append_child_failed'`
+        rather than `render_thrown`. The dim must recognise both
+        shapes — the defect class (leaf-under-INSTANCE, or Mode-1-
+        parent-with-children) is the same."""
+        d = score_component_child_consistency([{
+            "kind": "append_child_failed",
+            "eid": "icon_button-1",
+            "error": (
+                "in appendChild: Cannot move node. "
+                "New parent is an instance or is inside of an instance"
+            ),
+        }])
+        assert d.passed is False
+        assert "icon_button-1" in d.diagnostic
+
+    def test_append_child_failed_without_instance_passes(self) -> None:
+        """Not every append_child_failed is F2 — only ones where
+        the Figma error mentions 'instance'. Other appendChild
+        failures (malformed node, etc.) don't hit this dim."""
+        d = score_component_child_consistency([{
+            "kind": "append_child_failed",
+            "eid": "some-node",
+            "error": "in appendChild: node is null",
+        }])
+        assert d.passed is True
+
 
 class TestScoreLeafTypeStructural:
     def test_no_violations_passes(self) -> None:
