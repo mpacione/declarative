@@ -97,9 +97,12 @@ def crop_node_with_spotlight(
     rect (which matches the rendered element for ±π/2, over-covers
     slightly for arbitrary angles — acceptable).
 
-    ``bbox_inflate_px`` (default 6) pushes the magenta stroke OUTWARD
-    so the element sits clearly inside the box with a small visible
-    margin, rather than having its edges cut by the stroke itself.
+    ``bbox_inflate_px`` (default 6) is the MINIMUM margin between the
+    element and the magenta stroke in Figma canvas units. The actual
+    inflate is ``max(bbox_inflate_px, 5% of max(aabb_w, aabb_h))`` so
+    tiny elements get the floor while large elements get a
+    proportional margin that's actually visible — a flat 6-canvas-unit
+    inflate on a 1024×1024 card is a 0.6% halo you can't see.
     """
     img = Image.open(BytesIO(screen_png)).convert("RGBA")
     iw, ih = img.size
@@ -117,9 +120,12 @@ def crop_node_with_spotlight(
     bbox_r_canvas = node_x + aabb_w
     bbox_b_canvas = node_y + aabb_h
 
-    # Inflate outward (in canvas units so it scales with screen DPR).
-    infl_x = bbox_inflate_px
-    infl_y = bbox_inflate_px
+    # Inflate outward — floor at bbox_inflate_px, scaled to 5% of the
+    # element's longer side so big elements get a visible margin too.
+    elem_max = max(aabb_w, aabb_h)
+    infl = max(float(bbox_inflate_px), elem_max * 0.05)
+    infl_x = infl
+    infl_y = infl
 
     # Bbox in actual-image pixels (tight + inflated).
     nl = max(0, int((bbox_l_canvas - infl_x) * scale_x))
