@@ -1,8 +1,11 @@
 # Plan — M7.0.b Slot-Definition Derivation
 
-**Status:** SPEC — user review required before execution. Schema decisions need a sign-off (assumption log entries).
-**Authored:** 2026-04-19 (autonomous design pass while user is away).
-**Trigger to revisit:** after Step 9 consensus completes AND user reviews the schema decisions logged here.
+**Status:** ✅ **SHIPPED 2026-04-21** in two steps. Step 1 (commits `faf9902` → `ec5967c`) backfills `components` from CKR — 100 rows, migration 018 adds `canonical_type` column, SD-3 consensus filter applied. Step 2 (commits `5dc3705` → `44a06dd`) clusters trusted instances by semantic child-class (TEXT / ICON / COMPONENT / CONTAINER), LLM-labels dominant cluster via Claude Haiku, writes `component_slots`. 99 rows total (button 9, icon 86, tabs 1, header 3). Schema decisions SD-1 / SD-2 / SD-3 / SD-4 applied per recommendation in this doc. Open questions OQ-1/2/3 resolved pragmatically (per-canonical-type, default_content deferred to M7.3, button-family ⊂ canonical_type 'button' only).
+
+Downstream integration: `dd.library_catalog.serialize_library(include_slots=True)` surfaces slots in the LLM context. `dd.ir.generate_ir(semantic=True)` reads slot defs via `query_slot_definitions` and assigns children to named slots.
+
+**Authored:** 2026-04-19 (autonomous design pass).
+**Trigger to revisit:** if a second project with a different naming convention needs slot derivation — the cluster-by-semantic-class is data-driven but the `dominant_cluster` threshold (default 0.5) may need tuning.
 
 ---
 
