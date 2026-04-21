@@ -145,6 +145,15 @@ class FigmaRenderVerifier:
                     kind=KIND_MISSING_CHILD,
                     id=eid,
                     error="element present in IR but missing from render",
+                    hint=(
+                        f"IR expects an element at @{eid} but the "
+                        "render produced no matching node. Options: "
+                        "(a) `delete @{eid}` if the element is no "
+                        "longer needed; (b) confirm the parent "
+                        "didn't absorb the child under a Mode-1 "
+                        "INSTANCE; (c) check the compressor didn't "
+                        "inline it away."
+                    ).replace("{eid}", eid),
                 ))
                 continue
 
@@ -163,6 +172,14 @@ class FigmaRenderVerifier:
                         f"got {rendered_type}"
                     ),
                     context={"ir_type": ir_type, "rendered_type": rendered_type},
+                    hint=(
+                        f"The IR at @{eid} expects a {ir_type} "
+                        f"(Figma type in {sorted(expected)}) but "
+                        f"got {rendered_type}. Either `swap @{eid} "
+                        "with=-> <master>` to a library component "
+                        "of the right type, or `delete @{eid}` if "
+                        "the classification was wrong."
+                    ).replace("{eid}", eid),
                 ))
                 continue
 

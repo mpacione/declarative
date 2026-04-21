@@ -131,6 +131,15 @@ class StructuredError:
     id: str | None = None
     error: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
+    # M7.5 verifier-as-agent hook: a short natural-language repair
+    # hint for the LLM ("swap target X was deleted earlier in this
+    # sequence — either re-add it or drop the swap"). Verifiers that
+    # know *how* an error should be fixed attach a hint; downstream
+    # code tries to repair off the hint, and is allowed to ignore
+    # when the hint is None. Free-text (not enum) to preserve the
+    # option to include file paths / variant names / numeric
+    # tolerances in the hint body.
+    hint: str | None = None
 
 
 # ---------------------------------------------------------------------------
