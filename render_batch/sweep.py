@@ -159,6 +159,46 @@ def process_screen(
     return row
 
 
+def process_screen_with_retry(
+    sid: int, name: str, skip_existing: bool, port: str,
+    max_retries: int = 2, retry_backoff: float = 1.0,
+) -> dict:
+    """Wrap ``process_screen`` with per-screen retry on transient failures.
+
+    Per ``feedback_sweep_transient_timeouts.md``: the bridge accumulates
+    load during a sweep; mid-sweep `getNodeByIdAsync` calls can silently
+    return null, producing missing_component_node + component_missing
+    errors that resolve cleanly on a fresh retry. Same for outright walk
+    timeouts on iPad-sized screens.
+
+    Retry policy:
+    - Generate failures NEVER retry (deterministic; usually a real bug).
+    - Walk-failure (script timeout, bridge error) DOES retry — these are
+      pure transients on the bridge side.
+    - Verify success but is_parity=False with errors DOES retry — most
+      likely the prefetch-returned-null class.
+    - is_parity=True is the success case; return immediately.
+
+    Backoff is exponential capped at 10s: 1s, 2s, 4s.
+    """
+    last_row: dict = {}
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            sleep_s = min(retry_backoff * (2 ** (attempt - 1)), 10.0)
+            time.sleep(sleep_s)
+        # Don't reuse failed artefacts on retry — regenerate everything.
+        skip = skip_existing if attempt == 0 else False
+        row = process_screen(sid, name, skip, port)
+        row["attempt"] = attempt + 1
+        last_row = row
+        if row.get("is_parity") is True:
+            return row
+        # Don't retry generate failures
+        if row.get("generate_ok") is False:
+            return row
+    return last_row
+
+
 def summarize(rows: list[dict]) -> dict:
     kinds = Counter()
     for r in rows:
@@ -169,12 +209,20 @@ def summarize(rows: list[dict]) -> dict:
     walk_failed = sum(1 for r in rows if r.get("walk_ok") is False and r.get("generate_ok"))
     generate_failed = sum(1 for r in rows if r.get("generate_ok") is False)
 
+    retried = sum(1 for r in rows if r.get("attempt", 1) > 1)
+    retried_recovered = sum(
+        1 for r in rows
+        if r.get("attempt", 1) > 1 and r.get("is_parity") is True
+    )
+
     return {
         "total": total,
         "is_parity_true": parity_true,
         "is_parity_false": total - parity_true - walk_failed - generate_failed,
         "generate_failed": generate_failed,
         "walk_failed": walk_failed,
+        "retried": retried,
+        "retried_recovered": retried_recovered,
         "error_kinds": dict(kinds.most_common()),
         "per_screen": rows,
     }
@@ -189,6 +237,13 @@ def main() -> int:
                     help="Start at this screen id (for resume)")
     ap.add_argument("--port", default=BRIDGE_PORT_DEFAULT,
                     help="Desktop Bridge WebSocket port")
+    ap.add_argument("--max-retries", type=int, default=2,
+                    help="Per-screen retry count on transient failures "
+                    "(walk timeout, missing-component drift). "
+                    "Default 2 (3 attempts total). Set 0 to disable.")
+    ap.add_argument("--retry-backoff", type=float, default=1.0,
+                    help="Initial backoff seconds before retry "
+                    "(doubles each attempt, capped at 10s).")
     args = ap.parse_args()
 
     # Post-M6: single render path; single artefact layout.
@@ -210,8 +265,10 @@ def main() -> int:
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
-        row = process_screen(
+        row = process_screen_with_retry(
             sid, name, args.skip_existing, args.port,
+            max_retries=args.max_retries,
+            retry_backoff=args.retry_backoff,
         )
         elapsed = time.time() - t1
         status = (
@@ -219,8 +276,11 @@ def main() -> int:
             else "FAIL" if row.get("failure")
             else "DRIFT"
         )
+        attempt_marker = (
+            f" (try {row.get('attempt', 1)})" if row.get("attempt", 1) > 1 else ""
+        )
         print(
-            f"[{i}/{len(screens)}] screen={sid:3d} {status:6s} "
+            f"[{i}/{len(screens)}] screen={sid:3d} {status:6s}{attempt_marker} "
             f"t={elapsed:5.1f}s "
             f"parity={row.get('parity_ratio')} "
             f"errs={row.get('error_count')} "
@@ -240,6 +300,10 @@ def main() -> int:
     print(f"is_parity=False:  {summary['is_parity_false']}")
     print(f"generate_failed:  {summary['generate_failed']}")
     print(f"walk_failed:      {summary['walk_failed']}")
+    print(
+        f"retried:          {summary['retried']} "
+        f"(recovered to PARITY: {summary['retried_recovered']})"
+    )
     print(f"elapsed:          {summary['elapsed_s']}s")
     print("\nerror_kinds:")
     for kind, ct in summary["error_kinds"].items():
