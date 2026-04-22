@@ -2503,13 +2503,24 @@ def generate_screen(
     # matches M4 pixel-parity against baseline;
     # ``collapse_wrapper=True`` is for grammar + round-trip tests
     # only.
-    from dd.compress_l3 import compress_to_l3_with_maps
+    #
+    # PR-1 Stage 2: use the resolver-bearing entry point so that
+    # descendant-visibility PathOverrides (Source A instance_overrides
+    # + Source B DB-visible=0) lower through the backend-neutral
+    # markup path into id-based `findOne(n => n.id.endsWith(";<fig>"))`
+    # writes. The pre-PR-1 entry point (`compress_to_l3_with_maps`)
+    # silently discarded the resolver side-car, so the markup-
+    # PathOverride emitter in render_figma_ast never fired in
+    # production and every descendant hide came from the brittle
+    # `hidden_children` name-based path instead.
+    from dd.compress_l3 import _compress_to_l3_impl
     from dd.render_figma_ast import render_figma
-    doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
-        compress_to_l3_with_maps(
-            spec, conn, screen_id=screen_id,
-            collapse_wrapper=False,
-        )
+    (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map,
+        descendant_visibility_resolver,
+    ) = _compress_to_l3_impl(
+        spec, conn, screen_id=screen_id,
+        collapse_wrapper=False,
     )
     fonts = collect_fonts(spec, db_visuals=visuals)
     script, token_refs = render_figma(
@@ -2521,6 +2532,7 @@ def generate_screen(
         canvas_position=canvas_position,
         _spec_elements=spec["elements"],
         _spec_tokens=spec.get("tokens", {}),
+        descendant_visibility_resolver=descendant_visibility_resolver,
     )
 
     return {

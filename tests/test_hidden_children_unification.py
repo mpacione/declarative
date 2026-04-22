@@ -360,3 +360,82 @@ class TestResolverDedupe:
             "got false"
         )
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 — Production renderer emits id-based visibility via resolver
+# ---------------------------------------------------------------------------
+
+
+DANK_DB_PATH = (
+    "/Users/mattpacione/declarative-build/Dank-EXP-02.declarative.db"
+)
+
+
+@pytest.fixture(scope="module")
+def dank_conn() -> sqlite3.Connection:
+    """Open the real Dank corpus DB for Stage 2's production-wiring
+    test. Skip the test gracefully when the corpus isn't available
+    (CI, fresh clones without the proprietary extraction)."""
+    from pathlib import Path
+    p = Path(DANK_DB_PATH)
+    if not p.exists():
+        pytest.skip(f"corpus DB not present at {p}")
+    conn = sqlite3.connect(str(p))
+    conn.row_factory = sqlite3.Row
+    yield conn
+    conn.close()
+
+
+class TestProductionRendererUsesResolver:
+    """The production `generate_figma_script` must thread the
+    `descendant_visibility_resolver` through to `render_figma` so the
+    emitted script uses `findOne(n => n.id.endsWith(";<fig_id>"))`
+    rather than `findOne(n => n.name === X)` for descendant hides.
+
+    Without the resolver, the renderer silently falls back to the
+    markup-unaware `hidden_children` path — and when a master has two
+    same-name descendants with different visibility intent (e.g.
+    nav/top-nav's `icon/check` where one copy is hidden and the other
+    is shown), name-based lookup hits the wrong descendant.
+    """
+
+    def test_generate_figma_script_emits_id_based_visibility_override_not_name_based(
+        self, dank_conn: sqlite3.Connection,
+    ) -> None:
+        """Screen 118 has a nav/top-nav instance with same-name
+        descendants at conflicting visibilities (confirmed by the
+        2026-04-22 subagent-B audit). The production `generate_screen`
+        must thread `descendant_visibility_resolver` to `render_figma`
+        so the markup-PathOverride emitter fires — producing distinctive
+        `{ const _h = <var>.findOne(n => n.id.endsWith(";<fig>"))` lines
+        for any resolver-known hide that lands on a walked CompRef.
+
+        Without the Stage-2 wiring the emitter is a no-op (resolver
+        param defaults to `None`) and the script carries zero such
+        emissions despite the markup containing `.visible` PathOverrides.
+        """
+        import re
+        from dd.renderers.figma import generate_screen
+
+        result = generate_screen(
+            dank_conn, 118, canvas_position=(0, 0),
+        )
+        script = result["structure_script"]
+
+        # PR-2 emitter signature — `{ const _h = <var>.findOne(n =>
+        # n.id.endsWith(";<fig_id>")); if (_h) _h.visible = ...; }`.
+        # This shape is distinct from _emit_override_tree (uses `_c`)
+        # and from hidden_children (uses `n.name ===`).
+        pr2_emitter_pat = re.compile(
+            r'\{ const _h = \S+\.findOne\(n => '
+            r'n\.id\.endsWith\("[^"]+"\)\);'
+            r'\s*if \(_h\) _h\.visible = (?:true|false);'
+        )
+        pr2_hits = pr2_emitter_pat.findall(script)
+        assert len(pr2_hits) >= 1, (
+            f"expected ≥1 markup-PathOverride id-based emission on "
+            f"screen 118; got 0. Production path must thread "
+            f"descendant_visibility_resolver into render_figma. "
+            f"First 2KB of script:\n{script[:2048]}"
+        )
