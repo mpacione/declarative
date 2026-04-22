@@ -406,6 +406,54 @@ class TestStage3aComposeRoleFirst:
         assert _semantic_type({"type": "text", "role": "text"}) == "text"
 
 
+class TestStage3aCorpusRetrievalSplit:
+    """Corpus retrieval produces elements in the split shape
+    (type=primitive, role=semantic optional). See
+    docs/plan-type-role-split.md §4 Stage 3a.
+    """
+
+    def _row(self, node_type: str, canonical_type: str | None) -> dict:
+        return {
+            "id": 1, "node_type": node_type,
+            "canonical_type": canonical_type,
+            "name": "n", "fills": None, "strokes": None, "effects": None,
+            "corner_radius": None, "stroke_weight": None, "opacity": 1.0,
+            "layout_mode": None,
+            "padding_top": None, "padding_right": None,
+            "padding_bottom": None, "padding_left": None,
+            "item_spacing": None,
+            "layout_sizing_h": None, "layout_sizing_v": None,
+            "text_content": None,
+        }
+
+    def test_FRAME_classified_card_gets_split_shape(self) -> None:
+        from dd.composition.providers.corpus_retrieval import _build_element
+        element = _build_element(self._row("FRAME", "card"))
+        assert element["type"] == "frame"
+        assert element["role"] == "card"
+
+    def test_unclassified_FRAME_has_no_role(self) -> None:
+        from dd.composition.providers.corpus_retrieval import _build_element
+        element = _build_element(self._row("FRAME", None))
+        assert element["type"] == "frame"
+        assert "role" not in element
+
+    def test_TEXT_classified_text_elides_role(self) -> None:
+        from dd.composition.providers.corpus_retrieval import _build_element
+        element = _build_element(self._row("TEXT", "text"))
+        assert element["type"] == "text"
+        assert "role" not in element
+
+    def test_RECTANGLE_preserves_primitive_not_collapsed_to_frame(self) -> None:
+        """Old corpus_retrieval.py._resolve_element_type collapsed
+        anything not in {instance, text, frame} to "frame". After
+        Stage 3a the canonical helper preserves RECTANGLE, ELLIPSE,
+        etc. as their lowercase primitive."""
+        from dd.composition.providers.corpus_retrieval import _build_element
+        element = _build_element(self._row("RECTANGLE", None))
+        assert element["type"] == "rectangle"
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")
