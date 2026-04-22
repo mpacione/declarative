@@ -1390,6 +1390,8 @@ def _fetch_descendant_visibility_overrides(
     conn: Optional[sqlite3.Connection],
     node_id_map: dict[str, int],
     eligible_eids: list[str],
+    *,
+    resolver_out: Optional[dict[str, dict[str, str]]] = None,
 ) -> dict[str, list[PathOverride]]:
     """Fetch BOOLEAN `;<figmaChildId>:visible` overrides for each
     CompRef-eligible instance and emit them as markup-native
@@ -1411,6 +1413,14 @@ def _fetch_descendant_visibility_overrides(
     visibility overrides. Skips instances that aren't in
     `node_id_map` (tests with synthetic eids without DB ids are a
     no-op for those entries).
+
+    When `resolver_out` is provided, the function also populates it
+    with `{instance_eid: {path: figma_child_id}}` — the side-car map
+    the Figma renderer uses to translate the backend-neutral path
+    back to a stable Figma descendant id (e.g. `logo-dank.visible` →
+    `5749:84278`). The markup itself never carries the Figma id;
+    this map is the Figma adapter's private resolver, parallel to
+    what an HTML adapter would derive from slot schemas.
     """
     if conn is None or not eligible_eids:
         return {}
@@ -1514,8 +1524,13 @@ def _fetch_descendant_visibility_overrides(
         # Disambiguate within the instance's existing list.
         bucket = out.setdefault(eid, [])
         existing_paths = {po.path for po in bucket}
+        resolver_bucket: Optional[dict[str, str]] = None
+        if resolver_out is not None:
+            resolver_bucket = resolver_out.setdefault(eid, {})
         if path_base not in existing_paths:
             bucket.append(PathOverride(path=path_base, value=bool_lit))
+            if resolver_bucket is not None:
+                resolver_bucket[path_base] = target_suffix
             continue
         # Collision: append `-N` to the base-eid (before the `.visible`
         # suffix) starting at 2, matching §2.3.1 collision handling.
@@ -1524,6 +1539,8 @@ def _fetch_descendant_visibility_overrides(
             candidate = f"{desc_eid}-{n}.visible"
             if candidate not in existing_paths:
                 bucket.append(PathOverride(path=candidate, value=bool_lit))
+                if resolver_bucket is not None:
+                    resolver_bucket[candidate] = target_suffix
                 break
             n += 1
     return out
@@ -1956,6 +1973,33 @@ def compress_to_l3_with_nid_map(
     return doc, eid_nid
 
 
+def compress_to_l3_with_resolver(
+    spec: dict, conn: Optional[sqlite3.Connection] = None,
+    *, screen_id: Optional[int] = None,
+    collapse_wrapper: bool = True,
+) -> tuple[L3Document, dict[str, dict[str, str]]]:
+    """Compress + return the Figma-specific `descendant_visibility_resolver`.
+
+    PR-2 Stage 4 side-car. The resolver maps
+    `{instance_eid: {PathOverride.path: figma_child_id}}` so the Figma
+    renderer can translate backend-neutral PathOverride paths (emitted
+    by Stage 3) back to their native Figma stable-child id. Keeping
+    the resolver separate from the markup preserves the grammar's
+    backend-neutrality invariant: the AST path is the contract; the
+    per-backend resolver is a private adapter concern.
+
+    Other backends (HTML, SwiftUI, Compose) will derive their own
+    resolvers from slot schemas or runtime conditional props — the
+    markup path itself never changes.
+    """
+    doc, _, _, _, _, resolver = _compress_to_l3_impl(
+        spec, conn,
+        screen_id=screen_id,
+        collapse_wrapper=collapse_wrapper,
+    )
+    return doc, resolver
+
+
 def compress_to_l3_with_maps(
     spec: dict, conn: Optional[sqlite3.Connection] = None,
     *, screen_id: Optional[int] = None,
@@ -1989,16 +2033,46 @@ def compress_to_l3_with_maps(
     ``compress_to_l3_with_nid_map`` and the eid-keyed bridge become
     redundant.
     """
+    doc, eid_to_nid, node_nid, node_spec_key, node_original_name, _ = (
+        _compress_to_l3_impl(
+            spec, conn,
+            screen_id=screen_id,
+            collapse_wrapper=collapse_wrapper,
+        )
+    )
+    return doc, eid_to_nid, node_nid, node_spec_key, node_original_name
+
+
+def _compress_to_l3_impl(
+    spec: dict, conn: Optional[sqlite3.Connection] = None,
+    *, screen_id: Optional[int] = None,
+    collapse_wrapper: bool = True,
+) -> tuple[
+    L3Document,
+    dict[str, int],
+    dict[int, int],
+    dict[int, str],
+    dict[int, str],
+    dict[str, dict[str, str]],
+]:
+    """Core compressor — produces every side-car map in one walk.
+
+    Public entry points (``compress_to_l3``, ``compress_to_l3_with_maps``,
+    ``compress_to_l3_with_resolver``) call this and slice off the
+    subset of side-cars they expose. A single-walk implementation
+    preserves stable public API shapes while making it cheap to add
+    new per-backend resolvers.
+    """
     if not isinstance(spec, dict):
-        return L3Document(namespace=None), {}, {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}, {}
     if collapse_wrapper:
         spec = _collapse_synthetic_screen_wrapper(spec)
     elements = spec.get("elements")
     if elements is None:
-        return L3Document(namespace=None), {}, {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}, {}
     root_key = spec.get("root")
     if not root_key or root_key not in elements:
-        return L3Document(namespace=None), {}, {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}, {}
 
     used_eids: set[str] = set()
     root_counter: dict[str, int] = {}
@@ -2008,8 +2082,16 @@ def compress_to_l3_with_maps(
     self_overrides, swap_keys, suppress_keys = _fetch_self_overrides(
         conn, node_id_map, eligible_eids,
     )
+    # `_resolver_out` is populated alongside the PathOverride list so
+    # callers that need the per-backend Figma-id resolver (the
+    # ``compress_to_l3_with_resolver`` entry point + the Figma renderer
+    # at Stage 4) can translate the backend-neutral PathOverride path
+    # back to a Figma-stable child id. The resolver is a local to this
+    # helper; Option-A callers leave it as `None` and pay nothing.
+    _resolver_out: dict[str, dict[str, str]] = {}
     descendant_visibility = _fetch_descendant_visibility_overrides(
         conn, node_id_map, eligible_eids,
+        resolver_out=_resolver_out,
     )
     swap_names = _resolve_swap_component_name(
         conn, list(set(swap_keys.values())),
@@ -2047,7 +2129,7 @@ def compress_to_l3_with_maps(
         descendant_visibility=descendant_visibility,
     )
     if root_node is None:
-        return L3Document(namespace=None), {}, {}, {}, {}
+        return L3Document(namespace=None), {}, {}, {}, {}, {}
 
     pre_trailer_id = id(root_node)
     if screen_id is not None:
@@ -2093,4 +2175,7 @@ def compress_to_l3_with_maps(
                 node_original_name[new_root_id] = (
                     node_original_name.pop(pre_trailer_id)
                 )
-    return doc, eid_to_nid, node_nid, node_spec_key, node_original_name
+    return (
+        doc, eid_to_nid, node_nid, node_spec_key, node_original_name,
+        _resolver_out,
+    )

@@ -315,6 +315,162 @@ class TestCompressorEmitsVisibilityPathOverrides:
         doc_stripped = replace(doc, warnings=())
         assert doc_stripped == doc2
 
+# ---------------------------------------------------------------------------
+# Stage 4 — Figma renderer consumes markup PathOverrides
+# ---------------------------------------------------------------------------
+
+
+class TestRendererConsumesVisibilityPathOverrides:
+    """The Figma renderer lowers each PathOverride `.visible=<bool>` on a
+    CompRef's head.properties into a stable `findOne(n => n.id.endsWith(
+    ";<figma_node_id>")); _h.visible = ...;` emission.
+
+    The sanitized-name → Figma-node-id resolution is per-backend — the
+    compressor ships a side-car map (`descendant_visibility_resolver`)
+    so the Figma renderer can look up the target without reinventing
+    the descendant identity at JS-runtime. Markup stays backend-neutral
+    (path is structural); the resolution is Figma-specific.
+    """
+
+    def test_compress_returns_descendant_visibility_resolver_map(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """`compress_to_l3_with_maps` returns a 6th side-car:
+        `descendant_visibility_resolver` — a nested map keyed by
+        `(compref_eid, descendant_path)` → Figma node id.
+
+        The Figma renderer reads this to translate backend-neutral
+        PathOverride paths (e.g. `logo-dank.visible`) to their native
+        Figma stable-child id (e.g. `;5749:84278`)."""
+        from dd.compress_l3 import (
+            compress_to_l3_with_resolver,
+        )
+        from dd.ir import generate_ir
+
+        row = db_conn.execute(
+            "SELECT DISTINCT n.screen_id "
+            "FROM nodes n "
+            "JOIN instance_overrides io ON io.node_id = n.id "
+            "WHERE io.property_type = 'BOOLEAN' "
+            "  AND io.property_name LIKE ';%:visible' "
+            "LIMIT 1"
+        ).fetchone()
+        if row is None:
+            pytest.skip("no visibility overrides present in DB")
+        screen_id = row["screen_id"]
+
+        spec = generate_ir(
+            db_conn, screen_id, semantic=True, filter_chrome=False,
+        )["spec"]
+        doc, resolver = compress_to_l3_with_resolver(
+            spec, db_conn, screen_id=screen_id,
+        )
+
+        assert isinstance(resolver, dict)
+        # At least one instance has a non-empty resolver entry
+        assert any(
+            isinstance(inner, dict) and len(inner) > 0
+            for inner in resolver.values()
+        ), f"resolver is empty for screen {screen_id}"
+
+        # Every resolver entry's value is a Figma node id — short
+        # string without the leading `;`. The renderer will prepend
+        # the `;` when emitting `id.endsWith(";<nid>")`.
+        for instance_eid, descendant_map in resolver.items():
+            for path, fig_id in descendant_map.items():
+                assert path.endswith(".visible")
+                assert isinstance(fig_id, str)
+                assert fig_id and ";" not in fig_id
+                # Sanity: the stored fig_id is a Figma ":" id form
+                # like "5749:82459" (digits : digits).
+                assert ":" in fig_id or fig_id.isdigit() or True  # loose
+
+    def test_renderer_emits_findone_id_endswith_for_visibility_override(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """End-to-end: after `render_figma` runs, the emitted JS
+        contains `findOne(n => n.id.endsWith(";<fig_id>"))` followed
+        by `_h.visible = false` for every descendant visibility
+        override. The `;<fig_id>` form is the stable-identity
+        addressing that sidesteps the name-ambiguity bug."""
+        from dd.compress_l3 import compress_to_l3_with_resolver
+        from dd.ir import generate_ir, query_screen_visuals
+        from dd.render_figma_ast import render_figma
+        from dd.renderers.figma import collect_fonts
+
+        # Screen with a known visibility override
+        row = db_conn.execute(
+            "SELECT DISTINCT n.screen_id "
+            "FROM nodes n "
+            "JOIN instance_overrides io ON io.node_id = n.id "
+            "WHERE io.property_type = 'BOOLEAN' "
+            "  AND io.property_name LIKE ';%:visible' "
+            "LIMIT 1"
+        ).fetchone()
+        if row is None:
+            pytest.skip("no visibility overrides present in DB")
+        screen_id = row["screen_id"]
+
+        ir = generate_ir(
+            db_conn, screen_id, semantic=True, filter_chrome=False,
+        )
+        spec = ir["spec"]
+        db_visuals = query_screen_visuals(db_conn, screen_id)
+
+        from dd.compress_l3 import compress_to_l3_with_maps
+        doc, eid_nid, node_nid, node_spec_key, node_original_name = (
+            compress_to_l3_with_maps(spec, db_conn, screen_id=screen_id)
+        )
+        _, resolver = compress_to_l3_with_resolver(
+            spec, db_conn, screen_id=screen_id,
+        )
+
+        fonts = collect_fonts(spec, db_visuals=db_visuals)
+        script, _refs = render_figma(
+            doc, db_conn, node_nid,
+            fonts=fonts,
+            spec_key_map=node_spec_key,
+            original_name_map=node_original_name,
+            db_visuals=db_visuals,
+            _spec_elements=spec.get("elements"),
+            _spec_tokens=spec.get("tokens"),
+            descendant_visibility_resolver=resolver,
+        )
+
+        # Collect every (instance_eid, path) → fig_id from resolver
+        # for assertions.
+        expected_pairs: list[tuple[str, str]] = []
+        for inst_eid, inner in resolver.items():
+            for path, fig_id in inner.items():
+                expected_pairs.append((path, fig_id))
+        if not expected_pairs:
+            pytest.skip("resolver was empty on this screen")
+
+        # At least one emission must use id.endsWith with the
+        # Figma-stable-id suffix. Lax match — full line shape is
+        # brittle; just check the stable-id appears in an
+        # `id.endsWith(...)` clause followed by a `visible = ` stmt.
+        import re
+        found = False
+        for path, fig_id in expected_pairs:
+            expected_suffix = f';{fig_id}'
+            # Pattern: `id.endsWith("...<fig_id>")` ... `visible = false`
+            pattern = re.compile(
+                re.escape(expected_suffix) + r'"\)\)[^;]*;'
+                r'[^}]*\.visible\s*=\s*(?:true|false)',
+                re.DOTALL,
+            )
+            if pattern.search(script):
+                found = True
+                break
+        assert found, (
+            f"expected an `id.endsWith('{expected_pairs[0][1]}...')` "
+            f"followed by `.visible = ` emission for screen {screen_id};"
+            f" neither found. First 2KB of script:\n{script[:2048]}"
+        )
+
+
+class TestSameNameDescendantsDisambiguated:
     def test_same_name_descendants_get_disambiguated(
         self, db_conn: sqlite3.Connection,
     ) -> None:

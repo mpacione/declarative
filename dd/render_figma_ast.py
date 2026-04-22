@@ -41,7 +41,7 @@ import math
 import sqlite3
 from typing import Any, Optional
 
-from dd.markup_l3 import L3Document, Node
+from dd.markup_l3 import L3Document, Node, PathOverride
 from dd.renderers.figma import (
     MISSING_COMPONENT_PLACEHOLDER_BLOCK,
     _CONSTRAINT_MAP,
@@ -231,6 +231,9 @@ def render_figma(
     canvas_position: Optional[tuple[float, float]] = None,
     _spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     _spec_tokens: Optional[dict[str, Any]] = None,
+    descendant_visibility_resolver: Optional[
+        dict[str, dict[str, str]]
+    ] = None,
 ) -> tuple[str, list[tuple[str, str, str]]]:
     """Full markup-native Figma render-script walker.
 
@@ -318,6 +321,7 @@ def render_figma(
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements, spec_tokens=spec_tokens,
         node_id_vars=node_id_vars,
+        descendant_visibility_resolver=descendant_visibility_resolver,
     )
     preamble = render_figma_preamble(
         doc, conn, nid_map,
@@ -527,6 +531,9 @@ def _emit_phase1(
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     spec_tokens: Optional[dict[str, Any]] = None,
     node_id_vars: Optional[dict[str, str]] = None,
+    descendant_visibility_resolver: Optional[
+        dict[str, dict[str, str]]
+    ] = None,
 ) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str]]:
     """Phase 1 — materialize nodes + set intrinsic properties.
 
@@ -592,6 +599,9 @@ def _emit_phase1(
                 raw_visual, element,
                 deferred_lines=override_deferred,
                 node_id_vars=node_id_vars,
+                descendant_visibility_resolver=(
+                    descendant_visibility_resolver
+                ),
             )
             if mode1_ok:
                 lines.extend(emitted)
@@ -798,6 +808,9 @@ def _emit_mode1_create(
     *,
     deferred_lines: list[str],
     node_id_vars: Optional[dict[str, str]] = None,
+    descendant_visibility_resolver: Optional[
+        dict[str, dict[str, str]]
+    ] = None,
 ) -> tuple[list[str], bool]:
     """Emit the Mode 1 createInstance block for one node.
 
@@ -918,6 +931,49 @@ def _emit_mode1_create(
             override_tree, var, node_id_vars, lines,
             deferred_lines=deferred_lines,
         )
+
+    # PR-2 Stage 4: markup-native descendant visibility PathOverrides.
+    # The Figma renderer reads the `descendant_visibility_resolver`
+    # side-car map (built by the compressor) to translate each
+    # `<eid>.visible` PathOverride into a stable `id.endsWith(";<fig_id>")`
+    # findOne call — which sidesteps the name-ambiguity bug that
+    # `findOne(name)` runs into on masters with multiple same-name
+    # descendants. The markup path itself never carries the Figma id;
+    # the resolver IS the Figma adapter. An HTML / SwiftUI renderer
+    # would ignore this map and consume its own backend-appropriate
+    # resolver (slot-schema lookup, null-slot emission, etc).
+    #
+    # Resolver keys match the compressor's `eid_key` (CompositionSpec
+    # element key, e.g. `button-22`) — the AST node's own
+    # `node.head.eid` is the sanitized original-name form (e.g.
+    # `button-white`). Look up via `spec_key_map[id(node)]` so the
+    # compressor and renderer agree on the per-instance bucket.
+    if descendant_visibility_resolver is not None:
+        spec_key_for_resolver = spec_key_map.get(
+            id(node), node.head.eid,
+        )
+        resolver_bucket = descendant_visibility_resolver.get(
+            spec_key_for_resolver, {},
+        )
+        for prop in node.head.properties:
+            if not isinstance(prop, PathOverride):
+                continue
+            if not prop.path.endswith(".visible"):
+                continue
+            fig_child_id = resolver_bucket.get(prop.path)
+            if not fig_child_id:
+                continue
+            bool_py = getattr(prop.value, "py", None)
+            if not isinstance(bool_py, bool):
+                continue
+            js_bool = "true" if bool_py else "false"
+            suffix = f";{fig_child_id}"
+            esc_suffix = _escape_js(suffix)
+            lines.append(
+                f'{{ const _h = {var}.findOne(n => '
+                f'n.id.endsWith("{esc_suffix}")); '
+                f'if (_h) _h.visible = {js_bool}; }}'
+            )
 
     # Scalar rotation only when AST carries no transform primitives
     # (``rotation`` / ``mirror``). When either is present, Phase 3
