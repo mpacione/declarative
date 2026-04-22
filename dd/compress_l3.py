@@ -1097,7 +1097,32 @@ def _compress_element(
                 new_head = replace(
                     child_node.head, properties=merged_sorted,
                 )
+                old_id = id(child_node)
                 child_node = replace(child_node, head=new_head)
+                # Re-register the side-car maps under the NEW Node's
+                # id(). .pop() (not .get()) is load-bearing: once the
+                # old Node drops out of scope Python may reuse its
+                # id() for a subsequent allocation; leaving the stale
+                # entry behind would silently alias two distinct
+                # spec_keys to the same baseline_walk_idx, emitting
+                # duplicate `const n##` declarations and crashing
+                # PROXY_EXECUTE with "invalid redefinition of lexical
+                # identifier". Seen empirically on screen 252 after
+                # the initial fix omitted the pop.
+                new_id = id(child_node)
+                if (node_spec_key_out is not None
+                        and old_id in node_spec_key_out):
+                    node_spec_key_out[new_id] = (
+                        node_spec_key_out.pop(old_id)
+                    )
+                if (node_nid_out is not None
+                        and old_id in node_nid_out):
+                    node_nid_out[new_id] = node_nid_out.pop(old_id)
+                if (node_original_name_out is not None
+                        and old_id in node_original_name_out):
+                    node_original_name_out[new_id] = (
+                        node_original_name_out.pop(old_id)
+                    )
             child_nodes.append(child_node)
 
     block: Optional[Block] = None

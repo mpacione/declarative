@@ -291,12 +291,21 @@ def render_figma(
         baseline_walk_idx = _baseline_walk_indices(
             spec_elements, root_spec_key,
         )
+        # Slot children synthesised post-compressor (plan-type-role-
+        # split Option 2) aren't in the dict-IR walk the baseline
+        # builds indices from, so their fallback mustn't collide with
+        # any existing baseline_idx. Start fallback above the
+        # baseline's max; two Option-2 slot kids on the same screen
+        # get distinct n{N} assignments, no "invalid redefinition of
+        # lexical identifier" in the emitted script.
+        _fallback_idx = max(baseline_walk_idx.values(), default=-1) + 1
         var_map: dict[int, str] = {}
         for _idx, (node, _p) in enumerate(walk):
             spec_key = spec_key_map.get(id(node), node.head.eid)
             baseline_idx = baseline_walk_idx.get(spec_key)
             if baseline_idx is None:
-                baseline_idx = _idx
+                baseline_idx = _fallback_idx
+                _fallback_idx += 1
             var_map[id(node)] = f"n{baseline_idx}"
     else:
         var_map = {
