@@ -454,6 +454,105 @@ class TestStage3aCorpusRetrievalSplit:
         assert element["type"] == "rectangle"
 
 
+class TestStage4aGrammarRoleAttribute:
+    """Stage 4a: compressor emits `role=<value>` in the markup head
+    when the IR element has role != type. Round-trip preserves it.
+
+    See docs/plan-type-role-split.md §4 Stage 4a.
+    """
+
+    def _build_minimal_spec(
+        self, eid: str, type_str: str, role: str | None,
+    ) -> dict:
+        element: dict = {
+            "type": type_str,
+            "_original_name": eid,
+        }
+        if role:
+            element["role"] = role
+        return {
+            "version": "1.0",
+            "root": eid,
+            "elements": {eid: element},
+            "tokens": {},
+            "_node_id_map": {},
+        }
+
+    def test_compressor_emits_role_attr_when_role_differs_from_type(self) -> None:
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._build_minimal_spec(
+            "my-card", type_str="frame", role="card",
+        )
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        assert "role=card" in markup, (
+            f"markup should include role=card when element.role != element.type, "
+            f"got: {markup[:500]}"
+        )
+
+    def test_compressor_omits_role_attr_when_no_role(self) -> None:
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._build_minimal_spec(
+            "plain", type_str="frame", role=None,
+        )
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        assert "role=" not in markup, (
+            f"markup must not include role= when element has no role, "
+            f"got: {markup[:500]}"
+        )
+
+    def test_compressor_emits_role_attr_for_FRAME_classified_text(self) -> None:
+        """The canonical Frame 338 case — role=text on a frame primitive."""
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._build_minimal_spec(
+            "frame-338", type_str="frame", role="text",
+        )
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        assert "role=text" in markup
+
+    def test_roundtrip_preserves_role(self) -> None:
+        """compress → serialize → parse preserves role in the head."""
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3, parse_l3
+        spec = self._build_minimal_spec(
+            "card-1", type_str="frame", role="card",
+        )
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        doc2 = parse_l3(markup)
+        # Walk doc2 and find the card node
+        from dd.markup_l3 import Node, PropAssign
+
+        def _walk(n):
+            yield n
+            if isinstance(n, Node) and n.block:
+                for s in n.block.statements:
+                    if isinstance(s, Node):
+                        yield from _walk(s)
+
+        card_node = None
+        for tl in doc2.top_level:
+            if isinstance(tl, Node):
+                for n in _walk(tl):
+                    if n.head.eid == "card-1":
+                        card_node = n
+                        break
+        assert card_node is not None, f"Didn't find #card-1 in {markup}"
+        role_props = [
+            p for p in card_node.head.properties
+            if isinstance(p, PropAssign) and p.key == "role"
+        ]
+        assert len(role_props) == 1, (
+            f"#card-1 should have one role= prop after roundtrip, "
+            f"got {role_props}"
+        )
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")

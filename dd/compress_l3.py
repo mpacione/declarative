@@ -877,6 +877,22 @@ def _compress_element(
                 "position": adjusted_position,
             }
     props: list[PropAssign] = []
+
+    # Type/role split — plan-type-role-split.md Stage 4a. When the
+    # classifier assigned a semantic role that disagrees with the
+    # structural primitive (e.g. a FRAME classified as "text"), emit
+    # role= so grammar/semantic consumers can read the classifier's
+    # opinion without being forced to dispatch on it. Role is elided
+    # when equal to type (redundant).
+    raw_role = element.get("role")
+    if isinstance(raw_role, str) and raw_role:
+        role_norm = raw_role.replace("_", "-")
+        if role_norm != type_str:
+            props.append(PropAssign(
+                key="role",
+                value=_enum_literal(role_norm),
+            ))
+
     props.extend(_spatial_props(
         layout_for_props,
         bounds=bounds_map.get(eid_key),
