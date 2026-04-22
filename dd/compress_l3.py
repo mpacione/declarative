@@ -1393,34 +1393,47 @@ def _fetch_descendant_visibility_overrides(
     *,
     resolver_out: Optional[dict[str, dict[str, str]]] = None,
 ) -> dict[str, list[PathOverride]]:
-    """Fetch BOOLEAN `;<figmaChildId>:visible` overrides for each
-    CompRef-eligible instance and emit them as markup-native
-    `PathOverride(path="<descendant_eid>.visible", value=bool)` entries.
+    """Return backend-neutral `.visible=bool` PathOverrides for every
+    CompRef-eligible instance. PR-1 unifies three data sources:
+
+    - **Source A — `instance_overrides`** (PR-2 seed). BOOLEAN
+      `;<figmaChildId>:visible` rows. Captures 39.3% of Dank-corpus
+      hides (2026-04-22 audit).
+    - **Source B — DB `nodes.visible=0`** (PR-1 addition, "H3" in the
+      subagent-B audit). Descendants whose master default is hidden
+      but which lack an explicit `instance_overrides` row. The Figma
+      Plugin API does not surface transitive master-default hides in
+      the override channel, so relying on Source A alone regresses
+      ~18.8% of corpus hides (2,041 cases). Most land at depth 3
+      inside nested nav/icon chains.
+    - **H2 filter — hereditary hides**. A descendant whose ancestor
+      (anywhere inside the instance subtree) is already hidden is
+      redundant. Hiding the ancestor already hides the descendant;
+      emitting a second `.visible=false` for each descendant adds
+      pure script noise and risks ordering bugs. Filter at query
+      time so the emission list stays minimal.
+
+    Merge semantics when both sources reference the same descendant:
+    `instance_overrides` wins. The instance's explicit intent is the
+    authoritative per-usage delta — including the case where it says
+    `visible=true` on a master-hidden descendant (the instance wants
+    to SHOW what the master hides).
 
     Per PR-2 design (docs/plan-slot-visibility-grammar.md §6):
     - Path form is `<descendant_name_sanitized>.visible` — stable
       identifier derived from the descendant's original name. Each
-      per-backend renderer maps the path back to its native address
-      (Figma: node id lookup via the master tree; HTML: conditional
-      render on the matching slot).
+      per-backend renderer maps the path back to its native address.
     - Same-name sibling disambiguation appends `-N` suffixes so each
       path in an instance's list is unique.
-    - Backend-neutral at the markup layer. Violating this invariant
-      (e.g. embedding a Figma-only `$ext.target_nid=`) is a
-      regression because it leaks a backend concern into the grammar.
+    - Backend-neutral at the markup layer.
 
-    Returns `{eid: [PathOverride, ...]}` — missing eids simply have no
-    visibility overrides. Skips instances that aren't in
-    `node_id_map` (tests with synthetic eids without DB ids are a
-    no-op for those entries).
+    Returns `{eid: [PathOverride, ...]}` — missing eids simply have
+    no visibility overrides. Skips instances that aren't in
+    `node_id_map`.
 
-    When `resolver_out` is provided, the function also populates it
-    with `{instance_eid: {path: figma_child_id}}` — the side-car map
-    the Figma renderer uses to translate the backend-neutral path
-    back to a stable Figma descendant id (e.g. `logo-dank.visible` →
-    `5749:84278`). The markup itself never carries the Figma id;
-    this map is the Figma adapter's private resolver, parallel to
-    what an HTML adapter would derive from slot schemas.
+    When `resolver_out` is provided, populate
+    `{instance_eid: {path: figma_child_id}}` — the Figma adapter's
+    private resolver. The markup itself never carries the Figma id.
     """
     if conn is None or not eligible_eids:
         return {}
@@ -1431,7 +1444,9 @@ def _fetch_descendant_visibility_overrides(
         return {}
     placeholders = ",".join("?" for _ in node_ids)
 
-    # Pull BOOLEAN :visible rows for every instance.
+    # -------------------------------------------------------------------
+    # Source A — instance_overrides BOOLEAN :visible rows
+    # -------------------------------------------------------------------
     override_rows = conn.execute(
         f"SELECT node_id, property_name, override_value "
         f"FROM instance_overrides "
@@ -1441,42 +1456,150 @@ def _fetch_descendant_visibility_overrides(
         node_ids,
     ).fetchall()
 
-    if not override_rows:
-        return {}
-
-    # For every instance in one go, collect descendants and index by
-    # figma_node_id suffix (last `;`-segment). The suffix is the
-    # stable-child identifier the override path references.
-    # Figma's instance-descendant figma_node_id is of the form
-    # `I<masterNodeId>;<childId>(;<grandChildId>)*` — the LAST
-    # `;`-segment is the override's suffix target.
-    inst_descendants: dict[int, list[tuple[str, str]]] = {
-        nid: [] for nid in node_ids
-    }
+    # -------------------------------------------------------------------
+    # Recursive subtree walk — used by BOTH sources (A matches the
+    # override's figma-id suffix to a descendant; B collects the full
+    # visible=0 set; H2 filter uses parent_id + visible to prune).
+    # -------------------------------------------------------------------
     desc_rows = conn.execute(
-        f"WITH RECURSIVE subtree(id, root_id, name, figma_node_id) AS ("
-        f"  SELECT id, id, name, figma_node_id FROM nodes "
-        f"  WHERE id IN ({placeholders}) "
+        f"WITH RECURSIVE subtree(id, root_id, parent_id, name, "
+        f"                       figma_node_id, visible) AS ("
+        f"  SELECT id, id, parent_id, name, figma_node_id, visible "
+        f"  FROM nodes WHERE id IN ({placeholders}) "
         f"  UNION ALL "
-        f"  SELECT n.id, s.root_id, n.name, n.figma_node_id "
+        f"  SELECT n.id, s.root_id, n.parent_id, n.name, "
+        f"         n.figma_node_id, n.visible "
         f"  FROM nodes n JOIN subtree s ON n.parent_id = s.id"
         f") "
-        f"SELECT root_id, name, figma_node_id FROM subtree "
-        f"WHERE root_id != id",
+        f"SELECT id, root_id, parent_id, name, figma_node_id, visible "
+        f"FROM subtree",
         node_ids,
     ).fetchall()
+
+    # Per-instance: suffix -> (desc_name, desc_node_id, parent_id,
+    # visible_flag). Also per-instance: node_id -> (parent_id, visible)
+    # so the H2 filter can walk the chain up to the root and check for
+    # any hidden ancestor still inside the subtree.
+    inst_by_suffix: dict[int, dict[str, tuple[str, int, int, int]]] = {
+        nid: {} for nid in node_ids
+    }
+    # subtree_chain[inst_id][node_id] = (parent_id_or_None, visible)
+    # When `node_id == inst_id` the entry is the instance ROOT — its
+    # parent is outside the subtree. We never treat the root as a
+    # hidden ancestor for H2 purposes.
+    subtree_chain: dict[int, dict[int, tuple[Optional[int], int]]] = {
+        nid: {} for nid in node_ids
+    }
     for row in desc_rows:
-        root_id = row[0]
-        fname = row[1] or ""
-        fnid = row[2] or ""
-        # Stable-child suffix is the final `;`-segment.
+        node_id = row[0]
+        root_id = row[1]
+        parent_id = row[2]
+        fname = row[3] or ""
+        fnid = row[4] or ""
+        vis = row[5] if row[5] is not None else 1
+        # chain lookup — include every node in the subtree. Root maps
+        # parent_id -> None because the root's real parent is outside
+        # the subtree (not "inside the instance").
+        is_root = (node_id == root_id)
+        subtree_chain[root_id][node_id] = (
+            None if is_root else parent_id, vis,
+        )
+        if is_root:
+            continue  # root itself is the instance; not a descendant
+        # Stable-child suffix = last `;`-segment of figma_node_id.
         last_semi = fnid.rfind(";")
         if last_semi < 0:
             continue
         suffix = fnid[last_semi + 1:]
-        inst_descendants[root_id].append((suffix, fname))
+        # Keep the FIRST descendant per suffix within an instance. The
+        # DB always has a unique figma_node_id per descendant, so this
+        # collision shouldn't fire in real corpora — defensive only.
+        if suffix not in inst_by_suffix[root_id]:
+            inst_by_suffix[root_id][suffix] = (fname, node_id, parent_id, vis)
 
-    # Build inverse map: node_id → eid
+    def _has_hidden_ancestor_in_subtree(
+        inst_id: int, node_id: int,
+    ) -> bool:
+        """Walk parent chain from `node_id` up toward the instance
+        root. Return True if ANY strict ancestor (not the node itself,
+        not beyond the root) has `visible=0`.
+
+        The chain is capped at the subtree — the instance root's
+        parent_id is stored as None, and any node whose parent isn't
+        in the subtree breaks the walk. Hidden ancestors outside the
+        subtree don't count as H2 (they belong to a different
+        instance or the screen itself).
+        """
+        chain = subtree_chain.get(inst_id, {})
+        cur_entry = chain.get(node_id)
+        if cur_entry is None:
+            return False
+        parent_id, _self_vis = cur_entry
+        seen: set[int] = set()
+        while parent_id is not None and parent_id not in seen:
+            seen.add(parent_id)
+            parent_entry = chain.get(parent_id)
+            if parent_entry is None:
+                # Ancestor left the subtree (e.g. parent is the screen);
+                # stop walking — we only flag H2 for ancestors inside
+                # the instance.
+                return False
+            pnext_parent, pvis = parent_entry
+            if pvis == 0:
+                return True
+            parent_id = pnext_parent
+        return False
+
+    # -------------------------------------------------------------------
+    # Build per-instance merged map:
+    #   merged[inst_id][suffix] = (descendant_name, bool_py_value)
+    # Source A seeds the map with explicit override values (wins on
+    # conflict). Source B fills in the gaps for master-default hides.
+    # -------------------------------------------------------------------
+    merged: dict[int, dict[str, tuple[str, bool]]] = {}
+
+    # Source A — instance_overrides.
+    for row in override_rows:
+        inst_id = row[0]
+        prop_name = row[1]
+        override_val = row[2]
+        if not prop_name.startswith(";") or not prop_name.endswith(":visible"):
+            continue
+        target_suffix = prop_name[1:-len(":visible")]
+        info = inst_by_suffix.get(inst_id, {}).get(target_suffix)
+        if info is None:
+            continue
+        descendant_name, desc_node_id, _parent_id, _desc_vis = info
+        # H2 filter: skip overrides whose descendant already lives
+        # under a hidden ancestor inside the instance. Hiding the
+        # ancestor covers this redundantly.
+        if _has_hidden_ancestor_in_subtree(inst_id, desc_node_id):
+            continue
+        bool_py = (str(override_val).lower() == "true")
+        merged.setdefault(inst_id, {})[target_suffix] = (
+            descendant_name, bool_py,
+        )
+
+    # Source B — DB `visible=0` descendants without an explicit
+    # instance_override. Filters out H2 at insertion time.
+    for inst_id, by_suffix in inst_by_suffix.items():
+        for suffix, (dname, desc_node_id, _parent_id, vis) in by_suffix.items():
+            if vis != 0:
+                continue
+            if suffix in merged.get(inst_id, {}):
+                # Source A already decided this descendant.
+                continue
+            if _has_hidden_ancestor_in_subtree(inst_id, desc_node_id):
+                continue
+            merged.setdefault(inst_id, {})[suffix] = (dname, False)
+
+    if not merged:
+        return {}
+
+    # -------------------------------------------------------------------
+    # Emit PathOverrides from the merged map. Handle same-name
+    # disambiguation with `-N` suffixes per grammar §2.3.1.
+    # -------------------------------------------------------------------
     eid_by_node_id: dict[int, str] = {}
     for eid in eligible_eids:
         nid = node_id_map.get(eid)
@@ -1484,65 +1607,46 @@ def _fetch_descendant_visibility_overrides(
             eid_by_node_id[nid] = eid
 
     out: dict[str, list[PathOverride]] = {}
-    # For each override row, resolve the descendant name and emit a
-    # PathOverride. Disambiguate repeated paths per instance with `-N`
-    # suffixes (grammar §2.3.1-style collision handling).
-    for row in override_rows:
-        inst_id = row[0]
-        prop_name = row[1]
-        override_val = row[2]
+    for inst_id, by_suffix in merged.items():
         eid = eid_by_node_id.get(inst_id)
         if not eid:
             continue
-        # property_name = `;<figmaChildId>:visible` — strip both.
-        if not prop_name.startswith(";") or not prop_name.endswith(":visible"):
-            continue
-        target_suffix = prop_name[1:-len(":visible")]
-        # Match against the instance's descendants by the last-`;`-segment
-        descendant_name: Optional[str] = None
-        for suffix, dname in inst_descendants.get(inst_id, []):
-            if suffix == target_suffix:
-                descendant_name = dname
-                break
-        if not descendant_name:
-            continue
-        desc_eid = normalize_to_eid(descendant_name)
-        if not desc_eid:
-            # No sanitizable form (e.g. all-digits name) — skip. The
-            # renderer can't address a nameless descendant via the
-            # backend-neutral path form; a later enhancement might use
-            # an ordinal `child-N` fallback.
-            continue
-        path_base = f"{desc_eid}.visible"
-        # Value — Figma stores 'true'/'false' strings.
-        bool_py = (str(override_val).lower() == "true")
-        bool_lit = Literal_(
-            lit_kind="bool",
-            raw="true" if bool_py else "false",
-            py=bool_py,
-        )
-        # Disambiguate within the instance's existing list.
         bucket = out.setdefault(eid, [])
-        existing_paths = {po.path for po in bucket}
         resolver_bucket: Optional[dict[str, str]] = None
         if resolver_out is not None:
             resolver_bucket = resolver_out.setdefault(eid, {})
-        if path_base not in existing_paths:
-            bucket.append(PathOverride(path=path_base, value=bool_lit))
-            if resolver_bucket is not None:
-                resolver_bucket[path_base] = target_suffix
-            continue
-        # Collision: append `-N` to the base-eid (before the `.visible`
-        # suffix) starting at 2, matching §2.3.1 collision handling.
-        n = 2
-        while True:
-            candidate = f"{desc_eid}-{n}.visible"
-            if candidate not in existing_paths:
-                bucket.append(PathOverride(path=candidate, value=bool_lit))
+        # Stable emission order for determinism — suffix already
+        # identifies the descendant uniquely per instance.
+        for suffix in sorted(by_suffix.keys()):
+            descendant_name, bool_py = by_suffix[suffix]
+            desc_eid = normalize_to_eid(descendant_name)
+            if not desc_eid:
+                # No sanitizable form (e.g. all-digits name); skip.
+                continue
+            bool_lit = Literal_(
+                lit_kind="bool",
+                raw="true" if bool_py else "false",
+                py=bool_py,
+            )
+            existing_paths = {po.path for po in bucket}
+            path_base = f"{desc_eid}.visible"
+            if path_base not in existing_paths:
+                bucket.append(PathOverride(path=path_base, value=bool_lit))
                 if resolver_bucket is not None:
-                    resolver_bucket[candidate] = target_suffix
-                break
-            n += 1
+                    resolver_bucket[path_base] = suffix
+                continue
+            # Collision: append `-N` to the desc-eid.
+            n = 2
+            while True:
+                candidate = f"{desc_eid}-{n}.visible"
+                if candidate not in existing_paths:
+                    bucket.append(
+                        PathOverride(path=candidate, value=bool_lit),
+                    )
+                    if resolver_bucket is not None:
+                        resolver_bucket[candidate] = suffix
+                    break
+                n += 1
     return out
 
 
