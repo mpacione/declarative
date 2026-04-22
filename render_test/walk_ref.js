@@ -189,13 +189,16 @@ return {
     // Timeout is configurable via BRIDGE_TIMEOUT_MS env var (applies
     // to both the PROXY_EXECUTE server-side timeout sent to the
     // Figma plugin AND the WebSocket client-side watchdog). Default
-    // 170000ms — plugin-side enforced timeout is 170s, and the
-    // watchdog gives a 10s tail for JSON write + disconnect. Tier E.5
-    // env-config fix for `feedback_sweep_transient_timeouts.md`'s
-    // cumulative-plugin-load hazard; iPad-sized screens under heavy
-    // plugin load can legitimately need 300-600s — export
-    // BRIDGE_TIMEOUT_MS=500000 in those cases.
-    const proxyTimeoutMs = parseInt(process.env.BRIDGE_TIMEOUT_MS || '170000', 10);
+    // raised 170000 → 300000 on 2026-04-22 after confirming (via
+    // Figma plugin-sandbox research) that Figma itself enforces NO
+    // hard timeout on plugin scripts — the old 170s figure was the
+    // Desktop Bridge wrapper's limit, not Figma's. Under heavy plugin
+    // load (iPad-sized screens + slot-inlined children post Option 2
+    // type/role + slot-flatten fix) renders legitimately need
+    // 200-300s; raising the default is safe because the bridge still
+    // enforces per-screen retry on true hangs, and sweep.py's
+    // subprocess timeout (320s) stays a strict upper bound.
+    const proxyTimeoutMs = parseInt(process.env.BRIDGE_TIMEOUT_MS || '300000', 10);
     const watchdogMs = proxyTimeoutMs + 10000;
     const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, watchdogMs);
     ws.on('open', () => {

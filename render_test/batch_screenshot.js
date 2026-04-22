@@ -54,7 +54,7 @@ const bytes = await rootNode.exportAsync({ format: 'PNG', constraint: { type: 'S
 const b64 = figma.base64Encode(bytes);
 return { __ok: true, rootId, width: rootNode.width, height: rootNode.height, size: bytes.length, b64, errors: M['__errors'] || [] };
 `;
-  const result = await send(ws, { type: 'PROXY_EXECUTE', code: wrapped, timeout: 170000 });
+  const result = await send(ws, { type: 'PROXY_EXECUTE', code: wrapped, timeout: 300000 });
   const inner = result.result && result.result.result;
   if (!inner || !inner.__ok) {
     console.error('FAIL', scriptPath, inner);

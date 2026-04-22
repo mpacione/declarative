@@ -55,9 +55,9 @@ return {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket('ws://localhost:' + port);
     const id = 'grid_' + Date.now();
-    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 180000);
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 310000);
     ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'PROXY_EXECUTE', id, code: wrapped, timeout: 170000 }));
+      ws.send(JSON.stringify({ type: 'PROXY_EXECUTE', id, code: wrapped, timeout: 300000 }));
     });
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString());

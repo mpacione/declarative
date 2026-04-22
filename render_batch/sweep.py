@@ -32,7 +32,13 @@ WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
 # 9223-9231 on startup depending on what's already bound.
 BRIDGE_PORT_DEFAULT = "9228"
 GENERATE_TIMEOUT = 60
-WALK_TIMEOUT = 180
+# Python-side subprocess timeout for node walk_ref.js. Matched to
+# walk_ref.js's watchdog (BRIDGE_TIMEOUT_MS default 300s + 10s
+# connect tail + 10s Python-subprocess slack). Bumped 180 → 320 on
+# 2026-04-22 alongside walk_ref.js's 170 → 300 raise — the 170s
+# bridge timeout was OURS, not Figma's; Phase 1 perf + slot-inlined
+# renders on iPad-sized screens legitimately need more headroom.
+WALK_TIMEOUT = 320
 VERIFY_TIMEOUT = 30
 
 
