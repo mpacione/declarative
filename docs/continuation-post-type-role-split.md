@@ -1,5 +1,7 @@
 # Continuation — post-type-role-split handoff
 
+> **⚠️ SUPERSEDED by [`continuation-slot-visibility-grammar-next.md`](continuation-slot-visibility-grammar-next.md).** This doc captures the type/role split arc + carryover cleanup. Late-session 2026-04-22 work (Phase 1 perf, Option 2 slot= emission, visual-bug root cause, PR 2 grammar extension shipped, PR 1 in flight) is in the new handoff. Start there.
+
 **Session date**: 2026-04-22.
 **End state**: `type-role-stage-4a-complete` tag on `v0.3-integration`.
 **Read first to ground**: [plan-type-role-split.md](plan-type-role-split.md), then this file, then the deferred-work list below.
@@ -138,3 +140,11 @@ Safety tag: `pre-carryover-cleanup-2026-04-22`.
 - **Decide drift path** (feedback_ipad_component_frame_inlining.md): pick between selective-flatten, classifier-side filter, or accept-the-drift. #1 and #2 are low-risk.
 - **Resume carryover queue**: demos consolidation (TDD session), `bakeoff_som` merge, dead-code deletions (coordinate with M6(b)), designer-agent scope conversation.
 - **Stage 3b + 4b**: when Mode 3 roadmap firms up / when M7.5 repair loop needs structured compat errors.
+
+---
+
+## Superseded 2026-04-22 (late) — follow-up handoff
+
+The "decide drift path" pickup was picked the same day. Option 2 (compressor emits `slot=<name>` head PropAssign on slotted children) shipped as commit `27196d8`, then Phase 1 perf cycles (`50b023b`, `7b7a7bc`, `e19bdba`, `f1fa345`) unblocked the density regression. **Targeted sweep on the 14 previously-drifting screens hit 14/14 PARITY in 38.5s.** Full sweep was started but stopped at 36/204 when the user spotted a separate visual regression (missing nav/toolbar chrome) which was root-caused to pre-existing `hidden_children` findOne-by-name ambiguity — NOT caused by Option 2 or the type/role split.
+
+**For the next session, read [continuation-slot-visibility-grammar-next.md](continuation-slot-visibility-grammar-next.md) first.** It covers the full late-session chronology, the hidden_children root cause, the grammar decision (PathOverride + `{empty}` sugar), the two-PR plan, and pickup points. This handoff is kept for historical context on the type/role arc and the reverted `a063ff2` attempt.
