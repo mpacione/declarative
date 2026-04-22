@@ -88,3 +88,53 @@ diff <(grep -E 'n[0-9]+.*icon-10|n[0-9]+.*vector-21' /tmp/241.js) <(jq '.eid_map
 4. **Per-screen retry layer (sweep.py commit `88c3356`) earned its keep** — 18 retries, 3 recovered to PARITY, 1 persistent transient (screen 234; individual re-run recovered it cleanly).
 
 That's the handoff. Type/role split is shipped, measured, tagged; the iPad cluster + 180 outlier are cleanly scoped as the next drift-work bucket; Stages 3b/4b are deferred with clear triggers. Next session picks any deferred item or continues on drift cluster-A.
+
+---
+
+## Continuation — 2026-04-22 autonomous carryover sprint
+
+Session after the above handoff. User ran: "do all the carryover cleanup work please. Then find the root cause of the drift which surfaced."
+
+Safety tag: `pre-carryover-cleanup-2026-04-22`.
+
+### Work shipped (3 commits)
+
+1. **[`9ecaed2`](../..)** — `docs(module-reference): append v0.3 Pipeline Additions section (M5–M7)`. Adds an inventory of every M5-M7 module plus the type/role additions + migrations table; Layer 1-4 body left intact. Header timestamp bumped, currency notice rewritten to point to the new section.
+2. **[`<archive commit>`](../..)** — `chore(scripts): archive 8 one-off scripts to scripts/archive/`. Zero-reference verified for each; 3180 tests still passing.
+3. **[Revert of `a063ff2`]** — slot-flatten attempted fix was reverted (see § Drift root cause below).
+
+### Explicitly deferred with rationale
+
+- **Script consolidations** (4×`set_*_demo`, 3×`tier_d_*`, `bakeoff_som` merge) — each is a 300-line demo with property-specific AST logic; safe consolidation needs TDD against live LLM calls, which this session could not do autonomously.
+- **`dd/*` dead-code deletions** — 5 candidates flagged in April cleanup were found to have live callers; ongoing M6(b) deprecation coordination owns these.
+- **Designer-agent loop architecture** — user flagged this needs scope confirmation (additive orchestration vs parallel system) before starting.
+- **`link-1` empty defect, ADR-008 Fix #4 (button/icon inheritance), Fix #5 (horizontal layout collapse)** — all three are Mode 3 scope; co-deferred with Stage 3b (Mode 3 LLM prompt update).
+
+### Drift root cause (CONFIRMED, fix reverted)
+
+**All 14 drifts are one bug class:** `compress_l3._build_node` reads `element["children"]` only. `build_semantic_tree` in `dd/ir.py` moves children into `element["slots"]` for classified nodes with slot schemas, so slotted kids silently vanish from the markup for inline-rendered nodes.
+
+- 13 iPad Pro 12.9" screens: `button/large/translucent` FRAME with `component_key=None` classified as `button` → 5 slot children dropped each
+- Screen 180: nested cascade of slot schemas (`tabs-1 → 4 buttons → 2 icon slots each`) → 32 errors
+
+**Attempted fix** (`a063ff2`): flatten slot values into child_ids when no direct children list and head_kind != "comp-ref". Semantically correct; passed 2 new tests; full suite green (+1 skip on the stale M3 byte-parity gate).
+
+**Reverted** (`bde96f2`): the post-fix scripts grew past Figma's 170s `PROXY_EXECUTE` timeout when rendered (many more `createInstance`/`createFrame`/`appendChild` calls per screen). Walk fails consistently across 3 retries. Failure mode degraded from `drift-with-5-missing-children` to `walk timeout` — strictly worse.
+
+**Memory note with full diagnosis**: [feedback_ipad_component_frame_inlining.md](../../.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_ipad_component_frame_inlining.md). Lists 5 paths forward (selective-flatten, classifier-side, render perf, walk chunking, accept drift); user should decide before next attempt.
+
+### Final state 2026-04-22
+
+- Tags: `pre-type-role-split` → `type-role-stage-0..4a-complete` → `pre-carryover-cleanup-2026-04-22`
+- Branch: `v0.3-integration`
+- Working tree: clean
+- Tests: 3179 / 37 / 6 (baseline unchanged)
+- Real-DB parity: 190/204 (unchanged from post-type/role-split sweep, slot-flatten fix reverted)
+- Module-reference: refreshed with M5-M7 inventory
+- Scripts: 8 one-offs archived
+
+### Pickup points for next session
+
+- **Decide drift path** (feedback_ipad_component_frame_inlining.md): pick between selective-flatten, classifier-side filter, or accept-the-drift. #1 and #2 are low-risk.
+- **Resume carryover queue**: demos consolidation (TDD session), `bakeoff_som` merge, dead-code deletions (coordinate with M6(b)), designer-agent scope conversation.
+- **Stage 3b + 4b**: when Mode 3 roadmap firms up / when M7.5 repair loop needs structured compat errors.
