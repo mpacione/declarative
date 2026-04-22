@@ -60,7 +60,7 @@ Send ONE image per node (or per dedup group representative) to Sonnet instead of
 ### New modules
 
 - `dd/classify_dedup.py` — `dedup_key(node, context) → tuple` + `group_candidates(candidates) → dict[key, list[candidate]]`.
-- `dd/classify_vision_crop.py` — the crop pipeline extracted from `scripts/m7_review_server.py` (which already works). Reusable from classifier + review server.
+- `dd/classify_vision_crop.py` — the crop pipeline extracted from `scripts/review_server.py` (which already works). Reusable from classifier + review server.
 
 ### Modified modules
 
@@ -136,9 +136,9 @@ Each step is a commit; tests precede code per CLAUDE.md.
 
 **Step 6 — CLI flag** (`--classifier-v2` routes to the new orchestrator).
 
-**Step 7 — Bake-off script** (`scripts/m7_bakeoff_v2.py`).
+**Step 7 — Bake-off script** (`scripts/bakeoff_v2.py`).
 - Runs v1 + v2 on the same 10 screens.
-- Emits `render_batch/m7_bakeoff_v2_report.md` with agreement rates + review-ground-truth match + cost.
+- Emits `render_batch/bakeoff_v2_report.md` with agreement rates + review-ground-truth match + cost.
 
 **Step 8 — Full corpus run if gate passes.**
 

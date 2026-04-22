@@ -149,17 +149,17 @@ After rule v2 lands:
 
 ```bash
 # 1. Update consensus_method values for every row.
-.venv/bin/python3 -m scripts.m7_recompute_consensus --db ...
+.venv/bin/python3 -m scripts.recompute_consensus --db ...
 # Emits a diff: how many rows changed canonical_type / flagged status.
 
 # 2. Re-render the disagreement report on the new state.
-.venv/bin/python3 -m scripts.m7_disagreement_report --db ... --out ...
+.venv/bin/python3 -m scripts.disagreement_report --db ... --out ...
 
 # 3. Re-render the review-index HTML so flagged rows reflect v2.
 .venv/bin/python3 -m dd classify-review-index --out ...
 ```
 
-`scripts/m7_recompute_consensus.py` is a new helper that walks every screen and calls `apply_consensus_to_screen` again — no API cost, just SQL.
+`scripts/recompute_consensus.py` is a new helper that walks every screen and calls `apply_consensus_to_screen` again — no API cost, just SQL.
 
 ## 6. Open questions (resolve when data lands)
 

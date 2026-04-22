@@ -81,7 +81,7 @@ Two-step problem:
 
 ### Step 1 — Backfill `components` (SD-1)
 
-`scripts/m7_backfill_components.py`:
+`scripts/backfill_components.py`:
 
 ```python
 # 1. Read CKR.
@@ -99,7 +99,7 @@ No API calls. Pure SQL.
 
 ### Step 2 — Slot clustering + labelling for `button` (SD-2 + SD-4)
 
-`scripts/m7_b_button_slots.py`:
+`scripts/b_button_slots.py`:
 
 ```python
 # 1. SELECT instance node_ids where canonical_type='button' AND

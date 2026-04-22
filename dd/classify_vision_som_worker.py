@@ -1,6 +1,6 @@
 """SoM classifier worker — library module.
 
-Reusable between the M7 bake-off (scripts/m7_bakeoff_som.py) and
+Reusable between the M7 bake-off (scripts/bakeoff_som.py) and
 the production classify_v2 pipeline. The bake-off was the original
 home for these functions; moving them into `dd/` lets the classify
 pipeline call SoM as a fourth vision source without a script-level

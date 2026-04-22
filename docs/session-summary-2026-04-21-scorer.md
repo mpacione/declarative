@@ -109,7 +109,7 @@ Mean values:
 us. SoM precision + recall is a dramatically more stable signal
 than the 1-10 VLM rating. Decision D2 (promote SoM as primary
 semantic-fidelity dim) is confirmed. Decision D5 (retire the 1-10
-Gemini rating from `m7_tier_d_regate`'s pass gate) is safe to
+Gemini rating from `tier_d_regate`'s pass gate) is safe to
 execute — but keep the dim as an opt-in comparator until we've
 run SoM against a wider sample.
 
@@ -173,8 +173,8 @@ Three things surfaced that would be natural next units:
 Production code:
 - `dd/fidelity_score.py` — +400 LOC (two commits); 7 scorer dims now
 - `render_test/walk_ref.js` — per-eid x/y/rotation + root dims
-- `scripts/m7_tier_d_regate.py` — screenshot → SoM → both dims
-- `scripts/m7_tier_d_variance.py` — NEW; D5 measurement harness
+- `scripts/tier_d_regate.py` — screenshot → SoM → both dims
+- `scripts/tier_d_variance.py` — NEW; D5 measurement harness
 
 Research / docs:
 - `docs/research/scorer-calibration-and-som-fidelity.md` — full trace

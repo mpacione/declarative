@@ -163,7 +163,7 @@ That's shippable.
 - M7.2 (S2.5 component swap LLM-in-loop demo) complete — first real user-facing use case; tells us which latencies actually matter.
 
 **Soft prerequisites** (nice-to-have before starting):
-- Bench harness that measures end-to-end wall time + cost per stage so we can verify speedups empirically. `scripts/m7_bench.py` would time a fixed 10-screen subset across lever variants.
+- Bench harness that measures end-to-end wall time + cost per stage so we can verify speedups empirically. `scripts/bench.py` would time a fixed 10-screen subset across lever variants.
 - Rate-limit telemetry: observe actual Anthropic rate-limit errors on real runs so we size `--workers N` correctly.
 
 ## 6. Acceptance of this plan

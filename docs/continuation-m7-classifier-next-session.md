@@ -79,7 +79,7 @@ tolerable. If SoM's verdict is right on most, consider weight=3
 for SoM to break more ties in its favor. If the ties are genuinely
 ambiguous (human can't decide), leave them flagged.
 
-Tool: `.venv/bin/python3 -m scripts.m7_som_adjudicate --port 8766
+Tool: `.venv/bin/python3 -m scripts.som_adjudicate --port 8766
 --results <bake-off JSONL>`.
 
 ### 2. Audit the 10 never-reaching types
@@ -102,7 +102,7 @@ type, note presence.
 We have ~130 judgments across multiple rounds (276-285, 286-295,
 160-189, FULL) in `render_batch/som_adjudication_*.jsonl`. Convert
 to `classification_reviews` rows (or similar), then run
-`scripts/m7_calibrate_consensus.py` to derive per-(source, type)
+`scripts/calibrate_consensus.py` to derive per-(source, type)
 weights. Replace the hand-set SoM=2 with empirically calibrated
 weights.
 
@@ -138,14 +138,14 @@ for sid in [r[0] for r in conn.execute(
 conn.commit()"
 
 # SoM-only bake-off (~90s, small subset):
-.venv/bin/python3 -m scripts.m7_bakeoff_som \
+.venv/bin/python3 -m scripts.bakeoff_som \
     --db Dank-EXP-02.declarative.db \
     --screens 276,277,278,279,280 --workers 4
 
 # Adjudicator on bake-off results:
-.venv/bin/python3 -m scripts.m7_som_adjudicate \
+.venv/bin/python3 -m scripts.som_adjudicate \
     --port 8766 \
-    --results render_batch/m7_bakeoff_som_FULL_v2_results.jsonl
+    --results render_batch/bakeoff_som_FULL_v2_results.jsonl
 ```
 
 ## Test baseline

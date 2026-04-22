@@ -53,7 +53,7 @@ Follow `docs/plan-synthetic-gen.md` §5.1.b step-by-step. Twelve steps, TDD per 
 7. **`dd classify-review-index` HTML** — scrollable companion page.
 8. **`dd classify-audit`** — spot-check for all-agree rows.
 9. **Full 204-screen cascade run** (~$35 budget). Log per-screen progress.
-10. **`scripts/m7_disagreement_report.py`** — markdown report with disagreement patterns.
+10. **`scripts/disagreement_report.py`** — markdown report with disagreement patterns.
 11. **Manual review sprint** — user works through flagged queue.
 12. **Rule v2 design** — encode bias-aware overrides from override patterns.
 
@@ -65,7 +65,7 @@ Steps 1–8 are pure code, TDD, no API costs. Step 9 is the big run. Steps 10–
 - Python: `/Users/mattpacione/declarative-build/.venv/bin/python3` (has `anthropic`, `pytest`, etc.).
 - DB: `Dank-EXP-02.declarative.db` at repo root.
 - Figma Desktop Bridge on port 9228 for screen rendering + screenshots.
-- Existing bake-off infrastructure: `scripts/m7_vision_bakeoff.py`, `scripts/m7_dry_run_10.py`, `scripts/preview_llm_classify_prompt.py`. Useful for probing tweaks.
+- Existing bake-off infrastructure: `scripts/vision_bakeoff.py`, `scripts/dry_run_10.py`, `scripts/preview_llm_classify_prompt.py`. Useful for probing tweaks.
 - Vision calls use streaming (`max_tokens=32768`); SDK's long-request gate otherwise trips. See `dd/classify_vision_batched.py::classify_batch`.
 
 ## Cadence

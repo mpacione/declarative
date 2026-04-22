@@ -11,7 +11,7 @@ import sqlite3
 
 import pytest
 
-from dd.m7_variants import (
+from dd.variants import (
     derive_variants_from_ckr,
     parse_ckr_paths,
 )

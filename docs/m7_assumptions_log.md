@@ -104,7 +104,7 @@ the exit at code 0. Actual state:
 - Vision CS rows: 3,451 (55%; ~110 screens lacking CS)
 - Consensus: 0 (CS phase blocks consensus)
 
-**Decision:** wrote `scripts/m7_resume_three_source.py` that:
+**Decision:** wrote `scripts/resume_three_source.py` that:
 - Adds `target_source="llm_missing_cs"` to `_fetch_unclassified_for_screen` (one-line change in `dd/classify_vision_batched.py`).
 - Resumes only the missing-CS rows (no re-payment for completed batches).
 - Per-batch retry/backoff (3 attempts, 10s delay) in case of more transient errors.

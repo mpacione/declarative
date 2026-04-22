@@ -16,7 +16,7 @@ A production wiring would pass:
         render_applied_doc(...).script)``
   - ``ir_of = lambda doc: spec_from_ir_generator(doc)``
 
-See ``scripts/m7_repair_demo.py`` for the end-to-end wiring (bridge
+See ``scripts/repair_demo.py`` for the end-to-end wiring (bridge
 + real verifier + Claude proposer).
 """
 

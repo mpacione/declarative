@@ -170,10 +170,10 @@ Milestones continue the v0.3 M0–M6(a) numbering. **Ordering: library-first.** 
 | **M7.0** | **Library population.** Fills the empty compositional tables. See §5.1 for sub-structure. | Quant gate: all six sub-tasks complete + classification accuracy ≥80% on spot-check. Qual gate: LLM smoke test — Claude (tool-use) receives a screen's L3 + library context, emits a valid reference-and-override edit that round-trips to `is_parity=True`. |
 | **M7.1** ✅ | **Edit grammar — all seven verbs at once.** Parser productions in `dd/markup_l3.py`; `EditStatement` AST types; `apply_edits(doc, [stmt]) → doc'` engine; unit tests per verb. No LLM. | All 7 verbs parse + apply correctly on minimal fixtures; each verb × each common case has a passing unit test. **Shipped 2026-04-19/20 in 9 passes (commits `39aa39e` → `fb693e1`); 109 passing + 1 skipped tests. See `docs/plan-m7.1.md` + `docs/m7_assumptions_log.md`.** |
 | **M7.2** ✅ | **First LLM-in-loop demo — S2.5 component swap.** Library-intensive: exercises slot definitions + variant families + the `swap` verb end-to-end via Claude tool-use. | Claude receives a screen's L3 + library catalog as tool context. Emits `swap @X with=-> family/variant` as a tool call. Apply + render + verify: `is_parity=True` + the resolved component matches the requested variant. **Closed (2026-04-21 late). Infrastructure: `dd/apply_render.py` (commit `61be69b`) — `rebuild_maps_after_edits` carries compressor side-car maps across `apply_edits` splices; `adjust_spec_elements_for_edits` null-clears visuals so the verifier skips fills/strokes/effects comparison where the new master supplies its own; `render_applied_doc` wraps the three-step pipeline; `walk_rendered_via_bridge` subprocess-wraps `render_test/walk_ref.js`. Live-bridge closure (commit `cf642be`) decouples render-IR (semantic=True) from verify-IR (default) to dodge the 162 orphan-element false-positive on semantic IR. Real LLM run on Dank screen 183: Claude Haiku picked `button/small/solid` → render OK 52kB script → walk 21 eids → `RenderReport ir=21 rendered=21 is_parity=True errors=0` → target renders as INSTANCE with the new master name. Both plan gates met.** |
-| **M7.3** 🟢 | **S1 tier expansion (rest of single-node property edits).** | S1.1–S1.4 each pass end-to-end with Claude tool-use. **Shipped (2026-04-21 late; commit `cc1d3b0`): S1.1 text (`scripts/m7_set_text_demo.py`) + S1.2 visibility (`scripts/m7_set_visibility_demo.py`) + S1.3 color token (`scripts/m7_set_color_demo.py`) + previously-shipped S1.4 radius (`scripts/m7_set_radius_demo.py`, commit `bb93adc`). The S1.1 blocker from earlier sessions — "requires extending `_apply_set_to_node` to address `Node.head.positional`" — is resolved: the grammar fix rewrites positional on text/heading/link types when `set @X text="..."` is applied, dropping the shadow `text=` prop. Tests: `test_set_text_string_updates_positional`, `test_set_text_on_non_text_node_falls_through_to_prop`, `test_set_text_tokenref_on_text_node_falls_through_to_prop`, `test_set_mixed_props_with_text_on_text_node`. Real-LLM smoke on screen 186 rewrote "It is I... do not be afraid" to "It is I; fear not" via Claude Haiku.** |
-| **M7.4** ✅ | **S2 tier full (structural edits + S3.5 duplicate-with-mods).** | S2.1–S2.5 pass; S3.5 passes. **Shipped 2026-04-21 late (commit `3da1274`): `dd/structural_verbs.py` scaffolds shared candidate collectors + per-verb tool schemas + AST verifiers. `scripts/m7_structural_edit_demo.py` exposes a single CLI dispatching on `--verb` across delete / append / insert / move; all four dry-run + real-LLM on Dank screen 183 produce passing structural verifies. `scripts/m7_duplicate_demo.py` (S3.5) chains delete + append + set-text in one apply_edits sequence — 3-edit plan lands cleanly on screen 186. (S2.5 swap ✅ previously, M7.2.) 9 tests in `tests/test_structural_verbs.py`.** |
-| **M7.5** 🟢 | **Verifier-as-agent (S3.4) + grammar-constrained decoding option.** Add `StructuredError.hint: str \| None`. 3-iteration repair loop. Wire GBNF / XGrammar as optional path for hardened emission. | S3.4 passes; repair converges ≤3 iterations on 80% of seeded-error cases. Grammar-constrained path produces valid `.dd` 100% on a 20-prompt test set. **S3.4 shipped 2026-04-21 late (commit `733337a`): `StructuredError.hint` field on `dd/boundary.py`, hint emission on `KIND_TYPE_SUBSTITUTION` + `KIND_MISSING_CHILD` in `dd/verify_figma.py`, `dd/repair_agent.py` with `run_repair_loop` (generic over Verifier + Proposer protocols) + `build_llm_proposer`. Demo in `scripts/m7_repair_demo.py`: `TextExpectationVerifier` seeds a broken `set @X text="[broken]"` and the LLM converges in 2 iterations on screen 186. 6 tests. GBNF / XGrammar integration still open — deferred to a future one-off plumbing pass.** |
-| **M7.6** 🟡 | **S4 composition — library-grounded at all scales.** Component composition (S4.1), subtree composition (S4.2), screen composition (S4.3–S4.4), variants (S4.5–S4.6). | All S4 subtasks produce structurally-valid output. VLM fidelity ≥ v0.2 baseline. **S4.2 shipped 2026-04-21 late (commit `d2750e4`): `scripts/m7_compose_demo.py` emits one `append` whose block composes a 2–6 node subtree under a target parent. Real-LLM run on screen 183 composed a 5-node empty-state block (frame + icon rectangle + heading + description text + CTA card) under `@frame-350`; all 5 eids landed under the parent. Structural verify only — VLM fidelity gate deferred (needs render+screenshot+scorer path). **Remaining: S4.1 (needs `define` grammar syntax confirmation), S4.3/S4.4 (archetype+skeleton + empty SYNTHESIS), S4.5/S4.6 (variant composition).** |
+| **M7.3** 🟢 | **S1 tier expansion (rest of single-node property edits).** | S1.1–S1.4 each pass end-to-end with Claude tool-use. **Shipped (2026-04-21 late; commit `cc1d3b0`): S1.1 text (`scripts/set_text_demo.py`) + S1.2 visibility (`scripts/set_visibility_demo.py`) + S1.3 color token (`scripts/set_color_demo.py`) + previously-shipped S1.4 radius (`scripts/set_radius_demo.py`, commit `bb93adc`). The S1.1 blocker from earlier sessions — "requires extending `_apply_set_to_node` to address `Node.head.positional`" — is resolved: the grammar fix rewrites positional on text/heading/link types when `set @X text="..."` is applied, dropping the shadow `text=` prop. Tests: `test_set_text_string_updates_positional`, `test_set_text_on_non_text_node_falls_through_to_prop`, `test_set_text_tokenref_on_text_node_falls_through_to_prop`, `test_set_mixed_props_with_text_on_text_node`. Real-LLM smoke on screen 186 rewrote "It is I... do not be afraid" to "It is I; fear not" via Claude Haiku.** |
+| **M7.4** ✅ | **S2 tier full (structural edits + S3.5 duplicate-with-mods).** | S2.1–S2.5 pass; S3.5 passes. **Shipped 2026-04-21 late (commit `3da1274`): `dd/structural_verbs.py` scaffolds shared candidate collectors + per-verb tool schemas + AST verifiers. `scripts/structural_edit_demo.py` exposes a single CLI dispatching on `--verb` across delete / append / insert / move; all four dry-run + real-LLM on Dank screen 183 produce passing structural verifies. `scripts/duplicate_demo.py` (S3.5) chains delete + append + set-text in one apply_edits sequence — 3-edit plan lands cleanly on screen 186. (S2.5 swap ✅ previously, M7.2.) 9 tests in `tests/test_structural_verbs.py`.** |
+| **M7.5** 🟢 | **Verifier-as-agent (S3.4) + grammar-constrained decoding option.** Add `StructuredError.hint: str \| None`. 3-iteration repair loop. Wire GBNF / XGrammar as optional path for hardened emission. | S3.4 passes; repair converges ≤3 iterations on 80% of seeded-error cases. Grammar-constrained path produces valid `.dd` 100% on a 20-prompt test set. **S3.4 shipped 2026-04-21 late (commit `733337a`): `StructuredError.hint` field on `dd/boundary.py`, hint emission on `KIND_TYPE_SUBSTITUTION` + `KIND_MISSING_CHILD` in `dd/verify_figma.py`, `dd/repair_agent.py` with `run_repair_loop` (generic over Verifier + Proposer protocols) + `build_llm_proposer`. Demo in `scripts/repair_demo.py`: `TextExpectationVerifier` seeds a broken `set @X text="[broken]"` and the LLM converges in 2 iterations on screen 186. 6 tests. GBNF / XGrammar integration still open — deferred to a future one-off plumbing pass.** |
+| **M7.6** 🟡 | **S4 composition — library-grounded at all scales.** Component composition (S4.1), subtree composition (S4.2), screen composition (S4.3–S4.4), variants (S4.5–S4.6). | All S4 subtasks produce structurally-valid output. VLM fidelity ≥ v0.2 baseline. **S4.2 shipped 2026-04-21 late (commit `d2750e4`): `scripts/compose_demo.py` emits one `append` whose block composes a 2–6 node subtree under a target parent. Real-LLM run on screen 183 composed a 5-node empty-state block (frame + icon rectangle + heading + description text + CTA card) under `@frame-350`; all 5 eids landed under the parent. Structural verify only — VLM fidelity gate deferred (needs render+screenshot+scorer path). **Remaining: S4.1 (needs `define` grammar syntax confirmation), S4.3/S4.4 (archetype+skeleton + empty SYNTHESIS), S4.5/S4.6 (variant composition).** |
 | **M7.7** | **S5 intelligence — pattern extraction + screenshot-to-markup.** | S5.1–S5.3 pass on test sets. |
 | **M7.8** | **M6(b) trigger evaluation.** Synthetic-gen prototype has run end-to-end on the L3 path through S4. Evaluate whether the `_spec_elements` shim in `render_figma` is still required, or if we can go AST-native. | Decision doc authored; M6(b) either starts or is deferred again with explicit reasoning. |
 
@@ -298,7 +298,7 @@ Shipped commits, in order:
 13. `9fdab37` — `dd classify-review` interactive TUI
 14. `d13aa06` — `dd classify-review-index` HTML companion
 15. `07ba3d9` — `dd classify-audit` spot-check
-16. `02e445e` — `scripts/m7_disagreement_report.py`
+16. `02e445e` — `scripts/disagreement_report.py`
 
 Infrastructure shipped (Step numbering matches §5.1.b below):
 - Migrations 013, 014, 015 applied to Dank DB
@@ -308,7 +308,7 @@ Infrastructure shipped (Step numbering matches §5.1.b below):
 - `dd classify-review` CLI (Tier 1.5 TUI + visual refs)
 - `dd classify-review-index` HTML companion
 - `dd classify-audit --sample N --seed` spot-check
-- `scripts.m7_disagreement_report` markdown report generator
+- `scripts.disagreement_report` markdown report generator
 
 Dry-run validation (3 iPad screens, 150–152): 452 rows classified end-to-end —
 formal 219 / heuristic 163 / LLM 70, vision PS applied 70, vision CS applied 70,
@@ -335,7 +335,7 @@ CHECK enum (required for Step 8 spot-check workflow).
 
 **Step 2 — Rename `classification_reason` → `llm_reason`.** ✅ Shipped `f0124ac`.
 Migration 014 uses `ALTER TABLE ... RENAME COLUMN` — SQLite ≥ 3.25 preserves
-data in place. Callers: `dd/classify_llm.py`, `scripts/m7_dry_run_10.py`.
+data in place. Callers: `dd/classify_llm.py`, `scripts/dry_run_10.py`.
 
 **Step 3 — Consensus computation module (`dd/classify_consensus.py`).** ✅
 Shipped `d446883`. 13 unit tests cover every rule-v1 branch including degraded
@@ -377,7 +377,7 @@ Budget: ~$35, wall time ~30–60 min. **Dry run on 3 iPad screens** (150/151/152
 validated the pipeline end-to-end: 452 rows classified, 70 LLM + PS + CS,
 consensus 48 unanimous / 21 majority / 1 three_way_disagreement in ~45 sec.
 
-**Step 10 — Disagreement report.** ✅ Shipped `02e445e`. `scripts/m7_disagreement_report.py`
+**Step 10 — Disagreement report.** ✅ Shipped `02e445e`. `scripts/disagreement_report.py`
 emits markdown with summary / pair matrix / top-N 3-way rows / pattern clusters.
 Smoke-tested on dry-run data: surfaces a genuine disagreement with all three
 reasons preserved. 8 tests.
@@ -386,7 +386,7 @@ reasons preserved. 8 tests.
 `dd classify-review` across flagged rows. `--screen <sid>` filters by screen;
 HTML companion via `dd classify-review-index --out <path>` scrolls alongside.
 
-**Step 12 — Rule v2 design** (based on real data). Consume `m7_disagreement_report.py`
+**Step 12 — Rule v2 design** (based on real data). Consume `disagreement_report.py`
 + human overrides; encode bias-aware consensus rules (e.g., "discount cross-
 screen-alone container," "honor cross-screen-alone skeleton on empty grids,"
 confidence tiebreaker). Consensus recomputes from persisted `llm_type` +
@@ -398,7 +398,7 @@ dd classify --three-source [--truncate] [--since SID] [--limit N]
 dd classify-review [--screen SID] [--limit N] [--no-preview]
 dd classify-review-index [--screen SID] [--limit N] [--out PATH] [--no-screenshots]
 dd classify-audit [--sample N] [--screen SID] [--seed K] [--no-preview]
-python3 -m scripts.m7_disagreement_report --db PATH [--top-n N] [--out PATH]
+python3 -m scripts.disagreement_report --db PATH [--top-n N] [--out PATH]
 ```
 
 ## 6. Architectural constraints (non-negotiable)

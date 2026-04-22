@@ -12,7 +12,7 @@ Replaces the per-node vision path with a per-batch approach:
   other_node_id) pairs when it does.
 
 Two batch sizes are supported and compared via
-``scripts/m7_vision_bakeoff.py``:
+``scripts/vision_bakeoff.py``:
 
 - **N=1** (per-screen batched): preserves max visual fidelity per
   screen, no cross-screen signal.

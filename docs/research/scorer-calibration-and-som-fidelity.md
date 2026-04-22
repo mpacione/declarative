@@ -9,7 +9,7 @@ that scope based on what the re-gate actually surfaced.
 
 ## 1. What the re-gate discovered
 
-Running `scripts/m7_tier_d_regate.py` (bridge + screenshot + VLM) on
+Running `scripts/tier_d_regate.py` (bridge + screenshot + VLM) on
 the canonical 3 Tier-D prompts with `dd/fidelity_score.py` at its
 original shape (4 structural dims: coverage / font_readiness /
 component_child_consistency / leaf_type_structural + optional VLM):
@@ -167,7 +167,7 @@ preserve it. Never average to one number before emitting.
 
 ### D5. Measurement before promotion — **executed 2026-04-21**
 
-Ran `scripts/m7_tier_d_variance.py` (3 runs × 3 prompts). Stdev
+Ran `scripts/tier_d_variance.py` (3 runs × 3 prompts). Stdev
 across runs:
 
 | prompt | struct stdev | SoM-P stdev | SoM-R stdev | **VLM stdev** |
@@ -183,7 +183,7 @@ ranged 5-9/10 across identical inputs; SoM-P ranged 0.43-0.62.
 
 **Decision confirmed**: D2 (promote SoM as primary semantic-fidelity
 signal) and the implicit follow-through: the 1-10 Gemini rating is
-now an opt-in diagnostic comparator in `m7_tier_d_regate`, not a
+now an opt-in diagnostic comparator in `tier_d_regate`, not a
 pass-gate signal. The gate aggregates over structural + SoM dims
 only. Kept accessible via `--no-som` / `--no-vlm` flags for
 measurement parity.
@@ -229,7 +229,7 @@ In order of dependency:
 4. **Wire into `score_fidelity`** behind an opt-in kwarg
    (`component_coverage_args`) so offline callers can run without
    spending Claude tokens.
-5. **Update `scripts/m7_tier_d_regate.py`** to invoke SoM coverage
+5. **Update `scripts/tier_d_regate.py`** to invoke SoM coverage
    when a Claude client is available, alongside the existing Gemini
    1-10 dim (kept for measurement comparison). **✅ shipped
    `803c3e3`.**

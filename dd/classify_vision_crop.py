@@ -1,6 +1,6 @@
 """Per-node image cropping + spotlight for classifier v2.
 
-Same technique the review UI uses (`scripts/m7_review_server.py`),
+Same technique the review UI uses (`scripts/review_server.py`),
 extracted here so the classifier pipeline can send focused,
 target-highlighted crops to the vision model instead of a full screen
 + bbox list. The vision model then spends its attention budget on

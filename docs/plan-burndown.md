@@ -76,9 +76,9 @@ sequence:
 |---|---|
 | **A.1** | **Mode-3 H1 template-propagation fix.** Extract the template style/layout merge block in `dd/compose.py` to `_apply_template_to_parent()`. Call unconditionally (currently only fires when element has no children). Extend merge allowlist to include `shadow`, `padding`, `gap`. See [`feedback_mode3_visual_gap_root_cause.md`](../../.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_mode3_visual_gap_root_cause.md) for diagnosis and [`docs/research/mode3-forensic-analysis.md`](research/mode3-forensic-analysis.md) for the forensic breakdown. This is a three-source-confirmed blocker (research / memory / docs). |
 | **A.2** | **`rebuild_maps_after_edits` extended for Tier-B's verbs.** Currently swap-only (per `feedback_applied_doc_map_rebuild.md`). Add append / insert (new-node-no-original branch) and set (already works at AST level, but confirm map stability). Defer delete / replace until Tier D/E need them. TDD per verb. |
-| **A.3** | **Visual assertion, not just `is_parity=True`.** Per [`feedback_verifier_blind_to_visual_loss.md`](../../.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_verifier_blind_to_visual_loss.md), structural parity can coexist with visual-loss defects. Before-and-after screenshot of an `m7_compose_demo` run, committed as test artefacts, locks in that H1 uplift is real. |
+| **A.3** | **Visual assertion, not just `is_parity=True`.** Per [`feedback_verifier_blind_to_visual_loss.md`](../../.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_verifier_blind_to_visual_loss.md), structural parity can coexist with visual-loss defects. Before-and-after screenshot of an `compose_demo` run, committed as test artefacts, locks in that H1 uplift is real. |
 
-**Deliverable**: `m7_compose_demo --render` produces output where the
+**Deliverable**: `compose_demo --render` produces output where the
 composed parent has fill/stroke/radius/shadow/padding preserved from
 the donor template. PNG committed as before/after evidence.
 
@@ -120,7 +120,7 @@ protocol to prevent Figma-lock-in debt.
 | **C.2** | **VLM scorer** (`dd/fidelity_score.py`): scoped against Tier B's observed failures, not a generic 5-dim. If Tier B's inventory says "cards lose shadows" + "text sometimes overflows," the scorer tests *those things*. Per [`feedback_vlm_transient_retries.md`](../../.claude/projects/-Users-mattpacione-declarative-build/memory/feedback_vlm_transient_retries.md), wrap in a 2-3× retry harness. Per [`docs/research/evaluation-rubric-calibration.md`](research/evaluation-rubric-calibration.md), target ≥7/10 (equivalent to ≥3/5 on a 0-5 scale); don't add a second VLM (cross-VLM ICC ≈ 0). |
 | **C.3** | **Force-resolution test.** Alexander's guard: same donor, different forces (prompt context) → must produce distinct concrete. Without this test, the mechanism is Gang-of-Four lookup pretending to be generative. Concrete: compose the same donor card in two different prompt contexts; assert the outputs DIFFER on at least one visual property. |
 | **C.4** | **Performance + cost budget**: `docs/perf-budget.md`. Log $/synthesis, sec/synthesis, memory/synthesis. Set soft caps per tier going forward. |
-| **C.5** | **Patterns at scale**: lower `min_screens` to 2, sweep all canonical types via `scripts/m7_extract_patterns.py`. (Moved from original T1.6 — per subagent critique, patterns are synthesis vocabulary, not verification.) |
+| **C.5** | **Patterns at scale**: lower `min_screens` to 2, sweep all canonical types via `scripts/extract_patterns.py`. (Moved from original T1.6 — per subagent critique, patterns are synthesis vocabulary, not verification.) |
 
 **Deliverable**: `dd/render_protocol.py` + `dd/fidelity_score.py` +
 `docs/perf-budget.md` + expanded `patterns` table.
@@ -136,7 +136,7 @@ protocol to prevent Figma-lock-in debt.
 | Task | Detail |
 |---|---|
 | **D.1** | **Populate `screen_skeletons`** — prereq for D.3. Extraction pass over the Dank corpus: compute skeleton notation per screen, persist. |
-| **D.2** | **S4.2 subtree compose (re-gated)**. `m7_compose_demo` — shipped, now routed through Tier C's scorer at ≥7/10. |
+| **D.2** | **S4.2 subtree compose (re-gated)**. `compose_demo` — shipped, now routed through Tier C's scorer at ≥7/10. |
 | **D.3** | **S4.3 screen-from-archetype**. Load `dd/archetype_library/skeletons/` + populated `screen_skeletons`. Prompt → archetype classifier → skeleton → LLM fills slots. |
 | **D.4** | **S4.4 pure SYNTHESIS fallback**. When no archetype matches, fall through to Mode-3 generic. |
 
@@ -158,10 +158,10 @@ without blocking critical-path delivery.
 | Task | Detail |
 |---|---|
 | **E.1** | **Repair loop vs real `FigmaRenderVerifier`**. Currently uses synthetic `TextExpectationVerifier`. Swap in Tier C's scorer + the real verifier's hints (already populated on KIND_TYPE_SUBSTITUTION + KIND_MISSING_CHILD). |
-| **E.2** | **Forces at scale**: batch 500-1000 rows through `scripts/m7_label_forces.py`. Alexander's force-resolution substrate. |
+| **E.2** | **Forces at scale**: batch 500-1000 rows through `scripts/label_forces.py`. Alexander's force-resolution substrate. |
 | **E.3** | **Shadcn cold-start spike**. `dd/composition/providers/ingested_system.py` backfills components from a canonical library (shadcn/Material-3-kit) so synthesis works on projects without ingested corpora. Per [`docs/research/style-induction.md`](research/style-induction.md) v0.1 scope. |
 | **E.4** | **Human-reject UX spike**. Tiny CLI or artefact writer: how does a designer say "no, not that" on a synthesis proposal? Doc-level for now; real UX later. |
-| **E.5** | **Hygiene**: delete zombies (`dd/rebind_prompt.py`, `dd/classify.py` legacy, `dd/m7_slots.py`), fix broken import at `dd/composition/providers/corpus_retrieval.py`, bridge timeout env-configurable, eid-collision guard in `m7_duplicate_demo.py`. |
+| **E.5** | **Hygiene**: delete zombies (`dd/rebind_prompt.py`, `dd/classify.py` legacy, `dd/slots.py`), fix broken import at `dd/composition/providers/corpus_retrieval.py`, bridge timeout env-configurable, eid-collision guard in `duplicate_demo.py`. |
 
 **Budget**: overlaps A-D; estimate 1-2 days of effective work,
 spread across the sprint.

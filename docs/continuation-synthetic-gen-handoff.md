@@ -50,7 +50,7 @@ bb93adc  feat(m7.3): S1.4 set-radius LLM-in-loop demo
 
 - **2984 passing** across 540+ suites (up from 529 at the block start).
 - **36 pre-existing failures** in integration tests (rebind, screen_patterns, compress_l3 snapshot, phase0/2, integration_real_db, mode1) — verified unrelated to this block's changes via git log on the affected files.
-- New test suites: `test_m7_backfill_components` (16), `test_m7_slots` (17), `test_m7_variants` (12), `test_library_catalog` (18), plus updates to `test_classify_three_source`, `test_catalog`, `test_phase3b_integration`, `test_semantic_tree_integration`.
+- New test suites: `test_backfill_components` (16), `test_slots` (17), `test_variants` (12), `test_library_catalog` (18), plus updates to `test_classify_three_source`, `test_catalog`, `test_phase3b_integration`, `test_semantic_tree_integration`.
 
 ## What's left for each milestone
 
@@ -89,17 +89,17 @@ git log --oneline -20           # see the 20-commit run
 git status                      # should be clean
 
 # Re-run tests to confirm:
-.venv/bin/python3 -m pytest tests/ -q -k "m7_slots or m7_variants or \
+.venv/bin/python3 -m pytest tests/ -q -k "slots or variants or \
     library_catalog or backfill or consensus" | tail -3
 # 66 passed (all the new work)
 
 # Reproducible demos (the LLM calls cost ~$0.02):
-.venv/bin/python3 -m scripts.m7_swap_demo --db Dank-EXP-02.declarative.db
-.venv/bin/python3 -m scripts.m7_set_radius_demo --db Dank-EXP-02.declarative.db
+.venv/bin/python3 -m scripts.swap_demo --db Dank-EXP-02.declarative.db
+.venv/bin/python3 -m scripts.set_radius_demo --db Dank-EXP-02.declarative.db
 
 # Or dry-run (no API cost, deterministic):
-.venv/bin/python3 -m scripts.m7_swap_demo --db Dank-EXP-02.declarative.db --dry-run
-.venv/bin/python3 -m scripts.m7_set_radius_demo --db Dank-EXP-02.declarative.db --dry-run
+.venv/bin/python3 -m scripts.swap_demo --db Dank-EXP-02.declarative.db --dry-run
+.venv/bin/python3 -m scripts.set_radius_demo --db Dank-EXP-02.declarative.db --dry-run
 ```
 
 ## Memory pointers

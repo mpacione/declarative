@@ -8,7 +8,7 @@
 
 ## 1. Failure-mode → fix mapping
 
-Primary v1 failures (from `render_batch/m7_disagreement_report.md` + the review sprint):
+Primary v1 failures (from `render_batch/disagreement_report.md` + the review sprint):
 
 | Failure pattern | Root cause | v2.1 fix |
 |---|---|---|
@@ -264,7 +264,7 @@ Result: better reason text + often a more confident classification. If the secon
 
 ## 7. Phase F — Validation
 
-Re-run the 10-screen bake-off (`scripts/m7_bakeoff_v2.py`) with v2.1. Expected:
+Re-run the 10-screen bake-off (`scripts/bakeoff_v2.py`) with v2.1. Expected:
 
 | Metric | v2 (Phase 0) | v2.1 target |
 |---|---:|---:|

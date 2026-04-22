@@ -1,7 +1,7 @@
 # Tier B — Mode-3 failure-mode inventory
 
 **Date**: 2026-04-21 (Tier B of `docs/plan-burndown.md`).
-**Method**: `scripts/m7_tier_b_demo.py` run on three component-scale
+**Method**: `scripts/tier_b_demo.py` run on three component-scale
 prompts against the live Figma plugin bridge on Dank. Bridge walk
 produced `errors[]` arrays and partial `eid_map` coverage that
 pinned each failure.
