@@ -318,6 +318,15 @@ def _insert_llm_verdicts(
             "  llm_confidence = excluded.llm_confidence",
             inserts,
         )
+        # Sync nodes.role — denormalized column for the type/role
+        # split, plan-type-role-split.md Stage 0. SCI keeps full
+        # provenance; nodes.role is the cheap-read the IR builder
+        # consumes. inserts tuple shape: (screen_id, node_id,
+        # catalog_id, ctype, conf, source, reason, llm_type, llm_conf).
+        conn.executemany(
+            "UPDATE nodes SET role = ? WHERE id = ?",
+            [(row[3], row[1]) for row in inserts],
+        )
         conn.commit()
     return len(inserts)
 

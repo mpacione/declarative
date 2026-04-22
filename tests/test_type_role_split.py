@@ -19,7 +19,12 @@ MIGRATION_021 = REPO_ROOT / "migrations" / "021_add_nodes_role.sql"
 
 
 def _minimal_schema_for_role(conn: sqlite3.Connection) -> None:
-    """Minimum schema the Stage 0 tests need: nodes + SCI tables."""
+    """Minimum schema the Stage 0 tests need: nodes + SCI tables.
+
+    SCI schema mirrors the columns ``dd/classify_v2._insert_llm_verdicts``
+    touches, plus the ``UNIQUE(screen_id, node_id)`` constraint needed
+    for the ``ON CONFLICT`` upsert path.
+    """
     conn.executescript(
         """
         CREATE TABLE nodes (
@@ -32,9 +37,15 @@ def _minimal_schema_for_role(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY,
             screen_id INTEGER,
             node_id INTEGER,
+            catalog_type_id INTEGER,
             canonical_type TEXT,
+            confidence REAL,
             classification_source TEXT,
-            consensus_method TEXT
+            consensus_method TEXT,
+            llm_reason TEXT,
+            llm_type TEXT,
+            llm_confidence REAL,
+            UNIQUE(screen_id, node_id)
         );
         """
     )
@@ -107,3 +118,90 @@ class TestStage0Backfill:
         role = conn.execute("SELECT role FROM nodes WHERE id=1").fetchone()[0]
         assert role == "card"
         assert result_2["populated"] == 1
+
+
+class TestStage0ClassifyV2WritesRole:
+    def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        _minimal_schema_for_role(conn)
+        run_migration(conn, str(MIGRATION_021))
+        conn.executescript(
+            """
+            INSERT INTO nodes (id, screen_id, node_type) VALUES
+                (1, 10, 'FRAME'),
+                (2, 10, 'TEXT');
+            """
+        )
+        conn.commit()
+
+        from dd.classify_v2 import _insert_llm_verdicts
+        groups = [
+            [{"screen_id": 10, "node_id": 1}],
+            [{"screen_id": 10, "node_id": 2}],
+        ]
+        reps = [{"node_id": 1}, {"node_id": 2}]
+        verdicts = {
+            1: ("button", 0.9, "looks like a button"),
+            2: ("heading", 0.85, "bold text"),
+        }
+        catalog = [
+            {"canonical_name": "button", "id": 100},
+            {"canonical_name": "heading", "id": 101},
+        ]
+
+        _insert_llm_verdicts(conn, groups, reps, verdicts, catalog)
+
+        sci = dict(conn.execute(
+            "SELECT node_id, canonical_type FROM screen_component_instances"
+        ).fetchall())
+        assert sci == {1: "button", 2: "heading"}
+
+        roles = dict(conn.execute("SELECT id, role FROM nodes").fetchall())
+        assert roles[1] == "button", (
+            "classify_v2 must write nodes.role alongside SCI.canonical_type"
+        )
+        assert roles[2] == "heading"
+
+    def test_insert_llm_verdicts_upsert_updates_role(self) -> None:
+        """Re-classifying a node overwrites both SCI.canonical_type
+        and nodes.role."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        _minimal_schema_for_role(conn)
+        run_migration(conn, str(MIGRATION_021))
+        conn.executescript(
+            """
+            INSERT INTO nodes (id, screen_id, node_type)
+            VALUES (1, 10, 'FRAME');
+            """
+        )
+        conn.commit()
+
+        from dd.classify_v2 import _insert_llm_verdicts
+        groups = [[{"screen_id": 10, "node_id": 1}]]
+        reps = [{"node_id": 1}]
+        catalog = [
+            {"canonical_name": "button", "id": 100},
+            {"canonical_name": "card", "id": 101},
+        ]
+
+        # First classification
+        _insert_llm_verdicts(
+            conn, groups, reps, {1: ("button", 0.9, "v1")}, catalog,
+        )
+        role_v1 = conn.execute(
+            "SELECT role FROM nodes WHERE id=1"
+        ).fetchone()[0]
+        assert role_v1 == "button"
+
+        # Reclassification (different verdict)
+        _insert_llm_verdicts(
+            conn, groups, reps, {1: ("card", 0.95, "v2")}, catalog,
+        )
+        role_v2 = conn.execute(
+            "SELECT role FROM nodes WHERE id=1"
+        ).fetchone()[0]
+        assert role_v2 == "card", (
+            "UPSERT path must refresh nodes.role on reclassification"
+        )
