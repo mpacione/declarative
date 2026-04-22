@@ -34,6 +34,21 @@ _SIZING_MAP = {
 }
 
 
+def _semantic_type(element: dict[str, Any]) -> str:
+    """Return the element's semantic type (role-first, with type fallback).
+
+    Compose reads "semantic type" for template lookup / type counting /
+    warning emission. Post-Stage-1 DB-sourced IR has ``role`` (semantic
+    classifier label) and ``type`` (structural primitive) split; Mode 3
+    LLM-generated IR still uses the conflated ``type`` only. This
+    helper handles both shapes by reading role-first then falling
+    through to type.
+
+    See docs/plan-type-role-split.md §4 Stage 3a.
+    """
+    return element.get("role") or element.get("type", "")
+
+
 def _ckr_is_built(conn: sqlite3.Connection) -> bool:
     """Return True iff `component_key_registry` exists and has rows.
 
@@ -1056,7 +1071,7 @@ def build_template_visuals(
         synthetic_nid = -(idx + 1)
         node_id_map[eid] = synthetic_nid
 
-        comp_type = element.get("type", "")
+        comp_type = _semantic_type(element)
         variant = element.get("variant")
         tmpl_list = templates.get(comp_type)
         tmpl = _pick_best_template(tmpl_list, variant=variant)
@@ -1167,7 +1182,7 @@ def compare_generated_vs_ground_truth(
     elements = spec.get("elements", {})
     gen_types: dict[str, int] = {}
     for element in elements.values():
-        etype = element.get("type", "")
+        etype = _semantic_type(element)
         if etype == "screen":
             continue
         gen_types[etype] = gen_types.get(etype, 0) + 1
@@ -1284,7 +1299,7 @@ def resolve_type_aliases(
     available_types = set(templates.keys())
 
     def _resolve(comp: dict[str, Any]) -> dict[str, Any]:
-        comp_type = comp.get("type", "")
+        comp_type = _semantic_type(comp)
         resolved = dict(comp)
 
         if comp_type not in available_types:
@@ -1437,7 +1452,7 @@ def validate_components(
     warnings: list[str] = []
 
     def _check(comp: dict[str, Any]) -> None:
-        comp_type = comp.get("type", "")
+        comp_type = _semantic_type(comp)
         if comp_type and comp_type not in available_types:
             warnings.append(
                 f"Type '{comp_type}' has no template in this project — will render as empty frame"

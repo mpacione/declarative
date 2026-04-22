@@ -370,6 +370,42 @@ class TestStage2EidNaming:
         assert any(eid.startswith("group-") for eid in eids), eids
 
 
+class TestStage3aComposeRoleFirst:
+    """Stage 3a: compose.py reads role-first via ``_semantic_type``.
+
+    The compose path looks up templates / counts "types" by semantic
+    label (button, card, heading). After Stage 1, DB-sourced IR has
+    ``type=<primitive>`` and ``role=<semantic>`` separated — compose
+    must read role-first with type as fallback for Mode 3 elements
+    where the LLM still emits conflated values.
+
+    See docs/plan-type-role-split.md §4 Stage 3a.
+    """
+
+    def test_semantic_type_reads_role_when_present(self) -> None:
+        from dd.compose import _semantic_type
+        assert _semantic_type({"type": "frame", "role": "button"}) == "button"
+
+    def test_semantic_type_falls_through_to_type_when_no_role(self) -> None:
+        """Mode 3 LLM-generated IR has no role; type carries the
+        conflated semantic. Helper must preserve that path."""
+        from dd.compose import _semantic_type
+        assert _semantic_type({"type": "button"}) == "button"
+
+    def test_semantic_type_returns_primitive_when_no_role(self) -> None:
+        from dd.compose import _semantic_type
+        assert _semantic_type({"type": "frame"}) == "frame"
+
+    def test_semantic_type_empty_returns_empty_string(self) -> None:
+        from dd.compose import _semantic_type
+        assert _semantic_type({}) == ""
+
+    def test_semantic_type_role_equals_type_returns_that(self) -> None:
+        """role == type (elided in practice but tolerated if present)."""
+        from dd.compose import _semantic_type
+        assert _semantic_type({"type": "text", "role": "text"}) == "text"
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")
