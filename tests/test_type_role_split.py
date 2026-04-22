@@ -151,6 +151,107 @@ class TestStage0QueryReturnsRole:
         assert nodes_by_id[12]["role"] is None
 
 
+class TestStage1IRSplit:
+    """Stage 1: map_node_to_element emits `type` (primitive, always) and
+    optional `role` (classifier semantic, only when role != type).
+
+    See docs/plan-type-role-split.md §2.
+    """
+
+    def _node(self, node_type: str, canonical_type: str | None) -> dict:
+        return {
+            "node_id": 1,
+            "canonical_type": canonical_type,
+            "name": "t",
+            "node_type": node_type,
+            "layout_mode": None,
+            "item_spacing": None,
+            "counter_axis_spacing": None,
+            "padding_top": None,
+            "padding_right": None,
+            "padding_bottom": None,
+            "padding_left": None,
+            "layout_sizing_h": None,
+            "layout_sizing_v": None,
+            "primary_align": None,
+            "counter_align": None,
+            "text_content": None,
+            "corner_radius": None,
+            "opacity": 1.0,
+            "fills": None,
+            "strokes": None,
+            "effects": None,
+            "bindings": [],
+            "width": 100,
+            "height": 50,
+            "x": 0,
+            "y": 0,
+        }
+
+    def test_FRAME_classified_card_splits_primitive_from_role(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("FRAME", "card"))
+        assert element["type"] == "frame", (
+            "type must be the structural primitive from node_type"
+        )
+        assert element["role"] == "card", (
+            "role must carry the classifier's semantic label"
+        )
+
+    def test_FRAME_classified_text_splits_primitive_from_role(self) -> None:
+        """The exact Frame 338 case from the 25-drift cluster."""
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("FRAME", "text"))
+        assert element["type"] == "frame"
+        assert element["role"] == "text"
+
+    def test_FRAME_no_classifier_omits_role_key(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("FRAME", None))
+        assert element["type"] == "frame"
+        assert "role" not in element, (
+            "role key must be absent when no classifier opinion exists"
+        )
+
+    def test_TEXT_role_equals_type_elides_role_key(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("TEXT", "text"))
+        assert element["type"] == "text"
+        assert "role" not in element, (
+            "role must be elided when role == type (redundant)"
+        )
+
+    def test_TEXT_role_heading_keeps_role(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("TEXT", "heading"))
+        assert element["type"] == "text"
+        assert element["role"] == "heading"
+
+    def test_GROUP_type_is_group(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("GROUP", None))
+        assert element["type"] == "group"
+        assert "role" not in element
+
+    def test_RECTANGLE_classified_button_splits(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("RECTANGLE", "button"))
+        assert element["type"] == "rectangle"
+        assert element["role"] == "button"
+
+    def test_INSTANCE_classified_button_splits(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("INSTANCE", "button"))
+        assert element["type"] == "instance"
+        assert element["role"] == "button"
+
+    def test_no_node_type_defaults_to_frame(self) -> None:
+        from dd.ir import map_node_to_element
+        element = map_node_to_element(self._node("", None))
+        assert element["type"] == "frame"
+        assert "role" not in element
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")

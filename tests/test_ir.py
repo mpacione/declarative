@@ -239,10 +239,14 @@ class TestNormalizeCornerRadius:
 class TestMapNodeToElement:
     """Verify map_node_to_element() converts a node dict to an IR element."""
 
-    def test_maps_type_from_canonical(self):
-        node = _make_node(canonical_type="button")
+    def test_maps_type_from_node_type_and_role_from_canonical(self):
+        """Type/role split: type is the structural primitive (node_type),
+        role is the classifier's semantic label (canonical_type). See
+        docs/plan-type-role-split.md."""
+        node = _make_node(canonical_type="button")  # _make_node defaults node_type='FRAME'
         element = map_node_to_element(node)
-        assert element["type"] == "button"
+        assert element["type"] == "frame"
+        assert element["role"] == "button"
 
     def test_maps_horizontal_layout(self):
         node = _make_node(layout_mode="HORIZONTAL", item_spacing=16)
@@ -588,9 +592,11 @@ class TestBuildCompositionSpec:
     def test_header_element_has_children(self, db: sqlite3.Connection):
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        # Find the header element
+        # Find the header element by semantic role — type is now the
+        # structural primitive ("frame"), role carries the classifier
+        # label ("header").
         header = next(
-            (el for el in spec["elements"].values() if el["type"] == "header"),
+            (el for el in spec["elements"].values() if el.get("role") == "header"),
             None,
         )
         assert header is not None
@@ -621,7 +627,9 @@ class TestBuildCompositionSpec:
         db.commit()
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert "visual" in header
         assert header["visual"]["fills"] == [{"type": "solid", "color": "{color.surface.primary}"}]
 
@@ -682,7 +690,9 @@ class TestBuildCompositionSpec:
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         # Header is at x=0, y=0 in seed data (node 10)
-        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert header["layout"]["position"]["x"] == 0
         assert header["layout"]["position"]["y"] == 0
 
@@ -709,12 +719,21 @@ class TestBuildCompositionSpec:
         rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
         assert rect_eid.startswith("rectangle-")
 
-    def test_classified_element_still_uses_canonical_type(self, db: sqlite3.Connection):
-        """Classified nodes still use canonical_type, not node_type."""
+    def test_classified_element_has_role_from_canonical_type(self, db: sqlite3.Connection):
+        """Classified nodes carry canonical_type in the `role` field;
+        `type` holds the structural primitive from node_type. See
+        docs/plan-type-role-split.md for the rationale."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        header = next(el for el in spec["elements"].values() if el.get("type") == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert header is not None
+        # Structural primitive comes from node_type (INSTANCE in this
+        # fixture — nav/top-nav is a component instance); role carries
+        # the classifier label.
+        assert header["type"] in {"frame", "instance"}
+        assert header.get("role") == "header"
 
     def test_original_name_preserved_in_element(self, db: sqlite3.Connection):
         """Elements carry _original_name from the DB node name."""

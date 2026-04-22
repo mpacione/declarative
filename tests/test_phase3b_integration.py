@@ -78,9 +78,11 @@ class TestSlotAssignment:
         sem = generate_ir(dank_db, screen_id=PHONE_SCREEN, semantic=True)
         spec = sem["spec"]
 
+        # Type/role split: "header" is a semantic role, not a structural
+        # primitive. See docs/plan-type-role-split.md.
         headers = [
             el for el in spec["elements"].values()
-            if el.get("type") == "header"
+            if el.get("role") == "header"
         ]
         assert len(headers) >= 1, "Expected at least one header element"
 

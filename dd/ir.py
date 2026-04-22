@@ -289,15 +289,38 @@ _LAYOUT_BINDING_PROPERTIES = frozenset({
 })
 
 
-def _resolve_element_type(node: dict[str, Any]) -> str:
-    """Determine the IR element type for a DB node.
+def _resolve_primitive_type(node: dict[str, Any]) -> str:
+    """Return the structural primitive — what Figma node to create.
 
-    GROUP is special: Figma's transform-transparent group container is a
-    distinct concept from FRAME-based layout containers. The SCI classifier
-    might name-classify a GROUP as "container" (e.g. anything named "Group"),
-    but the renderer needs the GROUP semantic preserved so children get
-    the right coordinate space (grandparent-relative) and the right
-    creation API (figma.group() not figma.createFrame()).
+    Always sourced from ``node_type`` (the extractor-written,
+    deterministic column). Never affected by classifier opinion. This
+    is the dispatch-safe half of the type/role split (see
+    ``docs/plan-type-role-split.md``). Downstream renderers, verifiers,
+    and leaf-parent gates read this field.
+
+    GROUP is special: Figma's transform-transparent group container is
+    a distinct concept from FRAME-based layout containers. Children
+    get grandparent-relative coordinates and a different creation API
+    (``figma.group()`` vs ``figma.createFrame()``).
+    """
+    node_type_raw = node.get("node_type", "")
+    if node_type_raw == "GROUP":
+        return "group"
+    return node_type_raw.lower() or "frame"
+
+
+def _resolve_element_type(node: dict[str, Any]) -> str:
+    """Resolve the role-first identifier for eid naming.
+
+    Returns ``canonical_type`` when the classifier assigned one, else
+    falls through to the structural primitive. This is the grammar-
+    facing identifier namespace: eids like ``heading-2`` / ``card-1``
+    come from the classifier's label when available, ``frame-338`` /
+    ``text-2`` from structure otherwise.
+
+    Used by ``build_composition_spec`` for eid prefix counter keys.
+    For the dispatch-safe structural primitive, use
+    ``_resolve_primitive_type`` instead.
     """
     node_type_raw = node.get("node_type", "")
     if node_type_raw == "GROUP":
@@ -315,11 +338,19 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     bindings = node.get("bindings", [])
     binding_index = _build_binding_index(bindings)
 
-    resolved_type = _resolve_element_type(node)
+    # Type/role split (docs/plan-type-role-split.md): type is always
+    # the structural primitive; role is the classifier's semantic
+    # label, included only when it differs from type (redundancy
+    # elision). Downstream dispatch reads type; grammar/semantic
+    # consumers read role.
+    primitive_type = _resolve_primitive_type(node)
+    semantic_role = node.get("canonical_type")
 
     element: dict[str, Any] = {
-        "type": resolved_type,
+        "type": primitive_type,
     }
+    if semantic_role and semantic_role != primitive_type:
+        element["role"] = semantic_role
 
     # ADR-007 / Defect-1 residual: name-only classification (e.g. a FRAME
     # named "card/sheet/success") can promote the IR type to "card" even
