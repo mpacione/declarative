@@ -534,22 +534,6 @@ class TestM1dPipelineHealth:
             f"option_b={len(script_b)})"
         )
 
-    @pytest.mark.skip(
-        reason=(
-            "Stale M3 byte-parity gate. The module docstring marks "
-            "this test for M6 deletion — it compares the deprecated "
-            "Option A dict-IR renderer against the Option B markup "
-            "renderer. The 2026-04-22 slot-flattening fix in "
-            "compress_l3._build_node (see "
-            "feedback_ipad_component_frame_inlining.md) makes B "
-            "correctly emit slot children for inline-rendered "
-            "classified nodes, where A still drops them — so screen "
-            "180 now falls outside the 0.95–1.05 band by design. "
-            "Safe to delete along with the rest of this file's "
-            "Option-A comparators once the M6(b) deprecation window "
-            "closes."
-        ),
-    )
     def test_full_corpus_ratio_parity(
         self, db_conn: sqlite3.Connection,
     ) -> None:
