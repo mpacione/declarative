@@ -667,24 +667,19 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
     instance_ids = [nid for nid, v in result.items() if v.get("component_key")]
     if instance_ids:
         ph = ",".join("?" for _ in instance_ids)
-        hidden_cursor = conn.execute(
-            f"SELECT root.id as instance_id, c.name "
-            f"FROM nodes root "
-            f"JOIN nodes p ON p.parent_id = root.id "
-            f"JOIN nodes c ON c.parent_id = p.id "
-            f"WHERE root.id IN ({ph}) AND c.visible = 0 "
-            f"UNION "
-            f"SELECT parent_id as instance_id, name "
-            f"FROM nodes "
-            f"WHERE parent_id IN ({ph}) AND visible = 0",
-            instance_ids + instance_ids,
-        )
-        for row in hidden_cursor.fetchall():
-            instance_id = row[0]
-            if instance_id in result:
-                if "hidden_children" not in result[instance_id]:
-                    result[instance_id]["hidden_children"] = []
-                result[instance_id]["hidden_children"].append({"name": row[1]})
+
+        # PR-1: the legacy `hidden_children` name-based descendant walk
+        # was deleted here. Its replacement — a unified resolver that
+        # pulls both `instance_overrides` BOOLEAN `:visible` rows
+        # (Source A) and `nodes.visible=0` descendants at arbitrary
+        # depth (Source B) — lives in
+        # `compress_l3._fetch_descendant_visibility_overrides`. The
+        # renderer consumes backend-neutral `.visible=bool`
+        # PathOverrides on CompRef heads and lowers them via the
+        # resolver's Figma-id side-car into stable
+        # `id.endsWith(";<fig>")` calls, sidestepping the
+        # name-ambiguity bug that `findOne(name=X)` hit on masters
+        # with multiple same-name descendants.
 
         # Instance overrides (text, visibility, instance swap from Plugin API)
         has_overrides = conn.execute(

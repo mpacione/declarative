@@ -1211,13 +1211,17 @@ def generate_figma_script(
                     f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
                 )
 
-            hidden_children = raw_visual.get("hidden_children", []) if (db_visuals is not None and raw_visual) else []
-            for hc in hidden_children:
-                hname = _escape_js(hc["name"])
-                phase1_lines.append(
-                    f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
-                    f"if (_h) _h.visible = false; }}"
-                )
+            # PR-1: the legacy `hidden_children` name-based emitter
+            # was deleted here. The dict-IR renderer does NOT consume
+            # the markup-native resolver (it doesn't walk an AST), so
+            # callers that still exercise this codepath must accept
+            # that descendant hides inside instances rely solely on
+            # `override_tree`'s `instance_overrides`-sourced entries.
+            # This codepath is used only by legacy parity tests
+            # (tests/test_option_b_parity.py skipped per M6(b));
+            # production renders through `generate_screen` →
+            # `render_figma_ast.render_figma`, which gets the full
+            # unified resolver.
 
             # Instance overrides via override tree. The tree encodes
             # dependency ordering: pre-order traversal ensures swaps

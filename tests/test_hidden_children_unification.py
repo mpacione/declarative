@@ -439,3 +439,76 @@ class TestProductionRendererUsesResolver:
             f"descendant_visibility_resolver into render_figma. "
             f"First 2KB of script:\n{script[:2048]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 — `hidden_children` name-based path is fully removed
+# ---------------------------------------------------------------------------
+
+
+class TestHiddenChildrenPathRemoved:
+    """Stage 3 deletes the legacy `hidden_children` SQL builder + the
+    two renderer emitter blocks that consumed it. After this lands,
+    the ONLY remaining name-based `findOne(n => n.name === X); _h.visible = false`
+    emission in the whole codebase is either a diagnostic string or
+    belongs to a non-visibility override (e.g. text_target). Visibility
+    hides are exclusively id-based via the unified resolver.
+    """
+
+    def test_hidden_children_sql_no_longer_emits_name_based_finders(
+        self, dank_conn: sqlite3.Connection,
+    ) -> None:
+        """The generated script for screen 118 must contain ZERO
+        `findOne(n => n.name === X); _h.visible = false` emissions.
+        Every descendant hide must flow through the resolver's id-
+        based path instead.
+
+        Screen 118's nav/top-nav has 15 same-name `Skip` descendants
+        under it (8 hidden) — the canonical case where name-based
+        lookup picks the wrong child and hides a visible one.
+        """
+        import re
+        from dd.renderers.figma import generate_screen
+
+        result = generate_screen(
+            dank_conn, 118, canvas_position=(0, 0),
+        )
+        script = result["structure_script"]
+
+        # Any occurrence of `findOne(n => n.name === "X")` followed on
+        # the same line by a `.visible = <bool>` write is the
+        # `hidden_children` emission pattern the unified resolver
+        # replaces. Stage 3 deletes that emitter; the count must be 0.
+        name_based_visibility = re.findall(
+            r'findOne\(n => n\.name === "[^"]+"\)'
+            r'[^;]*;\s*[^}]*\.visible\s*=\s*(?:true|false)',
+            script,
+            re.DOTALL,
+        )
+        assert name_based_visibility == [], (
+            f"expected 0 name-based `.visible=...` emissions on "
+            f"screen 118 after Stage 3 removes `hidden_children`; "
+            f"got {len(name_based_visibility)}. First mismatch:\n"
+            f"{name_based_visibility[0][:300] if name_based_visibility else ''}"
+        )
+
+    def test_hidden_children_builder_returns_no_hidden_children_key(
+        self, dank_conn: sqlite3.Connection,
+    ) -> None:
+        """`query_screen_visuals` no longer populates the
+        `hidden_children` dict key — the builder is deleted. Any
+        downstream code that reads `raw_visual.get("hidden_children")`
+        sees `None`, which is the safe fallback."""
+        from dd.ir import query_screen_visuals
+
+        visuals = query_screen_visuals(dank_conn, 118)
+        hc_lists = [
+            (nid, v.get("hidden_children"))
+            for nid, v in visuals.items()
+            if v.get("hidden_children")
+        ]
+        assert hc_lists == [], (
+            f"expected 0 `hidden_children` entries after Stage 3 deletes "
+            f"the builder; got {len(hc_lists)} from visuals table. "
+            f"First 3 offenders: {hc_lists[:3]}"
+        )

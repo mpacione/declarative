@@ -174,23 +174,46 @@ class TestMode1TextOverrides:
 @pytest.mark.integration
 @pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
 class TestVisibilityOverridesIntegration:
-    """Verify hidden children are populated from real Dank DB."""
+    """Verify descendant visibility data is surfaced from the Dank DB.
 
-    def test_screen_visuals_include_hidden_children(self, dank_db):
-        from dd.ir import query_screen_visuals
-        visuals = query_screen_visuals(dank_db, 184)
-        # Find nav/top-nav instance — it should have hidden children
-        nav_nid = dank_db.execute(
-            "SELECT id FROM nodes WHERE screen_id = 184 AND name = 'nav/top-nav' AND node_type = 'INSTANCE'"
-        ).fetchone()[0]
-        nav_visual = visuals[nav_nid]
-        hidden = nav_visual.get("hidden_children", [])
-        assert len(hidden) > 0
-        hidden_names = {h["name"] for h in hidden}
-        # We know from investigation that Left/Title is hidden on screen 184
-        # but hidden_children are direct children only, not grandchildren
-        # The 3 direct children (Left, Center, Right) are all visible
-        # So hidden_children comes from depth-2 children of the nav instance
-        # Actually our query checks parent_id IN instance_ids — so it only gets
-        # direct children. Let's verify what we get.
-        assert isinstance(hidden, list)
+    PR-1 replaced the legacy `hidden_children` name-based channel
+    (populated by `ir.query_screen_visuals`) with a unified resolver
+    in `compress_l3._fetch_descendant_visibility_overrides` that
+    pulls from both `instance_overrides` AND `nodes.visible=0`. The
+    resolver feeds backend-neutral `.visible=bool` PathOverrides into
+    the markup AST, and the Figma renderer lowers those via a
+    Figma-id side-car to stable `id.endsWith(";<fig>")` calls — which
+    fixes the name-ambiguity bug this test originally caught.
+    """
+
+    def test_descendant_visibility_resolver_surfaces_nav_top_nav_hides(
+        self, dank_db,
+    ):
+        """The unified resolver must include the nav/top-nav instance's
+        known descendant hides from the Dank corpus (previously the
+        `hidden_children` path's responsibility)."""
+        from dd.compress_l3 import compress_to_l3_with_resolver
+        from dd.ir import generate_ir
+
+        spec = generate_ir(
+            dank_db, 184, semantic=True, filter_chrome=False,
+        )["spec"]
+        _doc, resolver = compress_to_l3_with_resolver(
+            spec, dank_db, screen_id=184, collapse_wrapper=False,
+        )
+
+        # At least one instance's resolver bucket must be non-empty —
+        # screen 184 is known to have nav/top-nav hides.
+        non_empty_buckets = [
+            (eid, inner) for eid, inner in resolver.items()
+            if inner
+        ]
+        assert non_empty_buckets, (
+            f"expected ≥1 non-empty resolver bucket on screen 184; "
+            f"got empty resolver from {len(resolver)} buckets"
+        )
+        # Each resolver value is a Figma stable-child id (no leading ';').
+        for _eid, bucket in non_empty_buckets:
+            for path, fig_id in bucket.items():
+                assert path.endswith(".visible")
+                assert ";" not in fig_id

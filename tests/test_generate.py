@@ -1811,30 +1811,21 @@ class TestEmitVisualAdditiveProperties:
 
 
 class TestVisibilityOverrides:
-    """Verify Mode 1 instances emit visibility overrides for hidden children."""
+    """Verify Mode 1 instances emit visibility overrides for hidden children.
 
-    def test_mode1_hides_children(self):
-        spec = _make_spec({
-            "screen-1": {"type": "screen", "children": ["header-1"]},
-            "header-1": {"type": "header"},
-        })
-        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
-        db_visuals = {
-            -1: {"bindings": []},
-            -2: {
-                "component_key": "abc123",
-                "component_figma_id": "123:456",
-                "bindings": [],
-                "hidden_children": [
-                    {"name": "Title"},
-                    {"name": "Titles"},
-                ],
-            },
-        }
-        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert 'n.name === "Title"' in script
-        assert 'n.name === "Titles"' in script
-        assert ".visible = false" in script
+    PR-1 deleted the dict-IR renderer's `hidden_children` name-based
+    emitter (dd/renderers/figma.py:1214-1220). The legacy tests that
+    asserted the emitted `n.name === "..."` pattern
+    (``test_mode1_hides_children``, ``test_mode1_escapes_child_names``)
+    pinned that deleted shape and had no honest path-forward — the
+    unified resolver operates on the markup-IR path, not the dict-IR
+    path these tests exercised. They were removed; equivalent
+    id-based emission is covered by `tests/test_slot_visibility.py`
+    and `tests/test_hidden_children_unification.py`. The two
+    negative-assertion tests below remain because they still pin a
+    valid invariant (`no hidden_children → no .visible=false`) that
+    holds trivially after deletion.
+    """
 
     def test_mode1_no_visibility_when_all_visible(self):
         spec = _make_spec({
@@ -1862,24 +1853,6 @@ class TestVisibilityOverrides:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".visible = false" not in script
-
-    def test_mode1_escapes_child_names(self):
-        spec = _make_spec({
-            "screen-1": {"type": "screen", "children": ["header-1"]},
-            "header-1": {"type": "header"},
-        })
-        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
-        db_visuals = {
-            -1: {"bindings": []},
-            -2: {
-                "component_key": "abc123",
-                "component_figma_id": "123:456",
-                "bindings": [],
-                "hidden_children": [{"name": 'icon/back "test"'}],
-            },
-        }
-        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert 'icon/back \\"test\\"' in script
 
 
 class TestAbsolutePositioning:

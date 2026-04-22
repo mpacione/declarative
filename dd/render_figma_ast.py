@@ -917,13 +917,11 @@ def _emit_mode1_create(
             f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
         )
 
-    hidden_children = raw_visual.get("hidden_children") or []
-    for hc in hidden_children:
-        hname = _escape_js(hc.get("name", ""))
-        lines.append(
-            f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
-            f'if (_h) _h.visible = false; }}'
-        )
+    # PR-1: the legacy `hidden_children` name-based emitter was
+    # deleted here. Backend-neutral `.visible=bool` PathOverrides on
+    # the CompRef head (populated by the unified resolver in
+    # compress_l3._fetch_descendant_visibility_overrides) supply the
+    # same descendant hides via the Stage-4 id-based path below.
 
     override_tree = raw_visual.get("override_tree")
     if override_tree:
