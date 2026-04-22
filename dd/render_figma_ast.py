@@ -391,8 +391,14 @@ def _ast_prop_is_false(node: Node, key: str) -> bool:
     dict-IR shim's ``element.get(key)``. Canonical multi-backend-ready
     pattern: every backend walker consumes the same L3 AST property
     and emits its native representation.
+
+    Skips non-PropAssign entries (PathOverride carries a `.path` not
+    a `.key` — those address descendants, not the head-node's own
+    properties).
     """
     for prop in node.head.properties:
+        if not hasattr(prop, "key"):
+            continue
         if prop.key == key:
             val = getattr(prop.value, "py", None)
             return val is False
@@ -404,8 +410,14 @@ def _ast_prop_py(node: Node, key: str) -> Any:
     head, or ``None`` when absent. Companion to
     ``_ast_prop_is_false`` — same canonical read path, different
     return contract (scalar vs boolean-false-probe).
+
+    Skips non-PropAssign entries (PathOverride carries a `.path` not
+    a `.key` — those address descendants, not the head-node's own
+    properties).
     """
     for prop in node.head.properties:
+        if not hasattr(prop, "key"):
+            continue
         if prop.key == key:
             return getattr(prop.value, "py", None)
     return None

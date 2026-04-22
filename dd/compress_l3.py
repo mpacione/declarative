@@ -169,6 +169,7 @@ from dd.markup_l3 import (
     Node,
     NodeHead,
     NodeTrailer,
+    PathOverride,
     PropAssign,
     PropGroup,
     SizingValue,
@@ -781,6 +782,7 @@ def _compress_element(
     node_original_name_out: Optional[dict[int, str]] = None,
     parent_group_offset: Optional[tuple[float, float]] = None,
     rt_map: Optional[dict[str, list[list[float]]]] = None,
+    descendant_visibility: Optional[dict[str, list[PathOverride]]] = None,
 ) -> Optional[Node]:
     """Turn a CompositionSpec element dict into an AST Node.
 
@@ -954,6 +956,15 @@ def _compress_element(
     # Slice B MVP: flatten `:self` instance overrides onto CompRef heads.
     # Only runs for Mode-1-eligible nodes that successfully resolved to
     # a CompRef; inline-frame fallbacks skip this step.
+    #
+    # PR-2 slot-visibility: descendant `BOOLEAN :visible` overrides
+    # from `instance_overrides` emit as head-level PathOverride entries
+    # keyed by the descendant's sanitized original_name (see
+    # `_fetch_descendant_visibility_overrides`). This replaces the
+    # name-ambiguous `hidden_children` findOne emission path (deleted
+    # in PR 1) with stable, backend-neutral grammar that each renderer
+    # lowers natively.
+    path_overrides_for_head: list[PathOverride] = []
     if head_kind == "comp-ref":
         # First drop any spec-path PropAssigns the override layer asked
         # to suppress (e.g. inherited `shadow=` when an override's
@@ -965,6 +976,8 @@ def _compress_element(
         if eid_key in self_overrides:
             for override_prop in self_overrides[eid_key]:
                 props = _merge_override_prop(props, override_prop)
+        if descendant_visibility and eid_key in descendant_visibility:
+            path_overrides_for_head = list(descendant_visibility[eid_key])
 
     # `$ext.nid` side-channel (Stage 1.5c): emit the element's DB
     # node_id onto every head when `_node_id_map` is populated. The
@@ -983,12 +996,24 @@ def _compress_element(
         if eid_to_nid_out is not None:
             eid_to_nid_out[eid] = nid
 
+    # PR-2: merge descendant visibility PathOverrides into the head
+    # property list so they emit via the existing head-properties pipe
+    # rather than via a sibling block. PathOverride.path contains `.`,
+    # so `_compress_prop_rank` sorts these last (bucket 5). Mixed-type
+    # sort uses `.key` for PropAssign and `.path` for PathOverride.
+    mixed_props: list[object] = list(props) + list(path_overrides_for_head)
+
     # Sort properties into canonical order (grammar §7.5) so the
     # AST matches what the parser would produce after round-trip.
     # Without this, the unsorted compressor output fails
     # `parse(emit(doc)) == doc` equality because the parser sorts but
     # the compressor didn't.
-    props.sort(key=lambda p: _compress_prop_rank(p.key))
+    def _rank_key(p: object) -> tuple[int, str]:
+        if isinstance(p, PathOverride):
+            return _compress_prop_rank(p.path)
+        return _compress_prop_rank(p.key)  # type: ignore[attr-defined]
+
+    mixed_props.sort(key=_rank_key)
 
     # Positional content for text-bearing nodes. Text content lives
     # under `element["props"]["text"]` in the CompositionSpec —
@@ -1011,7 +1036,7 @@ def _compress_element(
         alias=None,
         override_args=(),
         positional=positional,
-        properties=tuple(props),
+        properties=tuple(mixed_props),
         trailer=None,
     )
 
@@ -1068,6 +1093,7 @@ def _compress_element(
                 node_original_name_out=node_original_name_out,
                 parent_group_offset=children_group_offset,
                 rt_map=rt_map,
+                descendant_visibility=descendant_visibility,
             )
             if child_node is None:
                 continue
@@ -1358,6 +1384,149 @@ _PADDING_SIDE_MAP = {
     ":self:paddingTop": "top",
     ":self:paddingBottom": "bottom",
 }
+
+
+def _fetch_descendant_visibility_overrides(
+    conn: Optional[sqlite3.Connection],
+    node_id_map: dict[str, int],
+    eligible_eids: list[str],
+) -> dict[str, list[PathOverride]]:
+    """Fetch BOOLEAN `;<figmaChildId>:visible` overrides for each
+    CompRef-eligible instance and emit them as markup-native
+    `PathOverride(path="<descendant_eid>.visible", value=bool)` entries.
+
+    Per PR-2 design (docs/plan-slot-visibility-grammar.md §6):
+    - Path form is `<descendant_name_sanitized>.visible` — stable
+      identifier derived from the descendant's original name. Each
+      per-backend renderer maps the path back to its native address
+      (Figma: node id lookup via the master tree; HTML: conditional
+      render on the matching slot).
+    - Same-name sibling disambiguation appends `-N` suffixes so each
+      path in an instance's list is unique.
+    - Backend-neutral at the markup layer. Violating this invariant
+      (e.g. embedding a Figma-only `$ext.target_nid=`) is a
+      regression because it leaks a backend concern into the grammar.
+
+    Returns `{eid: [PathOverride, ...]}` — missing eids simply have no
+    visibility overrides. Skips instances that aren't in
+    `node_id_map` (tests with synthetic eids without DB ids are a
+    no-op for those entries).
+    """
+    if conn is None or not eligible_eids:
+        return {}
+    node_ids = [
+        node_id_map[eid] for eid in eligible_eids if eid in node_id_map
+    ]
+    if not node_ids:
+        return {}
+    placeholders = ",".join("?" for _ in node_ids)
+
+    # Pull BOOLEAN :visible rows for every instance.
+    override_rows = conn.execute(
+        f"SELECT node_id, property_name, override_value "
+        f"FROM instance_overrides "
+        f"WHERE node_id IN ({placeholders}) "
+        f"  AND property_type = 'BOOLEAN' "
+        f"  AND property_name LIKE ';%:visible'",
+        node_ids,
+    ).fetchall()
+
+    if not override_rows:
+        return {}
+
+    # For every instance in one go, collect descendants and index by
+    # figma_node_id suffix (last `;`-segment). The suffix is the
+    # stable-child identifier the override path references.
+    # Figma's instance-descendant figma_node_id is of the form
+    # `I<masterNodeId>;<childId>(;<grandChildId>)*` — the LAST
+    # `;`-segment is the override's suffix target.
+    inst_descendants: dict[int, list[tuple[str, str]]] = {
+        nid: [] for nid in node_ids
+    }
+    desc_rows = conn.execute(
+        f"WITH RECURSIVE subtree(id, root_id, name, figma_node_id) AS ("
+        f"  SELECT id, id, name, figma_node_id FROM nodes "
+        f"  WHERE id IN ({placeholders}) "
+        f"  UNION ALL "
+        f"  SELECT n.id, s.root_id, n.name, n.figma_node_id "
+        f"  FROM nodes n JOIN subtree s ON n.parent_id = s.id"
+        f") "
+        f"SELECT root_id, name, figma_node_id FROM subtree "
+        f"WHERE root_id != id",
+        node_ids,
+    ).fetchall()
+    for row in desc_rows:
+        root_id = row[0]
+        fname = row[1] or ""
+        fnid = row[2] or ""
+        # Stable-child suffix is the final `;`-segment.
+        last_semi = fnid.rfind(";")
+        if last_semi < 0:
+            continue
+        suffix = fnid[last_semi + 1:]
+        inst_descendants[root_id].append((suffix, fname))
+
+    # Build inverse map: node_id → eid
+    eid_by_node_id: dict[int, str] = {}
+    for eid in eligible_eids:
+        nid = node_id_map.get(eid)
+        if isinstance(nid, int):
+            eid_by_node_id[nid] = eid
+
+    out: dict[str, list[PathOverride]] = {}
+    # For each override row, resolve the descendant name and emit a
+    # PathOverride. Disambiguate repeated paths per instance with `-N`
+    # suffixes (grammar §2.3.1-style collision handling).
+    for row in override_rows:
+        inst_id = row[0]
+        prop_name = row[1]
+        override_val = row[2]
+        eid = eid_by_node_id.get(inst_id)
+        if not eid:
+            continue
+        # property_name = `;<figmaChildId>:visible` — strip both.
+        if not prop_name.startswith(";") or not prop_name.endswith(":visible"):
+            continue
+        target_suffix = prop_name[1:-len(":visible")]
+        # Match against the instance's descendants by the last-`;`-segment
+        descendant_name: Optional[str] = None
+        for suffix, dname in inst_descendants.get(inst_id, []):
+            if suffix == target_suffix:
+                descendant_name = dname
+                break
+        if not descendant_name:
+            continue
+        desc_eid = normalize_to_eid(descendant_name)
+        if not desc_eid:
+            # No sanitizable form (e.g. all-digits name) — skip. The
+            # renderer can't address a nameless descendant via the
+            # backend-neutral path form; a later enhancement might use
+            # an ordinal `child-N` fallback.
+            continue
+        path_base = f"{desc_eid}.visible"
+        # Value — Figma stores 'true'/'false' strings.
+        bool_py = (str(override_val).lower() == "true")
+        bool_lit = Literal_(
+            lit_kind="bool",
+            raw="true" if bool_py else "false",
+            py=bool_py,
+        )
+        # Disambiguate within the instance's existing list.
+        bucket = out.setdefault(eid, [])
+        existing_paths = {po.path for po in bucket}
+        if path_base not in existing_paths:
+            bucket.append(PathOverride(path=path_base, value=bool_lit))
+            continue
+        # Collision: append `-N` to the base-eid (before the `.visible`
+        # suffix) starting at 2, matching §2.3.1 collision handling.
+        n = 2
+        while True:
+            candidate = f"{desc_eid}-{n}.visible"
+            if candidate not in existing_paths:
+                bucket.append(PathOverride(path=candidate, value=bool_lit))
+                break
+            n += 1
+    return out
 
 
 def _fetch_self_overrides(
@@ -1839,6 +2008,9 @@ def compress_to_l3_with_maps(
     self_overrides, swap_keys, suppress_keys = _fetch_self_overrides(
         conn, node_id_map, eligible_eids,
     )
+    descendant_visibility = _fetch_descendant_visibility_overrides(
+        conn, node_id_map, eligible_eids,
+    )
     swap_names = _resolve_swap_component_name(
         conn, list(set(swap_keys.values())),
     )
@@ -1872,6 +2044,7 @@ def compress_to_l3_with_maps(
         node_spec_key_out=node_spec_key,
         node_original_name_out=node_original_name,
         rt_map=rt_map,
+        descendant_visibility=descendant_visibility,
     )
     if root_node is None:
         return L3Document(namespace=None), {}, {}, {}, {}
