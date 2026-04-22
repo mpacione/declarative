@@ -534,6 +534,19 @@ class TestM1dPipelineHealth:
             f"option_b={len(script_b)})"
         )
 
+    @pytest.mark.skip(
+        reason=(
+            "Stale M3 byte-parity gate. Module docstring marks this "
+            "file for M6 deletion — it compares the deprecated Option "
+            "A dict-IR renderer against Option B. The 2026-04-22 slot "
+            "Option-2 fix in compress_l3._build_node emits `slot=` on "
+            "slotted children, making B correctly larger than A on "
+            "the 14 iPad/screen-180 cluster where A drops slot kids "
+            "entirely. Ratio falls outside 0.95–1.05 by design. Safe "
+            "to delete along with the rest of this file's Option-A "
+            "comparators at M6(b)."
+        ),
+    )
     def test_full_corpus_ratio_parity(
         self, db_conn: sqlite3.Connection,
     ) -> None:

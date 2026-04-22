@@ -1020,7 +1020,26 @@ def _compress_element(
     # inline nodes carry their own children.
     child_nodes: list[Node] = []
     if head_kind != "comp-ref":
-        child_ids = element.get("children") or []
+        # build_semantic_tree moves children into element["slots"] for
+        # classified nodes with a slot schema. The markup grammar treats
+        # inline slotted children as regular block children BUT tagged
+        # with a ``slot=<name>`` head attribute (parallel to ``role=``
+        # in the type/role split). This preserves designer intent:
+        # detached instances / copy-pasted shapes the classifier
+        # recognises as slot-schema-bearing carry the slot labels
+        # through the pipeline for multi-backend renderers and Mode-3
+        # synthesis. See docs/continuation-post-type-role-split.md
+        # (2026-04-22) + plan-type-role-split.md for rationale.
+        child_ids = list(element.get("children") or [])
+        child_slot_map: dict[str, str] = {}
+        if not child_ids:
+            slots = element.get("slots") or {}
+            if isinstance(slots, dict):
+                for slot_name, slot_children in slots.items():
+                    if isinstance(slot_children, list):
+                        for c in slot_children:
+                            child_ids.append(c)
+                            child_slot_map[c] = slot_name
         child_counter: dict[str, int] = {}
         child_used_eids: set[str] = set()     # per-Block scope
         next_visiting = visiting | {eid_key}
@@ -1050,8 +1069,36 @@ def _compress_element(
                 parent_group_offset=children_group_offset,
                 rt_map=rt_map,
             )
-            if child_node is not None:
-                child_nodes.append(child_node)
+            if child_node is None:
+                continue
+            # Decorate the child's head with `slot=<name>` when this
+            # child occupies a named slot of the current parent. The
+            # slot tag is grammar-level metadata (parallel to `role=`);
+            # parsers treat it as a regular PropAssign on the child's
+            # head so round-trip is lossless. The inserted PropAssign
+            # is placed in canonical _prop_rank order so the in-memory
+            # tuple matches what emit→parse produces (otherwise Tier 1
+            # structural round-trip fails on property-tuple ordering).
+            slot_name = child_slot_map.get(child_id)
+            if slot_name:
+                from dataclasses import replace
+                from dd.markup_l3 import _prop_rank
+                slot_prop = PropAssign(
+                    key="slot",
+                    value=_enum_literal(slot_name),
+                )
+                merged = list(child_node.head.properties) + [slot_prop]
+                merged_sorted = tuple(sorted(
+                    merged,
+                    key=lambda p: _prop_rank(
+                        p.key if isinstance(p, PropAssign) else p.path
+                    ),
+                ))
+                new_head = replace(
+                    child_node.head, properties=merged_sorted,
+                )
+                child_node = replace(child_node, head=new_head)
+            child_nodes.append(child_node)
 
     block: Optional[Block] = None
     if child_nodes:

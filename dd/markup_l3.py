@@ -3109,7 +3109,7 @@ def emit_l3(doc: L3Document) -> str:
 # Grammar §7.5 — property-key ordering within a node. Lower index = earlier
 # in the emission. Unknown keys fall back to lex order AFTER the enumerated.
 _PROP_ORDER_STRUCTURAL = (
-    "variant", "role", "as",
+    "variant", "role", "slot", "as",
 )
 _PROP_ORDER_CONTENT = (
     "text", "label", "placeholder", "content", "value", "min", "max",

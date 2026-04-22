@@ -553,6 +553,160 @@ class TestStage4aGrammarRoleAttribute:
         )
 
 
+class TestSlotAttributeOnChildren:
+    """Option 2 fix for the 14 drift screens — preserve designer intent.
+
+    When build_semantic_tree puts children into element["slots"] for
+    classified nodes, the compressor flattens them back into the
+    block AND tags each child's head with ``slot=<slot_name>`` so
+    multi-backend renderers / Mode-3 LLM consumers can dispatch on
+    the slot role.
+
+    Designer context: many buttons in real Figma files are detached
+    instances or copy-pasted shapes — the classifier recognises them
+    as buttons even without a ``component_key``. The slot labels
+    carry that recovered designer intent through the pipeline.
+
+    See docs/continuation-post-type-role-split.md 2026-04-22 discussion.
+    """
+
+    def _minimal_spec(
+        self, parent_slots: dict[str, list[str]] | None = None,
+    ) -> dict:
+        elements: dict = {
+            "screen-1": {
+                "type": "screen",
+                "children": ["btn-1"],
+                "_original_name": "root",
+            },
+            "btn-1": {
+                "type": "frame",
+                "role": "button",
+                "_original_name": "my-button",
+            },
+            "c1": {
+                "type": "instance",
+                "role": "icon",
+                "_original_name": "icon/leading",
+            },
+            "c2": {
+                "type": "text",
+                "_original_name": "mid",
+                "props": {"text": "Click me"},
+            },
+            "c3": {
+                "type": "instance",
+                "role": "icon",
+                "_original_name": "icon/trailing",
+            },
+        }
+        if parent_slots is not None:
+            elements["btn-1"]["slots"] = parent_slots
+        else:
+            elements["btn-1"]["children"] = ["c1", "c2", "c3"]
+        return {
+            "version": "1.0",
+            "root": "screen-1",
+            "elements": elements,
+            "tokens": {},
+            "_node_id_map": {},
+        }
+
+    def test_slotted_children_emit_with_slot_attribute(self) -> None:
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._minimal_spec(parent_slots={
+            "leading_icon": ["c1"],
+            "label": ["c2"],
+            "trailing_icon": ["c3"],
+        })
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        assert "slot=leading_icon" in markup, (
+            f"leading_icon slot child missing slot= attr:\n{markup}"
+        )
+        assert "slot=label" in markup, (
+            f"label slot child missing slot= attr:\n{markup}"
+        )
+        assert "slot=trailing_icon" in markup, (
+            f"trailing_icon slot child missing slot= attr:\n{markup}"
+        )
+
+    def test_non_slotted_children_have_no_slot_attribute(self) -> None:
+        """An unclassified FRAME with a flat children list doesn't
+        get slot= attrs on its children."""
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._minimal_spec()  # parent_slots=None → flat children
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        assert "slot=" not in markup, (
+            f"Flat children should not carry slot= attrs:\n{markup}"
+        )
+
+    def test_slotted_children_preserve_slot_definition_order(self) -> None:
+        """leading_icon before label before trailing_icon (dict
+        insertion order preserved from slot schema definition)."""
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3
+        spec = self._minimal_spec(parent_slots={
+            "leading_icon": ["c1"],
+            "label": ["c2"],
+            "trailing_icon": ["c3"],
+        })
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        pos_lead = markup.find("slot=leading_icon")
+        pos_label = markup.find("slot=label")
+        pos_trail = markup.find("slot=trailing_icon")
+        assert -1 < pos_lead < pos_label < pos_trail, (
+            f"Slot order not preserved: lead={pos_lead} "
+            f"label={pos_label} trail={pos_trail}\n{markup}"
+        )
+
+    def test_roundtrip_preserves_slot_attribute(self) -> None:
+        """compress → emit → parse: a child's slot= attr survives the
+        roundtrip as a PropAssign in its NodeHead properties."""
+        from dd.compress_l3 import compress_to_l3_with_maps
+        from dd.markup_l3 import emit_l3, parse_l3, Node, PropAssign
+        spec = self._minimal_spec(parent_slots={
+            "leading_icon": ["c1"],
+            "label": ["c2"],
+        })
+        doc, *_ = compress_to_l3_with_maps(spec)
+        markup = emit_l3(doc)
+        doc2 = parse_l3(markup)
+
+        def _walk(n):
+            yield n
+            if isinstance(n, Node) and n.block:
+                for s in n.block.statements:
+                    if isinstance(s, Node):
+                        yield from _walk(s)
+
+        leading_node = None
+        for tl in doc2.top_level:
+            if isinstance(tl, Node):
+                for n in _walk(tl):
+                    if n.head.eid == "icon-leading":
+                        leading_node = n
+                        break
+        assert leading_node is not None, (
+            f"didn't find icon-leading in parsed markup:\n{markup}"
+        )
+        slot_props = [
+            p for p in leading_node.head.properties
+            if isinstance(p, PropAssign) and p.key == "slot"
+        ]
+        assert len(slot_props) == 1
+        # The value is an enum-literal; its ``.py`` / raw contains the name
+        slot_val = slot_props[0].value
+        raw = getattr(slot_val, "raw", None) or getattr(slot_val, "py", None)
+        assert raw == "leading_icon", (
+            f"slot= value didn't roundtrip cleanly; got {raw!r}"
+        )
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")
