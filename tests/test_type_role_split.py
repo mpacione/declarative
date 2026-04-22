@@ -800,6 +800,61 @@ class TestPhase1FontBatching:
         )
 
 
+class TestPhase1SkipInvisibleInstanceChildren:
+    """Phase 1 perf cycle 3: set `figma.skipInvisibleInstanceChildren`
+    once at script entry.
+
+    Figma documents this as making "document traversal much faster";
+    it's already the default in Dev Mode. Our extraction path
+    computes effective visibility upstream so we don't need invisible
+    instance children at render time — walk_ref.js won't look inside
+    them either. Free perf win.
+    """
+
+    def test_preamble_sets_skip_invisible_instance_children_true(self) -> None:
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={},
+            fonts={("Inter", "Regular")},
+            db_visuals={}, ckr_built=True,
+        )
+        assert "figma.skipInvisibleInstanceChildren = true" in preamble, (
+            "Preamble must enable skipInvisibleInstanceChildren for "
+            "traversal perf:\n" + preamble[:500]
+        )
+
+    def test_skip_invisible_set_before_any_node_creation(self) -> None:
+        """Order matters: must be set BEFORE any figma.createX or
+        component-prefetch calls so the traversal-fast flag applies
+        from the first operation onward."""
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={},
+            fonts={("Inter", "Regular")},
+            db_visuals={}, ckr_built=True,
+        )
+        pos_skip = preamble.find("skipInvisibleInstanceChildren")
+        pos_first_create = min(
+            (p for p in [
+                preamble.find("figma.createFrame"),
+                preamble.find("figma.createText"),
+                preamble.find("getNodeByIdAsync"),
+            ] if p > 0),
+            default=len(preamble),
+        )
+        assert pos_skip >= 0 and pos_skip < pos_first_create, (
+            f"skipInvisibleInstanceChildren must be set before any "
+            f"node-creation/lookup; got skip_pos={pos_skip}, "
+            f"first_create_pos={pos_first_create}"
+        )
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")

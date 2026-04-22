@@ -138,6 +138,14 @@ def render_figma_preamble(
 
     preamble: list[str] = []
     preamble.append("const __errors = [];")
+    # Phase 1 perf (2026-04-22): make document traversal faster by
+    # skipping invisible instance children. Figma docs flag this as
+    # the default in Dev Mode and "significantly speeds up"
+    # findOne / findAll / tree walks. Our extraction path computes
+    # effective visibility upstream so the skipped children aren't
+    # needed at render time. Set BEFORE any figma.* call so every
+    # subsequent operation benefits.
+    preamble.append("figma.skipInvisibleInstanceChildren = true;")
 
     # Phase 1 perf (2026-04-22): batch font loads via a single
     # Promise.all instead of N sequential awaits. Figma's docs call
