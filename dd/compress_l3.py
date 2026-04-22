@@ -1020,7 +1020,25 @@ def _compress_element(
     # inline nodes carry their own children.
     child_nodes: list[Node] = []
     if head_kind != "comp-ref":
-        child_ids = element.get("children") or []
+        child_ids = list(element.get("children") or [])
+        # Flatten slotted children. `build_semantic_tree` moves
+        # `element["children"]` into `element["slots"]` for classified
+        # nodes with a slot schema (e.g., a FRAME labelled "button"
+        # with leading_icon / label / trailing_icon slots). For
+        # CompRef renders, slots are consumed as override targets and
+        # Figma clones the master's own children; for INLINE renders
+        # (head_kind == "type"), we must emit the slot children in
+        # the block or they vanish from the render tree.
+        # See feedback_ipad_component_frame_inlining.md for the bug
+        # that motivated this fix — 13 iPad screens drifted on the
+        # round-trip because button/large/translucent FRAMEs with
+        # slots had their children silently dropped from the markup.
+        if not child_ids:
+            slots = element.get("slots") or {}
+            if isinstance(slots, dict):
+                for slot_children in slots.values():
+                    if isinstance(slot_children, list):
+                        child_ids.extend(slot_children)
         child_counter: dict[str, int] = {}
         child_used_eids: set[str] = set()     # per-Block scope
         next_visiting = visiting | {eid_key}
