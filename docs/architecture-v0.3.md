@@ -1,12 +1,12 @@
 # Declarative Design — v0.3 Architecture
 
-Canonical architecture document. The system's blueprint going forward. Every research thread that informed this is captured in `docs/research/v0.3-architecture-research.md`. The MVP implementation plan is `docs/continuation-v0.3-mvp.md`. The learnings and philosophical discussion are in `docs/learnings-v0.3.md`.
+Canonical architecture document. The system's blueprint going forward. Every research thread that informed this is captured in `docs/research/v0.3-architecture-research.md`. The MVP implementation plan is `docs/archive/continuations/continuation-v0.3-mvp.md`. The learnings and philosophical discussion are in `docs/learnings-v0.3.md`.
 
 **Scope:** v0.3 is **internal infrastructure**, not a productized tool. The goal is architecture that works on Dank correctly end-to-end. Productization, distribution, and commercial positioning are explicitly out of scope. Evaluate every decision against "does this make the internal tool work" — not "does this sell."
 
-This document supersedes `docs/continuation-v0.2-corpus-retrieval.md` as the forward direction. v0.1.5 and v0.2 machinery is preserved as the foundation; v0.3 builds on top without reverting 204/204 round-trip parity.
+This document supersedes `docs/archive/continuations/continuation-v0.2-corpus-retrieval.md` as the forward direction. v0.1.5 and v0.2 machinery is preserved as the foundation; v0.3 builds on top without reverting 204/204 round-trip parity.
 
-> **⚠ Next-session investigation required before MVP execution.** Three architectural critiques from the v0.3 review round raised real questions that must be investigated (not yet accepted as truth, but also not dismissed). See `docs/reviews/v0.3-review-synthesis.md` and `docs/continuation-v0.3-next-session.md` for the specific investigation list. Do NOT start MVP Stage 1 until the underscore-field question, the grammar-mode question, and the RenderReport-schema question are resolved on paper.
+> **⚠ Next-session investigation required before MVP execution.** Three architectural critiques from the v0.3 review round raised real questions that must be investigated (not yet accepted as truth, but also not dismissed). See `docs/reviews/v0.3-review-synthesis.md` and `docs/archive/continuations/continuation-v0.3-next-session.md` for the specific investigation list. Do NOT start MVP Stage 1 until the underscore-field question, the grammar-mode question, and the RenderReport-schema question are resolved on paper.
 
 ---
 
@@ -600,4 +600,4 @@ The markup targets **LLM-friendly + technical-reader human-readable**. The reade
 
 ---
 
-*Decisions in this document are traceable to `docs/research/v0.3-architecture-research.md`. Reviewer findings from 2026-04-18 at `docs/reviews/v0.3-reviews-full.md` + synthesis at `docs/reviews/v0.3-review-synthesis.md`. Investigation priorities for next session at `docs/continuation-v0.3-next-session.md`. Philosophical choices + architecture spec at `docs/learnings-v0.3.md`. Concrete implementation plan in `docs/continuation-v0.3-mvp.md`.*
+*Decisions in this document are traceable to `docs/research/v0.3-architecture-research.md`. Reviewer findings from 2026-04-18 at `docs/reviews/v0.3-reviews-full.md` + synthesis at `docs/reviews/v0.3-review-synthesis.md`. Investigation priorities for next session at `docs/archive/continuations/continuation-v0.3-next-session.md`. Philosophical choices + architecture spec at `docs/learnings-v0.3.md`. Concrete implementation plan in `docs/archive/continuations/continuation-v0.3-mvp.md`.*

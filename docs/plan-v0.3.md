@@ -400,8 +400,8 @@ Lesson: **do not sneak in Stage 4+ work ahead of Stages 1–3.** The MVP doc exp
 
 The following docs had framing banners added, non-destructively (original content preserved):
 
-- `docs/continuation-v0.3-mvp.md` — framing superseded by this plan; day-by-day structure is preserved as reference
-- `docs/continuation-v0.3-next-session.md` — investigation priorities resolved; current plan is this doc
+- `docs/archive/continuations/continuation-v0.3-mvp.md` — framing superseded by this plan; day-by-day structure is preserved as reference
+- `docs/archive/continuations/continuation-v0.3-next-session.md` — investigation priorities resolved; current plan is this doc
 - `docs/decisions/v0.3-canonical-ir.md` — framing partially superseded; three-tier proof remains valid
 - `docs/decisions/v0.3-provider-audit.md` — Stage 4 scope, premature, not executable as-is
 - `docs/decisions/v0.3-renderreport-schema.md` — decision still valid, scope moved to Stage 5

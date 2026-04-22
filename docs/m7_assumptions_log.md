@@ -86,10 +86,10 @@ Plan said ~50 min, dry-run extrapolated similar. Actual: ~4.5 hours and counting
 **Why the underestimate:** dry-run was 3 iPad screens with ~20-30 LLM nodes each → 70 total LLM rows in ~45 sec, ≈ 0.6 sec/row. Real corpus: 6233 LLM rows total. At dry-run rate, that's ~62 minutes. Reality is 4-5x slower, suggesting Sonnet streaming time scales sub-linearly with screen size (per-call overhead dominates) AND the larger app screens (50+ LLM nodes) take 60+ seconds each per stage. Compounded by 2 stages (PS + CS).
 
 **Implications:**
-- The perf plan (`docs/plan-ingest-performance.md`) Lever A (parallelization) becomes more urgent than originally specced. Bench-mark numbers in the plan should be updated AFTER this run completes with real data.
+- The perf plan (`docs/archive/plan-ingest-performance.md`) Lever A (parallelization) becomes more urgent than originally specced. Bench-mark numbers in the plan should be updated AFTER this run completes with real data.
 - Run is committed; not stopping. ~$70 sunk cost vs ~$35 plan estimate is acceptable for our own use; not acceptable for shipping to a user.
 
-**Action when run completes:** update `docs/plan-ingest-performance.md` with actual wall-time + cost numbers; flag to user.
+**Action when run completes:** update `docs/archive/plan-ingest-performance.md` with actual wall-time + cost numbers; flag to user.
 
 ---
 
@@ -158,7 +158,7 @@ Total: 109 passing + 1 skipped tests for M7.1; 490 passing in the broader markup
 
 #### Step 12 rule v2 proposal drafted
 
-Drafted `docs/plan-m7-step12-rule-v2.md` (autonomous design pass). Six override patterns (A-F) addressing the systematic biases the dry-run + bake-off exposed. Drop-in replacement for `compute_consensus_v1`; reads only persisted columns (no re-classification needed).
+Drafted `docs/archive/plan-m7-step12-rule-v2.md` (autonomous design pass). Six override patterns (A-F) addressing the systematic biases the dry-run + bake-off exposed. Drop-in replacement for `compute_consensus_v1`; reads only persisted columns (no re-classification needed).
 
 **Status:** SPEC, deferred until full disagreement-report data + Step 11 manual reviews provide ground truth for validation.
 
@@ -168,7 +168,7 @@ Drafted `docs/plan-m7-step12-rule-v2.md` (autonomous design pass). Six override 
 
 #### M7.0.b plan drafted (NOT executed)
 
-Drafted `docs/plan-m7.0.b.md` (autonomous design pass). Discovered the existing `component_slots` schema is keyed on `component_id` (FK to `components` table), which is currently empty (CKR is populated separately). Two-step path: (1) backfill `components` from CKR via SQL; (2) cluster + slot-derive per canonical_type.
+Drafted `docs/archive/plan-m7.0.b.md` (autonomous design pass). Discovered the existing `component_slots` schema is keyed on `component_id` (FK to `components` table), which is currently empty (CKR is populated separately). Two-step path: (1) backfill `components` from CKR via SQL; (2) cluster + slot-derive per canonical_type.
 
 **Status:** SPEC ONLY. Did NOT execute the API-cost step (clustering + Claude labelling) because it requires three schema decisions (SD-1, SD-2, SD-3) that need user sign-off.
 

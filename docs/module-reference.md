@@ -3,6 +3,39 @@
 > Every module in the system, what it does, its public API, and how it maps to the four-layer architecture.
 > Reference document — for a high-level introduction see the [repo README](../README.md), for the architecture spec see [`compiler-architecture.md`](compiler-architecture.md).
 > Updated 2026-04-16 (pt 6).
+>
+> **Partial-update notice (2026-04-21 cleanup sweep):** the body of this
+> document still describes the M4-era extraction pipeline accurately,
+> but does NOT yet reflect modules added or renamed during M5–M7
+> sprints + the April cleanup. Specifically:
+>
+> - **Renamed**: `dd/m7_slots.py` → `dd/slots.py` (M7.0.b slot derivation),
+>   `dd/m7_variants.py` → `dd/variants.py` (M7.0.c variant family
+>   derivation). All scripts `scripts/m7_*.py` → `scripts/*.py`.
+> - **Added during M5–M7**: `dd/markup_l3.py` (grammar parser/emitter +
+>   `apply_edits` engine), `dd/compress_l3.py` (DB → L3 AST),
+>   `dd/render_figma_ast.py` (markup-native renderer; default after
+>   M5b), `dd/composition/` (provider registry + 4 backends),
+>   `dd/structural_verbs.py` (M7.4 verb scaffolds), `dd/repair_agent.py`
+>   (M7.5 verifier-as-agent loop), `dd/forces.py` (M7.0.d compositional
+>   roles), `dd/patterns.py` (M7.0.e cross-screen pattern extraction),
+>   `dd/sticker_sheet.py` (M7.0.f tagging), `dd/apply_render.py`
+>   (compose-edit-render pipeline including
+>   `rebuild_maps_after_edits` + `walk_rendered_via_bridge`),
+>   `dd/fidelity_score.py` (Tier C / D scorer with SoM coverage),
+>   `dd/render_protocol.py` (RenderProtocol ABC), `dd/repair_figma.py`
+>   (verifier adapter for repair loop), `dd/classify_v2.py` +
+>   `dd/classify_consensus.py` + `dd/classify_vision_som.py` +
+>   `dd/classify_vision_som_worker.py` (M7.0.a 4-source classifier).
+> - **Pending deprecation per `docs/DEPRECATION.md`**: `dd/markup.py`
+>   (vestigial pre-grammar serializer; tied to M6(b) gate),
+>   `dd/ir.py::generate_ir / build_composition_spec / query_screen_visuals`
+>   (replaced by `derive_markup` + on-demand DB lookups inside
+>   `render_figma`), `dd/renderers/figma.py::generate_figma_script`
+>   (replaced by `render_figma`).
+>
+> Body refresh deferred to a dedicated documentation pass. For
+> current-truth module inventory, use code-graph MCP or grep.
 
 ---
 

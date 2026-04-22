@@ -308,7 +308,7 @@ Single-page reference. Full detail in `architecture-v0.3.md`.
 
 ## Part 7 — Open architectural questions (investigation targets)
 
-These are the reviewer findings that must be resolved before MVP Stage 1 begins. Listed here as learnings for future context; tracked operationally in `continuation-v0.3-next-session.md`.
+These are the reviewer findings that must be resolved before MVP Stage 1 begins. Listed here as learnings for future context; tracked operationally in `archive/continuations/continuation-v0.3-next-session.md`.
 
 ### Open Q1: Underscore field representation
 
@@ -355,8 +355,8 @@ User decision: both goals required. Calendar re-evaluated after investigation.
 | Document | Purpose |
 |---|---|
 | `docs/architecture-v0.3.md` | Canonical architecture. Terse, operational. |
-| `docs/continuation-v0.3-mvp.md` | MVP implementation plan (blocked on investigation). |
-| `docs/continuation-v0.3-next-session.md` | Next-session priorities: investigation tasks. |
+| `docs/archive/continuations/continuation-v0.3-mvp.md` | MVP implementation plan (blocked on investigation). |
+| `docs/archive/continuations/continuation-v0.3-next-session.md` | Next-session priorities: investigation tasks. |
 | `docs/research/v0.3-architecture-research.md` | 18-thread research record. Source provenance for every decision. |
 | `docs/reviews/v0.3-reviews-full.md` | Full reviewer reports (all 5). |
 | `docs/reviews/v0.3-review-synthesis.md` | Synthesis + post-decision framing. |

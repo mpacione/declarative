@@ -83,4 +83,4 @@ If you hit an unknown, surface it rather than guess. Start by reading the plan d
 
 ---
 
-Previous continuation material (pre-M7) is in `docs/continuation.md`. For the v0.3 Option B cutover thread specifically, see `memory/project_v0_3_plan.md` and commit `6377105`.
+Previous continuation material (pre-M7) is in `docs/archive/continuations/continuation.md`. For the v0.3 Option B cutover thread specifically, see `memory/project_v0_3_plan.md` and commit `6377105`.
