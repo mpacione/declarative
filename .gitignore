@@ -40,3 +40,20 @@ run_extraction_with_mcp.py
 
 # Node (bridge runner deps live here; ws is installed via `npm install`)
 node_modules/
+
+# Session-scratch + experiment artefacts (regenerable)
+tmp/
+render_batch/scripts-grid/
+render_batch/walks-grid/
+render_batch/m7_bakeoff_*.md
+render_batch/m7_bakeoff_*.jsonl
+render_batch/som_adjudication*.jsonl
+render_batch/proposed_types.jsonl
+
+# DB auto-backups from migrations (regenerable; keep latest *.declarative.db only)
+*.declarative.pre-*.bak.db
+*.declarative.pre-*.bak.db-shm
+*.declarative.pre-*.bak.db-wal
+
+# Claude Code agent metadata (per-machine)
+.claude/
