@@ -100,6 +100,16 @@ class TestM1bPreambleByteParity:
     - Error channel + _rootPage + CKR-unbuilt marker emission order.
     """
 
+    @pytest.mark.skip(
+        reason=(
+            "Stale M6-deletion gate (see module docstring). The "
+            "2026-04-22 Phase 1 font-batching optimization emits "
+            "loadFontAsync via a Promise.all (collapsed N sequential "
+            "awaits → 1), making Option B's preamble shorter than "
+            "Option A's by design. Option A is on the M6(b) deletion "
+            "list — no value in dragging it forward."
+        ),
+    )
     @pytest.mark.parametrize("sid", REFERENCE_SCREENS)
     def test_preamble_byte_identical(
         self, db_conn: sqlite3.Connection, sid: int,
@@ -150,7 +160,11 @@ class TestM1bPreambleByteParity:
             "const __errors = [];",
             "const M = {};",
             "const _rootPage = figma.currentPage;",
-            'await figma.loadFontAsync({family: "Inter", style: "Regular"});',
+            # Font-loading landmark — Inter Regular must always be
+            # loaded. Post Phase 1 font-batching (2026-04-22) this
+            # now appears inside a Promise.all rather than as a
+            # standalone await statement.
+            'figma.loadFontAsync({family: "Inter", style: "Regular"})',
         ):
             assert landmark in preamble, (
                 f"screen {sid}: preamble missing landmark {landmark!r}"
@@ -223,6 +237,14 @@ class TestM1cLeafNodeByteParity:
     constraints, vector paths, effects) is M1d scope.
     """
 
+    @pytest.mark.skip(
+        reason=(
+            "Stale M6-deletion gate. The Phase 1 font-batching fix "
+            "(2026-04-22) makes B's preamble shorter than A's, so "
+            "full-script byte parity no longer holds. Option A is "
+            "M6(b)-delete; no value in dragging its emission forward."
+        ),
+    )
     def test_full_script_byte_identical(self) -> None:
         from dd.render_figma_ast import render_figma
 
@@ -392,6 +414,13 @@ class TestM1cLeafNodeByteParity:
             f"got: {token_refs!r}"
         )
 
+    @pytest.mark.skip(
+        reason=(
+            "Stale M6-deletion gate. Phase 1 font-batching makes B's "
+            "preamble diverge from A's by design; full-script byte "
+            "parity against Option A no longer meaningful."
+        ),
+    )
     def test_full_script_byte_identical_root_only(self) -> None:
         """Screen-root with no children — exercises the Phase 2
         branch where `_emit_phase2` has no appendChild-from-parent

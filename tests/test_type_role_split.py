@@ -707,6 +707,99 @@ class TestSlotAttributeOnChildren:
         )
 
 
+class TestPhase1FontBatching:
+    """Phase 1 perf: batch loadFontAsync via Promise.all instead of
+    per-font sequential awaits.
+
+    Figma docs + community benchmarks agree Promise.all is the
+    canonical pattern for bulk font loading. Screen 241 has 28
+    distinct fonts today — serialised awaits cost ~28× a single
+    network round-trip. Parallel: one await total. Font results are
+    cached internally so repeated calls are cheap.
+
+    See research agent aa9eb2062cc0705de §1 (highest-ROI perf win).
+    """
+
+    def test_preamble_emits_promise_all_for_fonts(self) -> None:
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        fonts = {("Inter", "Regular"), ("Inter", "Bold"), ("Helvetica", "Regular")}
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={}, fonts=fonts,
+            db_visuals={}, ckr_built=True,
+        )
+        assert "Promise.all" in preamble, (
+            f"Preamble must batch fonts via Promise.all; got:\n{preamble[:1000]}"
+        )
+
+    def test_preamble_does_not_emit_sequential_await_per_font(self) -> None:
+        """With 3 fonts, the preamble should have at most 1
+        ``await`` that references fonts (the Promise.all block),
+        not 3 separate per-font awaits."""
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        fonts = {("Inter", "Regular"), ("Inter", "Bold"), ("Inter", "Medium")}
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={}, fonts=fonts,
+            db_visuals={}, ckr_built=True,
+        )
+        # Count awaits that reference loadFontAsync. Pre-fix: 3.
+        # Post-fix: exactly 1 (the Promise.all).
+        count = preamble.count("await ")
+        # The preamble also has an await for figma.loadAllPagesAsync
+        # (if present) but loadFontAsync should be collapsed.
+        load_font_awaits = preamble.count("await figma.loadFontAsync")
+        assert load_font_awaits == 0, (
+            f"Expected no per-font `await figma.loadFontAsync`; found "
+            f"{load_font_awaits}. Preamble fonts must batch via Promise.all."
+        )
+
+    def test_preamble_still_includes_all_fonts(self) -> None:
+        """Batching must not drop fonts — each requested family/style
+        pair still appears in the preamble (inside the Promise.all)."""
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        fonts = {
+            ("Inter", "Regular"),
+            ("Helvetica", "Bold"),
+            ("SF Pro", "Medium"),
+        }
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={}, fonts=fonts,
+            db_visuals={}, ckr_built=True,
+        )
+        for family, style in fonts:
+            assert family in preamble, f"missing family {family!r}"
+            assert style in preamble, f"missing style {style!r}"
+
+    def test_preamble_font_load_failure_still_reports_per_font(self) -> None:
+        """Each font's load must have its own error-handler so one
+        failure doesn't abort the whole Promise.all."""
+        from dd.render_figma_ast import render_figma_preamble
+        from dd.markup_l3 import L3Document
+
+        doc = L3Document()
+        fonts = {("Inter", "Regular"), ("Inter", "Bold")}
+        preamble = render_figma_preamble(
+            doc, conn=None, nid_map={}, fonts=fonts,
+            db_visuals={}, ckr_built=True,
+        )
+        assert '"font_load_failed"' in preamble, (
+            "Each font must still have a failure-reporting path"
+        )
+        # Each font should have its own catch clause
+        catch_count = preamble.count("font_load_failed")
+        assert catch_count >= 2, (
+            f"Expected ≥2 per-font failure paths; got {catch_count}"
+        )
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")

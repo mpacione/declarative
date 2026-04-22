@@ -139,18 +139,33 @@ def render_figma_preamble(
     preamble: list[str] = []
     preamble.append("const __errors = [];")
 
+    # Phase 1 perf (2026-04-22): batch font loads via a single
+    # Promise.all instead of N sequential awaits. Figma's docs call
+    # this out as the canonical pattern (`working-with-text`), and
+    # font loads are internally cached so no benefit from serialisation.
+    # Each font still keeps its own .catch() so one failure doesn't
+    # abort the batch — errors are pushed into __errors per-font, same
+    # shape as before. Screen 241 went from 28 serial awaits to 1.
     all_fonts = [("Inter", "Regular")] + [
         f for f in fonts if f != ("Inter", "Regular")
     ]
-    for family, style in all_fonts:
-        family_js = _escape_js(family)
-        style_js = _escape_js(style)
+    if all_fonts:
+        font_entries: list[str] = []
+        for family, style in all_fonts:
+            family_js = _escape_js(family)
+            style_js = _escape_js(style)
+            font_entries.append(
+                f"figma.loadFontAsync({{family: \"{family_js}\", style: \"{style_js}\"}})"
+                f".catch(__e => __errors.push({{"
+                f"kind:\"font_load_failed\", "
+                f"family:\"{family_js}\", style:\"{style_js}\", "
+                f"error: String(__e && __e.message || __e)"
+                f"}}))"
+            )
         preamble.append(
-            "await (async () => { try { "
-            f"await figma.loadFontAsync({{family: \"{family_js}\", style: \"{style_js}\"}}); "
-            "} catch (__e) { "
-            f"__errors.push({{kind:\"font_load_failed\", family:\"{family_js}\", style:\"{style_js}\", "
-            "error: String(__e && __e.message || __e)}); } })();"
+            "await Promise.all([\n  "
+            + ",\n  ".join(font_entries)
+            + "\n]);"
         )
 
     preamble.append("const M = {};")
