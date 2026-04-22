@@ -253,13 +253,15 @@ def backfill_nodes_role(conn: sqlite3.Connection) -> dict:
     Returns ``{"populated": N}`` where N is the count of non-NULL roles
     after the backfill.
     """
+    # UPDATE ... FROM is O(N) via hash join. The correlated-subquery
+    # form was O(N²) on a 86K-node DB without an sci(node_id) index
+    # and took minutes to run.
     conn.execute(
         """
         UPDATE nodes
-        SET role = (
-            SELECT canonical_type FROM screen_component_instances sci
-            WHERE sci.node_id = nodes.id
-        )
+        SET role = sci.canonical_type
+        FROM screen_component_instances sci
+        WHERE nodes.id = sci.node_id
         """
     )
     conn.commit()
