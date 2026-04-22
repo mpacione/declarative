@@ -88,7 +88,7 @@ cleanup-complete-2026-04-21 ← after PR-6 + retry (final)
 
 ### Lower priority — research → architecture
 
-5. **Designer-agent loop architecture**. The session's research thread (3 parallel deep-research agents + designer cognition synthesis) produced 4 architecture sketches in `docs/research/scorer-calibration-and-som-fidelity.md` §6.1 and a longer thread on cognitive primitives. The user pushed back on building a parallel system — wants to **shape the existing system** to support designer-flavored exploration. Concrete next step proposal (~700 LOC, 5 stages of 1 week each):
+5. **Designer-agent loop architecture**. The full research synthesis is captured in **`docs/research/designer-cognition-and-agent-architecture.md`** — read that doc for: 15 cognitive primitives (NAME, FRAME, MOVE, SEE-MOVE-SEE, LATERAL, DRILL, CLIMB, REFRAME, etc.) with sources, 5 architectural patterns from the lit (Linkography-monitor, Twin-Tree, Blackboard, MCTS-AHD, Reflection-Controller), 4 architecture sketches over our stack (Senior+Junior+Librarian / Pattern-Language Descent Tree / Sketch→Donor→Edit Loop / Live Branching Canvas), 19 surveyed 2025-2026 systems, the design-space tree data structure, and the recommended Stage 1-5 build plan. The user pushed back on building a parallel system — wants to **shape the existing system** to support designer-flavored exploration. Concrete next step proposal (~700 LOC, 5 stages of 1 week each):
    - Stage 0: workspace data model (`design_sessions` + `variants` + `move_log` tables)
    - Stage 1: edit-loop on the workspace (orchestrator over existing scripts)
    - Stage 2: cognitive-primitive tool surface for the LLM (NAME / FRAME / MOVE / LATERAL / DRILL / APPRECIATE)
