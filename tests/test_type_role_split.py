@@ -252,6 +252,124 @@ class TestStage1IRSplit:
         assert "role" not in element
 
 
+class TestStage2EidNaming:
+    """Stage 2: eid prefix follows ``{role || type}-{counter}`` with
+    per-prefix counter pools. Role-first when classifier assigned a
+    label; structural primitive fallback otherwise.
+
+    Characterization tests — the behaviour already exists via
+    ``_resolve_element_type``; these lock it in so a future refactor
+    can't silently change it. See docs/plan-type-role-split.md §4
+    Stage 2.
+    """
+
+    def _node(self, nid: int, node_type: str, canonical_type: str | None,
+              parent_id: int | None = None) -> dict:
+        return {
+            "node_id": nid,
+            "canonical_type": canonical_type,
+            "name": f"n{nid}",
+            "node_type": node_type,
+            "layout_mode": None,
+            "item_spacing": None,
+            "counter_axis_spacing": None,
+            "padding_top": None,
+            "padding_right": None,
+            "padding_bottom": None,
+            "padding_left": None,
+            "layout_sizing_h": None,
+            "layout_sizing_v": None,
+            "primary_align": None,
+            "counter_align": None,
+            "text_content": None,
+            "corner_radius": None,
+            "opacity": 1.0,
+            "fills": None,
+            "strokes": None,
+            "effects": None,
+            "bindings": [],
+            "width": 100,
+            "height": 50,
+            "x": 0,
+            "y": 0,
+            "parent_id": parent_id,
+            "depth": 0 if parent_id is None else 1,
+            "sort_order": 0,
+        }
+
+    def _spec_data(self, nodes: list[dict]) -> dict:
+        return {
+            "screen_name": "t",
+            "width": 400,
+            "height": 800,
+            "screen_origin_x": 0,
+            "screen_origin_y": 0,
+            "nodes": nodes,
+        }
+
+    def test_eid_prefix_uses_role_when_role_present(self) -> None:
+        from dd.ir import build_composition_spec
+        spec = build_composition_spec(self._spec_data([
+            self._node(1, "FRAME", "card"),
+        ]))
+        eids = list(spec["elements"].keys())
+        assert any(eid.startswith("card-") for eid in eids), (
+            f"Classified FRAME should get eid prefix 'card', got {eids}"
+        )
+
+    def test_eid_prefix_uses_type_when_role_absent(self) -> None:
+        from dd.ir import build_composition_spec
+        spec = build_composition_spec(self._spec_data([
+            self._node(1, "FRAME", None),
+        ]))
+        eids = list(spec["elements"].keys())
+        assert any(eid.startswith("frame-") for eid in eids), (
+            f"Unclassified FRAME should get eid prefix 'frame', got {eids}"
+        )
+
+    def test_eid_counter_namespaced_per_prefix(self) -> None:
+        from dd.ir import build_composition_spec
+        spec = build_composition_spec(self._spec_data([
+            self._node(1, "FRAME", "card"),
+            self._node(2, "FRAME", "card"),
+            self._node(3, "FRAME", "card"),
+            self._node(4, "FRAME", None),
+            self._node(5, "FRAME", None),
+        ]))
+        eids = sorted(spec["elements"].keys())
+        # Three cards should get card-1, card-2, card-3 (own counter)
+        card_eids = {e for e in eids if e.startswith("card-")}
+        assert card_eids == {"card-1", "card-2", "card-3"}, card_eids
+        # Two unclassified frames should get frame-1, frame-2 (separate
+        # counter)
+        frame_eids = {e for e in eids if e.startswith("frame-")}
+        assert frame_eids == {"frame-1", "frame-2"}, frame_eids
+
+    def test_classified_FRAME_and_real_RECTANGLE_do_not_share_counter(self) -> None:
+        """A FRAME classified as 'rectangle' and a real RECTANGLE share
+        the same eid prefix ('rectangle') and therefore share a counter
+        pool — there's only one namespace per prefix, by design. This
+        test locks in that choice (it's the same behaviour as today's
+        conflated rule — the split doesn't change it)."""
+        from dd.ir import build_composition_spec
+        spec = build_composition_spec(self._spec_data([
+            self._node(1, "RECTANGLE", None),      # eid: rectangle-1
+            self._node(2, "FRAME", "rectangle"),   # eid: rectangle-2
+        ]))
+        rect_eids = sorted(
+            e for e in spec["elements"].keys() if e.startswith("rectangle-")
+        )
+        assert rect_eids == ["rectangle-1", "rectangle-2"], rect_eids
+
+    def test_GROUP_eid_prefix_is_group(self) -> None:
+        from dd.ir import build_composition_spec
+        spec = build_composition_spec(self._spec_data([
+            self._node(1, "GROUP", None),
+        ]))
+        eids = list(spec["elements"].keys())
+        assert any(eid.startswith("group-") for eid in eids), eids
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")
