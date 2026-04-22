@@ -457,6 +457,13 @@ CREATE TABLE nodes (
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync
 
+    -- Classifier-assigned semantic role. Denormalized mirror of
+    -- screen_component_instances.canonical_type kept in sync at
+    -- classifier commit time. IR build reads this directly to avoid
+    -- the SCI join. See docs/plan-type-role-split.md. Nullable:
+    -- unclassified nodes keep role=NULL.
+    role            TEXT,                        -- Migration 021
+
     -- Plugin-API-only fields (REST cannot round-trip these)
     relative_transform TEXT,                     -- JSON [[a,b,e],[c,d,f]] parent-local affine matrix
     opentype_features  TEXT,                     -- JSON array of 4-char feature tags (e.g. ["ss01","liga"])

@@ -1144,6 +1144,9 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     # Include relative_transform if the column exists (migration-gated)
     node_cols_local = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
     rt_col = "n.relative_transform, " if "relative_transform" in node_cols_local else ""
+    # Migration 021: nodes.role (type/role split — plan-type-role-split.md).
+    # Gated for DBs that haven't run the migration yet.
+    role_col = "n.role, " if "role" in node_cols_local else ""
     cursor = conn.execute(
         "SELECT n.id as node_id, n.name, n.node_type, n.depth, n.sort_order, "
         "n.x, n.y, n.width, n.height, "
@@ -1154,6 +1157,7 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
         "n.font_family, n.font_weight, n.font_size, "
         "n.parent_id, n.component_key, n.visible, "
         f"{rt_col}"
+        f"{role_col}"
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "
         "FROM nodes n "
         "LEFT JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "

@@ -120,6 +120,37 @@ class TestStage0Backfill:
         assert result_2["populated"] == 1
 
 
+class TestStage0QueryReturnsRole:
+    def test_query_screen_for_ir_returns_role_column(self) -> None:
+        from dd.db import init_db
+        from dd.ir import query_screen_for_ir
+
+        conn = init_db(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F');
+            INSERT INTO screens (id, file_id, figma_node_id, name, width, height)
+                VALUES (1, 1, 'sn1', 'T', 400, 800);
+            INSERT INTO nodes
+                (id, screen_id, figma_node_id, name, node_type,
+                 role, depth, sort_order)
+            VALUES
+                (10, 1, 'n10', 'Card', 'FRAME', 'card', 0, 0),
+                (11, 1, 'n11', 'Heading', 'TEXT', 'heading', 1, 0),
+                (12, 1, 'n12', 'Unclass', 'RECTANGLE', NULL, 1, 1);
+            """
+        )
+        conn.commit()
+
+        result = query_screen_for_ir(conn, 1)
+        nodes_by_id = {n["node_id"]: n for n in result["nodes"]}
+
+        assert nodes_by_id[10]["role"] == "card"
+        assert nodes_by_id[11]["role"] == "heading"
+        assert nodes_by_id[12]["role"] is None
+
+
 class TestStage0ClassifyV2WritesRole:
     def test_insert_llm_verdicts_writes_nodes_role(self) -> None:
         conn = sqlite3.connect(":memory:")
