@@ -240,6 +240,8 @@ def compose_screen(
         if children:
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
+            elements[eid] = element
+            return eid
         elif (
             not component_key
             and not _mode3_disabled()
@@ -256,12 +258,51 @@ def compose_screen(
             # (F3). Template-to-parent merge already happened above
             # via _apply_template_to_parent; leaf types get their
             # visible text via props.text instead.
-            synthetic_ids = _mode3_synthesise_children(
+            synthetic_by_pos = _mode3_synthesise_children(
                 comp_type, variant, props or {}, elements, _allocate_id,
                 parent_element=None,
             )
-            if synthetic_ids:
-                element["children"] = synthetic_ids
+            external_top = synthetic_by_pos.get("top") or []
+            external_bottom = synthetic_by_pos.get("bottom") or []
+            internal_ids: list[str] = []
+            for pos, ids in synthetic_by_pos.items():
+                if pos in ("top", "bottom"):
+                    continue
+                internal_ids.extend(ids)
+            if internal_ids:
+                element["children"] = internal_ids
+
+            # Label-hoist (per docs/research/scorer-calibration-and-
+            # som-fidelity.md §6.1): slots declared with position="top"
+            # or "bottom" are EXTERNAL siblings, not internal children.
+            # SoM surfaced the bug — text_input was rendering as a
+            # container of stacked text labels because we lumped the
+            # `label` slot as internal. Fix: wrap the parent in an
+            # outer vertical frame when external positions are present.
+            if external_top or external_bottom:
+                elements[eid] = element
+                wrapper_eid = _allocate_id("frame")
+                wrapper_children: list[str] = []
+                wrapper_children.extend(external_top)
+                wrapper_children.append(eid)
+                wrapper_children.extend(external_bottom)
+                wrapper_layout: dict[str, Any] = {
+                    "direction": "vertical",
+                    "sizing": {"width": "fill", "height": "hug"},
+                    "gap": 4,
+                }
+                wrapper: dict[str, Any] = {
+                    "type": "frame",
+                    "layout": wrapper_layout,
+                    "children": wrapper_children,
+                    "_label_hoist": {
+                        "parent_type": comp_type,
+                        "external_top": list(external_top),
+                        "external_bottom": list(external_bottom),
+                    },
+                }
+                elements[wrapper_eid] = wrapper
+                return wrapper_eid
 
         elements[eid] = element
         return eid
@@ -443,6 +484,21 @@ def _extract_llm_text_values(
 _TEXT_SLOT_PROP_ALIASES: tuple[str, ...] = (
     "text", "label", "title", "headline", "placeholder", "message", "description",
 )
+
+# Some alias props are semantically positional — they should not fill
+# a slot at an incompatible position. Without this, an LLM emitting
+# ``text_input {props: {placeholder: "Search..."}}`` (no label) would
+# see the "placeholder" alias swallowed by the label slot (position=top)
+# because it's first in slot-declaration order. Surfaced by SoM coverage
+# test 2026-04-21.
+#
+# Keyed on the alias prop name. Value is the set of slot positions the
+# alias is allowed to fill. Aliases absent from this map match any
+# position (preserving prior behavior for generic aliases like "text").
+_ALIAS_POSITION_WHITELIST: dict[str, frozenset[str]] = {
+    "placeholder": frozenset({"fill", "start", "end", "_default"}),
+    "helper": frozenset({"bottom"}),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -761,14 +817,24 @@ def _mode3_synthesise_children(
     elements: dict[str, dict[str, Any]],
     allocate_id,
     parent_element: dict[str, Any] | None = None,
-) -> list[str]:
+) -> dict[str, list[str]]:
     """Produce synthetic child IR eids for a parent that has no LLM
-    children.
+    children, partitioned by slot position.
+
+    Returns a dict keyed on slot ``position`` ("top", "bottom", "start",
+    "end", "fill", or "_default" when unset). Each value is the list of
+    synthesised eids for that position.
+
+    Label-hoist contract (2026-04-21): positions "top" and "bottom" are
+    EXTERNAL siblings of the parent (label above / helper below in an
+    outer wrapper frame). Positions "fill", "start", "end", "_default"
+    stay as INTERNAL children of the parent. The caller (``_build_element``)
+    is responsible for wrapping when external children are present.
 
     Walks the resolved ``PresentationTemplate``'s slot grammar; for
     each text-typed slot with a matching prop in ``props`` (directly by
     slot name or via the ``_TEXT_SLOT_PROP_ALIASES`` fallbacks), allocates
-    a text-child IR element and returns its eid.
+    a text-child IR element and routes it into the position bucket.
 
     Historically this also applied the template to the parent element
     — that merge is now factored out into
@@ -776,20 +842,22 @@ def _mode3_synthesise_children(
     ``_build_element`` (H1). The ``parent_element`` kwarg is retained
     for API compat but no longer applies template layout/style.
     """
+    by_position: dict[str, list[str]] = {}
     registry = _default_provider_registry()
     template, _errors = registry.resolve(comp_type, variant, {})
     if template is None:
-        return []
+        return by_position
 
     if not template.slots:
-        return []
+        return by_position
 
-    child_ids: list[str] = []
     consumed_props: set[str] = set()
 
     for slot_name, slot_spec in template.slots.items():
         if not _slot_accepts_text(slot_spec):
             continue
+
+        slot_position = getattr(slot_spec, "position", None) or "_default"
 
         value: str | None = None
         if slot_name in props and slot_name not in consumed_props and props[slot_name]:
@@ -798,6 +866,14 @@ def _mode3_synthesise_children(
         else:
             for alias in _TEXT_SLOT_PROP_ALIASES:
                 if alias in consumed_props:
+                    continue
+                # Positional aliases (placeholder, helper) refuse to fill
+                # slots at incompatible positions — otherwise
+                # `{placeholder: "Search..."}` with no label would land the
+                # placeholder in the label slot (position=top) because it's
+                # first in declaration order. Surfaced 2026-04-21 by SoM.
+                whitelist = _ALIAS_POSITION_WHITELIST.get(alias)
+                if whitelist is not None and slot_position not in whitelist:
                     continue
                 if alias in props and props[alias]:
                     value = str(props[alias])
@@ -826,6 +902,7 @@ def _mode3_synthesise_children(
             child_style.setdefault("fill", fg_ref)
 
         child_eid = allocate_id("text")
+        position = getattr(slot_spec, "position", None) or "_default"
         child: dict[str, Any] = {
             "type": "text",
             "props": {"text": str(value)},
@@ -834,15 +911,16 @@ def _mode3_synthesise_children(
                 "parent_type": comp_type,
                 "parent_variant": variant,
                 "slot": slot_name,
+                "position": position,
                 "provider": template.provider,
             },
         }
         if child_style:
             child["style"] = child_style
         elements[child_eid] = child
-        child_ids.append(child_eid)
+        by_position.setdefault(position, []).append(child_eid)
 
-    return child_ids
+    return by_position
 
 
 def _slot_accepts_text(slot_spec) -> bool:

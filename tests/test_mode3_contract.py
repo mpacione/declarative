@@ -650,6 +650,157 @@ class TestComposeIntegration:
         assert button.get("component_key") == "button/primary"
 
 
+class TestMode3TextInputLabelHoist:
+    """Mode-3 text_input label-hoist contract.
+
+    The universal catalog's text_input template declares:
+    - ``label`` slot at position="top"     (external sibling ABOVE the input)
+    - ``input`` slot at position="fill"    (the actual input field content)
+    - ``helper`` slot at position="bottom" (external sibling BELOW the input)
+
+    Pre-fix behavior (2026-04-21 Tier D re-gate): ``_mode3_synthesise_children``
+    lumped ALL slot children as INTERNAL children of the text_input frame.
+    Result: SoM correctly classified the input as ``container`` because
+    visually a frame with "Email" + "Enter your email" stacked inside is
+    NOT an input widget. Surfaced by SoM component-coverage scoring on
+    the archetype login prompt (SoM-P=0.43, SoM-R=0.30, VLM=9/10).
+
+    Fix contract: Mode-3 must wrap text_input in an outer vertical frame
+    that holds [label text, text_input frame [placeholder text]]. Label +
+    helper become EXTERNAL siblings; only input-slot text stays inside.
+    """
+
+    def test_label_becomes_external_sibling(self):
+        from dd.compose import compose_screen
+        spec = compose_screen([{
+            "type": "text_input",
+            "props": {"label": "Email", "placeholder": "Enter your email"},
+        }])
+        elements = spec["elements"]
+
+        # Find the text_input element
+        tis = [
+            (eid, e) for eid, e in elements.items() if e["type"] == "text_input"
+        ]
+        assert len(tis) == 1, "exactly one text_input element"
+        ti_eid, ti_element = tis[0]
+
+        # Find the label text (should exist as a text element with props.text="Email")
+        labels = [
+            (eid, e) for eid, e in elements.items()
+            if e["type"] == "text"
+            and (e.get("props") or {}).get("text") == "Email"
+        ]
+        assert len(labels) == 1, "exactly one 'Email' text element"
+        label_eid, _ = labels[0]
+
+        # The label must NOT be an internal child of the text_input
+        ti_children = ti_element.get("children") or []
+        assert label_eid not in ti_children, (
+            f"'Email' label should NOT be an internal child of text_input. "
+            f"text_input.children={ti_children}"
+        )
+
+    def test_placeholder_stays_internal(self):
+        """The `input` slot's placeholder text is visually inside the input
+        field (rendered greyer) — stays as an internal child."""
+        from dd.compose import compose_screen
+        spec = compose_screen([{
+            "type": "text_input",
+            "props": {"label": "Password", "placeholder": "Enter your password"},
+        }])
+        elements = spec["elements"]
+
+        tis = [
+            (eid, e) for eid, e in elements.items() if e["type"] == "text_input"
+        ]
+        ti_eid, ti_element = tis[0]
+        placeholders = [
+            (eid, e) for eid, e in elements.items()
+            if e["type"] == "text"
+            and (e.get("props") or {}).get("text") == "Enter your password"
+        ]
+        assert len(placeholders) == 1, "exactly one placeholder text"
+        ph_eid, _ = placeholders[0]
+
+        ti_children = ti_element.get("children") or []
+        assert ph_eid in ti_children, (
+            f"placeholder should be an internal child of text_input. "
+            f"text_input.children={ti_children}"
+        )
+
+    def test_wrapper_frame_contains_label_and_input(self):
+        """The outer wrapper (created during label-hoist) contains the label
+        text followed by the text_input frame as siblings."""
+        from dd.compose import compose_screen
+        spec = compose_screen([{
+            "type": "text_input",
+            "props": {"label": "Email", "placeholder": "Enter your email"},
+        }])
+        elements = spec["elements"]
+
+        ti_eid = next(
+            eid for eid, e in elements.items() if e["type"] == "text_input"
+        )
+        label_eid = next(
+            eid for eid, e in elements.items()
+            if e["type"] == "text" and (e.get("props") or {}).get("text") == "Email"
+        )
+
+        # Find the wrapper: the element whose children include BOTH the
+        # label and the text_input.
+        wrappers = [
+            (eid, e) for eid, e in elements.items()
+            if label_eid in (e.get("children") or [])
+            and ti_eid in (e.get("children") or [])
+        ]
+        assert len(wrappers) == 1, (
+            "a single wrapper frame must contain both label and text_input"
+        )
+        wrapper_eid, wrapper = wrappers[0]
+
+        # Label ordered BEFORE the input (position='top' means visually
+        # above in a vertical stack)
+        children = wrapper.get("children") or []
+        assert children.index(label_eid) < children.index(ti_eid), (
+            "label must come before text_input in the wrapper's children"
+        )
+        # Wrapper layout is vertical (label stacks above input)
+        assert (wrapper.get("layout") or {}).get("direction") == "vertical"
+
+    def test_text_input_without_label_no_wrapper(self):
+        """When there's no label, no wrapper needed — text_input returns
+        directly with just its internal children."""
+        from dd.compose import compose_screen
+        spec = compose_screen([{
+            "type": "text_input",
+            "props": {"placeholder": "Search..."},
+        }])
+        elements = spec["elements"]
+        tis = [
+            (eid, e) for eid, e in elements.items() if e["type"] == "text_input"
+        ]
+        assert len(tis) == 1
+        # No wrapper frame — the text_input is a direct root_child of screen-1
+        screen_children = elements.get("screen-1", {}).get("children") or []
+        assert tis[0][0] in screen_children, (
+            "text_input without label should be a direct root child"
+        )
+
+    def test_round_trip_signature_preserved(self):
+        """Label-hoist doesn't change compose_screen's return shape —
+        still returns {root, elements, ...}."""
+        from dd.compose import compose_screen
+        spec = compose_screen([{
+            "type": "text_input",
+            "props": {"label": "Name", "placeholder": "Jane Doe"},
+        }])
+        assert "root" in spec
+        assert "elements" in spec
+        # root points at a valid element
+        assert spec["root"] in spec["elements"]
+
+
 # ---------------------------------------------------------------------------
 # PR #1 — Feature flags (kill switches)
 # ---------------------------------------------------------------------------

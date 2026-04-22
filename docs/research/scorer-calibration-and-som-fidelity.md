@@ -243,11 +243,18 @@ In order of dependency:
 
 Three natural successor units surfaced during the work:
 
-- **Fix Mode-3 text_input hydration.** SoM surfaced a real bug: IR
-  declares `text_input` but the renderer emits a frame-of-text-
-  children which SoM correctly labels `container`. Corresponds to
-  pre-existing `test_mode3_contract.py` failures. Compose-layer
-  work, ~1 day with TDD.
+- ~~**Fix Mode-3 text_input hydration.**~~ **✅ SHIPPED 2026-04-21.**
+  SoM surfaced the bug: text_input's `label` slot declared
+  `position="top"` (external sibling), but
+  `_mode3_synthesise_children` lumped it as an internal child. Plus
+  a latent aliasing bug (`placeholder` prop was hijacking the
+  `label` slot via alias fallback). Fix in `dd/compose.py`:
+  `_mode3_synthesise_children` now returns `dict[position, list[eid]]`,
+  `_build_element` wraps in an outer frame when external positions
+  have children, `_ALIAS_POSITION_WHITELIST` constrains positional
+  aliases. 5 new TDD tests; re-gate on same archetype prompt: SoM-P
+  0.43→0.71 (+65% rel), SoM-R 0.30→0.50 (+67% rel), struct 3.0→5.0.
+  Visually: label now sits above the input box as intended.
 - **Prompt-intent coverage** (this doc §G3, unpublished territory).
   Extract expected components from the PROMPT via a separate LLM
   pass, then SoM-score against prompt-intent (not IR). Would

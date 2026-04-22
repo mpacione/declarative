@@ -118,6 +118,40 @@ Variance measurement artefacts preserved:
 - `tmp/tier_d_variance/variance.json`
 - `tmp/tier_d_variance/run{1,2,3}/` — per-run artefacts for audit
 
+## Follow-up: Mode-3 text_input label-hoist (commit `<TBD>`)
+
+The SoM dim flagged text_input rendering as `container` on archetype
+login (visually: labels stacked INSIDE the input frame). The
+universal catalog's `text_input` template declares the `label` slot
+at `position="top"` (external sibling above), but
+`_mode3_synthesise_children` was lumping all slot children as
+internal children, ignoring `position`.
+
+**Fix (TDD, 5 new tests):**
+- `_mode3_synthesise_children` now returns `dict[position, list[eid]]`
+  — partitioning children by the slot's declared position.
+- `_build_element` wraps the parent in an outer vertical frame when
+  any external (`top`/`bottom`) children are produced: wrapper
+  holds `[top siblings, parent, bottom siblings]`.
+- Closed a latent aliasing bug: `placeholder` prop was filling the
+  `label` slot (position=top) via alias fallback. Added
+  `_ALIAS_POSITION_WHITELIST` so `placeholder` can only fill
+  `{"fill", "start", "end", "_default"}` positions.
+
+**Result on Tier D archetype re-gate (same prompt, 1 run):**
+
+| metric | before | after |
+|---|---|---|
+| struct | 3.0 | **5.0** |
+| SoM-P | 0.43 | **0.71** (+65% rel) |
+| SoM-R | 0.30 | **0.50** (+67% rel) |
+| VLM | 9/10 | 9/10 |
+
+Visual diff: label "Email" now sits **above** a stroked input box
+containing "Enter your email" placeholder — instead of the prior
+"two stacked labels inside a frame." SoM now sees `text_input` as
+a detected type (previously only `container`).
+
 ## What's deferred (not blocked, just next)
 
 Three things surfaced that would be natural next units:
