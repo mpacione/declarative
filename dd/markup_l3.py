@@ -54,6 +54,7 @@ __all__ = [
     "PropAssign",
     "PathOverride",
     "SlotFill",
+    "EmptyNode",
     "Literal_",
     "TokenRef",
     "FunctionCall",
@@ -269,9 +270,25 @@ class SlotPlaceholder:
 
 
 @dataclass(frozen=True)
+class EmptyNode:
+    """Sentinel for a SlotFill whose RHS is `{empty}`.
+
+    Backend-neutral signal that a slot is intentionally not filled in
+    this usage. Lowered natively by each backend:
+
+    - Figma renderer emits `.visible = false` on the descendant node
+      that the component master reserves for this slot.
+    - HTML / React renderer skips the conditional render.
+    - SwiftUI lowers to `EmptyView()`.
+    - Compose lowers to null-slot.
+    """
+    kind: str = "empty-node"
+
+
+@dataclass(frozen=True)
 class SlotFill:
     slot_name: str
-    node: "Node"
+    node: Union["Node", "EmptyNode"]
     kind: str = "slot-fill"
 
 
@@ -1775,6 +1792,14 @@ def _parse_block_statement(c: _Cursor) -> object:
                 and rhs.value in _TYPE_KEYWORDS
                 and rhs_lookahead.type == "LPAREN"
             )
+            # `{empty}` sentinel — SlotFill with an EmptyNode RHS.
+            # Matches LBRACE IDENT(="empty") RBRACE exactly.
+            is_empty_slot_rhs = (
+                rhs.type == "LBRACE"
+                and rhs_lookahead.type == "IDENT"
+                and rhs_lookahead.value == "empty"
+                and c.peek(4).type == "RBRACE"
+            )
             is_node_rhs = (
                 not is_function_call_rhs
                 and (
@@ -1783,6 +1808,13 @@ def _parse_block_statement(c: _Cursor) -> object:
                     or rhs.type == "AMP"
                 )
             )
+            if is_empty_slot_rhs:
+                slot_name = c.advance().value
+                c.advance()  # =
+                c.advance()  # {
+                c.advance()  # empty
+                c.advance()  # }
+                return SlotFill(slot_name=slot_name, node=EmptyNode())
             if is_node_rhs:
                 slot_name = c.advance().value
                 c.advance()  # =
@@ -2519,6 +2551,10 @@ def _check_duplicate_eids(top_level: list[object]) -> None:
                 # SlotFill node is a sibling in the same scope — its
                 # head eid counts toward the enclosing scope's tally.
                 node = stmt.node
+                if isinstance(node, EmptyNode):
+                    # `{empty}` sentinel carries no eid and no block —
+                    # nothing to check or recurse into.
+                    continue
                 if node.head.eid:
                     if node.head.eid in seen:
                         raise DDMarkupParseError(
@@ -2610,7 +2646,8 @@ def _check_function_names(
                 elif isinstance(stmt, PathOverride):
                     scan_value(stmt.value)
                 elif isinstance(stmt, SlotFill):
-                    scan_node(stmt.node)
+                    if not isinstance(stmt.node, EmptyNode):
+                        scan_node(stmt.node)
 
     for ta in tokens:
         scan_value(ta.value)
@@ -2687,7 +2724,8 @@ def _collect_pattern_refs(item: object, out: list[str]) -> None:
             for s in item.block.statements:
                 _collect_pattern_refs(s, out)
     if isinstance(item, SlotFill):
-        _collect_pattern_refs(item.node, out)
+        if not isinstance(item.node, EmptyNode):
+            _collect_pattern_refs(item.node, out)
 
 
 def _check_token_cycles(tokens: tuple[TokenAssign, ...]) -> None:
@@ -2939,7 +2977,8 @@ def _check_unresolved_refs(
                 elif isinstance(s, PathOverride):
                     scan(s.value, scalar_params)
                 elif isinstance(s, SlotFill):
-                    scan_node(s.node, scalar_params)
+                    if not isinstance(s.node, EmptyNode):
+                        scan_node(s.node, scalar_params)
 
     # Token-block values resolve against themselves + universal fallback
     for ta in tokens:
@@ -3391,6 +3430,8 @@ class _Emitter:
         if isinstance(s, PathOverride):
             return f"{s.path}={self.emit_value(s.value)}"
         if isinstance(s, SlotFill):
+            if isinstance(s.node, EmptyNode):
+                return f"{s.slot_name} = {{empty}}"
             return f"{s.slot_name} = {self._emit_node_inline(s.node)}"
         raise DDMarkupSerializeError(
             f"cannot emit inline block statement of type {type(s).__name__}",
@@ -3417,16 +3458,21 @@ class _Emitter:
                 )
             elif isinstance(stmt, SlotFill):
                 self.out.append(f"{inner_ind}{stmt.slot_name} = ")
-                # Emit the slot-fill node inline when it has no block,
-                # or with a block when it does.
                 n = stmt.node
-                head = self._emit_node_head(n.head)
-                self.out.append(head)
-                if n.block is not None:
-                    self.out.append(" ")
-                    self.emit_block(n.block, depth=depth + 1)
+                if isinstance(n, EmptyNode):
+                    # `{empty}` sentinel — slot intentionally empty in
+                    # this usage (grammar-level slot visibility).
+                    self.out.append("{empty}\n")
                 else:
-                    self.out.append("\n")
+                    # Emit the slot-fill node inline when it has no
+                    # block, or with a block when it does.
+                    head = self._emit_node_head(n.head)
+                    self.out.append(head)
+                    if n.block is not None:
+                        self.out.append(" ")
+                        self.emit_block(n.block, depth=depth + 1)
+                    else:
+                        self.out.append("\n")
             else:
                 raise DDMarkupSerializeError(
                     f"unknown block statement type: {type(stmt).__name__}",
