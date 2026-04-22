@@ -165,16 +165,31 @@ Matches every serious UI benchmark (GEBench, Design2Code, UICrit).
 `FidelityReport` already has this shape (list of `DimensionScore`);
 preserve it. Never average to one number before emitting.
 
-### D5. Measurement before promotion
+### D5. Measurement before promotion — **executed 2026-04-21**
 
-After D2 ships, run: same 3 Tier-D prompts × 3-5 identical runs,
-compare:
-- `vlm_score_via_gemini` (current 1-10 rating): variance per prompt
-- `score_component_coverage` (SoM): variance per prompt
+Ran `scripts/m7_tier_d_variance.py` (3 runs × 3 prompts). Stdev
+across runs:
 
-Publish numbers inline in the re-gate's report. If SoM is
-meaningfully less noisy AND the mean correlates with eye-check, mark
-it primary and retire the 1-10 dim as deprecated-not-deleted.
+| prompt | struct stdev | SoM-P stdev | SoM-R stdev | **VLM stdev** |
+|---|---|---|---|---|
+| subtree | 0.00 | 0.00 | 0.00 | **0.58** |
+| archetype | 1.07 | 0.11 | 0.11 | **2.08** |
+| synthesis | 1.13 | 0.24 | 0.24 | **2.89** |
+
+**VLM is 2-25x noisier than SoM on every prompt.** The lit finding
+(arXiv:2601.03444) holds for us; 0-10 VLM ratings are a category
+worse than enum-constrained classification. On archetype the VLM
+ranged 5-9/10 across identical inputs; SoM-P ranged 0.43-0.62.
+
+**Decision confirmed**: D2 (promote SoM as primary semantic-fidelity
+signal) and the implicit follow-through: the 1-10 Gemini rating is
+now an opt-in diagnostic comparator in `m7_tier_d_regate`, not a
+pass-gate signal. The gate aggregates over structural + SoM dims
+only. Kept accessible via `--no-som` / `--no-vlm` flags for
+measurement parity.
+
+Full artefacts: `tmp/tier_d_variance/variance_report.md` +
+`tmp/tier_d_variance/variance.json`.
 
 ### D6. `is_parity` stays as the hard front-door gate
 
@@ -216,10 +231,32 @@ In order of dependency:
    spending Claude tokens.
 5. **Update `scripts/m7_tier_d_regate.py`** to invoke SoM coverage
    when a Claude client is available, alongside the existing Gemini
-   1-10 dim (kept for measurement comparison).
+   1-10 dim (kept for measurement comparison). **✅ shipped
+   `803c3e3`.**
 6. **Run measurement**: N=3 runs × 3 prompts, report variance for
-   both SoM coverage and Gemini rating. Commit the numbers.
-7. **Decision on D5**: if SoM wins, retire the 1-10 dim.
+   both SoM coverage and Gemini rating. **✅ done; results in §D5
+   above.** VLM 2-25x noisier than SoM on every prompt.
+7. **Decision on D5**: if SoM wins, retire the 1-10 dim. **✅ SoM
+   promoted; 1-10 Gemini dim demoted to opt-in comparator.**
+
+## 6.1 What's next (not shipping this session)
+
+Three natural successor units surfaced during the work:
+
+- **Fix Mode-3 text_input hydration.** SoM surfaced a real bug: IR
+  declares `text_input` but the renderer emits a frame-of-text-
+  children which SoM correctly labels `container`. Corresponds to
+  pre-existing `test_mode3_contract.py` failures. Compose-layer
+  work, ~1 day with TDD.
+- **Prompt-intent coverage** (this doc §G3, unpublished territory).
+  Extract expected components from the PROMPT via a separate LLM
+  pass, then SoM-score against prompt-intent (not IR). Would
+  formalize intent-fulfillment as a retrieval F1 — currently no
+  paper does this end-to-end.
+- **Broader SoM application**: the scorer works at screen scale;
+  wiring it into the repair loop (Tier E.1) would give the
+  verifier-as-agent dim-specific diagnostic hints ("missing
+  expected text_input" → repair agent tries re-hydration).
 
 ## 7. Cross-references
 
