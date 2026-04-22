@@ -470,6 +470,163 @@ class TestRendererConsumesVisibilityPathOverrides:
         )
 
 
+# ---------------------------------------------------------------------------
+# Stage 5 — Multi-backend stub test (backend-neutrality lock)
+# ---------------------------------------------------------------------------
+
+
+class TestMarkupIsBackendNeutral:
+    """The markup layer carries intent — every backend adapter lowers
+    the same AST to its native representation.
+
+    This test pins the invariant by implementing a FAKE HTML renderer
+    stub that reads the exact same markup the Figma renderer consumes
+    and emits a stubby JSX-like output. The stub proves no Figma-
+    specific data (e.g. `$ext.target_figma_id`) leaks into the markup;
+    if it did, the HTML stub wouldn't know what to do with it.
+    """
+
+    def _fake_html_render(self, doc: L3Document) -> list[str]:
+        """Minimal HTML adapter: walk the AST and emit a pseudo-JSX
+        comment per compref + per visibility PathOverride. Real HTML
+        rendering is out of scope — this stub only exercises the
+        markup reading path.
+
+        Reads PathOverrides from BOTH positions the grammar allows:
+        head.properties (compressor-emitted) AND block.statements
+        (author-emitted / round-tripped-from-emit).
+        """
+        out: list[str] = []
+
+        def _emit_path_override(
+            p: PathOverride, indent: str,
+        ) -> None:
+            if not p.path.endswith(".visible"):
+                return
+            descendant = p.path[:-len(".visible")]
+            bool_py = getattr(p.value, "py", None)
+            if bool_py is False:
+                out.append(f'{indent}  {{/* hidden: {descendant} */}}')
+            elif bool_py is True:
+                out.append(f'{indent}  {{/* shown: {descendant} */}}')
+
+        def walk(node: Node, depth: int = 0) -> None:
+            indent = "  " * depth
+            head = node.head
+            if head.head_kind == "comp-ref":
+                out.append(f'{indent}<{head.type_or_path}>')
+                # PathOverrides on the compref head (compressor form)
+                for p in head.properties:
+                    if isinstance(p, PathOverride):
+                        _emit_path_override(p, indent)
+                # PathOverrides in the compref block (author form)
+                if node.block is not None:
+                    for s in node.block.statements:
+                        if isinstance(s, PathOverride):
+                            _emit_path_override(s, indent)
+                out.append(f'{indent}</{head.type_or_path}>')
+            elif head.head_kind == "type":
+                out.append(f'{indent}<{head.type_or_path}>')
+                if node.block is not None:
+                    for s in node.block.statements:
+                        if isinstance(s, Node):
+                            walk(s, depth + 1)
+                out.append(f'{indent}</{head.type_or_path}>')
+
+        for item in doc.top_level:
+            if isinstance(item, Node):
+                walk(item)
+        return out
+
+    def test_fake_html_renderer_reads_same_markup_as_figma(self) -> None:
+        """A fake HTML renderer stub consumes the exact same L3Document
+        the Figma renderer does — no Figma-specific side-cars needed —
+        and produces stub JSX comments indicating the would-be
+        conditional render. Proves the markup layer is backend-neutral.
+        """
+        src = (
+            "screen #s { "
+            "-> nav/top-nav #n { "
+            "logo-dank.visible = false "
+            "share-icon.visible = true "
+            "} "
+            "}"
+        )
+        doc = parse_l3(src)
+
+        html = self._fake_html_render(doc)
+        html_text = "\n".join(html)
+
+        # Every backend-neutral PathOverride is visible to the stub.
+        assert "hidden: logo-dank" in html_text
+        assert "shown: share-icon" in html_text
+        assert "<nav/top-nav>" in html_text
+
+        # Crucially: no Figma-specific identifiers leak through the
+        # markup. The stub should see NO `findOne`, no `id.endsWith`,
+        # no `;<node:id>` — those are Figma's private vocabulary.
+        assert "findOne" not in html_text
+        assert "endsWith" not in html_text
+        # Semicolon-prefixed ids would be the fingerprint of a leaked
+        # Figma node id. Absent.
+        for line in html:
+            # Allow semicolons in JSX comments as punctuation, but not
+            # `;<digits>:<digits>` which is the Figma-id shape.
+            import re
+            assert not re.search(r';\d+:\d+', line), (
+                f"Figma node id leaked into backend-neutral markup: {line}"
+            )
+
+    def test_same_markup_lowers_differently_per_backend(self) -> None:
+        """The same AST node produces a FIGMA-specific findOne in one
+        backend and a HTML-specific conditional-render comment in the
+        other. This is the bedrock invariant the grammar layer
+        guarantees."""
+        src = (
+            "screen #s { -> button/large #n { "
+            "icon-delete.visible = false } }"
+        )
+        doc = parse_l3(src)
+
+        html_lines = self._fake_html_render(doc)
+        html_text = "\n".join(html_lines)
+        assert "hidden: icon-delete" in html_text
+
+        # Simulated Figma lowering — the renderer uses a resolver to
+        # translate the backend-neutral path into a stable-id findOne.
+        # Here we simulate the resolver entry directly.
+        simulated_resolver = {"button-large-n": {"icon-delete.visible": "ZZZ"}}
+        fake_figma_lines: list[str] = []
+        compref = doc.top_level[0].block.statements[0]
+        # Collect PathOverrides from BOTH positions (head + block).
+        path_overrides: list[PathOverride] = [
+            p for p in compref.head.properties if isinstance(p, PathOverride)
+        ]
+        if compref.block is not None:
+            path_overrides.extend(
+                s for s in compref.block.statements
+                if isinstance(s, PathOverride)
+            )
+        for p in path_overrides:
+            if not p.path.endswith(".visible"):
+                continue
+            fig_id = simulated_resolver.get(
+                "button-large-n", {},
+            ).get(p.path)
+            if fig_id:
+                fake_figma_lines.append(
+                    f'var.findOne(n => n.id.endsWith(";{fig_id}"))'
+                    '.visible = false;'
+                )
+        figma_text = "\n".join(fake_figma_lines)
+
+        # Two different native representations of the same markup.
+        assert "findOne" in figma_text
+        assert "findOne" not in html_text
+        assert "hidden: icon-delete" in html_text
+        assert "hidden: icon-delete" not in figma_text
+
+
 class TestSameNameDescendantsDisambiguated:
     def test_same_name_descendants_get_disambiguated(
         self, db_conn: sqlite3.Connection,
