@@ -1,0 +1,35 @@
+-- Migration 021: add `role` to nodes.
+--
+-- Stage 0 of the type/role split — see docs/plan-type-role-split.md.
+--
+-- Every IR element today carries a single `type` field that conflates
+-- two different answers: (a) what Figma primitive to create (FRAME,
+-- TEXT, RECTANGLE, ...) and (b) what the classifier thinks the element
+-- represents semantically (heading, card, button_group, ...). When a
+-- classifier labels a FRAME-with-children as "text", the renderer
+-- tries to emit createText().appendChild() and fails — 24 of 25
+-- current round-trip drifts trace back to this conflation.
+--
+-- The fix splits into two fields at the IR layer. `type` (always
+-- present) carries the structural primitive from Figma; `role`
+-- (optional) carries the classifier's semantic label. Downstream
+-- dispatch reads `type`; grammar/emit reads `role`. Wrong `role` is
+-- annoying; wrong `type` breaks renders. Separating them confines
+-- classifier error to the annoying class by construction.
+--
+-- `screen_component_instances.canonical_type` remains the
+-- write-source-of-truth with full provenance (confidence, reason,
+-- ensemble breakdown, reviews). `nodes.role` is the cheap-read
+-- denormalized column populated at classifier commit time. The
+-- classifier pipeline (dd/classify_v2) writes to both. IR build
+-- reads nodes.role directly without joining SCI.
+--
+-- Nullable: nodes without a classifier opinion (or nodes whose
+-- canonical_type is absent / below threshold) simply have role=NULL.
+-- IR build then emits only `type`, no role attr in the markup head.
+--
+-- Run: sqlite3 your.declarative.db < migrations/021_add_nodes_role.sql
+-- After running, backfill: UPDATE nodes SET role = (SELECT canonical_type
+-- FROM screen_component_instances sci WHERE sci.node_id = nodes.id);
+
+ALTER TABLE nodes ADD COLUMN role TEXT;
