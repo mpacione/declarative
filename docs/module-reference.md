@@ -2,40 +2,31 @@
 
 > Every module in the system, what it does, its public API, and how it maps to the four-layer architecture.
 > Reference document — for a high-level introduction see the [repo README](../README.md), for the architecture spec see [`compiler-architecture.md`](compiler-architecture.md).
-> Updated 2026-04-16 (pt 6).
+> Updated 2026-04-22.
 >
-> **Partial-update notice (2026-04-21 cleanup sweep):** the body of this
-> document still describes the M4-era extraction pipeline accurately,
-> but does NOT yet reflect modules added or renamed during M5–M7
-> sprints + the April cleanup. Specifically:
+> **Body currency notice**: the Layer 1–4 sections below describe the
+> M4-era extraction pipeline accurately (and those modules remain in
+> use). Modules added during M5–M7 sprints are inventoried in the new
+> [§ v0.3 Pipeline Additions (M5–M7)](#v03-pipeline-additions-m5m7)
+> section at the end of this doc — add-then-merge rather than a full
+> rewrite, to avoid churning stable content.
 >
 > - **Renamed**: `dd/m7_slots.py` → `dd/slots.py` (M7.0.b slot derivation),
 >   `dd/m7_variants.py` → `dd/variants.py` (M7.0.c variant family
 >   derivation). All scripts `scripts/m7_*.py` → `scripts/*.py`.
-> - **Added during M5–M7**: `dd/markup_l3.py` (grammar parser/emitter +
->   `apply_edits` engine), `dd/compress_l3.py` (DB → L3 AST),
->   `dd/render_figma_ast.py` (markup-native renderer; default after
->   M5b), `dd/composition/` (provider registry + 4 backends),
->   `dd/structural_verbs.py` (M7.4 verb scaffolds), `dd/repair_agent.py`
->   (M7.5 verifier-as-agent loop), `dd/forces.py` (M7.0.d compositional
->   roles), `dd/patterns.py` (M7.0.e cross-screen pattern extraction),
->   `dd/sticker_sheet.py` (M7.0.f tagging), `dd/apply_render.py`
->   (compose-edit-render pipeline including
->   `rebuild_maps_after_edits` + `walk_rendered_via_bridge`),
->   `dd/fidelity_score.py` (Tier C / D scorer with SoM coverage),
->   `dd/render_protocol.py` (RenderProtocol ABC), `dd/repair_figma.py`
->   (verifier adapter for repair loop), `dd/classify_v2.py` +
->   `dd/classify_consensus.py` + `dd/classify_vision_som.py` +
->   `dd/classify_vision_som_worker.py` (M7.0.a 4-source classifier).
 > - **Pending deprecation per `docs/DEPRECATION.md`**: `dd/markup.py`
 >   (vestigial pre-grammar serializer; tied to M6(b) gate),
 >   `dd/ir.py::generate_ir / build_composition_spec / query_screen_visuals`
 >   (replaced by `derive_markup` + on-demand DB lookups inside
 >   `render_figma`), `dd/renderers/figma.py::generate_figma_script`
 >   (replaced by `render_figma`).
+> - **2026-04-22 additions**: type/role split — `dd/ir.py` now emits
+>   `{type (primitive), role (optional semantic)}`; grammar carries
+>   `role=` as head PropAssign. `nodes.role` column via migration 021.
+>   See [`plan-type-role-split.md`](plan-type-role-split.md).
 >
-> Body refresh deferred to a dedicated documentation pass. For
-> current-truth module inventory, use code-graph MCP or grep.
+> For current-truth module inventory beyond what's captured here, use
+> code-graph MCP (`code-graph-mcp map`) or grep.
 
 ---
 
@@ -570,3 +561,171 @@ Paths, thresholds, API limits. `SCHEMA_PATH`, `USE_FIGMA_CODE_LIMIT`.
 
 ### dd/types.py — Constants
 `NON_SEMANTIC_PREFIXES`, `SEMANTIC_NODE_TYPES` — filtering heuristics for extraction.
+
+---
+
+## v0.3 Pipeline Additions (M5–M7)
+
+This section inventories modules added during **M5** (Option B cutover,
+2026-04-19) through **M7** (synthetic generation, 2026-04-21) and the
+**type/role split** (2026-04-22). Full details live in per-module
+docstrings and linked design docs; the entries below are navigation
+anchors plus 1–2 lines each.
+
+### Grammar / IR Pipeline (M5–M6)
+
+- **`dd/markup_l3.py`** — L3 markup grammar parser, emitter, AST
+  (`NodeHead`, `Node`, `L3Document`, etc.), `apply_edits` engine for
+  the 7-verb edit grammar (M7.1). Source of truth for the markup
+  spec; see `docs/decisions/v0.3-grammar-modes.md`.
+- **`dd/compress_l3.py`** — Compressor from CompositionSpec dict →
+  L3 AST (`compress_to_l3_with_maps`). Produces side-car maps keyed
+  on `id(Node)` to disambiguate cousin subtrees with colliding eids.
+  Emits `role=<semantic>` head prop when `element.role != element.type`
+  (type/role split, 2026-04-22).
+- **`dd/render_figma_ast.py`** — Markup-native Figma renderer
+  (`render_figma`). Default post-M6 render path, replacing the
+  dict-IR `dd.renderers.figma.generate_figma_script`. Emits
+  `leaf_type_append_skipped` soft diagnostic when a leaf-typed parent
+  would crash on `appendChild`. The type/role split reduced these
+  emissions from 22/corpus → 0 on round-trip.
+- **`dd/render_protocol.py`** — `RenderProtocol` ABC. Cross-backend
+  contract scaffold for future HTML / Swift / Jetpack renderers.
+
+### Classification (M7.0.a, 4-source pipeline)
+
+- **`dd/classify_v2.py`** — 4-source classifier pipeline
+  (LLM + PS + CS + SoM). `_insert_llm_verdicts` also syncs
+  `nodes.role` alongside `screen_component_instances.canonical_type`
+  (type/role split, 2026-04-22).
+- **`dd/classify_consensus.py`** — Weighted-majority consensus
+  (rule v2 with SoM weight 2; see `project_m7_classifier_v2.md`).
+- **`dd/classify_dedup.py`** — Pre-classification dedup applied
+  before any API call.
+- **`dd/classify_review.py`** + **`dd/classify_audit.py`** — Tier 1.5
+  review CLI and post-classification audit reports.
+- **`dd/classify_few_shot.py`** — Few-shot prompt scaffolding for
+  the LLM classifier.
+- **`dd/classify_vision_som.py`** +
+  **`dd/classify_vision_som_worker.py`** — Set-of-Marks (SoM) vision
+  classifier; weight-2 source in consensus.
+- **`dd/classify_vision_batched.py`**,
+  **`dd/classify_vision_crop.py`**,
+  **`dd/classify_vision_gemini.py`** — Per-crop, batched, and
+  Gemini vision paths.
+
+### Composition (M7.0.d–f + M7.6)
+
+- **`dd/composition/registry.py`** — `ProviderRegistry` dispatches
+  composition requests across provider backends.
+- **`dd/composition/cascade.py`** — 3-mode cascade: Mode 1 INSTANCE →
+  Mode 2 catalog template → Mode 3 synthesis.
+- **`dd/composition/protocol.py`** — Provider ABC.
+- **`dd/composition/archetype_classifier.py`** +
+  **`archetype_injection.py`** — Archetype detection and donor
+  injection (M7.6 S4).
+- **`dd/composition/slots.py`** + **`dd/composition/variants.py`** —
+  Slot grammar and variant-family composition helpers (not the same
+  as top-level `dd/slots.py` / `dd/variants.py`, which are the
+  M7.0.b/c derivation pipelines).
+- **`dd/composition/matrix_contracts.py`** +
+  **`matrix_measures.py`** — Contract-matrix and measurement
+  primitives for synthesis.
+- **`dd/composition/plan.py`** — Composition plan structures.
+- **`dd/composition/providers/universal.py`** —
+  `UniversalCatalogProvider` (Mode-2 template fallback).
+- **`dd/composition/providers/project_ckr.py`** —
+  `ProjectCKRProvider` (Mode-1 master lookup via
+  `component_key_registry`).
+- **`dd/composition/providers/corpus_retrieval.py`** —
+  `CorpusRetrievalProvider` (v0.2 corpus-fragment retrieval).
+  Emits post-type/role-split IR (`type` = primitive, `role` =
+  optional semantic) as of 2026-04-22.
+- **`dd/composition/providers/ingested.py`** — Provider backed by
+  external ingested libraries.
+- **`dd/forces.py`** — M7.0.d compositional-role labeling. Alexander
+  forces guard: `<role> in <context>` (e.g., `main-cta in login-form`).
+  Migration 019.
+- **`dd/patterns.py`** — M7.0.e cross-screen pattern extraction and
+  scoring.
+- **`dd/sticker_sheet.py`** — M7.0.f sticker-sheet tagging for
+  archetype injection.
+
+### Edit grammar and repair (M7.1 → M7.5)
+
+- **`dd/structural_verbs.py`** — Implementations of the 7-verb edit
+  grammar (`set` / `delete` / `append` / `insert` / `move` / `swap` /
+  `replace`). Called by `apply_edits` in `dd/markup_l3.py`.
+- **`dd/apply_render.py`** — Compose-edit-render pipeline.
+  `rebuild_maps_after_edits` refreshes the compressor's `id(Node)`-keyed
+  side-car maps after `_splice_node`; `walk_rendered_via_bridge` wraps
+  the walk harness for programmatic round-trips.
+- **`dd/repair_agent.py`** — M7.5 verifier-as-agent loop. Consumes
+  `StructuredError.hint` and proposes edit-grammar operations
+  (`delete` / swap / type override) to recover from verifier errors.
+- **`dd/repair_figma.py`** — Figma-specific verifier adapter feeding
+  the repair loop.
+
+### Scoring (Tier C / D)
+
+- **`dd/fidelity_score.py`** — 7-dimension structural fidelity scorer:
+  `coverage`, `rootedness`, `font_readiness`,
+  `component_child_consistency`, `leaf_type_structural`,
+  `canvas_coverage`, `content_richness`. Optional SoM-based
+  `component_precision` + `component_recall` dims layered on top.
+
+### Type/role split (2026-04-22)
+
+Splits the IR `type` field into:
+
+- **`type`** — structural primitive (`frame` / `text` / `rectangle` /
+  `group` / `instance` / `line` / `ellipse` / `vector`), always
+  present, deterministic (from `node_type`). Dispatch-safe.
+- **`role`** — classifier's semantic label (`heading`, `card`,
+  `button`, `container`, …), optional, elided when `role == type`.
+
+See [`plan-type-role-split.md`](plan-type-role-split.md).
+New helpers: `dd/ir.py::_resolve_primitive_type` (structural-only),
+`dd/compose.py::_semantic_type` (role-first reader with type
+fallback for Mode 3 pre-split LLM output). Markup emits `role=<value>`
+as a regular head `PropAssign`; no grammar-schema change. `nodes.role`
+column added via **migration 021** and backfilled from SCI.
+
+### Other additions
+
+- **`dd/checkerboard.py`** — Checkerboard background generator for
+  self-hidden-node rendering in vision classification.
+- **`dd/visual_inspect.py`** — Visual-diagnostic helpers; hard vs
+  soft error partitioning for walk reports.
+- **`dd/library_catalog.py`** — Component-library catalog utilities.
+- **`dd/slots.py`** (renamed from `m7_slots.py`) — Slot derivation
+  pipeline (M7.0.b).
+- **`dd/variants.py`** (renamed from `m7_variants.py`) — Variant-family
+  derivation pipeline (M7.0.c).
+- **`dd/paths.py`** — Path-derivation utilities.
+- **`dd/plugin_render.py`** — Plugin-side render helpers for
+  vision classification (`render_screen_with_visible_nodes`).
+- **`dd/maintenance.py`** — DB maintenance CLI (`prune-extraction-runs`).
+- **`dd/extract_targeted.py`** — Targeted extraction CLI
+  (`properties` / `sizing` / `transforms` / `vector-geometry` modes).
+- **`dd/extract_inventory.py`** — Inventory-mode extraction helpers
+  used by `dd/extract.py`.
+- **`dd/curate_report.py`** — Curation-stage reporting (CLI-facing
+  through `dd/curate.py`).
+
+### Migrations (since M5)
+
+| # | File | What |
+|---|---|---|
+| 011 | `classification_reason.sql` | LLM/vision reason column on SCI |
+| 011 | `catalog_ontology_v2.sql` | Catalog ontology v2 |
+| 012 | `variant_token_bindings.sql` | Variant-scoped token bindings |
+| 013 | `three_source_classification.sql` | LLM + PS + CS consensus columns |
+| 014 | `rename_classification_reason.sql` | Rename after 011 |
+| 015 | `preserve_llm_verdict.sql` | Keep LLM verdict across rerun |
+| 016 | `catalog_normalization.sql` | Canonical type catalog tables |
+| 017 | `som_verdict_columns.sql` | SoM vision-verdict columns |
+| 018 | `components_canonical_type.sql` | Components row canonical type |
+| 019 | `forces_compositional_role.sql` | Alexander forces labeling |
+| 020 | `components_authoritative_source.sql` | Components write-source-of-truth |
+| 021 | `add_nodes_role.sql` | `nodes.role` column for type/role split |
