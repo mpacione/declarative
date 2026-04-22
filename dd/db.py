@@ -238,6 +238,37 @@ def run_migration(conn: sqlite3.Connection, migration_path: str) -> dict:
     return {"added": added, "skipped": skipped, "errors": errors}
 
 
+def backfill_nodes_role(conn: sqlite3.Connection) -> dict:
+    """Populate ``nodes.role`` from ``screen_component_instances.canonical_type``.
+
+    One-time backfill for Stage 0 of the type/role split (see
+    ``docs/plan-type-role-split.md``). After migration 021 adds the
+    ``role`` column, call this once on an existing DB to denormalize
+    classifier output onto ``nodes``. Going forward, the classifier
+    pipeline writes ``nodes.role`` alongside every SCI write.
+
+    Idempotent: re-running re-writes the same values. Nodes without an
+    SCI row stay ``role=NULL``.
+
+    Returns ``{"populated": N}`` where N is the count of non-NULL roles
+    after the backfill.
+    """
+    conn.execute(
+        """
+        UPDATE nodes
+        SET role = (
+            SELECT canonical_type FROM screen_component_instances sci
+            WHERE sci.node_id = nodes.id
+        )
+        """
+    )
+    conn.commit()
+    populated = conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE role IS NOT NULL"
+    ).fetchone()[0]
+    return {"populated": populated}
+
+
 def classify_screens(conn: sqlite3.Connection) -> dict:
     """Classify screens by type based on dimensions.
 
