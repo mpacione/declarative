@@ -679,3 +679,52 @@ class TestSameNameDescendantsDisambiguated:
         assert len(paths) == len(set(paths)), (
             f"duplicate PathOverride paths for instance {nid}: {paths}"
         )
+
+
+class TestEmptyNodeGuardsInDefineBody:
+    """V1 audit (2026-04-22) found an unguarded EmptyNode consumer in
+    the Define-body branch of ``_check_function_names`` at
+    ``dd/markup_l3.py:2673``. When a define body contains a direct
+    ``slot = {empty}`` SlotFill statement, the semantic pass calls
+    ``scan_node(stmt.node)`` without first checking
+    ``isinstance(stmt.node, EmptyNode)`` — unlike the sibling branch
+    at line 2649 which DOES guard. Result: AttributeError on valid
+    grammar.
+
+    The fix is a symmetric isinstance guard; these tests pin the
+    invariant so future maintainers can't regress it.
+    """
+
+    def test_parse_define_with_empty_slot_body_does_not_crash(self) -> None:
+        """Reproducer from V1 audit. Before fix: AttributeError."""
+        from dd.markup_l3 import parse_l3
+        src = "define my_pat() {\n  foo = {empty}\n}\n"
+        # The parse itself is fine — the crash was in the semantic
+        # pass that runs after parsing.
+        doc = parse_l3(src)
+        assert doc is not None
+
+    def test_parse_define_with_mixed_empty_and_real_body_fills(self) -> None:
+        """Multiple slot-fills in a body, some empty some real, all
+        must survive the semantic pass without AttributeError."""
+        from dd.markup_l3 import parse_l3
+        src = (
+            "define my_pat() {\n"
+            "  leading = {empty}\n"
+            "  label = frame #l\n"
+            "  trailing = {empty}\n"
+            "}\n"
+        )
+        doc = parse_l3(src)
+        assert doc is not None
+
+    def test_parse_nested_define_empty_roundtrip(self) -> None:
+        """Round-trip: a define containing `{empty}` must emit and
+        reparse cleanly."""
+        from dd.markup_l3 import emit_l3, parse_l3
+        src = "define my_pat() {\n  foo = {empty}\n}\n"
+        doc1 = parse_l3(src)
+        emitted = emit_l3(doc1)
+        doc2 = parse_l3(emitted)
+        # Structural equality — the semantic pass runs again on doc2.
+        assert doc1.top_level == doc2.top_level

@@ -2670,7 +2670,11 @@ def _check_function_names(
                     elif isinstance(stmt, PathOverride):
                         scan_value(stmt.value)
                     elif isinstance(stmt, SlotFill):
-                        scan_node(stmt.node)
+                        # `{empty}` sentinel: no node to scan.
+                        # Symmetric with the sibling branch at ~line 2649.
+                        # V1 audit 2026-04-22 caught this missing guard.
+                        if not isinstance(stmt.node, EmptyNode):
+                            scan_node(stmt.node)
 
 
 def _check_define_cycles(top_level: list[object]) -> None:
