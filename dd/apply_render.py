@@ -505,7 +505,7 @@ def walk_rendered_via_bridge(
     script: str,
     ws_port: int = 9228,
     walk_script: Path = _DEFAULT_WALK_SCRIPT,
-    timeout: float = 180.0,
+    timeout: float = 320.0,
     node_binary: Optional[str] = None,
     keep_artifacts: bool = False,
     artifact_dir: Optional[Path] = None,

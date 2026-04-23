@@ -104,9 +104,11 @@ class TestFigmaRenderer:
         assert len(result.errors) == 1
 
     def test_walk_with_default_ctx(self) -> None:
-        """Passing no ctx defaults to port 9228 / 180s timeout
-        (aligned with walk_rendered_via_bridge's own default + the
-        170s walk_ref.js PROXY_EXECUTE cap + 10s JSON I/O tail)."""
+        """Passing no ctx defaults to port 9228 / 320s timeout.
+        Outer Python watchdog must exceed walk_ref.js's 310s client
+        watchdog, which itself exceeds the 300s PROXY_EXECUTE cap
+        (Phase 1 perf 2026-04-22 — bumped from 170s, which was ours
+        not Figma's)."""
         renderer = FigmaRenderer()
         artifact = RenderArtifact(
             kind="figma-js", payload="x", metadata={},
@@ -117,7 +119,7 @@ class TestFigmaRenderer:
         ) as mock_walk:
             renderer.walk(artifact)
         assert mock_walk.call_args.kwargs["ws_port"] == 9228
-        assert mock_walk.call_args.kwargs["timeout"] == 180.0
+        assert mock_walk.call_args.kwargs["timeout"] == 320.0
 
     def test_walk_passes_walk_script_through_ctx(self) -> None:
         """Docstring lists walk_script as a valid ctx key — verify

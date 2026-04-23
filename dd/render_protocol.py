@@ -185,10 +185,10 @@ class FigmaRenderer(Renderer):
 
         ``ctx`` optionally supplies ``ws_port`` / ``timeout`` /
         ``node_binary`` / ``keep_artifacts`` / ``artifact_dir`` /
-        ``walk_script``. Defaults align with the underlying
-        wrapper's own defaults (timeout=180s — the ``walk_ref.js``
-        PROXY_EXECUTE timeout is 170s; 180 gives a 10s tail for
-        network + JSON I/O).
+        ``walk_script``. Defaults align with the underlying wrapper
+        (timeout=320s — Python subprocess must exceed the JS
+        watchdog at 310s which itself exceeds the PROXY_EXECUTE
+        limit at 300s; see walk_ref.js + sweep.py WALK_TIMEOUT).
         """
         from dd.apply_render import walk_rendered_via_bridge
 
@@ -196,7 +196,7 @@ class FigmaRenderer(Renderer):
         kwargs: dict[str, Any] = {
             "script": artifact.payload,
             "ws_port": ctx.get("ws_port", 9228),
-            "timeout": ctx.get("timeout", 180.0),
+            "timeout": ctx.get("timeout", 320.0),
             "node_binary": ctx.get("node_binary"),
             "keep_artifacts": ctx.get("keep_artifacts", False),
             "artifact_dir": ctx.get("artifact_dir"),

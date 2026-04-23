@@ -16,7 +16,7 @@ function connect(port) {
   });
 }
 
-function send(ws, payload, timeout_ms = 180000) {
+function send(ws, payload, timeout_ms = 310000) {
   return new Promise((resolve, reject) => {
     const id = payload.id || `sc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     payload.id = id;
