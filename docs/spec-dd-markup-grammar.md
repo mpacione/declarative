@@ -215,7 +215,11 @@ per `feedback_fail_open_not_closed.md`).
 `set`, `append`, `insert`, `delete`, `move`, `swap`, `replace`
 
 **Value keywords:**
-`true`, `false`, `null`, `hug`, `fill`, `fixed`
+`true`, `false`, `null`, `hug`, `fill`, `fixed`, `empty`
+
+The `empty` keyword is recognized only inside `{empty}` in a SlotFill
+RHS — see §3.6 for the sentinel semantics and per-backend lowering.
+Elsewhere `empty` is a plain identifier.
 
 ### 2.8 Sigils
 
@@ -382,11 +386,15 @@ Block            ::= '{' EOL?
                        (Node | SlotPlaceholder | PropAssign | PathOverride
                         | SlotFill | ValueTrailer)*
                      '}'
-SlotFill         ::= IDENT '=' NodeExpr                // inside a pattern-ref body
+SlotFill         ::= IDENT '=' (NodeExpr | EmptyFormExpr)
+                                                       // inside a pattern-ref body
                                                        // or a CompRef Block (for
                                                        // Figma instance overrides
                                                        // targeting a slot-shaped
                                                        // child of the master)
+EmptyFormExpr    ::= '{' 'empty' '}'                   // explicit "slot is empty
+                                                       // in this usage" sentinel;
+                                                       // see §3.6
 SlotPlaceholder  ::= '{' IDENT '}'                     // expands slot/arg at
                                                        // semantic analysis; same
                                                        // lexical form as TokenRef,
@@ -405,7 +413,7 @@ ValueTrailer     ::= '#[' IDENT PropAssign* ']'        // value-level provenance
 
 ### 3.1 Disambiguating `{` contexts
 
-`{` opens one of four syntactic regions, distinguished by what precedes
+`{` opens one of five syntactic regions, distinguished by what precedes
 and what follows:
 
 | Context | Recognition | Example |
@@ -414,6 +422,7 @@ and what follows:
 | **TokenRef / ParamRef** (value position) | After `=` or inside a function-call arg list — single identifier-path inside | `fill={color.surface.card}` |
 | **SlotPlaceholder** (block position) | Standalone statement in a Block, single IDENT inside braces | `{cta}` on its own line |
 | **PropGroup** | After `=` — `key=value` pairs inside | `padding={top=8 bottom=12}` |
+| **EmptyFormExpr** | After `=` in a SlotFill RHS — exactly the token `empty` followed by `}` | `leading = {empty}` |
 
 Parser state determines context:
 - **In a Block**, `{IDENT}` as a standalone statement is a
@@ -424,6 +433,13 @@ Parser state determines context:
     `.` or `}`, it's a TokenRef / ParamRef (resolves to a scalar).
   - If the next non-whitespace token is an IDENT followed by `=`, it's
     a PropGroup (nested key-value properties).
+- **In SlotFill value position** (RHS of a SlotFill assignment inside a
+  PatternRef or CompRef Block): if the tokens are exactly `{ empty }`
+  (with no other content), it is an **EmptyFormExpr** — a sentinel
+  meaning "this slot is intentionally empty in this usage". See §3.6.
+  Any other RHS starting with `{` in this position falls through to
+  the normal value-position disambiguation (TokenRef / PropGroup /
+  empty-brace rejection) — see existing parse-error surface.
 
 ### 3.2 Disambiguating slot-fill vs property-assign
 
@@ -444,6 +460,7 @@ in PatternRef and CompRef block contexts):
 | StringLit / NumberLit / HexColorLit / AssetHashLit / BoolLit / NullLit | PropAssign |
 | `{` (followed by IDENT `.` / IDENT `}`) | PropAssign (TokenRef value) |
 | `{` (followed by IDENT `=`) | PropAssign (PropGroup value) |
+| `{` (followed by `empty` `}`) | SlotFill (EmptyFormExpr) — see §3.6 |
 | `fill` / `hug` / `fixed` (bare SizingKeyword) | PropAssign (Sizing value) |
 | `fill(` / `hug(` | PropAssign (SizingBounded) |
 | IDENT `(` (other function names) | PropAssign (FunctionCall value) |
@@ -634,7 +651,17 @@ class PathOverride:
 class SlotFill:
     kind: Literal["slot-fill"] = "slot-fill"
     slot_name: str
-    node: Node                                  # single NodeExpr
+    node: Union[Node, "EmptyNode"]              # single NodeExpr, or the
+                                                # `{empty}` sentinel (see §3.6)
+
+
+@dataclass(frozen=True)
+class EmptyNode:
+    """Sentinel for the `{empty}` SlotFill form. Not a Node — carries
+    no type, no children, no identity; semantically means "no node
+    here in this usage". Parsers MUST produce a SlotFill with
+    `node=EmptyNode()` exactly when the RHS is `{empty}`."""
+    kind: Literal["empty-node"] = "empty-node"
 
 
 # --- Values ---------------------------------------------------------------
@@ -756,6 +783,90 @@ All three are pure functions. `parse_l3` + `emit_l3` satisfy:
 - `emit_l3(parse_l3(src))` is idempotent under a `parse_l3` reparse
 
 The emitter is deterministic (§7.5, §7.6 ordering rules).
+
+### 3.6 `{empty}` sentinel — explicit slot-is-empty form
+
+The `{empty}` form is a SlotFill RHS that means "no node here in this
+usage of the pattern or component". It is a **distinct AST shape** from
+the absence of a slot fill:
+
+- **Absent slot fill** — the define's default NodeExpr for that slot
+  applies (if any), exactly as written in the `define`.
+- **`slot = {empty}`** — the caller explicitly declares the slot is
+  unfilled at this call site. The default is suppressed.
+
+The distinction matters because every backend lowers the two
+differently. Absence means "use the default"; `{empty}` means "render
+nothing".
+
+**Syntactic rules:**
+
+- `{empty}` is legal **only** on the RHS of a SlotFill (inside a
+  PatternRef Block or a CompRef Block).
+- Exact token sequence: `{` `empty` `}`. Interior whitespace is
+  permitted between tokens (the sentinel is lexical, not byte-
+  exact). Any other content between braces — additional tokens, a
+  typo on `empty` (which becomes a TokenRef lookup and fails to
+  resolve), or an empty `{}` — falls through to the standard value-
+  position parse errors.
+- The AST shape is a SlotFill whose `.node` is an `EmptyNode()`
+  sentinel instance. Parsers MUST NOT emit a SlotFill with `.node =
+  None`; use the sentinel.
+- The round-trip property holds: `emit_l3(parse_l3("x = {empty}"))
+  == "x = {empty}"`.
+
+**Where `empty` is a reserved word:** only inside the exact `{empty}`
+form in a SlotFill RHS. In every other position — IDENT in property
+keys, slot-placeholder names in Block position, etc. — `empty` is a
+plain identifier. This is a context-free disambiguation (no lookahead
+beyond the enclosing `{` position).
+
+**Per-backend lowering (informative — not part of the grammar):**
+
+- **Figma** — emit `.visible = false` on the descendant node in the
+  instance subtree bound to this slot. The renderer uses the same
+  stable-id resolver as `PathOverride .visible = false` (EBNF line
+  for PathOverride is in §3 above; renderer implementation at
+  `dd/renderers/figma.py`).
+- **React / HTML** — conditionally skip the JSX/element; e.g. emit
+  `{slot === null && ...}` or omit the child entirely.
+- **SwiftUI** — substitute `EmptyView()`.
+- **Compose** — pass `null` to the slot parameter.
+
+Backend-neutrality is preserved: the markup-layer AST carries only the
+`EmptyNode` sentinel. Each backend renderer resolves it into native
+representation; no Figma-specific `;<figma_id>` identifiers ever
+appear in the grammar.
+
+**Interaction with `define` defaults:**
+
+```
+define card_with_action() {
+  & frame #root {
+    title = text #t { text="Title" }
+    action = button #a { text="Go" }
+  }
+}
+
+// Usage A — default applies (renders both slots)
+& card_with_action
+
+// Usage B — explicit `{empty}` suppresses the default for `action`
+& card_with_action { action = {empty} }
+
+// Usage C — slot replaced with a different node
+& card_with_action { action = icon #close-icon }
+```
+
+**Related feature: PathOverride `.visible=false`.** Both express
+"don't show this descendant"; pick based on whether the target is
+slot-shaped (use `{empty}`) or a non-slot descendant that the
+compressor discovered via `instance_overrides` / `nodes.visible=0`
+(use PathOverride — EBNF at §3 above). The compressor emits
+PathOverride by default because slot-shape information is not
+reliably carried from the Figma master into the DB; tooling may
+later prefer `{empty}` once the define's slot table is resolvable
+at compression time.
 
 ---
 
