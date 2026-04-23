@@ -512,3 +512,283 @@ class TestHiddenChildrenPathRemoved:
             f"the builder; got {len(hc_lists)} from visuals table. "
             f"First 3 offenders: {hc_lists[:3]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage 4 — Acceptance pins for the subagent-B H3 classes
+# ---------------------------------------------------------------------------
+
+
+class TestH3AcceptancePins:
+    """Regression pins for the three largest H3 descendant-name
+    classes in the Dank corpus (2026-04-22 subagent-B audit):
+
+    - `icon/wallet` — 1,636 occurrences, overwhelmingly inside nested
+      `nav/top-nav` chains. Depth 3 cases dominate.
+    - `Buy Trophy` — 209 occurrences inside button/medium-translucent
+      instances.
+    - `icon/close` — 90 occurrences inside button/large/translucent.
+
+    These tests use synthetic fixtures to reproduce the depth-1
+    direct-slot shape (325 corpus cases sit at this depth). Each
+    asserts that compress → render emits an id-based visibility
+    hide for the descendant. A future regression silently dropping
+    H3 coverage would fire these pins instantly.
+
+    Production-grade end-to-end coverage (the real Dank nav chains
+    at depth 3) is already pinned by
+    `TestProductionRendererUsesResolver.test_generate_figma_script_...`
+    above. Stage 4 adds tight, deterministic fixtures that don't
+    depend on the corpus DB.
+    """
+
+    def _build_h3_instance(
+        self,
+        descendant_name: str,
+        *,
+        inst_node_id: int = 900,
+        desc_node_id: int = 901,
+        inst_figma_id: str = "5749:1000",
+        desc_figma_suffix: str = "5749:2000",
+    ) -> tuple[sqlite3.Connection, dict[str, int]]:
+        """Minimal schema: one screen, one classified INSTANCE with a
+        single DB-hidden descendant. No `instance_overrides` row —
+        this is the H3 shape (Figma Plugin API didn't capture the
+        master-default hide)."""
+        conn = dd_db.init_db(":memory:")
+        _insert_screen(conn, 1)
+        _insert_node(
+            conn, inst_node_id, 1, inst_figma_id, None,
+            "top-nav", "INSTANCE",
+            component_key="ck_top_nav",
+        )
+        _insert_node(
+            conn, desc_node_id, 1,
+            f"I{inst_figma_id};{desc_figma_suffix}",
+            inst_node_id,
+            descendant_name, "INSTANCE", visible=0,
+        )
+        conn.commit()
+        return conn, {"top-nav": inst_node_id}
+
+    def _assert_h3_hide_emitted(
+        self,
+        descendant_name: str,
+        expected_path_prefix: str,
+        desc_figma_suffix: str = "5749:2000",
+    ) -> None:
+        """Compress + assert a `<path_prefix>.visible=false` emission
+        with a resolver entry pointing at `desc_figma_suffix`."""
+        conn, node_id_map = self._build_h3_instance(
+            descendant_name,
+            desc_figma_suffix=desc_figma_suffix,
+        )
+        resolver_out: dict[str, dict[str, str]] = {}
+        overrides = _fetch_descendant_visibility_overrides(
+            conn, node_id_map, ["top-nav"],
+            resolver_out=resolver_out,
+        )
+        try:
+            assert "top-nav" in overrides, (
+                f"H3 pin for descendant {descendant_name!r}: resolver "
+                f"produced no PathOverride; expected ≥1"
+            )
+            bucket = overrides["top-nav"]
+            paths = [po.path for po in bucket]
+            assert any(
+                p.startswith(expected_path_prefix) and p.endswith(".visible")
+                for p in paths
+            ), (
+                f"H3 pin for descendant {descendant_name!r}: expected "
+                f"a path starting with {expected_path_prefix!r}; got "
+                f"{paths}"
+            )
+            # The resolver must map that path to the descendant's
+            # Figma stable-child id (last `;`-segment), which the
+            # renderer lowers to `id.endsWith(";<fig>")`.
+            resolver_bucket = resolver_out.get("top-nav", {})
+            matched_path = next(
+                p for p in paths
+                if p.startswith(expected_path_prefix)
+                and p.endswith(".visible")
+            )
+            assert resolver_bucket.get(matched_path) == desc_figma_suffix, (
+                f"H3 pin for descendant {descendant_name!r}: resolver "
+                f"path→fig_id mapping wrong; got "
+                f"{resolver_bucket.get(matched_path)!r}, expected "
+                f"{desc_figma_suffix!r}"
+            )
+        finally:
+            conn.close()
+
+    def test_h3_pin_icon_wallet_hidden_at_depth_one(self) -> None:
+        """`icon/wallet` is the largest H3 class (1,636 corpus hits).
+        A silent regression here would re-surface a hidden wallet
+        icon on every screen that classifies it into a nav chain."""
+        self._assert_h3_hide_emitted(
+            "icon/wallet", "icon-wallet",
+        )
+
+    def test_h3_pin_icon_close_hidden_at_depth_one(self) -> None:
+        """`icon/close` — 90 cases inside button/large/translucent
+        instances."""
+        self._assert_h3_hide_emitted(
+            "icon/close", "icon-close",
+        )
+
+    def test_h3_pin_buy_trophy_hidden_at_depth_one(self) -> None:
+        """`Buy Trophy` — 209 cases inside button/medium-translucent."""
+        self._assert_h3_hide_emitted(
+            "Buy Trophy", "buy-trophy",
+        )
+
+    def test_h3_pin_multiple_descendants_per_instance(self) -> None:
+        """Real corpus instances frequently have multiple H3 hides in
+        a row (e.g. nav/top-nav's `icon/wallet` + `Buy Trophy` +
+        `icon/close` all hidden together). Pin that the resolver
+        emits one entry per hidden descendant with no cross-talk."""
+        conn = dd_db.init_db(":memory:")
+        _insert_screen(conn, 1)
+        _insert_node(
+            conn, 1000, 1, "5749:3000", None, "top-nav", "INSTANCE",
+            component_key="ck_top_nav",
+        )
+        _insert_node(
+            conn, 1001, 1, "I5749:3000;5749:3100", 1000,
+            "icon/wallet", "INSTANCE", visible=0,
+        )
+        _insert_node(
+            conn, 1002, 1, "I5749:3000;5749:3200", 1000,
+            "Buy Trophy", "INSTANCE", visible=0,
+        )
+        _insert_node(
+            conn, 1003, 1, "I5749:3000;5749:3300", 1000,
+            "icon/close", "INSTANCE", visible=0,
+        )
+        # A visible sibling that must NOT appear in the hide list.
+        _insert_node(
+            conn, 1004, 1, "I5749:3000;5749:3400", 1000,
+            "share-icon", "INSTANCE", visible=1,
+        )
+        conn.commit()
+
+        overrides = _fetch_descendant_visibility_overrides(
+            conn, {"top-nav": 1000}, ["top-nav"],
+        )
+        paths = {po.path for po in overrides.get("top-nav", [])}
+        assert any(p.startswith("icon-wallet") for p in paths), paths
+        assert any(p.startswith("buy-trophy") for p in paths), paths
+        assert any(p.startswith("icon-close") for p in paths), paths
+        # Visible sibling is NOT hidden
+        assert not any(p.startswith("share-icon") for p in paths), (
+            f"visible sibling share-icon leaked into hide list: {paths}"
+        )
+        conn.close()
+
+    def test_h3_pin_end_to_end_emission_in_markup_ast(self) -> None:
+        """Full compress → render path: a synthetic screen with one
+        H3 descendant must produce markup with a `.visible=false`
+        PathOverride AND a resolver entry mapping it to the descendant
+        Figma id. Exercises every pipe piece short of the live Figma
+        bridge (verified via `TestProductionRendererUsesResolver`)."""
+        from dd.compress_l3 import compress_to_l3_with_resolver
+        from dd.markup_l3 import Node, PathOverride
+
+        conn = dd_db.init_db(":memory:")
+        _insert_screen(conn, 1)
+        # Root screen frame wrapping the instance — matches the
+        # compressor's synthetic-screen-wrapper collapse shape.
+        _insert_node(
+            conn, 1, 1, "S1:1", None, "screen-root", "FRAME",
+        )
+        _insert_node(
+            conn, 1100, 1, "5749:5000", 1, "top-nav", "INSTANCE",
+            component_key="ck_top_nav",
+        )
+        _insert_node(
+            conn, 1101, 1, "I5749:5000;5749:5100", 1100,
+            "icon/wallet", "INSTANCE", visible=0,
+        )
+        # Component key registry entry so the compressor resolves
+        # `ck_top_nav` to `top-nav` for the Mode-1 comp-ref head.
+        # Created ad-hoc because `dd.db.init_db` doesn't ship the
+        # table — it's built by `dd.templates.rebuild_ckr` in the real
+        # pipeline.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, name, figma_node_id, instance_count) "
+            "VALUES (?, ?, ?, ?)",
+            ("ck_top_nav", "nav/top-nav", "5749:5000", 1),
+        )
+        conn.commit()
+
+        # Build a minimal CompositionSpec by hand — the resolver path
+        # only requires `_node_id_map` + a root reference for the
+        # classified instance. `_mode1_eligible` on the instance
+        # triggers the CKR lookup that populates `eligible_eids`.
+        spec: dict = {
+            "root": "screen-root",
+            "elements": {
+                "screen-root": {
+                    "type": "screen",
+                    "children": ["top-nav"],
+                },
+                "top-nav": {
+                    "type": "instance",
+                    "component_key": "ck_top_nav",
+                    "children": [],
+                    "props": {},
+                    "_mode1_eligible": True,
+                },
+            },
+            "_node_id_map": {
+                "screen-root": 1,
+                "top-nav": 1100,
+            },
+        }
+        doc, resolver = compress_to_l3_with_resolver(
+            spec, conn, collapse_wrapper=False,
+        )
+
+        # Walk the AST collecting `.visible` PathOverrides on any
+        # CompRef.
+        visible_overrides: list[PathOverride] = []
+
+        def walk(node: Node) -> None:
+            for p in node.head.properties:
+                if isinstance(p, PathOverride) and p.path.endswith(".visible"):
+                    visible_overrides.append(p)
+            if node.block is not None:
+                for s in node.block.statements:
+                    if isinstance(s, Node):
+                        walk(s)
+
+        for n in doc.top_level:
+            if isinstance(n, Node):
+                walk(n)
+
+        assert len(visible_overrides) == 1, (
+            f"expected exactly 1 `.visible` PathOverride for the H3 "
+            f"descendant; got {len(visible_overrides)}: "
+            f"{[p.path for p in visible_overrides]}"
+        )
+        po = visible_overrides[0]
+        assert po.path.startswith("icon-wallet")
+        assert po.value.py is False
+
+        # Resolver must map the path → the descendant figma suffix.
+        flat_resolver: dict[str, str] = {}
+        for bucket in resolver.values():
+            flat_resolver.update(bucket)
+        assert flat_resolver.get(po.path) == "5749:5100", (
+            f"resolver must map {po.path!r} to '5749:5100'; got "
+            f"{flat_resolver.get(po.path)!r}"
+        )
+        conn.close()
