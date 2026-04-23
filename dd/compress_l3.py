@@ -1529,6 +1529,34 @@ def _fetch_descendant_visibility_overrides(
         in the subtree breaks the walk. Hidden ancestors outside the
         subtree don't count as H2 (they belong to a different
         instance or the screen itself).
+
+        FIXME (V4 audit 2026-04-22, M1): this walk inspects the
+        *master-default* ``nodes.visible`` flag only. It does NOT
+        fold Source A (`instance_overrides`) into the per-subtree
+        chain before walking. So the corner case:
+
+            master:     ancestor(visible=0), descendant(visible=1)
+            overrides:  ;ANCESTOR:visible=true  (unhide)
+                        ;DESCENDANT:visible=false  (hide)
+
+        …incorrectly filters out the DESCENDANT hide as hereditary,
+        because the ancestor is still `visible=0` in master. At
+        runtime the instance unhides the ancestor, so the descendant
+        hide SHOULD have emitted.
+
+        Real-corpus impact: **zero hits on Dank** (verified
+        empirically by the V4 audit). Plausible under v0.3 synthetic
+        generation once LLM-authored IR can emit the unhide+hide
+        pair. Related L1 (V4 audit): 1,918 redundant Source-B
+        emissions where Source A already hides the ancestor — same
+        rework fixes both.
+
+        Fix shape: before walking `subtree_chain`, overlay the Source
+        A `:visible=true/false` overrides onto the chain entries so
+        the walk sees the effective per-instance visibility, not the
+        master default. Deferred because PR 1 unification has already
+        shipped and no real corpus triggers the gap; revisit before
+        v0.3 synthetic-gen consumes the pipeline.
         """
         chain = subtree_chain.get(inst_id, {})
         cur_entry = chain.get(node_id)
