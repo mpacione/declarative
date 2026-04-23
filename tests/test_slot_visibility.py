@@ -13,6 +13,7 @@ next TDD cycle.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -376,14 +377,26 @@ class TestRendererConsumesVisibilityPathOverrides:
         # Every resolver entry's value is a Figma node id — short
         # string without the leading `;`. The renderer will prepend
         # the `;` when emitting `id.endsWith(";<nid>")`.
+        #
+        # Empirically on Dank (4996/4996 samples on 2026-04-22) the
+        # shape is strictly `^\d+:\d+$` — two integer components
+        # joined by `:`. Nested-override forms (e.g.
+        # `5749:84278;5749:82462`) are flattened at resolver-build
+        # time into one entry per descendant, so the `;` separator
+        # never reaches the renderer. This gate enforces that
+        # contract so a future regression (re-introducing the
+        # raw compound form) surfaces immediately.
+        fig_id_pattern = re.compile(r"\d+:\d+")
         for instance_eid, descendant_map in resolver.items():
             for path, fig_id in descendant_map.items():
                 assert path.endswith(".visible")
                 assert isinstance(fig_id, str)
                 assert fig_id and ";" not in fig_id
-                # Sanity: the stored fig_id is a Figma ":" id form
-                # like "5749:82459" (digits : digits).
-                assert ":" in fig_id or fig_id.isdigit() or True  # loose
+                assert fig_id_pattern.fullmatch(fig_id), (
+                    f"fig_id {fig_id!r} at "
+                    f"{instance_eid!r}/{path!r} does not match "
+                    f"Figma NNN:NNN id shape"
+                )
 
     def test_renderer_emits_findone_id_endswith_for_visibility_override(
         self, db_conn: sqlite3.Connection,
@@ -450,7 +463,6 @@ class TestRendererConsumesVisibilityPathOverrides:
         # Figma-stable-id suffix. Lax match — full line shape is
         # brittle; just check the stable-id appears in an
         # `id.endsWith(...)` clause followed by a `visible = ` stmt.
-        import re
         found = False
         for path, fig_id in expected_pairs:
             expected_suffix = f';{fig_id}'
@@ -572,59 +584,167 @@ class TestMarkupIsBackendNeutral:
         for line in html:
             # Allow semicolons in JSX comments as punctuation, but not
             # `;<digits>:<digits>` which is the Figma-id shape.
-            import re
             assert not re.search(r';\d+:\d+', line), (
                 f"Figma node id leaked into backend-neutral markup: {line}"
             )
 
-    def test_same_markup_lowers_differently_per_backend(self) -> None:
-        """The same AST node produces a FIGMA-specific findOne in one
-        backend and a HTML-specific conditional-render comment in the
-        other. This is the bedrock invariant the grammar layer
-        guarantees."""
-        src = (
+    def test_same_markup_lowers_differently_per_backend(
+        self, db_conn: sqlite3.Connection,
+    ) -> None:
+        """The same AST grammar (PathOverride `.visible=false` on a
+        comp-ref) produces a FIGMA-specific `findOne(id.endsWith(...))`
+        in one backend and a HTML-specific conditional-render comment
+        in the other.
+
+        V1 audit (2026-04-22) flagged the prior version of this test
+        as hand-concat'ing a fake Figma lowering instead of invoking
+        the real renderer. Now: the Figma branch runs the actual
+        `render_figma` pipeline on a real DB-compressed screen with
+        visibility overrides, and the HTML branch runs the stub
+        adapter on hand-authored markup. The shared invariant is the
+        grammar (PathOverride `.visible`), not the source bytes —
+        backend-neutrality means the AST is a ground truth both
+        adapters read, but each produces different native output."""
+        from dd.compress_l3 import (
+            compress_to_l3_with_maps, compress_to_l3_with_resolver,
+        )
+        from dd.ir import generate_ir, query_screen_visuals
+        from dd.render_figma_ast import render_figma
+        from dd.renderers.figma import collect_fonts
+
+        # --- HTML branch: hand-authored markup via the stub ---
+        html_src = (
             "screen #s { -> button/large #n { "
             "icon-delete.visible = false } }"
         )
-        doc = parse_l3(src)
-
-        html_lines = self._fake_html_render(doc)
+        html_doc = parse_l3(html_src)
+        html_lines = self._fake_html_render(html_doc)
         html_text = "\n".join(html_lines)
         assert "hidden: icon-delete" in html_text
+        assert "findOne" not in html_text
+        assert "endsWith" not in html_text
 
-        # Simulated Figma lowering — the renderer uses a resolver to
-        # translate the backend-neutral path into a stable-id findOne.
-        # Here we simulate the resolver entry directly.
-        simulated_resolver = {"button-large-n": {"icon-delete.visible": "ZZZ"}}
-        fake_figma_lines: list[str] = []
-        compref = doc.top_level[0].block.statements[0]
-        # Collect PathOverrides from BOTH positions (head + block).
-        path_overrides: list[PathOverride] = [
-            p for p in compref.head.properties if isinstance(p, PathOverride)
-        ]
-        if compref.block is not None:
-            path_overrides.extend(
-                s for s in compref.block.statements
-                if isinstance(s, PathOverride)
-            )
-        for p in path_overrides:
-            if not p.path.endswith(".visible"):
-                continue
-            fig_id = simulated_resolver.get(
-                "button-large-n", {},
-            ).get(p.path)
-            if fig_id:
-                fake_figma_lines.append(
-                    f'var.findOne(n => n.id.endsWith(";{fig_id}"))'
-                    '.visible = false;'
-                )
-        figma_text = "\n".join(fake_figma_lines)
+        # --- Figma branch: real render_figma on a real DB screen ---
+        row = db_conn.execute(
+            "SELECT DISTINCT n.screen_id "
+            "FROM nodes n "
+            "JOIN instance_overrides io ON io.node_id = n.id "
+            "WHERE io.property_type = 'BOOLEAN' "
+            "  AND io.property_name LIKE ';%:visible' "
+            "LIMIT 1"
+        ).fetchone()
+        if row is None:
+            pytest.skip("no visibility overrides present in DB")
+        screen_id = row["screen_id"]
 
-        # Two different native representations of the same markup.
-        assert "findOne" in figma_text
+        ir = generate_ir(
+            db_conn, screen_id, semantic=True, filter_chrome=False,
+        )
+        spec = ir["spec"]
+        db_visuals = query_screen_visuals(db_conn, screen_id)
+        doc, eid_nid, node_nid, node_spec_key, node_original_name = (
+            compress_to_l3_with_maps(spec, db_conn, screen_id=screen_id)
+        )
+        _, resolver = compress_to_l3_with_resolver(
+            spec, db_conn, screen_id=screen_id,
+        )
+        fonts = collect_fonts(spec, db_visuals=db_visuals)
+        figma_script, _refs = render_figma(
+            doc, db_conn, node_nid,
+            fonts=fonts,
+            spec_key_map=node_spec_key,
+            original_name_map=node_original_name,
+            db_visuals=db_visuals,
+            _spec_elements=spec.get("elements"),
+            _spec_tokens=spec.get("tokens"),
+            descendant_visibility_resolver=resolver,
+        )
+
+        # The Figma script uses its native vocabulary — findOne +
+        # id.endsWith + .visible assignment — to lower the same
+        # grammar construct (PathOverride .visible) that the HTML
+        # stub renders as a JSX comment.
+        assert "findOne" in figma_script, (
+            "real Figma renderer must emit findOne for visibility "
+            "PathOverrides"
+        )
+        assert "id.endsWith" in figma_script, (
+            "real Figma renderer must use stable-id addressing"
+        )
+        assert ".visible" in figma_script, (
+            "real Figma renderer must set the visible property"
+        )
+
+        # Per-backend vocabulary is strictly disjoint: HTML knows
+        # nothing about findOne / id.endsWith, and Figma emits no
+        # JSX-style `hidden: <name>` comments.
         assert "findOne" not in html_text
         assert "hidden: icon-delete" in html_text
-        assert "hidden: icon-delete" not in figma_text
+        assert "hidden: icon-delete" not in figma_script
+        # JSX comment syntax `{/* */}` never appears in Figma output
+        assert "{/*" not in figma_script
+
+
+def _find_instance_with_disambiguation(
+    conn: sqlite3.Connection,
+) -> tuple[int, list[str], str, list[str]] | None:
+    """Scan `instance_overrides` for an instance whose emitted
+    PathOverride paths actually exercise the `-N` disambiguation code
+    path in ``_fetch_descendant_visibility_overrides`` (lines ~1638-
+    1649 of dd/compress_l3.py).
+
+    True disambiguation requires: the same descendant ``desc_eid``
+    appears twice in the merged map, forcing the compressor to emit
+    the bare ``<desc_eid>.visible`` once and ``<desc_eid>-2.visible``
+    on the collision. Detect by shape of the resulting paths: group
+    each path by stripping a trailing ``-N`` (N≥2) and require at
+    least one group where the bare root is present alongside one or
+    more ``-N`` siblings. Distinguishes genuine disambiguation from
+    names that happen to contain ``-<digits>`` in the Figma source
+    (e.g. ``ellipse-46`` — the ``-46`` is part of the Figma name,
+    not an appended collision suffix).
+
+    Returns ``(node_id, disambig_members, root_eid, all_paths)`` on
+    the first match, or None if no real disambiguation occurs in the
+    corpus (in which case the caller should skip).
+    """
+    from dd.compress_l3 import _fetch_descendant_visibility_overrides
+
+    # All instances with ≥2 :visible overrides — disambiguation can
+    # only fire when the instance has at least two descendants, and
+    # even then usually not (most instances have distinctly-named
+    # children). Bound to 500 to keep the test fast.
+    rows = conn.execute(
+        "SELECT node_id FROM instance_overrides "
+        "WHERE property_type='BOOLEAN' "
+        "  AND property_name LIKE ';%:visible' "
+        "GROUP BY node_id HAVING COUNT(*) >= 2 "
+        "LIMIT 500"
+    ).fetchall()
+    dedup_suffix = re.compile(r"^(.+)-(\d+)$")
+    for row in rows:
+        nid = row[0]
+        overrides = _fetch_descendant_visibility_overrides(
+            conn, {"target": nid}, ["target"],
+        )
+        paths = [po.path for po in overrides.get("target", [])]
+        # Group by root
+        groups: dict[str, list[str]] = {}
+        for p in paths:
+            if not p.endswith(".visible"):
+                continue
+            base = p[:-len(".visible")]
+            m = dedup_suffix.match(base)
+            if m and int(m.group(2)) >= 2:
+                root = m.group(1)
+            else:
+                root = base
+            groups.setdefault(root, []).append(base)
+        for root, members in groups.items():
+            # True disambig: bare root appears AND at least one -N sibling.
+            if root in members and len(members) >= 2:
+                return nid, sorted(members), root, paths
+    return None
 
 
 class TestSameNameDescendantsDisambiguated:
@@ -637,47 +757,60 @@ class TestSameNameDescendantsDisambiguated:
         This is the motivating fix: `logo/dank` appears twice under
         `nav/top-nav`. Emitting both as `logo-dank.visible=false`
         would be ambiguous — only one can be expressed. The compressor
-        must emit `logo-dank.visible=false` AND `logo-dank-2.visible=false`
-        (or equivalent distinct paths)."""
-        from dd.compress_l3 import _fetch_descendant_visibility_overrides
+        must emit `logo-dank.visible=false` AND
+        `logo-dank-2.visible=false` (or equivalent distinct paths).
 
-        # Find an instance with ≥2 visibility overrides on same-named
-        # descendants. If none exists, skip — the invariant is about
-        # path-uniqueness, not about finding the bug in real data.
-        rows = db_conn.execute(
-            "SELECT io.node_id, io.property_name, n2.name as descname "
-            "FROM instance_overrides io "
-            "JOIN nodes n ON n.id = io.node_id "
-            "JOIN nodes n2 ON '%;' || substr(io.property_name, 2, "
-            "    length(io.property_name) - length(':visible') - 1) "
-            "    = n2.figma_node_id_substr "
-            "WHERE io.property_type = 'BOOLEAN' "
-            "  AND io.property_name LIKE ';%:visible' "
-            "LIMIT 50"
-        ).fetchall() if False else []  # Skip this exact query; too
-        # tricky in raw SQL. Just assert the uniqueness property on
-        # any instance with ≥2 visibility overrides:
+        V1 audit (2026-04-22) found the prior version of this test
+        picked the FIRST instance with ≥2 visibility overrides, which
+        typically has uniquely-named descendants — so the
+        disambiguation code path never fired and the test was a
+        uniqueness check over a trivially-unique list. This version
+        explicitly seeks an instance whose paths contain a real
+        collision (bare root + `-N` sibling)."""
+        # Seek an instance that actually exercises the disambiguation
+        # code path at dd/compress_l3.py:1638-1649.
+        hit = _find_instance_with_disambiguation(db_conn)
+        if hit is None:
+            pytest.skip(
+                "no instance in this corpus exercises -N disambiguation; "
+                "not a real-data invariant but a code-path test"
+            )
+        nid, disambig_members, root, all_paths = hit
 
-        row = db_conn.execute(
-            "SELECT node_id "
-            "FROM instance_overrides "
-            "WHERE property_type = 'BOOLEAN' "
-            "  AND property_name LIKE ';%:visible' "
-            "GROUP BY node_id "
-            "HAVING COUNT(*) >= 2 "
-            "LIMIT 1"
-        ).fetchone()
-        if row is None:
-            pytest.skip("no instance with ≥2 visibility overrides")
-        nid = row[0]
-
-        overrides = _fetch_descendant_visibility_overrides(
-            db_conn, {"target": nid}, ["target"],
+        # Invariant 1: paths are globally unique within the instance.
+        assert len(all_paths) == len(set(all_paths)), (
+            f"duplicate PathOverride paths for instance {nid}: "
+            f"{all_paths}"
         )
-        paths = [po.path for po in overrides["target"]]
-        # Every path must be unique within the instance's override list.
-        assert len(paths) == len(set(paths)), (
-            f"duplicate PathOverride paths for instance {nid}: {paths}"
+
+        # Invariant 2: bare root + `-N` sibling both present — this
+        # is the exact shape the compressor emits when two descendants
+        # normalize to the same eid.
+        assert root in disambig_members, (
+            f"expected bare root {root!r} in disambig group "
+            f"{disambig_members}"
+        )
+        n_suffixed = [
+            m for m in disambig_members if m != root
+        ]
+        assert n_suffixed, (
+            f"expected at least one `-N`-suffixed sibling for "
+            f"root {root!r}; got {disambig_members}"
+        )
+
+        # Invariant 3: suffixes are sequential starting at 2 (no `-1`;
+        # no gaps). This pins the exact disambiguation algorithm at
+        # dd/compress_l3.py:1639 (n=2 then +1).
+        suffixes = sorted(
+            int(m.rsplit("-", 1)[1]) for m in n_suffixed
+        )
+        assert suffixes[0] == 2, (
+            f"first disambig suffix must be 2 (not 1, not 0); got "
+            f"{suffixes[0]} in {disambig_members}"
+        )
+        assert suffixes == list(range(2, 2 + len(suffixes))), (
+            f"disambig suffixes must be sequential from 2 with no "
+            f"gaps; got {suffixes} in {disambig_members}"
         )
 
 
