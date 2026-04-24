@@ -338,7 +338,13 @@ DANK_DB_EXISTS = os.path.isfile(DANK_DB_PATH)
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    # ``override=True`` so a stale shell ``ANTHROPIC_API_KEY=""``
+    # doesn't mask the real key in .env. Learned the hard way at
+    # M1.5 capstone time.
+    load_dotenv(
+        os.path.join(os.path.dirname(__file__), "..", ".env"),
+        override=True,
+    )
 except Exception:  # pragma: no cover
     pass
 
@@ -417,3 +423,112 @@ class TestStage3CapstoneReal:
         assert any(k in {"EDIT", "DONE"} for k in kinds)
 
         design_conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# M1 capstone — full round-trip including live Figma bridge                   #
+# --------------------------------------------------------------------------- #
+
+def _bridge_is_listening(port: int = 9228) -> bool:
+    """Non-blocking probe: is something accepting connections on the
+    Figma bridge port? Used to gate the M1 live capstone so CI (with
+    no plugin running) skips cleanly.
+
+    Uses ``socket.create_connection`` rather than AF_INET + 127.0.0.1
+    because the figma-console-mcp websocket server binds to IPv6
+    ``::1`` only — an AF_INET probe would falsely return "not
+    listening" even when the bridge is up. ``create_connection``
+    resolves ``localhost`` dual-stack and matches the behavior of
+    the Node ``ws`` client inside ``render_test/execute_ref.js``."""
+    import socket
+    try:
+        s = socket.create_connection(("localhost", port), timeout=0.5)
+        s.close()
+        return True
+    except (OSError, socket.timeout):
+        return False
+
+
+BRIDGE_LISTENING = _bridge_is_listening()
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not DANK_DB_EXISTS, reason="Dank DB not present")
+@pytest.mark.skipif(not HAS_API_KEY, reason="ANTHROPIC_API_KEY not set")
+@pytest.mark.skipif(
+    not BRIDGE_LISTENING,
+    reason="Figma plugin bridge not listening on port 9228",
+)
+class TestStage3M1CapstoneLiveBridge:
+    """End-to-end M1 capstone — the demo-gating path:
+
+        dd design --brief "..." --starting-screen 333 \
+                  --project-db Dank-EXP-02.declarative.db \
+                  --db <tmp> \
+                  --render-to-figma
+
+    Exercises the full pipeline: load starting doc from project DB,
+    run real-Sonnet session, collect cumulative edits from the
+    variant chain, render original + final variant to a new Figma
+    page, ship both over PROXY_EXECUTE.
+
+    Triple-gated (API key + Dank DB + bridge listening) so CI and
+    offline dev stay green. Uses the trim-heavy brief the Stage 3
+    capstone already validates cleanly — append-heavy briefs are
+    safer for demos given the deferred swap-then-text residual."""
+
+    @pytest.fixture(autouse=True)
+    def disable_test_timeout(self):
+        """The ``set_timeout`` autouse fixture in tests/conftest.py
+        kills every test at 30s via SIGALRM. A real-LLM multi-iter
+        session plus two bridge renders blows past that legitimately.
+        Cancel the alarm for this capstone."""
+        import signal
+        signal.alarm(0)
+        yield
+
+    def test_full_round_trip_against_dank_333(self, tmp_path, capsys):
+        from dd.cli import main as cli_main
+
+        design_db_path = str(tmp_path / "design.db")
+        init_db(design_db_path).close()
+
+        cli_main([
+            "design",
+            "--brief",
+            "Trim 1-2 small redundant nodes from this screen "
+            "(decorative rectangles, duplicate spacers). Make "
+            "small, conservative changes — don't redesign.",
+            "--starting-screen", "333",
+            "--project-db", DANK_DB_PATH,
+            "--db", design_db_path,
+            "--max-iters", "3",
+            "--render-to-figma",
+        ])
+
+        out = capsys.readouterr().out
+        # Session summary lands.
+        assert "iterations:" in out
+        assert "halt:" in out
+        assert "final_variant:" in out
+        # Render hint lands (M1.4 surface contract).
+        assert "rendered to Figma page" in out
+        assert "design session" in out
+
+        # Session + at least one non-ROOT variant persisted.
+        conn = sqlite3.connect(design_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = conn.execute(
+                "SELECT id FROM design_sessions"
+            ).fetchall()
+            assert len(sessions) == 1
+            variant_count = conn.execute(
+                "SELECT COUNT(*) AS c FROM variants "
+                "WHERE session_id=?",
+                (sessions[0]["id"],),
+            ).fetchone()["c"]
+            # ROOT + at least one iter-variant.
+            assert variant_count >= 2
+        finally:
+            conn.close()
