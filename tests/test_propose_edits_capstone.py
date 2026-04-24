@@ -48,7 +48,11 @@ def dank_conn() -> sqlite3.Connection:
 
 @pytest.fixture
 def anthropic_client():
-    import anthropic
+    # importorskip handles the case where the anthropic SDK isn't
+    # installed on the system Python that runs the suite (it lives
+    # only in .venv for most local setups). Without this guard the
+    # full-suite run shows ERROR rather than SKIPPED.
+    anthropic = pytest.importorskip("anthropic")
     return anthropic.Anthropic()
 
 

@@ -668,6 +668,24 @@ def flat_plan_drift(
 
 
 def _fill_system(plan: list[dict]) -> str:
+    """Two-pass plan-then-fill internals — synthesize-from-prompt path.
+
+    DEPRECATED (Stage 1.6 — docs/plan-authoring-loop.md §4.1, soft
+    deprecation per Codex 2026-04-23): the plan calls for deletion
+    once propose_edits replaces it. propose_edits today only handles
+    the EDIT mode (existing doc + prompt → one edit); the SYNTHESIZE
+    mode (free-text prompt → fresh component list) is still owned
+    by plan_then_fill via dd.prompt_parser.prompt_to_figma — the
+    production composition path.
+
+    Removal gate: delete when EITHER (a) prompt_to_figma migrates to
+    a propose_edits-against-empty-doc loop, OR (b) `dd design`
+    (Stage 3) becomes the primary natural-language entry point and
+    prompt_to_figma is itself deleted. Until then, the two-pass
+    contract is load-bearing for real prompts.
+
+    See also: ``_extract_plan``, ``_extract_fill`` (same gate).
+    """
     return (
         "You are a UI composition assistant filling a pre-planned "
         "skeleton. The plan (authoritative structure) is below. Emit "
