@@ -105,10 +105,16 @@ class TestCatalogSchema:
 # ---------------------------------------------------------------------------
 
 class TestComponentCategory:
-    """Verify ComponentCategory enum and VALID_CATEGORIES constant."""
+    """Verify ComponentCategory enum and VALID_CATEGORIES constant.
 
-    def test_has_six_members(self):
-        assert len(ComponentCategory) == 6
+    Stage 0.1 added the seventh category ``structural`` for neutral
+    layout primitives (``frame``). The six intent categories still
+    describe what a user-facing component *does*; ``structural`` is
+    the carve-out for author-supplied containers.
+    """
+
+    def test_has_seven_members(self):
+        assert len(ComponentCategory) == 7
 
     def test_is_str_enum(self):
         assert isinstance(ComponentCategory.ACTIONS, str)
@@ -118,15 +124,19 @@ class TestComponentCategory:
         expected = {
             "actions", "selection_and_input", "content_and_display",
             "navigation", "feedback_and_status", "containment_and_overlay",
+            "structural",
         }
         assert {c.value for c in ComponentCategory} == expected
 
     def test_valid_categories_frozenset(self):
         assert isinstance(VALID_CATEGORIES, frozenset)
-        assert len(VALID_CATEGORIES) == 6
+        assert len(VALID_CATEGORIES) == 7
 
     def test_valid_categories_matches_enum(self):
         assert frozenset(c.value for c in ComponentCategory) == VALID_CATEGORIES
+
+    def test_structural_category_advertised(self):
+        assert "structural" in VALID_CATEGORIES
 
 
 # ---------------------------------------------------------------------------
@@ -176,18 +186,28 @@ class TestCatalogData:
         names = [e["canonical_name"] for e in CATALOG_ENTRIES]
         assert len(names) == len(set(names))
 
-    def test_all_six_categories_represented(self):
+    def test_all_categories_represented(self):
         categories = {e["category"] for e in CATALOG_ENTRIES}
         assert categories == VALID_CATEGORIES
 
-    def test_all_have_behavioral_description(self):
+    def test_all_semantic_entries_have_behavioral_description(self):
+        """Structural entries (``frame``) are author-supplied containers
+        with no classifier signal to describe. Semantic entries must
+        still carry a behavioral_description so the classifier prompt
+        builder has copy for every user-facing type."""
+        from dd.types import SEMANTIC_CATEGORIES
         for entry in CATALOG_ENTRIES:
+            if entry["category"] not in SEMANTIC_CATEGORIES:
+                continue
             assert entry.get("behavioral_description"), (
                 f"{entry['canonical_name']} missing behavioral_description"
             )
 
-    def test_all_have_semantic_role(self):
+    def test_all_semantic_entries_have_semantic_role(self):
+        from dd.types import SEMANTIC_CATEGORIES
         for entry in CATALOG_ENTRIES:
+            if entry["category"] not in SEMANTIC_CATEGORIES:
+                continue
             assert entry.get("semantic_role"), (
                 f"{entry['canonical_name']} missing semantic_role"
             )
@@ -372,8 +392,14 @@ class TestCatalogEnrichment:
                 f"{entry['canonical_name']} slot_definitions should be dict"
             )
 
-    def test_all_entries_have_recognition_heuristics(self):
+    def test_all_semantic_entries_have_recognition_heuristics(self):
+        """Structural entries skip recognition_heuristics — they're
+        author-supplied containers, not patterns the classifier
+        recognises."""
+        from dd.types import SEMANTIC_CATEGORIES
         for entry in CATALOG_ENTRIES:
+            if entry["category"] not in SEMANTIC_CATEGORIES:
+                continue
             heuristics = entry.get("recognition_heuristics")
             assert heuristics is not None, (
                 f"{entry['canonical_name']} missing recognition_heuristics"

@@ -143,7 +143,8 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
     aliases                 TEXT,                        -- JSON array of alternate names
     category                TEXT NOT NULL CHECK(category IN (
         'actions','selection_and_input','content_and_display',
-        'navigation','feedback_and_status','containment_and_overlay'
+        'navigation','feedback_and_status','containment_and_overlay',
+        'structural'
     )),
     behavioral_description  TEXT,                        -- One-sentence description
     prop_definitions        TEXT,                        -- JSON: typed property specs

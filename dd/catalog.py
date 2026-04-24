@@ -1791,6 +1791,32 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
             "is the diagnostic signal for coach_mark."
         ),
     },
+    # ── Structural (1) ────────────────────────────────────────────────────
+    # Stage 0.1: `frame` is the *neutral* structural primitive — the LLM
+    # uses it to express conceptual groupings (section / wrapper /
+    # layout) that aren't semantic components. It's a grammar
+    # TypeKeyword (spec §2.7) already handled by parser / compressor /
+    # renderer. Keeping it out of the semantic catalog meant the
+    # planner had no neutral wrapper, collapsing every intermediate
+    # grouping onto `card` (Defect A of docs/plan-authoring-loop.md).
+    #
+    # Deliberately minimal: no behavioral_description (frames don't
+    # recognize — they're author-created structure), no
+    # recognition_heuristics (nothing to learn), no variant_axes
+    # (pure layout container). Classifier code and
+    # cluster_variants.py should skip `category="structural"` entries
+    # — they're not candidates for per-variant token binding.
+    {
+        "canonical_name": "frame",
+        "aliases": ["container", "wrapper", "section", "group", "stack", "row"],
+        "category": "structural",
+        "prop_definitions": {
+            "layout": "enum:vertical|horizontal|absolute",
+        },
+        "slot_definitions": {
+            "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"},
+        },
+    },
     {
         "canonical_name": "not_ui",
         "aliases": ["non_ui", "decorative", "artifact", "exclude"],

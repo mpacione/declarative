@@ -124,6 +124,73 @@ class TestValidatePlan:
         ]
         validate_plan(plan)
 
+    # ──── Stage 0.1 — `frame` neutral wrapper in composition vocabulary ────
+
+    def test_accepts_frame_as_neutral_wrapper(self):
+        """Stage 0.1: `frame` is the neutral structural primitive the LLM
+        can use for sections / containers / wrappers without flattening
+        to `card`. It's a grammar TypeKeyword (spec §2.7) and must be a
+        valid planner type so the planner can emit it without the
+        validator rejecting it as 'unknown catalog type'."""
+        plan = [{
+            "type": "frame",
+            "id": "product-showcase-section",
+            "children": [
+                {"type": "heading", "id": "section-title"},
+                {"type": "card", "id": "feature-card", "count_hint": 3},
+            ],
+        }]
+        validate_plan(plan)  # no raise
+
+
+class TestPlannerSystemPrompt:
+    """Stage 0.1 + 0.2 — shape checks on the planner's system prompt.
+
+    These are contract tests on the prompt *string* — they fail when the
+    LLM-visible vocabulary doesn't match what the validator accepts, or
+    when the known-bad coercion rules regress."""
+
+    @staticmethod
+    def _planner_prompt() -> str:
+        from dd.composition.plan import _build_plan_system
+        return _build_plan_system()
+
+    def test_advertises_frame_as_neutral_wrapper(self):
+        assert "frame" in self._planner_prompt()
+
+    def test_no_section_to_card_coercion(self):
+        """Stage 0.2: delete `section / wrapper → card` coercion.
+        Coercion rules harmed composition by forcing every designer-
+        intuitive grouping onto `card` (Defect B)."""
+        prompt = self._planner_prompt().lower()
+        assert "section / wrapper" not in prompt
+        assert "→ use `card`" not in prompt
+        assert "use `card`" not in prompt or "wrapper" not in prompt.split("use `card`")[0].rsplit("\n", 1)[-1]
+
+    def test_no_footer_to_card_coercion(self):
+        assert "footer → use `card`" not in self._planner_prompt().lower()
+
+    def test_no_carousel_to_list_of_card_coercion(self):
+        assert "carousel" not in self._planner_prompt().lower() or (
+            "use `list`" not in self._planner_prompt().lower()
+        )
+
+    def test_no_hero_to_card_coercion(self):
+        prompt = self._planner_prompt().lower()
+        # The specific line "a hero → use `card` with …" is the
+        # fingerprint of the old coercion block.
+        assert "a hero → use" not in prompt
+
+
+class TestSystemPromptVocabulary:
+    """Stage 0.1 — the top-level SYSTEM_PROMPT (used by the A1 single-
+    call composition path) must also advertise `frame`. Otherwise the
+    non-plan-then-fill path still lacks a neutral wrapper."""
+
+    def test_system_prompt_advertises_frame(self):
+        from dd.prompt_parser import SYSTEM_PROMPT
+        assert "frame" in SYSTEM_PROMPT
+
 
 # --------------------------------------------------------------------------- #
 # plan_diff                                                                   #

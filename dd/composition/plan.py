@@ -194,9 +194,14 @@ def _build_plan_system() -> str:
     explicitly listed. Failing closed at the validator is the right
     behaviour, but it burns plan calls — so the allowlist is in the
     prompt, not just the validator.
+
+    Stage 0.1 + 0.2: `frame` is now in the vocabulary as the neutral
+    structural primitive, and the old coercion rules (section → card /
+    footer → card / carousel → list of card / hero → card) are gone.
+    Those rules were patching a missing primitive with semantic-type
+    flattening — Defect B of docs/plan-authoring-loop.md §1.2.
     """
     types_sorted = sorted(_VALID_TYPES)
-    # Group for readability matching SYSTEM_PROMPT's categorisation.
     return (
         "You are a UI structural planner. Given a natural language screen "
         "description, emit a JSON array describing the screen's structural "
@@ -206,15 +211,14 @@ def _build_plan_system() -> str:
         "  - id: string, unique within the tree\n"
         "  - children: optional array of further nodes\n"
         "  - count_hint: optional int ≥ 1 when a child is a repeated template\n\n"
-        "Catalog types (use ONLY these — no 'container', 'footer', "
-        "'carousel', 'section' etc.):\n"
+        "Catalog types (use ONLY these):\n"
         f"  {', '.join(types_sorted)}\n\n"
-        "Mapping rules for common UI concepts that aren't in the catalog:\n"
-        "  - a generic container / section / wrapper → use `card`\n"
-        "  - a footer → use `card` at the bottom (there is no footer type)\n"
-        "  - a carousel / slider → use `list` (count_hint ≥ 3) of `card` "
-        "children\n"
-        "  - a hero → use `card` with an `image` + `heading` + `text`\n\n"
+        "For conceptual groupings — a section, a wrapper, a layout "
+        "region that isn't itself a semantic component — use `frame`. "
+        "`frame` is a neutral layout container; name it meaningfully "
+        "via `id` (e.g. `product-showcase-section`, `action-bar`). "
+        "Do NOT coerce conceptual groupings onto `card`; a `card` is a "
+        "card, not a section.\n\n"
         "Container types that typically need count_hint on their child "
         "template: list (count_hint ≥ 4 for feeds), button_group "
         "(count_hint ≥ 2), pagination, toggle_group, segmented_control, "
@@ -225,8 +229,9 @@ def _build_plan_system() -> str:
         '    {"type": "icon_button", "id": "back"},\n'
         '    {"type": "text", "id": "title"}\n'
         '  ]},\n'
-        '  {"type": "list", "id": "feed", "children": [\n'
-        '    {"type": "card", "id": "post", "count_hint": 4}\n'
+        '  {"type": "frame", "id": "product-showcase-section", "children": [\n'
+        '    {"type": "heading", "id": "section-title"},\n'
+        '    {"type": "card", "id": "feature-card", "count_hint": 3}\n'
         '  ]}\n'
         ']\n\n'
         "Output ONLY the JSON array. No prose. No markdown fences."
