@@ -947,31 +947,13 @@ def _emit_mode1_create(
     # `button-white`). Look up via `spec_key_map[id(node)]` so the
     # compressor and renderer agree on the per-instance bucket.
     if descendant_visibility_resolver is not None:
-        spec_key_for_resolver = spec_key_map.get(
-            id(node), node.head.eid,
+        _emit_visibility_path_overrides(
+            node=node,
+            var=var,
+            spec_key_map=spec_key_map,
+            descendant_visibility_resolver=descendant_visibility_resolver,
+            lines=lines,
         )
-        resolver_bucket = descendant_visibility_resolver.get(
-            spec_key_for_resolver, {},
-        )
-        for prop in node.head.properties:
-            if not isinstance(prop, PathOverride):
-                continue
-            if not prop.path.endswith(".visible"):
-                continue
-            fig_child_id = resolver_bucket.get(prop.path)
-            if not fig_child_id:
-                continue
-            bool_py = getattr(prop.value, "py", None)
-            if not isinstance(bool_py, bool):
-                continue
-            js_bool = "true" if bool_py else "false"
-            suffix = f";{fig_child_id}"
-            esc_suffix = _escape_js(suffix)
-            lines.append(
-                f'{{ const _h = {var}.findOne(n => '
-                f'n.id.endsWith("{esc_suffix}")); '
-                f'if (_h) _h.visible = {js_bool}; }}'
-            )
 
     # Scalar rotation only when AST carries no transform primitives
     # (``rotation`` / ``mirror``). When either is present, Phase 3
@@ -997,6 +979,59 @@ def _emit_mode1_create(
         lines.append(f"{var}.visible = false;")
 
     return lines, True
+
+
+def _emit_visibility_path_overrides(
+    *,
+    node: Node,
+    var: str,
+    spec_key_map: dict[int, str],
+    descendant_visibility_resolver: dict[str, dict[str, str]],
+    lines: list[str],
+) -> None:
+    """Emit ``findOne``-based ``.visible`` flips for descendant
+    PathOverrides on this instance head.
+
+    Wraps each emission in a scoped
+    ``figma.skipInvisibleInstanceChildren = false; try { ... } finally
+    { ... = true; }`` toggle so ``findOne`` can reach master-default-
+    hidden descendants. Without the toggle the global perf flag set in
+    the preamble (line 148) silently makes ``findOne`` skip every hidden
+    subtree, the unhide never runs, and the rendered instance shows
+    only the master defaults — confirmed by the screen-333 visual gap
+    investigation 2026-04-23. See
+    ``tests/test_override_toggle_skipinvisible.py`` for the contract.
+    """
+    spec_key_for_resolver = spec_key_map.get(
+        id(node), node.head.eid,
+    )
+    resolver_bucket = descendant_visibility_resolver.get(
+        spec_key_for_resolver, {},
+    )
+    for prop in node.head.properties:
+        if not isinstance(prop, PathOverride):
+            continue
+        if not prop.path.endswith(".visible"):
+            continue
+        fig_child_id = resolver_bucket.get(prop.path)
+        if not fig_child_id:
+            continue
+        bool_py = getattr(prop.value, "py", None)
+        if not isinstance(bool_py, bool):
+            continue
+        js_bool = "true" if bool_py else "false"
+        suffix = f";{fig_child_id}"
+        esc_suffix = _escape_js(suffix)
+        lines.append(
+            "figma.skipInvisibleInstanceChildren = false; "
+            "try { "
+            f'const _h = {var}.findOne(n => '
+            f'n.id.endsWith("{esc_suffix}")); '
+            f"if (_h) _h.visible = {js_bool}; "
+            "} finally { "
+            "figma.skipInvisibleInstanceChildren = true; "
+            "}"
+        )
 
 
 def _collect_text_chars(

@@ -492,18 +492,43 @@ def _emit_override_tree(
                 ops.append(op)
 
         if ops:
+            # Toggle `figma.skipInvisibleInstanceChildren` off around the
+            # findOne block. The preamble flips the perf flag on
+            # globally (dd/render_figma_ast.py:148) — that flag also
+            # makes findOne / findAll skip every master-default-hidden
+            # descendant, so override application against hidden slots
+            # silently no-ops without this scoped toggle. Try/finally
+            # guards Codex's risk: if an exception lands inside the
+            # block (e.g. unsupported setter on this Figma build), the
+            # flag is still restored so downstream walks aren't
+            # corrupted by a stuck-off perf flag. See
+            # tests/test_override_toggle_skipinvisible.py for the
+            # contract.
             if len(ops) == 1:
                 lines.append(
-                    f'{{ const _c = {find_expr}; '
-                    f"if (_c) {{ {ops[0]} }} }}"
+                    "figma.skipInvisibleInstanceChildren = false; "
+                    "try { "
+                    f"const _c = {find_expr}; "
+                    f"if (_c) {{ {ops[0]} }} "
+                    "} finally { "
+                    "figma.skipInvisibleInstanceChildren = true; "
+                    "}"
                 )
             else:
                 lines.append(
-                    f'{{ const _c = {find_expr}; if (_c) {{'
+                    "figma.skipInvisibleInstanceChildren = false;"
                 )
+                lines.append("try {")
+                lines.append(f"  const _c = {find_expr};")
+                lines.append("  if (_c) {")
                 for op in ops:
-                    lines.append(f"  {op}")
-                lines.append("} }")
+                    lines.append(f"    {op}")
+                lines.append("  }")
+                lines.append("} finally {")
+                lines.append(
+                    "  figma.skipInvisibleInstanceChildren = true;"
+                )
+                lines.append("}")
 
     # Recurse into children (guaranteed to come after parent)
     for child in node.get("children", []):
