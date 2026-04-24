@@ -465,6 +465,208 @@ def _build_flat_plan_system() -> str:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Stage 0.5 — slot name validation (log-only)                                 #
+# --------------------------------------------------------------------------- #
+
+_CATALOG_SLOT_SETS: dict[str, frozenset[str]] | None = None
+
+
+def _catalog_slot_sets() -> dict[str, frozenset[str]]:
+    """Build the per-type declared-slot-name index from CATALOG_ENTRIES.
+
+    Lazily populated so import order stays light. Types whose catalog
+    entry lacks ``slot_definitions`` don't get a set — callers treat
+    absence as "accept any slot name" (structural types like ``frame``
+    are the motivating case).
+    """
+    global _CATALOG_SLOT_SETS
+    if _CATALOG_SLOT_SETS is None:
+        sets: dict[str, frozenset[str]] = {}
+        for entry in CATALOG_ENTRIES:
+            slots = entry.get("slot_definitions")
+            if not slots:
+                continue
+            # The `_default` slot is a wildcard ("any child goes here");
+            # its presence alone shouldn't constrain named-slot names.
+            named = {k for k in slots.keys() if k != "_default"}
+            if named:
+                sets[entry["canonical_name"]] = frozenset(named)
+        _CATALOG_SLOT_SETS = sets
+    return _CATALOG_SLOT_SETS
+
+
+def validate_flat_plan_slots(plan: dict[str, Any]) -> list[Any]:
+    """Surface slot-name violations as structured warnings.
+
+    For each flat-plan node that carries a ``slot`` field, check that
+    the parent type's catalog entry declares that slot name. Log-only
+    per docs/plan-authoring-loop.md §8 decision 3: Stage 0 never
+    blocks composition on an unknown slot; Stage 1 tightens to
+    hard-error once real-run telemetry shows the planner isn't
+    hallucinating.
+
+    Returns a list of :class:`StructuredError` entries with kind
+    :data:`KIND_SLOT_UNKNOWN` — empty when every slot name is valid
+    or the parent type has no declared named slots.
+
+    Precondition: ``plan`` has passed :func:`validate_flat_plan` so
+    every ``parent_eid`` references an existing node.
+    """
+    # Local imports so the boundary / StructuredError chain doesn't
+    # get pulled into the module's already-hot import path.
+    from dd.boundary import KIND_SLOT_UNKNOWN, StructuredError
+
+    nodes = plan.get("nodes") or []
+    eid_to_type: dict[str, str] = {
+        n["eid"]: n["type"] for n in nodes if isinstance(n, dict) and n.get("eid")
+    }
+    slot_sets = _catalog_slot_sets()
+    warnings: list[Any] = []
+
+    for node in nodes:
+        slot_name = node.get("slot")
+        if not slot_name:
+            continue
+        parent_eid = node.get("parent_eid")
+        if parent_eid is None:
+            continue
+        parent_type = eid_to_type.get(parent_eid)
+        if parent_type is None:
+            continue
+        allowed = slot_sets.get(parent_type)
+        if allowed is None:
+            # Parent type has no closed slot set — can't enforce.
+            continue
+        if slot_name in allowed:
+            continue
+        warnings.append(StructuredError(
+            kind=KIND_SLOT_UNKNOWN,
+            id=f"{parent_type}/{slot_name}",
+            error=(
+                f"slot {slot_name!r} on parent type {parent_type!r} is not "
+                f"in the catalog's declared slot set "
+                f"{sorted(allowed)}"
+            ),
+            context={
+                "parent_type": parent_type,
+                "parent_eid": parent_eid,
+                "child_eid": node.get("eid"),
+                "slot": slot_name,
+                "allowed": sorted(allowed),
+            },
+        ))
+    return warnings
+
+
+# --------------------------------------------------------------------------- #
+# Stage 0.6 — structural drift check                                          #
+# --------------------------------------------------------------------------- #
+
+def flat_plan_drift(
+    plan: dict[str, Any],
+    spec_elements: dict[str, dict[str, Any]],
+    *,
+    root_eid: str | None = None,
+) -> list[Any]:
+    """Compare the flat plan's intent against the compose output.
+
+    For each planner-named node, check that compose produced:
+    - an element with that eid (or the ``repeat``-expanded siblings),
+    - with the planner-intended type,
+    - under a parent that matches the planner-intended parent_eid
+      (via the spec's ``children`` adjacency).
+
+    Extra Mode-3-synthesised children (e.g. a button's text label)
+    that the planner never named are NOT drift — the plan is a floor,
+    not a ceiling.
+
+    Returns a list of :class:`StructuredError` with kind
+    :data:`KIND_PLAN_DRIFT`. Empty when compose preserved the plan.
+
+    ``root_eid`` is the eid of the compose spec's root element; if
+    omitted, we try to infer by scanning for the single element
+    whose type is ``screen``.
+    """
+    from dd.boundary import KIND_PLAN_DRIFT, StructuredError
+
+    nodes: list[dict[str, Any]] = plan.get("nodes") or []
+
+    # Expand repeat-flagged rows to their concrete sibling eids so the
+    # downstream check is per-concrete-eid, not per-template.
+    expected: list[tuple[str, str, str | None]] = []  # (eid, type, parent_eid)
+    for node in nodes:
+        eid = node.get("eid")
+        type_ = node.get("type")
+        parent_eid = node.get("parent_eid")
+        if not (isinstance(eid, str) and isinstance(type_, str)):
+            continue
+        repeat = node.get("repeat", 1) or 1
+        if repeat <= 1:
+            expected.append((eid, type_, parent_eid))
+        else:
+            for i in range(1, repeat + 1):
+                expected.append((f"{eid}__{i}", type_, parent_eid))
+
+    # Invert spec_elements to an (eid → parent_eid) map. The compose
+    # root has no parent (or its parent is the screen wrapper).
+    child_to_parent: dict[str, str | None] = {}
+    for parent, el in spec_elements.items():
+        for child in el.get("children") or []:
+            child_to_parent[child] = parent
+
+    # If the plan's "root" parent_eid is None but compose nests
+    # everything under a screen-wrapper root, translate the None to
+    # that wrapper so the comparison doesn't spuriously drift.
+    inferred_root = root_eid
+    if inferred_root is None:
+        for eid, el in spec_elements.items():
+            if el.get("type") == "screen":
+                inferred_root = eid
+                break
+
+    warnings: list[Any] = []
+    for eid, type_, parent_eid in expected:
+        el = spec_elements.get(eid)
+        if el is None:
+            warnings.append(StructuredError(
+                kind=KIND_PLAN_DRIFT,
+                id=eid,
+                error=f"planner-named eid {eid!r} missing from compose output",
+                context={"eid": eid, "expected_type": type_, "expected_parent": parent_eid},
+            ))
+            continue
+        if el.get("type") != type_:
+            warnings.append(StructuredError(
+                kind=KIND_PLAN_DRIFT,
+                id=eid,
+                error=(
+                    f"planner-named eid {eid!r} expected type {type_!r} "
+                    f"but compose produced {el.get('type')!r}"
+                ),
+                context={"eid": eid, "expected_type": type_, "got_type": el.get("type")},
+            ))
+            continue
+        got_parent = child_to_parent.get(eid)
+        expected_parent = parent_eid if parent_eid is not None else inferred_root
+        if got_parent != expected_parent:
+            warnings.append(StructuredError(
+                kind=KIND_PLAN_DRIFT,
+                id=eid,
+                error=(
+                    f"planner-named eid {eid!r} expected under parent "
+                    f"{expected_parent!r} but compose put it under "
+                    f"{got_parent!r}"
+                ),
+                context={
+                    "eid": eid,
+                    "expected_parent": expected_parent,
+                    "got_parent": got_parent,
+                },
+            ))
+    return warnings
+
+
 def _fill_system(plan: list[dict]) -> str:
     return (
         "You are a UI composition assistant filling a pre-planned "
@@ -630,6 +832,7 @@ def plan_then_fill(
     # Dispatch on shape: flat-plan object vs legacy tree array.
     original_plan: list[dict] | dict
     tree_plan: list[dict]
+    slot_warnings: list[Any] = []
     if isinstance(extracted, dict) and "nodes" in extracted:
         try:
             validate_flat_plan(extracted)
@@ -640,6 +843,10 @@ def plan_then_fill(
                 "plan": extracted,
                 "fill": None,
             }
+        # Stage 0.5: slot names are closed per parent type — validate
+        # log-only. Hallucinated slots surface as warnings but do NOT
+        # block composition. Upgrades to hard-error in a Stage 1 PR.
+        slot_warnings = validate_flat_plan_slots(extracted)
         original_plan = extracted
         tree_plan = flat_plan_to_tree(extracted)
     elif isinstance(extracted, list):
@@ -692,10 +899,12 @@ def plan_then_fill(
             ),
             "plan": original_plan,
             "fill": final_fill,
+            "warnings": slot_warnings,
         }
 
     return {
         "components": final_fill,
         "plan": original_plan,
         "retried": retried,
+        "warnings": slot_warnings,
     }

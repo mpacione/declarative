@@ -49,6 +49,21 @@ KIND_VARIANT_BINDING_MISSING = "variant_binding_missing"
 # structured-error shape the ADR-006 boundary promises.
 KIND_PLAN_INVALID = "plan_invalid"
 
+# Stage 0.5 (docs/plan-authoring-loop.md) — the planner named a slot
+# on a node whose parent type declares a closed slot set and the
+# slot name isn't in it. Log-only for the first release per plan §8
+# decision 3: promote to hard-error once a rejection-free week of
+# real runs lands, so hallucinated slot names can't go unnoticed.
+KIND_SLOT_UNKNOWN = "slot_unknown"
+
+# Stage 0.6 (docs/plan-authoring-loop.md) — compose output drifted from
+# the planner's intent on at least one (eid, type, parent_eid)
+# tuple. Different from KIND_PLAN_INVALID (which is "the plan itself
+# was shaped wrong") — this fires when a validated plan doesn't
+# survive the compose pass. Surfacing this keeps the planner's
+# intent addressable downstream.
+KIND_PLAN_DRIFT = "plan_drift"
+
 # Codegen-time degradation (ADR-007 Position 1)
 KIND_DEGRADED_TO_MODE2 = "degraded_to_mode2"
 KIND_DEGRADED_TO_LITERAL = "degraded_to_literal"
