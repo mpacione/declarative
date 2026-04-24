@@ -1045,3 +1045,62 @@ WHERE run_at = (SELECT MAX(run_at) FROM export_validations)
 GROUP BY check_name, severity
 ORDER BY
     CASE severity WHEN 'error' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END;
+
+-- ============================================================================
+-- Stage 3 — design sessions (migration 023)
+-- ============================================================================
+-- Session persistence + branching for the agent authoring loop. See
+-- docs/plan-authoring-loop.md §3.1 + Codex+Sonnet 2026-04-23 picks
+-- (Option 3 hybrid + keep move_log).
+
+CREATE TABLE IF NOT EXISTS design_sessions (
+    id          TEXT PRIMARY KEY,
+    brief       TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open' CHECK(status IN (
+        'open', 'closed', 'archived'
+    )),
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_sessions_status
+    ON design_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_design_sessions_created_at
+    ON design_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS variants (
+    id           TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL REFERENCES design_sessions(id),
+    parent_id    TEXT REFERENCES variants(id),
+    primitive    TEXT,
+    edit_script  TEXT,
+    markup_blob  TEXT,
+    scores       TEXT,
+    status       TEXT DEFAULT 'open' CHECK(status IN (
+        'open', 'pruned', 'promoted', 'frontier'
+    )),
+    notes        TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_variants_session_id
+    ON variants(session_id);
+CREATE INDEX IF NOT EXISTS idx_variants_parent_id
+    ON variants(parent_id);
+CREATE INDEX IF NOT EXISTS idx_variants_status
+    ON variants(status);
+
+CREATE TABLE IF NOT EXISTS move_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT NOT NULL REFERENCES design_sessions(id),
+    variant_id   TEXT REFERENCES variants(id),
+    primitive    TEXT NOT NULL,
+    payload      TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_move_log_session_id
+    ON move_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_move_log_variant_id
+    ON move_log(variant_id);
+CREATE INDEX IF NOT EXISTS idx_move_log_created_at
+    ON move_log(created_at);
