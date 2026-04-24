@@ -164,7 +164,11 @@ class TestMoveLogJsonl:
 
 from unittest.mock import MagicMock  # noqa: E402
 
-from dd.agent.primitives import drill, drilled_propose_edits  # noqa: E402
+from dd.agent.primitives import (  # noqa: E402
+    climb,
+    drill,
+    drilled_propose_edits,
+)
 
 
 def _mock_tool_use(tool_name: str, input_dict: dict) -> MagicMock:
@@ -306,6 +310,50 @@ class TestDrilledProposeEdits:
         assert edit_entry.payload["edit_source"].startswith("delete @")
         assert edit_entry.rationale == "trim"
 
+    def test_drilled_then_climbed_can_edit_at_parent_scope(self):
+        """The plan's load-bearing CLIMB acceptance: after DRILL +
+        scoped edit, climb back to root and propose another edit
+        at the parent level. Proves the focus stack actually pops."""
+        focus = FocusContext.root(_three_section_doc())
+        # First: drill + edit (delete a card).
+        drill_client = _mock_client(_mock_tool_use(
+            "emit_delete_edit",
+            {"target_eid": "feature-card-1", "rationale": "trim"},
+        ))
+        f1, _ = drilled_propose_edits(
+            focus=focus,
+            drill_eid="features-section",
+            focus_goal="trim",
+            prompt="delete the first feature card",
+            client=drill_client,
+            component_paths=[],
+        )
+        # Climb back out.
+        f2 = climb(f1)
+        assert f2.scope_eid is None
+        # Now propose at root scope: delete the top-bar (sibling of
+        # the section we just edited inside). Done via raw
+        # propose_edits since we're not drilling.
+        from dd.propose_edits import propose_edits
+        root_client = _mock_client(_mock_tool_use(
+            "emit_delete_edit",
+            {"target_eid": "top-bar", "rationale": "drop the nav"},
+        ))
+        result = propose_edits(
+            doc=f2.doc,
+            prompt="delete the top bar",
+            client=root_client,
+            component_paths=[],
+        )
+        assert result.ok is True
+        from dd.structural_verbs import existing_eids
+        # top-bar gone, AND the prior drill-edit (feature-card-1
+        # removal) is still in effect.
+        post = existing_eids(result.applied_doc)
+        assert "top-bar" not in post
+        assert "feature-card-1" not in post  # prior drill-edit held
+        assert "features-section" in post  # ancestor preserved
+
     def test_edit_targeting_out_of_scope_eid_fails_at_inner_apply(self):
         """The LLM emits an edit naming a node outside the drill scope.
 
@@ -341,3 +389,65 @@ class TestDrilledProposeEdits:
         # Root doc unchanged: top-bar is still there.
         from dd.structural_verbs import existing_eids
         assert "top-bar" in existing_eids(new_focus.root_doc)
+
+
+# --------------------------------------------------------------------------- #
+# CLIMB primitive (Stage 2.4)                                                 #
+# --------------------------------------------------------------------------- #
+
+class TestClimb:
+    """The CLIMB primitive — pop one level of drill scope.
+
+    Per plan §2.3: "After drilling, the agent checks 'did my local
+    subtree change break a parent constraint?'" — that introspection
+    is the agent's job. The CLIMB primitive itself just narrows the
+    focus by one level and emits a CLIMB log entry. Whether the
+    agent then re-runs propose_edits at the parent scope is the
+    next caller decision (see TestDrilledProposeEdits.
+    test_drilled_then_climbed_can_edit_at_parent_scope above for
+    the integration shape).
+    """
+
+    def test_climb_pops_one_drill_level(self):
+        focus = FocusContext.root(_three_section_doc())
+        f1 = drill(focus, "features-section", focus_goal="x")
+        f2 = climb(f1)
+        assert f2.scope_eid is None  # back to root
+        assert f2.parent_chain == []
+
+    def test_climb_emits_climb_log_entry(self):
+        focus = FocusContext.root(_three_section_doc())
+        f1 = drill(focus, "features-section", focus_goal="x")
+        f2 = climb(f1)
+        kinds = [e.primitive for e in f2.move_log]
+        assert kinds == ["DRILL", "CLIMB"]
+        climb_entry = f2.move_log[1]
+        # The CLIMB entry records WHICH scope we left.
+        assert climb_entry.payload["from_scope"] == "features-section"
+
+    def test_climb_at_root_is_noop_no_log_entry(self):
+        """Climbing at root is defensive (per plan §2.3). It should
+        be a no-op AND should NOT pollute the log with a spurious
+        CLIMB entry — otherwise replay would re-DRILL into nothing."""
+        focus = FocusContext.root(_three_section_doc())
+        climbed = climb(focus)
+        assert climbed.scope_eid is None
+        assert climbed.move_log == []
+
+    def test_double_drill_double_climb_returns_to_root(self):
+        focus = FocusContext.root(_three_section_doc())
+        f1 = drill(focus, "features-section", focus_goal="x")
+        f2 = drill(f1, "feature-card-1", focus_goal="y")
+        c1 = climb(f2)
+        c2 = climb(c1)
+        assert c2.scope_eid is None
+        assert c2.parent_chain == []
+        kinds = [e.primitive for e in c2.move_log]
+        assert kinds == ["DRILL", "DRILL", "CLIMB", "CLIMB"]
+
+    def test_climb_doesnt_mutate_input_focus(self):
+        focus = FocusContext.root(_three_section_doc())
+        f1 = drill(focus, "features-section", focus_goal="x")
+        climb(f1)
+        # f1 is still drilled (input untouched).
+        assert f1.scope_eid == "features-section"

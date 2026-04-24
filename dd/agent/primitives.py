@@ -186,6 +186,31 @@ def drilled_propose_edits(
     return new_focus, promoted
 
 
+def climb(focus: FocusContext) -> FocusContext:
+    """CLIMB primitive — pop one level of drill scope.
+
+    Per plan §2.3: "After drilling, the agent checks 'did my local
+    subtree change break a parent constraint?'" — that introspection
+    is the agent's job. This primitive just narrows the focus by
+    one level and emits a CLIMB log entry.
+
+    At root scope, CLIMB is a defensive no-op AND deliberately does
+    NOT pollute the move log with a spurious CLIMB entry — replaying
+    the log shouldn't re-DRILL into nothing.
+    """
+    if focus.scope_eid is None and not focus.parent_chain:
+        return focus  # already at root; no-op, no log entry
+    leaving = focus.scope_eid
+    climbed = focus.climbed()
+    entry = MoveLogEntry(
+        primitive="CLIMB",
+        scope_eid=climbed.scope_eid,
+        payload={"from_scope": leaving},
+        rationale=None,
+    )
+    return climbed.with_log_entry(entry)
+
+
 def write_move_log_jsonl(
     focus: FocusContext,
     path: str | Path,
