@@ -1687,6 +1687,53 @@ def main(argv: list | None = None) -> None:
         "--json", action="store_true", help="Emit the full RenderReport as JSON",
     )
 
+    # ── Stage 3 — `dd design` session-loop CLI ──────────────────────────
+    design_parser = subparsers.add_parser(
+        "design",
+        help="Run the agent-driven design session loop (Stage 3 of "
+             "docs/plan-authoring-loop.md)",
+    )
+    design_parser.add_argument("--db", help="Database path")
+    design_subparsers = design_parser.add_subparsers(
+        dest="design_command",
+    )
+    # `dd design --brief "..."`. The brief flag exists at the top
+    # `design` parser too so `dd design --brief ...` (no subcommand)
+    # works as documented in the plan.
+    design_parser.add_argument(
+        "--brief",
+        help="Natural-language brief — starts a NEW design session.",
+    )
+    design_parser.add_argument(
+        "--max-iters", type=int, default=10,
+        help="Max iterations per session (default 10)",
+    )
+
+    design_resume_parser = design_subparsers.add_parser(
+        "resume",
+        help="Continue an existing variant (or branch from a non-leaf)",
+    )
+    design_resume_parser.add_argument(
+        "variant_id",
+        help="Variant ULID to resume from. Resuming from a non-leaf "
+             "creates a sibling chain — branching falls out for free.",
+    )
+    design_resume_parser.add_argument(
+        "--max-iters", type=int, default=10,
+        help="Max iterations (default 10)",
+    )
+    design_resume_parser.add_argument("--db", help="Database path")
+
+    design_score_parser = design_subparsers.add_parser(
+        "score",
+        help="Score every variant in a session via render+verify "
+             "(deferred-scoring entry point per A2)",
+    )
+    design_score_parser.add_argument(
+        "session_id", help="Session ULID to score",
+    )
+    design_score_parser.add_argument("--db", help="Database path")
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -1794,6 +1841,145 @@ def main(argv: list | None = None) -> None:
     elif args.command == "induce-variants":
         db_path = detect_db_path(args.db)
         _run_induce_variants(db_path, args)
+    elif args.command == "design":
+        db_path = detect_db_path(args.db)
+        _run_design(db_path, args)
+
+
+def _run_design(db_path: str, args) -> None:
+    """`dd design` dispatch — handles --brief / resume / score.
+
+    Per Codex+Sonnet 2026-04-23 unanimous picks: 3 subcommands
+    minimum-viable. ``ls`` and ``show`` deferred to follow-up;
+    use raw SQL on the design_sessions / variants tables.
+    """
+    from dd.db import get_connection
+
+    sub = args.design_command
+
+    if sub is None:
+        # Top-level `dd design --brief "..."` form.
+        if not args.brief:
+            print(
+                "dd design: pass --brief \"<text>\" to start a new "
+                "session, or use a subcommand (resume / score). See "
+                "`dd design --help`.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _run_design_brief(db_path, brief=args.brief, max_iters=args.max_iters)
+        return
+
+    if sub == "resume":
+        _run_design_resume(
+            db_path, variant_id=args.variant_id, max_iters=args.max_iters,
+        )
+        return
+
+    if sub == "score":
+        _run_design_score(db_path, session_id=args.session_id)
+        return
+
+
+def _make_anthropic_client():
+    """Construct an Anthropic client. Surface API-key errors as
+    user-friendly exits, not stack traces."""
+    try:
+        import anthropic
+        return anthropic.Anthropic()
+    except Exception as e:  # noqa: BLE001
+        print(
+            f"dd design: failed to initialize Anthropic client: {e}\n"
+            "Set ANTHROPIC_API_KEY in your environment or .env file.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _run_design_brief(db_path: str, *, brief: str, max_iters: int) -> None:
+    from dd.agent.loop import run_session
+    from dd.db import get_connection
+
+    if not brief or not brief.strip():
+        print("dd design: --brief must not be blank.", file=sys.stderr)
+        sys.exit(1)
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+    try:
+        result = run_session(
+            conn, brief=brief, client=client, max_iters=max_iters,
+        )
+    except ValueError as e:
+        print(f"dd design: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+    print(result.session_id)
+    print(
+        f"  iterations: {result.iterations}  "
+        f"halt: {result.halt_reason}  "
+        f"final_variant: {result.final_variant_id}"
+    )
+
+
+def _run_design_resume(
+    db_path: str, *, variant_id: str, max_iters: int,
+) -> None:
+    from dd.agent.loop import run_session
+    from dd.db import get_connection
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+    try:
+        result = run_session(
+            conn, parent_variant_id=variant_id,
+            client=client, max_iters=max_iters,
+        )
+    except ValueError as e:
+        print(f"dd design: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+    print(result.session_id)
+    print(
+        f"  iterations: {result.iterations}  "
+        f"halt: {result.halt_reason}  "
+        f"final_variant: {result.final_variant_id}"
+    )
+
+
+def _run_design_score(db_path: str, *, session_id: str) -> None:
+    """Stage 3 ships this as a stub that confirms the session
+    exists and prints a "not yet implemented" line. The wiring is
+    the user-facing surface; the deep render+VLM scoring lands in
+    a follow-up (per Codex+Sonnet's A2 pick: deferred scoring).
+    """
+    from dd.db import get_connection
+    from dd.sessions import list_sessions, list_variants
+
+    conn = get_connection(db_path)
+    try:
+        sessions = list_sessions(conn)
+        if session_id not in {s.id for s in sessions}:
+            print(
+                f"dd design: session {session_id!r} not found.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        variants = list_variants(conn, session_id)
+        print(
+            f"dd design score: session {session_id} has "
+            f"{len(variants)} variant(s)."
+        )
+        print(
+            "  (deferred: render + fidelity scoring not yet "
+            "wired into this subcommand. The session + variants + "
+            "move log are persisted; rerun once the score backend "
+            "lands.)"
+        )
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
