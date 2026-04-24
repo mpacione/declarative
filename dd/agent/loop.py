@@ -452,6 +452,7 @@ def run_session(
     max_iters: int = 10,
     component_paths: tuple[str, ...] = (),
     starting_doc: Optional[L3Document] = None,
+    progress_stream: Optional[Any] = None,
 ) -> SessionRunResult:
     """Run one design session as an iteration loop.
 
@@ -461,6 +462,12 @@ def run_session(
     Per Codex's risk on context bloat: each per-turn user message
     carries the FOCUSED subtree + a compact recent-move-log summary,
     NOT the full root doc.
+
+    When ``progress_stream`` is a file-like (the CLI passes
+    ``sys.stderr``), emits a ``[iter N/M] ...`` heartbeat at the
+    start of each iteration so a multi-minute demo run visibly
+    advances instead of looking hung. Silent by default — library
+    callers that capture stdio are unaffected.
     """
     if not brief and not parent_variant_id:
         raise ValueError(
@@ -506,6 +513,20 @@ def run_session(
     # ── Loop ────────────────────────────────────────────────────────────
     for i in range(1, max_iters + 1):
         iterations = i
+        if progress_stream is not None:
+            # Heartbeat: one line per iter. Includes the focus eid
+            # so a multi-primitive session visibly shifts scope as
+            # the agent DRILLs in. Written before the Anthropic
+            # call so the user sees activity the moment latency
+            # begins.
+            try:
+                print(
+                    f"[iter {i}/{max_iters}] focus=@{focus.scope_eid} ...",
+                    file=progress_stream, flush=True,
+                )
+            except Exception:
+                # Don't let a broken stream abort a demo run.
+                pass
         tools = build_loop_tools(focus.doc, list(component_paths))
         user_msg = _build_user_message(
             brief=active_brief or "",

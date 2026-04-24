@@ -34,20 +34,20 @@ Figma page. One command, one visible before/after.
 
 ## The demo command
 
-Init the session DB first (one-time per demo), then run the design
-loop:
+One command. The session DB initializes transparently on first run:
 
 ```
-.venv/bin/python -c "from dd.db import init_db; init_db('/tmp/demo.db').close()"
-
 .venv/bin/python -m dd design \
   --brief "Trim 1-2 small redundant decorative rectangles" \
   --starting-screen 333 \
   --project-db Dank-EXP-02.declarative.db \
   --db /tmp/demo.db \
-  --max-iters 3 \
   --render-to-figma
 ```
+
+`--max-iters` defaults to 4 (demo-friendly). Bump to 6-10 for a
+deeper session. The loop emits a `[iter N/M] focus=@<eid> ...`
+heartbeat to stderr so a multi-minute run visibly advances.
 
 ## What the output should look like
 
@@ -73,10 +73,13 @@ session can hit 4m+ when Sonnet hits the iter cap.
   (deferred in the Stage 3 post-mortem). Pick appends over substitutions.
 - **`dd design score` is a stub.** CLI accepts it, returns "deferred"
   (A2 per Codex/Sonnet sign-off).
-- **Session DB needs `init_db` before first use** — this is a
-  two-command demo, not one.
-- **max-iters=3 is a subtle diff.** For a more visible "look what the
-  agent did" moment, bump to 5-6 and write a brief implying more change.
+- **Trim-heavy briefs at low max-iters produce subtle visual diffs.**
+  The pipeline works, but "delete 2 decorative rectangles" at
+  max-iters=3 is a <3% tree change that's barely visible at a
+  glance. For demo punch, use an append-heavy brief ("Add a
+  sign-out button at the top-right of the toolbar") or
+  delete-heavy ("Hide the entire bottom toolbar"), paired with
+  `--max-iters 5` or 6.
 
 ## The guardrail (new 2026-04-24)
 

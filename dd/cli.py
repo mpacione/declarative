@@ -1705,8 +1705,9 @@ def main(argv: list | None = None) -> None:
         help="Natural-language brief — starts a NEW design session.",
     )
     design_parser.add_argument(
-        "--max-iters", type=int, default=10,
-        help="Max iterations per session (default 10)",
+        "--max-iters", type=int, default=4,
+        help="Max iterations per session (default 4 — demo-friendly; "
+             "bump to 8-10 for deeper sessions)",
     )
     # M1 — close the Figma round-trip. --starting-screen loads a real
     # screen from the project DB as the agent's starting context;
@@ -1743,8 +1744,8 @@ def main(argv: list | None = None) -> None:
              "creates a sibling chain — branching falls out for free.",
     )
     design_resume_parser.add_argument(
-        "--max-iters", type=int, default=10,
-        help="Max iterations (default 10)",
+        "--max-iters", type=int, default=4,
+        help="Max iterations (default 4 — matches --brief default)",
     )
     design_resume_parser.add_argument("--db", help="Database path")
 
@@ -1981,12 +1982,21 @@ def _run_design_brief(
             screen_id=starting_screen,
         )
 
+    # Auto-init the session DB schema. ``init_db`` is idempotent —
+    # returns early if tables already exist — so the single-command
+    # demo flow works against either a fresh path, an empty file,
+    # or an existing session DB. Avoids the `no such table:
+    # design_sessions` stumble on first run.
+    from dd.db import init_db
+    init_db(db_path).close()
+
     client = _make_anthropic_client()
     conn = get_connection(db_path)
     try:
         result = run_session(
             conn, brief=brief, client=client, max_iters=max_iters,
             starting_doc=starting_doc,
+            progress_stream=sys.stderr,
         )
     except ValueError as e:
         print(f"dd design: {e}", file=sys.stderr)
@@ -2234,7 +2244,10 @@ def _run_design_resume(
     db_path: str, *, variant_id: str, max_iters: int,
 ) -> None:
     from dd.agent.loop import run_session
-    from dd.db import get_connection
+    from dd.db import get_connection, init_db
+
+    # Same auto-init contract as --brief. Idempotent on populated DBs.
+    init_db(db_path).close()
 
     client = _make_anthropic_client()
     conn = get_connection(db_path)
@@ -2242,6 +2255,7 @@ def _run_design_resume(
         result = run_session(
             conn, parent_variant_id=variant_id,
             client=client, max_iters=max_iters,
+            progress_stream=sys.stderr,
         )
     except ValueError as e:
         print(f"dd design: {e}", file=sys.stderr)

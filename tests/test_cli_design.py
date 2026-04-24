@@ -726,3 +726,177 @@ class TestStartingDocWrapperShapeMatchesRenderer:
             "fixture too small — extend the seed screen or this "
             "regression pin has no teeth"
         )
+
+
+# --------------------------------------------------------------------------- #
+# M1 follow-up 2 — demo UX: auto-init, lower max-iters, progress output       #
+# --------------------------------------------------------------------------- #
+
+class TestDesignDemoUX:
+    """The three UX warts Codex + a post-M1 real-run pass surfaced:
+
+    1. `dd design --db /tmp/demo.db` on a fresh file dies with
+       `no such table: design_sessions` — the CLI should init_db
+       implicitly so one-command demos just work.
+    2. `--max-iters` default of 10 means ~1 minute/iter × 10 =
+       10 minutes of silence before stdout. That's demo-hostile.
+       Lower default to 4; long-form runs pass explicit
+       --max-iters.
+    3. No per-iter progress output. Users stare at a blank
+       terminal for minutes, assume it's hung. Emit an `[iter N/M]`
+       line to stderr at the start of each session iteration."""
+
+    def test_fresh_db_file_auto_inits_on_brief(
+        self, tmp_path, capsys,
+    ):
+        """Pointing --db at a fresh file (no schema yet) must NOT
+        fail with 'no such table'. The CLI initializes the schema
+        transparently; idempotent if the DB already has tables."""
+        fresh_db = tmp_path / "fresh.db"
+        # Create the FILE but not the schema — simulates what
+        # happens when the user copy-pastes `--db /tmp/demo.db`
+        # and the OS creates the file on first connection.
+        fresh_db.touch()
+        assert fresh_db.exists()
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            cli_main([
+                "design", "--brief", "anything",
+                "--db", str(fresh_db),
+            ])
+        # Successful exit → session persisted → schema got
+        # initialized in-line.
+        conn = sqlite3.connect(str(fresh_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = conn.execute(
+                "SELECT id FROM design_sessions"
+            ).fetchall()
+            assert len(sessions) == 1
+        finally:
+            conn.close()
+
+    def test_nonexistent_db_path_auto_inits(
+        self, tmp_path, capsys,
+    ):
+        """Same guarantee when the file doesn't exist yet at all —
+        the canonical demo flow. One command, session lands."""
+        db_path = tmp_path / "does-not-exist-yet.db"
+        assert not db_path.exists()
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            cli_main([
+                "design", "--brief", "anything",
+                "--db", str(db_path),
+            ])
+        assert db_path.exists()
+        conn = sqlite3.connect(str(db_path))
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM design_sessions"
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            conn.close()
+
+    def test_max_iters_default_is_demo_friendly(self, tmp_db_path):
+        """Default --max-iters is 4 (down from 10). A 4-iter Sonnet
+        session against a mid-complexity screen lands in ~15-30s;
+        10 iters can hit 4+ minutes. Demo-hostile default was
+        making every first-time run feel hung."""
+        client = _mock_client(
+            *[_mock_done_response() for _ in range(15)]
+        )
+        # Simulate a non-halting LLM: return something that DOESN'T
+        # halt. Easiest: an EDIT-like tool that keeps emitting edit
+        # intents. The loop will only cap out if it doesn't halt
+        # naturally. But our simple _mock_done_response halts on
+        # iter 1 by emitting `emit_done`. Instead, look directly at
+        # what CLI default feeds into run_session.
+        captured: dict = {}
+
+        def fake_run_session(conn, **kwargs):
+            captured["max_iters"] = kwargs.get("max_iters")
+            from dd.agent.loop import SessionRunResult
+            from dd.sessions import create_session, create_variant
+            from dd.markup_l3 import parse_l3
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            doc = kwargs.get("starting_doc") or parse_l3(
+                "screen #stub {\n  text #t1 \"x\"\n}\n"
+            )
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None, doc=doc,
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0,
+                halt_reason="done", final_variant_id=vid,
+                move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--db", tmp_db_path,
+                ])
+        # Default should be the new demo-friendly value.
+        assert captured["max_iters"] == 4, (
+            f"expected max_iters default of 4, got "
+            f"{captured.get('max_iters')}"
+        )
+
+    def test_per_iter_progress_emitted_to_stderr(
+        self, tmp_db_path, capsys,
+    ):
+        """The loop writes `[iter N/M] ...` to stderr on each turn
+        so the user sees heartbeat progress during a multi-minute
+        session. Without this the terminal looks hung.
+
+        We validate via a 3-response mock that's forced to run 3
+        iters (so the loop prints at least 2 iter lines)."""
+        block_name = MagicMock(); block_name.type = "tool_use"
+        block_name.name = "emit_name_subtree"
+        block_name.input = {
+            "eid": "screen-root",
+            "description": "the screen root",
+        }
+        msg_name = MagicMock(); msg_name.content = [block_name]
+        msg_name.stop_reason = "tool_use"
+
+        block_done = MagicMock(); block_done.type = "tool_use"
+        block_done.name = "emit_done"
+        block_done.input = {"rationale": "ok"}
+        msg_done = MagicMock(); msg_done.content = [block_done]
+        msg_done.stop_reason = "tool_use"
+
+        client = _mock_client(msg_name, msg_name, msg_done)
+
+        # Patch `_empty_starting_doc` so the default SYNTHESIZE
+        # path gives the LLM an addressable `#screen-root` eid
+        # for emit_name_subtree.
+        from dd.agent import loop as agent_loop
+        original_default = agent_loop._empty_starting_doc
+        try:
+            agent_loop._empty_starting_doc = lambda: parse_l3(
+                "screen #screen-root {\n"
+                "  text #t1 \"hi\"\n"
+                "}\n"
+            )
+            with patch("dd.cli._make_anthropic_client",
+                       return_value=client):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--db", tmp_db_path,
+                    "--max-iters", "3",
+                ])
+        finally:
+            agent_loop._empty_starting_doc = original_default
+
+        err = capsys.readouterr().err
+        # At least one per-iter heartbeat landed before halt.
+        assert "[iter 1" in err, (
+            f"expected '[iter 1' progress line on stderr; got:\n{err}"
+        )
