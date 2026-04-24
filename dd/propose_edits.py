@@ -2,7 +2,31 @@
 
 Wraps all 7 verb tool schemas (built by ``dd.structural_verbs``) into
 one entry point the LLM uses to emit a single edit against the
-current tree state. The orchestrator:
+current tree state.
+
+**The three starting-IR modes** (per docs/plan-authoring-loop.md
+Stage 1.3) all use the same contract — only the ``doc`` argument
+differs:
+
+- **SYNTHESIZE** — pass an empty doc (e.g. ``parse_l3("screen
+  #screen-root\\n")``). The LLM proposes appends to build a screen
+  from scratch, one edit per turn.
+- **EDIT (variation)** — pass a donor screen's full extracted IR.
+  Stage 1.4 capstone uses Dank screen 333 for this. The LLM
+  proposes targeted changes (swap an icon, set a variant, etc.).
+- **MID-SESSION** — pass whatever the session's current tree is.
+  Stage 3's session loop will own this — for Stage 1, callers
+  pass any in-memory doc.
+
+Stage 1.3 is intentionally code-free (Codex 2026-04-23): the
+contract is satisfied by Stage 1.2's "accept any doc" plus 1.4's
+acceptance tests that exercise all three modes. Convenience
+helpers (``load_doc_from_screen``, ``new_empty_doc``, etc.) belong
+to whichever Stage 2/3 caller actually needs them — building them
+now would lock in a shape the session-aware caller will likely
+redesign.
+
+The orchestrator:
 
 1. Builds the per-verb schemas restricted to candidates discovered
    in the current ``doc`` (set/swap/replace target eids; append
