@@ -239,3 +239,363 @@ class TestDesignNeedsApiKey:
         # Both are acceptable for Stage 3; the friendly-error UX is
         # already exercised by _make_anthropic_client's own try/except
         # path in production.
+
+
+# --------------------------------------------------------------------------- #
+# M1 — `--starting-screen <ID>` + `--render-to-figma` (close the loop)        #
+# --------------------------------------------------------------------------- #
+
+def _seed_project_db(db_path: str) -> int:
+    """Seed a minimal classified screen and return its id.
+
+    Mirrors tests/test_generate.py::_seed_gen_screen — one 428×926
+    screen with a header + heading, enough for generate_ir +
+    compress_to_l3 to produce a non-empty starting doc."""
+    from dd.catalog import seed_catalog
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) VALUES "
+            "(1, 'fk', 'Dank')"
+        )
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, "
+            "width, height) VALUES "
+            "(1, 1, 's1', 'Settings', 428, 926)"
+        )
+        nodes = [
+            (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, 0, 0,
+             428, 56, "HORIZONTAL"),
+            (11, 1, "t1", "Page Title", "TEXT", 2, 0, 16, 70,
+             396, 28, None),
+        ]
+        conn.executemany(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, "
+            "node_type, depth, sort_order, x, y, width, height, "
+            "layout_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            nodes,
+        )
+        conn.execute(
+            "UPDATE nodes SET font_size = 24, font_weight = 700 "
+            "WHERE id = 11"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, "
+            " classification_source) "
+            "VALUES (1, 10, 'header', 1.0, 'formal')"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, "
+            " classification_source) "
+            "VALUES (1, 11, 'heading', 0.9, 'heuristic')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return 1
+
+
+class TestDesignBriefWithStartingScreen:
+    """`dd design --brief "..." --starting-screen <ID> [--project-db <path>]`
+    loads the starting doc from the project DB so the agent session
+    operates on real content, not the default SYNTHESIZE empty doc.
+
+    Split `--db` (session DB, where sessions/variants/move_log persist)
+    from `--project-db` (source-of-truth DB, where screens + classified
+    nodes + tokens + CKR live). Defaulting --project-db to --db keeps
+    the single-DB path working."""
+
+    def test_starting_screen_loads_doc_from_project_db(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        screen_id = _seed_project_db(project_db)
+
+        captured_docs: list[object] = []
+
+        def fake_run_session(conn, **kwargs):
+            captured_docs.append(kwargs.get("starting_doc"))
+            from dd.agent.loop import SessionRunResult
+            # Bootstrap a session + root variant so downstream
+            # orchestration has something to reference.
+            from dd.sessions import create_session, create_variant
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None,
+                doc=kwargs["starting_doc"],
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0, halt_reason="done",
+                final_variant_id=vid, move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "trim this",
+                    "--starting-screen", str(screen_id),
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                ])
+
+        # The loop received a real starting_doc (not None) with
+        # content — both elements from the project DB should be
+        # reachable by eid.
+        assert len(captured_docs) == 1
+        doc = captured_docs[0]
+        assert doc is not None
+        # L3Document has top_level with the loaded screen.
+        assert doc.top_level, "expected non-empty starting doc"
+
+    def test_starting_screen_defaults_project_db_to_session_db(
+        self, tmp_db_path, capsys,
+    ):
+        """If --project-db is omitted, the session DB is used as the
+        source of truth (single-DB path). That's the simplest
+        workflow when sessions + screens live together."""
+        # Seed the session DB with a screen too.
+        _seed_project_db(tmp_db_path)
+
+        captured_docs: list[object] = []
+
+        def fake_run_session(conn, **kwargs):
+            captured_docs.append(kwargs.get("starting_doc"))
+            from dd.agent.loop import SessionRunResult
+            from dd.sessions import create_session, create_variant
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None,
+                doc=kwargs["starting_doc"],
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0, halt_reason="done",
+                final_variant_id=vid, move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--db", tmp_db_path,
+                ])
+
+        assert captured_docs and captured_docs[0] is not None
+
+    def test_starting_screen_missing_screen_id_fails_fast(
+        self, tmp_db_path, capsys,
+    ):
+        """Specifying a screen id that doesn't exist in the project DB
+        must surface a clear error before the Anthropic client gets
+        called (burning an API call on a doomed session is the wrong
+        failure mode)."""
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "9999",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "9999" in err or "not found" in err.lower()
+
+
+class TestDesignBriefRenderToFigma:
+    """`--render-to-figma` closes the loop: after the session halts,
+    the CLI renders both the original screen AND the final variant
+    to a new Figma page keyed on the session ULID, side-by-side.
+
+    Bridge I/O is stubbed in these tests — the live-bridge capstone
+    is a separate integration asset gated on ANTHROPIC_API_KEY + a
+    running plugin."""
+
+    def test_render_to_figma_without_starting_screen_fails_fast(
+        self, tmp_db_path, capsys,
+    ):
+        """Codex's risk: ambiguous flag combinations. For M1, the two
+        flags must be used together — rendering 'to Figma' with no
+        starting screen produces an empty-canvas result, which is a
+        confusing demo. Fail loudly with a clear error."""
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "--brief", "x",
+                    "--render-to-figma",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "starting-screen" in err
+
+    def test_starting_screen_without_render_to_figma_skips_bridge(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """`--starting-screen` alone runs the session against real
+        content but never touches Figma. Useful for testing without
+        a live bridge."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                ])
+
+        assert bridge_calls == []
+
+    def test_render_to_figma_calls_bridge_with_session_page_name(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """After the session halts, the CLI executes two render
+        scripts via the bridge — one for the original screen, one
+        for the final variant. Both share a page_name keyed on the
+        session ULID (render_figma_ast's find-or-create preamble
+        makes the second call land beside the first on the same
+        page)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        # Two bridge calls — original render + variant render.
+        assert len(bridge_calls) == 2, (
+            f"expected original + variant renders, got "
+            f"{len(bridge_calls)} calls"
+        )
+        # Both scripts target a page name that carries "design session".
+        for i, script in enumerate(bridge_calls):
+            assert "design session" in script, (
+                f"call {i} script missing page name preamble"
+            )
+        # Canvas positioning: original at (0,0), variant offset right.
+        # The root-frame x/y emission happens inside the
+        # setCurrentPageAsync(_page) block (render_figma_ast line
+        # ~1747). Grab that block's `<var>.x = <num>;` line — the
+        # variant render should have a larger x offset than the
+        # original.
+        import re
+        xs = []
+        for script in bridge_calls:
+            # Root attach happens right after setCurrentPageAsync, so
+            # the very next `.x = N;` line is the root frame's origin.
+            after_page = script.split("setCurrentPageAsync", 1)
+            tail = after_page[1] if len(after_page) > 1 else script
+            m = re.search(r"\.x = (\d+(?:\.\d+)?);", tail)
+            xs.append(float(m.group(1)) if m else -1.0)
+        assert len(xs) == 2
+        # One at 0, one >= screen_width (228 default screen; test
+        # seed uses 428, so variant offset should be >= 428+200).
+        assert min(xs) == 0.0, f"expected one render at x=0, got xs={xs}"
+        assert max(xs) >= 428.0, (
+            f"expected variant offset right of screen, got xs={xs}"
+        )
+
+    def test_render_to_figma_prints_session_summary_with_page_hint(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """The demo surface wants a clear `→ rendered to Figma page
+        'design session <ULID>'` line so the user knows what to look
+        for. Without it the render happens silently and the user
+        doesn't know where to click."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def fake_execute(**kwargs):
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        out = capsys.readouterr().out
+        assert "Figma page" in out or "figma page" in out.lower()
+        assert "design session" in out
+
+    def test_render_to_figma_bridge_error_reaches_user(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Codex's explicit risk: silent partial execution. When the
+        bridge rejects a script (connection refused, bad script,
+        timeout) the CLI must surface that to the user, not swallow
+        it and exit 0 with a successful-looking session summary."""
+        from dd.apply_render import BridgeError
+
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def failing_execute(**kwargs):
+            raise BridgeError(
+                "execute_ref.js exited 1: PROXY_EXECUTE rejected"
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=failing_execute):
+                with pytest.raises(SystemExit) as exc_info:
+                    cli_main([
+                        "design", "--brief", "x",
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                    ])
+                assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "bridge" in err.lower() or "proxy_execute" in err.lower()

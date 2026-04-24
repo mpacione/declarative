@@ -1708,6 +1708,30 @@ def main(argv: list | None = None) -> None:
         "--max-iters", type=int, default=10,
         help="Max iterations per session (default 10)",
     )
+    # M1 — close the Figma round-trip. --starting-screen loads a real
+    # screen from the project DB as the agent's starting context;
+    # --render-to-figma additionally ships the final variant (and a
+    # fresh render of the original) to the live plugin bridge so the
+    # demo lands visibly on a new page. --project-db splits "where
+    # sessions persist" from "where the source-of-truth screens live";
+    # defaults to --db when omitted (single-DB workflow).
+    design_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the agent's "
+             "starting context (instead of the default empty SYNTHESIZE "
+             "doc).",
+    )
+    design_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After the session halts, render the starting screen + "
+             "the final variant to a new Figma page via the plugin "
+             "bridge on port 9228. Requires --starting-screen.",
+    )
+    design_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1867,7 +1891,14 @@ def _run_design(db_path: str, args) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        _run_design_brief(db_path, brief=args.brief, max_iters=args.max_iters)
+        _run_design_brief(
+            db_path,
+            brief=args.brief,
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+        )
         return
 
     if sub == "resume":
@@ -1896,7 +1927,35 @@ def _make_anthropic_client():
         sys.exit(1)
 
 
-def _run_design_brief(db_path: str, *, brief: str, max_iters: int) -> None:
+def _run_design_brief(
+    db_path: str,
+    *,
+    brief: str,
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+) -> None:
+    """M1 of the authoring-loop Figma round-trip (docs/rationale/
+    stage-3-session-loop.md + Codex sign-off 2026-04-24).
+
+    Three modes:
+
+    1. **SYNTHESIZE** (``--brief`` only): run the agent on the
+       default empty starting doc, persist session, print summary.
+    2. **Brief + starting-screen** (``--brief`` +
+       ``--starting-screen``): load the starting doc from the project
+       DB via generate_ir + compress_to_l3 round-trip, run the agent
+       against it, persist session. Useful for testing without a
+       live Figma bridge.
+    3. **Full round-trip** (add ``--render-to-figma``): after the
+       session halts, render the starting screen AND the final
+       variant to a new Figma page keyed on the session ULID,
+       side-by-side on one page. Requires ``--starting-screen``;
+       rendering to Figma with no source material is an empty-canvas
+       demo. Uses ``execute_script_via_bridge`` (M1.1) to ship each
+       render over PROXY_EXECUTE.
+    """
     from dd.agent.loop import run_session
     from dd.db import get_connection
 
@@ -1904,23 +1963,238 @@ def _run_design_brief(db_path: str, *, brief: str, max_iters: int) -> None:
         print("dd design: --brief must not be blank.", file=sys.stderr)
         sys.exit(1)
 
+    # Flag-combination invariant (Codex's "ambiguous combinations"
+    # risk): require --starting-screen alongside --render-to-figma.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    starting_doc = None
+    if starting_screen is not None:
+        starting_doc = _load_starting_doc(
+            project_db_path=project_db or db_path,
+            screen_id=starting_screen,
+        )
+
     client = _make_anthropic_client()
     conn = get_connection(db_path)
     try:
         result = run_session(
             conn, brief=brief, client=client, max_iters=max_iters,
+            starting_doc=starting_doc,
         )
     except ValueError as e:
         print(f"dd design: {e}", file=sys.stderr)
         sys.exit(1)
     finally:
         conn.close()
+
+    page_hint = ""
+    if render_to_figma:
+        page_name = _render_session_to_figma(
+            session_db_path=db_path,
+            project_db_path=project_db or db_path,
+            session_id=result.session_id,
+            final_variant_id=result.final_variant_id,
+            starting_screen_id=starting_screen,
+        )
+        page_hint = (
+            f"\n  → rendered to Figma page '{page_name}' "
+            f"(original at x=0, variant offset right)"
+        )
+
     print(result.session_id)
     print(
         f"  iterations: {result.iterations}  "
         f"halt: {result.halt_reason}  "
         f"final_variant: {result.final_variant_id}"
+        f"{page_hint}"
     )
+
+
+def _load_starting_doc(*, project_db_path: str, screen_id: int):
+    """Load and round-trip an L3 starting doc from a project DB screen.
+
+    Mirrors the capstone-test recipe (tests/test_stage3_acceptance.py):
+    generate_ir → compress_to_l3 → emit_l3 + parse_l3 round-trip so the
+    returned doc is the same shape the agent loop will produce after
+    each iter. Surfaces a clear `screen {id} not found` error if the
+    project DB doesn't have the screen — better than reaching the
+    Anthropic client and burning an API call on a doomed session.
+    """
+    from dd.compress_l3 import compress_to_l3
+    from dd.db import get_connection
+    from dd.ir import generate_ir
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    conn = get_connection(project_db_path)
+    try:
+        row = conn.execute(
+            "SELECT id FROM screens WHERE id=?", (screen_id,),
+        ).fetchone()
+        if row is None:
+            print(
+                f"dd design: screen {screen_id} not found in "
+                f"{project_db_path}. Pass --project-db to point at "
+                "a classified project DB.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        ir_result = generate_ir(conn, screen_id)
+        doc = compress_to_l3(
+            ir_result["spec"], conn=conn, screen_id=screen_id,
+        )
+        # Round-trip through emit/parse so the agent sees the exact
+        # shape `apply_edits` would produce, not the compressor's
+        # internal object identity. Prevents id(Node)-keyed maps from
+        # mis-aligning on the first turn.
+        return parse_l3(emit_l3(doc))
+    finally:
+        conn.close()
+
+
+def _render_session_to_figma(
+    *,
+    session_db_path: str,
+    project_db_path: str,
+    session_id: str,
+    final_variant_id: str,
+    starting_screen_id: int,
+) -> str:
+    """Render the starting screen + the session's final variant to
+    a new Figma page via the plugin bridge. Returns the page name.
+
+    Two bridge calls (not one concatenated script): the page_name
+    find-or-create preamble in render_figma_ast makes the second call
+    idempotent on the same page. Two calls also let a mid-pipeline
+    failure land visibly (original rendered, variant failed) rather
+    than atomic-nothing — better for a demo where the user can
+    diagnose by looking at the canvas.
+
+    Page-name + canvas-position split:
+      - Original render:  page_name="design session <ULID 8>",
+                          canvas_position=(0, 0).
+      - Variant render:   same page_name,
+                          canvas_position=(screen_width + 200, 0).
+    """
+    from dd.apply_render import (
+        BridgeError, execute_script_via_bridge, render_applied_doc,
+    )
+    from dd.compress_l3 import _compress_to_l3_impl
+    from dd.db import get_connection
+    from dd.ir import generate_ir, query_screen_visuals
+    from dd.renderers.figma import collect_fonts, generate_screen
+    from dd.sessions import iter_edits_on_path, load_variant
+
+    # Session ULIDs are 26 chars; 8-char prefix is plenty for a
+    # human-readable page name that stays unique per run.
+    page_name = f"design session {session_id[:8]}"
+
+    # --- Original render -------------------------------------------
+    project_conn = get_connection(project_db_path)
+    try:
+        screen_row = project_conn.execute(
+            "SELECT width FROM screens WHERE id=?", (starting_screen_id,),
+        ).fetchone()
+        screen_width = float(screen_row["width"] or 428.0) if screen_row else 428.0
+
+        original_result = generate_screen(
+            project_conn, starting_screen_id,
+            canvas_position=(0.0, 0.0),
+            page_name=page_name,
+        )
+        original_script = original_result["structure_script"]
+    finally:
+        project_conn.close()
+
+    # --- Variant render --------------------------------------------
+    session_conn = get_connection(session_db_path)
+    project_conn = get_connection(project_db_path)
+    try:
+        final_variant = load_variant(session_conn, final_variant_id)
+        if final_variant is None:
+            print(
+                f"dd design: final variant {final_variant_id!r} not "
+                "found — session persistence is inconsistent.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        cumulative_edits = iter_edits_on_path(
+            session_conn, final_variant_id,
+        )
+
+        # Rebuild the original-screen render-side state. The renderer's
+        # maps are keyed on the original AST + the full edit list (via
+        # rebuild_maps_after_edits); this is the same shape
+        # generate_screen builds internally.
+        ir_result = generate_ir(project_conn, starting_screen_id)
+        spec = ir_result["spec"]
+        visuals = query_screen_visuals(project_conn, starting_screen_id)
+        ckr_exists = project_conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='component_key_registry'"
+        ).fetchone()
+        if ckr_exists:
+            ckr_row = project_conn.execute(
+                "SELECT COUNT(*) FROM component_key_registry"
+            ).fetchone()
+            ckr_built = bool(ckr_row and ckr_row[0] > 0)
+        else:
+            ckr_built = False
+
+        (
+            original_doc, _eid_nid, nid_map, spec_key_map,
+            original_name_map, _descendant_resolver,
+        ) = _compress_to_l3_impl(
+            spec, project_conn, screen_id=starting_screen_id,
+            collapse_wrapper=False,
+        )
+        fonts = collect_fonts(spec, db_visuals=visuals)
+
+        variant_rendered = render_applied_doc(
+            applied_doc=final_variant.doc,
+            original_doc=original_doc,
+            edits=cumulative_edits,
+            spec=spec,
+            conn=project_conn,
+            db_visuals=visuals,
+            fonts=fonts,
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            ckr_built=ckr_built,
+            page_name=page_name,
+            canvas_position=(screen_width + 200.0, 0.0),
+        )
+        variant_script = variant_rendered.script
+    finally:
+        session_conn.close()
+        project_conn.close()
+
+    # --- Bridge I/O ------------------------------------------------
+    # Two PROXY_EXECUTE calls. Any BridgeError reaches the user via
+    # sys.stderr + non-zero exit — we do NOT silently skip the variant
+    # render if the original succeeded (the user wants both; half is
+    # a bug, not a feature).
+    try:
+        from dd import apply_render as _ap
+        _ap.execute_script_via_bridge(script=original_script)
+        _ap.execute_script_via_bridge(script=variant_script)
+    except BridgeError as e:
+        print(
+            f"dd design: render-to-figma bridge call failed: {e}\n"
+            "Is the Figma plugin listening on port 9228?",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return page_name
 
 
 def _run_design_resume(
