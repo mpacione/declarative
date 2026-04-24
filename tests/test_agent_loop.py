@@ -297,6 +297,82 @@ class TestRunSessionHalt:
         )
         assert result.halt_reason == "all_failed"
 
+    def test_styling_only_session_does_not_stall(self, db):
+        """A session where every iter is a successful `set` edit on
+        a property (no structural add/remove) must NOT be flagged
+        as stalled. A property set is real productive work — the
+        prior detector treated zero eid-delta as "no change" and
+        halted at iter 3, breaking any styling-only flow.
+        """
+        # Four successive set edits on valid eids — each applies
+        # cleanly, each changes a property, none changes the eid set.
+        client = _mock_client_seq(
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "title", "property": "variant",
+                 "value": "heading", "rationale": "r1"},
+            ),
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "placeholder", "property": "variant",
+                 "value": "ghost", "rationale": "r2"},
+            ),
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "title", "property": "variant",
+                 "value": "muted", "rationale": "r3"},
+            ),
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "placeholder", "property": "variant",
+                 "value": "default", "rationale": "r4"},
+            ),
+            _mock_done("done styling"),
+        )
+        result = run_session(
+            db, brief="style it", client=client,
+            max_iters=10, starting_doc=_starter_doc(),
+        )
+        assert result.halt_reason != "stalled"
+        assert result.halt_reason == "done"
+
+    def test_zero_apply_session_does_stall(self, db):
+        """Three consecutive iters where every proposed edit FAILS
+        apply → halt=stalled. Without at least one successful edit
+        in the window the agent is truly stuck.
+
+        Note: the existing `all_failed` branch also catches this
+        pattern (three failed applies in a row). We reuse the same
+        halt signal — either ``all_failed`` or ``stalled`` is a
+        valid stop for a fully-failing window; what matters for the
+        bug fix is that a WINDOW OF PURE FAILURES DOES stop, while
+        a window of pure successful styling does not.
+        """
+        # Three set edits that all fail apply because the target
+        # eid is unknown. Each turn's score.edit_applied = False.
+        client = _mock_client_seq(
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "ghost-a", "property": "variant",
+                 "value": "x", "rationale": "r1"},
+            ),
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "ghost-b", "property": "variant",
+                 "value": "y", "rationale": "r2"},
+            ),
+            _mock_tool_use(
+                "emit_set_edit",
+                {"target_eid": "ghost-c", "property": "variant",
+                 "value": "z", "rationale": "r3"},
+            ),
+        )
+        result = run_session(
+            db, brief="x", client=client,
+            max_iters=10, starting_doc=_starter_doc(),
+        )
+        assert result.halt_reason in ("stalled", "all_failed")
+
 
 class TestRunSessionResume:
     """Plan §3.4 acceptance #2: resume picks up where left off."""

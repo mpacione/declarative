@@ -506,7 +506,12 @@ def run_session(
     last_variant_id = parent_variant_id
     halt_reason: Optional[str] = None
     iterations = 0
-    recent_change_magnitudes: list[int] = []
+    # Stall window tracks "iters where an EDIT verb was attempted but
+    # did NOT successfully apply". A successful `set` that only
+    # changes a property (no eid delta) is still productive work and
+    # must NOT count toward stall — measuring structural eid-delta
+    # halts any styling-only or append-then-style flow at iter 3.
+    recent_edit_unproductive: list[bool] = []
     recent_failures: list[bool] = []
     move_log_summary: list[str] = []
 
@@ -632,19 +637,28 @@ def run_session(
             move_log_summary.append(outcome.primitive)
 
         # Stall + all-failed detector.
-        recent_change_magnitudes.append(outcome.score["change_magnitude"])
+        #
+        # A turn is "unproductive" only when the AGENT attempted an
+        # EDIT verb AND the apply failed. A successful `set` edit —
+        # which changes a property but no eids — is productive work
+        # and resets the stall window. NAME / DRILL / CLIMB are
+        # structurally zero-change by design so they don't feed the
+        # window at all (they neither advance nor stall it).
+        is_edit_turn = outcome.primitive == "EDIT"
+        is_edit_unproductive = (
+            is_edit_turn and not outcome.score["edit_applied"]
+        )
         recent_failures.append(not outcome.score["edit_applied"])
+        if is_edit_turn:
+            recent_edit_unproductive.append(is_edit_unproductive)
         if len(recent_failures) >= _STALL_WINDOW and all(
             recent_failures[-_STALL_WINDOW:]
         ):
             halt_reason = "all_failed"
             break
-        if len(recent_change_magnitudes) >= _STALL_WINDOW and all(
-            m == 0 for m in recent_change_magnitudes[-_STALL_WINDOW:]
-        ) and outcome.primitive == "EDIT":
-            # Only count "stalled" when the AGENT was trying to edit
-            # but produced no structural change for a window. NAME /
-            # DRILL / CLIMB are zero-change by design.
+        if len(recent_edit_unproductive) >= _STALL_WINDOW and all(
+            recent_edit_unproductive[-_STALL_WINDOW:]
+        ):
             halt_reason = "stalled"
             break
 
