@@ -207,7 +207,7 @@ def iter_edits_on_path(
     parent_id chain contains a cycle (per Codex risk note on corrupt
     parent pointers).
     """
-    from dd.markup_l3 import parse_l3
+    from dd.markup_l3 import DDMarkupParseError, parse_l3
 
     # Walk leaf-to-root first, collecting variants as we go.
     chain: list[VariantRow] = []
@@ -242,7 +242,21 @@ def iter_edits_on_path(
         src = row["edit_script"]
         if not src:
             continue
-        parsed = parse_l3(src)
+        # Codex C-fix (2026-04-24): if a malformed edit_script ever
+        # lands in a variant row (schema migration, bug upstream, raw
+        # sqlite writer), the raw DDMarkupParseError surfaces with no
+        # variant context. Wrap with the variant_id + an excerpt so the
+        # offending row is identifiable. Upstream validation at
+        # `dd.propose_edits.parse_tool_call_to_edit` is the first line
+        # of defense; this is the debuggable fallback.
+        try:
+            parsed = parse_l3(src)
+        except DDMarkupParseError as e:
+            excerpt = src if len(src) <= 160 else (src[:157] + "...")
+            raise ValueError(
+                f"variant {row['id']!r} edit_script is invalid L3: {e}"
+                f"\n  excerpt: {excerpt!r}"
+            ) from e
         edits.extend(parsed.edits)
     return edits
 

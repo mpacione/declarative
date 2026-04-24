@@ -50,10 +50,11 @@ Claude picks the wrong nested shape.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from dd.markup_l3 import apply_edits, emit_l3, parse_l3
+from dd.markup_l3 import DDMarkupParseError, apply_edits, emit_l3, parse_l3
 from dd.structural_verbs import (
     build_append_tool_schema,
     build_delete_tool_schema,
@@ -149,6 +150,81 @@ def build_propose_edits_tools(
 # Tool-call → edit-grammar source                                             #
 # --------------------------------------------------------------------------- #
 
+# Per grammar §2.6 + dd/markup_l3.py `_TEXT_BEARING_TYPES`, only these
+# catalog types accept a positional string trailer (`<type> #eid "text"`).
+# The structural-verb schemas also expose "heading" in their appendable
+# set; we keep the allowlist in sync with the grammar so the lowering
+# can safely emit the compact form when (and only when) it's valid.
+_BARE_STRING_TRAILER_TYPES = frozenset(("text", "heading"))
+
+# Grammar §3.1 — eid pattern is `^[a-z][a-z0-9-]{1,38}$` (max 39 chars).
+# Mirrors dd/structural_verbs.py tool-schema constraint.
+_EID_MAX_LEN = 39
+
+_LABEL_SUFFIX = "-label"
+
+
+def _derive_text_child_eid(base_eid: str) -> str:
+    """Derive a unique, in-grammar eid for a synthesized text child.
+
+    When an LLM supplies ``child_text`` on a non-text-bearing parent
+    (e.g. ``frame``), we lower to a nested ``text #<derived> "..."``
+    child rather than a bare-string trailer (which only text-bearing
+    types can carry — see Codex A-fix).
+
+    The derived eid is ``<base>-label`` when that fits within the
+    39-char grammar cap; otherwise we truncate ``<base>`` and append a
+    short sha1-prefix-suffix so the derived eid stays unique to this
+    base eid while remaining within the cap.
+    """
+    candidate = f"{base_eid}{_LABEL_SUFFIX}"
+    if len(candidate) <= _EID_MAX_LEN:
+        return candidate
+    digest = hashlib.sha1(base_eid.encode("utf-8")).hexdigest()[:4]
+    # Reserve room for "-<4hex>-label" (11 chars) — digests are a-z0-9,
+    # fully kebab-grammar-safe. If `<base>` is already short enough that
+    # trimming wouldn't help, we still land in-bounds because the cap is
+    # 39 and the reserved suffix is 11, leaving 28 truncation-chars.
+    reserved = len(digest) + 1 + len(_LABEL_SUFFIX)  # -<digest>-label
+    truncated = base_eid[: _EID_MAX_LEN - reserved]
+    return f"{truncated}-{digest}{_LABEL_SUFFIX}"
+
+
+def _lower_child_body(
+    *,
+    child_type: str,
+    child_eid: str,
+    child_text: Optional[str],
+) -> str:
+    """Build the inner body for an ``append``/``insert``/``replace``
+    statement's ``{ ... }`` block.
+
+    Per Codex A-fix (2026-04-24):
+
+    - text-bearing types (``text`` / ``heading``) emit the compact
+      ``<type> #eid "text"`` form — grammar-legal, minimal nesting.
+    - ``frame`` with ``child_text`` lowers to a nested text child:
+      ``frame #eid { text #eid-label "text" }`` so the output is
+      valid L3.
+    - Non-text, non-frame types (``rectangle`` / ``ellipse`` / ...)
+      silently drop ``child_text`` — text inside a rectangle is
+      surprising and the LLM should never have supplied it; the
+      schema description even says so. Drop is intentional.
+    """
+    if child_type in _BARE_STRING_TRAILER_TYPES and child_text:
+        esc = child_text.replace("\\", "\\\\").replace('"', '\\"')
+        return f'{child_type} #{child_eid} "{esc}"'
+    if child_type == "frame" and child_text:
+        label_eid = _derive_text_child_eid(child_eid)
+        esc = child_text.replace("\\", "\\\\").replace('"', '\\"')
+        return (
+            f"{child_type} #{child_eid} "
+            f'{{ text #{label_eid} "{esc}" }}'
+        )
+    # No text, or a non-text-capable type with text-to-drop.
+    return f"{child_type} #{child_eid}"
+
+
 def parse_tool_call_to_edit(
     tool_name: str,
     tool_input: dict[str, Any],
@@ -194,15 +270,13 @@ def parse_tool_call_to_edit(
         )
 
     if tool_name == "emit_append_edit":
-        text_part = (
-            f' "{tool_input["child_text"]}"'
-            if tool_input.get("child_text") else ""
+        body = _lower_child_body(
+            child_type=tool_input["child_type"],
+            child_eid=tool_input["child_eid"],
+            child_text=tool_input.get("child_text"),
         )
-        return (
-            f"append to=@{tool_input['parent_eid']} {{ "
-            f"{tool_input['child_type']} #{tool_input['child_eid']}"
-            f"{text_part} }}"
-        )
+        src = f"append to=@{tool_input['parent_eid']} {{ {body} }}"
+        return _validate_l3_or_raise(src, tool_name=tool_name)
 
     if tool_name == "emit_insert_edit":
         # pair_index → (parent_eid, anchor_eid)
@@ -214,16 +288,16 @@ def parse_tool_call_to_edit(
                 f"(have {len(pairs)} pairs)"
             )
         pair = pairs[idx]
-        text_part = (
-            f' "{tool_input["child_text"]}"'
-            if tool_input.get("child_text") else ""
+        body = _lower_child_body(
+            child_type=tool_input["child_type"],
+            child_eid=tool_input["child_eid"],
+            child_text=tool_input.get("child_text"),
         )
-        return (
+        src = (
             f"insert into=@{pair['parent_eid']} "
-            f"after=@{pair['anchor_eid']} {{ "
-            f"{tool_input['child_type']} #{tool_input['child_eid']}"
-            f"{text_part} }}"
+            f"after=@{pair['anchor_eid']} {{ {body} }}"
         )
+        return _validate_l3_or_raise(src, tool_name=tool_name)
 
     if tool_name == "emit_move_edit":
         pairs = collect_move_candidates(doc)
@@ -234,24 +308,42 @@ def parse_tool_call_to_edit(
                 f"(have {len(pairs)} pairs)"
             )
         pair = pairs[idx]
-        return (
+        src = (
             f"move @{pair['target_eid']} "
             f"to=@{pair['dest_eid']} "
             f"position={tool_input['position']}"
         )
+        return _validate_l3_or_raise(src, tool_name=tool_name)
 
     if tool_name == "emit_replace_edit":
-        text_part = (
-            f' "{tool_input["replacement_root_text"]}"'
-            if tool_input.get("replacement_root_text") else ""
+        body = _lower_child_body(
+            child_type=tool_input["replacement_root_type"],
+            child_eid=tool_input["replacement_root_eid"],
+            child_text=tool_input.get("replacement_root_text"),
         )
-        return (
-            f"replace @{tool_input['target_eid']} {{ "
-            f"{tool_input['replacement_root_type']} "
-            f"#{tool_input['replacement_root_eid']}{text_part} }}"
-        )
+        src = f"replace @{tool_input['target_eid']} {{ {body} }}"
+        return _validate_l3_or_raise(src, tool_name=tool_name)
 
     raise ValueError(f"unknown tool name: {tool_name!r}")
+
+
+def _validate_l3_or_raise(src: str, *, tool_name: str) -> str:
+    """Codex C-fix (2026-04-24): final validation boundary.
+
+    ``parse_tool_call_to_edit`` must never return L3 that won't parse.
+    Routing failures through ``ValueError`` is load-bearing: the
+    downstream handler at ``dd/agent/loop.py`` already catches
+    ``(KeyError, ValueError)`` from the lowering and converts it to a
+    ``KIND_PARSE_FAILED`` non-edit turn — so a bad lowering doesn't
+    persist a variant row with an invalid ``edit_script``.
+    """
+    try:
+        parse_l3(src)
+    except DDMarkupParseError as e:
+        raise ValueError(
+            f"invalid L3 from {tool_name} lowering: {e}"
+        ) from e
+    return src
 
 
 # --------------------------------------------------------------------------- #

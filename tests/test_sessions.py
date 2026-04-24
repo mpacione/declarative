@@ -451,3 +451,46 @@ class TestIterEditsOnPath:
         with pytest.raises(ValueError) as exc:
             iter_edits_on_path(db, v2)
         assert "cycle" in str(exc.value).lower()
+
+    def test_iter_edits_raises_with_variant_context_on_bad_edit_script(
+        self, db,
+    ):
+        """Codex C-fix: the render-time re-parse of a persisted
+        ``edit_script`` used to raise a bare ``DDMarkupParseError`` from
+        deep inside the parser — no variant_id, no excerpt. If a bad
+        row ever slips past the upstream validation boundary (or comes
+        in via a schema migration), the walker must wrap the parse
+        failure with enough context to debug the offending row.
+
+        This test deliberately bypasses the upstream validation by
+        writing invalid L3 directly via raw sqlite, then asserts the
+        wrapped error mentions the variant_id and an excerpt of the
+        bad edit_script."""
+        sid = create_session(db, brief="x")
+        root = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        # Create a legitimate EDIT variant first, then corrupt its
+        # edit_script via raw sqlite (bypassing any validation).
+        v1 = create_variant(
+            db, session_id=sid, parent_id=root,
+            primitive="EDIT", edit_script="delete @title",
+            doc=_small_doc(),
+        )
+        bad_script = 'append to=@X { frame #eid "Sign Out" }'
+        db.execute(
+            "UPDATE variants SET edit_script=? WHERE id=?",
+            (bad_script, v1),
+        )
+        db.commit()
+
+        with pytest.raises(ValueError) as exc:
+            iter_edits_on_path(db, v1)
+        msg = str(exc.value)
+        assert v1 in msg, f"variant_id {v1} not in error: {msg!r}"
+        # Excerpt of the offending edit_script in the error.
+        assert "Sign Out" in msg or "append to=@X" in msg, (
+            f"bad edit_script excerpt missing from error: {msg!r}"
+        )

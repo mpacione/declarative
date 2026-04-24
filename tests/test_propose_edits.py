@@ -258,6 +258,195 @@ class TestParseToolCallToEdit:
                 "emit_unknown_edit", {}, doc=_fixture_doc(),
             )
 
+    def test_emit_append_frame_with_text_lowers_to_nested_text(self):
+        """Codex A-fix: non-text child_types can't accept a bare string
+        trailer (grammar §2.7: only `_TEXT_BEARING_TYPES` do). When the
+        LLM supplies child_text on a frame, lower it to a nested
+        `text #<eid>-label "…"` child so the output parses as valid L3."""
+        src = parse_tool_call_to_edit(
+            "emit_append_edit",
+            {
+                "parent_eid": "frame-1", "child_type": "frame",
+                "child_eid": "card-1", "child_text": "Sign Out",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        # Grammar-level check: must parse without error.
+        parsed = parse_l3(src)
+        # Round-trip: apply against the doc and inspect the new subtree.
+        applied = apply_edits(_fixture_doc(), list(parsed.edits))
+        # Find the new frame and verify it has a nested text child with
+        # the supplied content.
+        from dd.markup_l3 import emit_l3
+        out = emit_l3(applied)
+        assert "frame #card-1" in out
+        assert "text #card-1-label" in out
+        assert '"Sign Out"' in out
+
+    def test_emit_append_frame_without_text_still_bare(self):
+        """When no child_text is supplied, a frame remains a bare
+        `frame #eid` node — no spurious empty text child injected."""
+        src = parse_tool_call_to_edit(
+            "emit_append_edit",
+            {
+                "parent_eid": "frame-1", "child_type": "frame",
+                "child_eid": "empty-frame",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        # Must parse; must contain the bare frame; must NOT synthesize
+        # a child text node.
+        parse_l3(src)
+        assert "frame #empty-frame" in src
+        assert "text #" not in src
+
+    def test_emit_append_rectangle_silently_drops_text(self):
+        """rectangle / ellipse / vector do not render text. If the LLM
+        supplies child_text (it shouldn't per the schema description),
+        Codex's rule is to silently drop it — no spurious text child,
+        no bare-string trailer that would fail the parser."""
+        src = parse_tool_call_to_edit(
+            "emit_append_edit",
+            {
+                "parent_eid": "frame-1", "child_type": "rectangle",
+                "child_eid": "rect-new",
+                "child_text": "ignored content",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        # Parses: no bare-string trailer on rectangle.
+        parse_l3(src)
+        # Text content doesn't appear at all in the lowered source.
+        assert "ignored content" not in src
+        # No synthesized child text node either.
+        assert "text #" not in src
+
+    def test_emit_append_text_still_uses_bare_string_trailer(self):
+        """Regression guard: text (a text-bearing type) MUST still use
+        the compact `text #eid \"…\"` form — no unnecessary nesting
+        into a synthetic text-child. The single `{ ... }` wrapper is
+        the append statement's own block; there should be no *second*
+        nested block containing a text child."""
+        src = parse_tool_call_to_edit(
+            "emit_append_edit",
+            {
+                "parent_eid": "frame-1", "child_type": "text",
+                "child_eid": "leaf-1", "child_text": "hello",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        parse_l3(src)
+        assert 'text #leaf-1 "hello"' in src
+        # Exactly one `{` / `}` pair — no nested block for a synthesized
+        # sub-child.
+        assert src.count("{") == 1
+        assert src.count("}") == 1
+
+    def test_emit_insert_frame_with_text_lowers_to_nested_text(self):
+        """Same A-fix applies to insert: frame with child_text must
+        lower through a nested text child, not a bare-string trailer."""
+        src = parse_tool_call_to_edit(
+            "emit_insert_edit",
+            {
+                "pair_index": 0, "child_type": "frame",
+                "child_eid": "ins-frame", "child_text": "Label",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        parse_l3(src)
+        assert "frame #ins-frame" in src
+        assert "text #ins-frame-label" in src
+        assert '"Label"' in src
+
+    def test_emit_replace_frame_with_text_lowers_to_nested_text(self):
+        """Same A-fix applies to replace: replacement_root_type=frame
+        with replacement_root_text must lower through a nested text
+        child, not a bare-string trailer."""
+        src = parse_tool_call_to_edit(
+            "emit_replace_edit",
+            {
+                "target_eid": "badge",
+                "replacement_root_type": "frame",
+                "replacement_root_eid": "new-frame",
+                "replacement_root_text": "New label",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        parse_l3(src)
+        assert "frame #new-frame" in src
+        assert "text #new-frame-label" in src
+        assert '"New label"' in src
+
+    def test_emit_append_long_eid_label_stays_within_grammar_limit(self):
+        """The eid grammar cap is 39 chars (^[a-z][a-z0-9-]{1,38}$).
+        Naive suffixing would overflow if the base eid is already long.
+        Guard: when `<eid>-label` would overflow, truncate then append
+        a 4-char sha1 prefix of the base eid so the derived eid remains
+        unique AND within the cap."""
+        # 35-char base eid; +"-label" (6) = 41 chars, overflows.
+        long_eid = "long-frame-eid-that-is-near-the-cap"  # 35 chars
+        assert len(long_eid) == 35
+        src = parse_tool_call_to_edit(
+            "emit_append_edit",
+            {
+                "parent_eid": "frame-1", "child_type": "frame",
+                "child_eid": long_eid, "child_text": "Hi",
+                "rationale": "test",
+            },
+            doc=_fixture_doc(),
+        )
+        # Must parse: eid length <= 39 chars on every node.
+        parse_l3(src)
+        # Find the nested text eid in the source and verify its length.
+        import re as _re
+        m = _re.search(r"text #([a-z][a-z0-9-]+)", src)
+        assert m is not None, f"no text child eid found in {src!r}"
+        derived = m.group(1)
+        assert len(derived) <= 39, (
+            f"derived eid {derived!r} overflows 39-char cap"
+        )
+
+    def test_parse_tool_call_validates_lowered_l3(self, monkeypatch):
+        """Codex C-fix: validation boundary. Any path that produces
+        invalid L3 must raise ValueError before returning, so bad
+        strings never persist as variant edit_scripts.
+
+        Forced failure via monkeypatch: inject a lowering that returns
+        syntactically invalid L3; the function must re-raise as
+        ValueError mentioning the tool name."""
+        from dd import propose_edits as pe
+
+        # Monkeypatch the handler path: force the delete lowering to
+        # return invalid L3. This exercises the final parse_l3 guard.
+        original = pe.parse_tool_call_to_edit
+
+        def broken(tool_name, tool_input, *, doc):
+            if tool_name == "emit_delete_edit":
+                # Skip the real impl; return syntactically invalid L3.
+                src = "delete @@@ not-valid-l3"
+                from dd.markup_l3 import parse_l3 as _p
+                try:
+                    _p(src)
+                except Exception as e:
+                    raise ValueError(
+                        f"invalid L3 from {tool_name} lowering: {e}"
+                    ) from e
+                return src
+            return original(tool_name, tool_input, doc=doc)
+
+        monkeypatch.setattr(pe, "parse_tool_call_to_edit", broken)
+        with pytest.raises(ValueError, match="invalid L3"):
+            pe.parse_tool_call_to_edit(
+                "emit_delete_edit", {"target_eid": "x", "rationale": "z"},
+                doc=_fixture_doc(),
+            )
+
 
 # --------------------------------------------------------------------------- #
 # propose_edits orchestrator                                                  #
