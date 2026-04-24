@@ -36,6 +36,7 @@ from dd.sessions import (
     append_move_log_entry,
     create_session,
     create_variant,
+    iter_edits_on_path,
     list_move_log,
     list_sessions,
     list_variants,
@@ -307,3 +308,146 @@ class TestListSessions:
         )
         rows = list_sessions(db, status_filter="open")
         assert {r.id for r in rows} == {s_open}
+
+
+# --------------------------------------------------------------------------- #
+# iter_edits_on_path — variant-chain walker                                   #
+# --------------------------------------------------------------------------- #
+
+class TestIterEditsOnPath:
+    """Walk ROOT → ... → variant_id via parent_id and concat the
+    parsed L3 edit statements in order.
+
+    M1 of the Figma round-trip needs the cumulative edit list to hand
+    to `render_applied_doc(edits=...)` — the final variant's doc is
+    the applied tree, but rebuild_maps_after_edits needs the full edit
+    sequence to carry the original-screen nids through. Stage 4+ MCTS
+    will want the same walker to reconstruct any point in the variant
+    DAG. Living in dd/sessions.py keeps it co-located with the
+    parent_id semantics it's walking.
+
+    Non-EDIT variants (ROOT, NAME, DRILL, CLIMB) carry edit_script=NULL —
+    the walker skips them silently.
+    """
+
+    def test_root_only_returns_empty_list(self, db):
+        """ROOT has no edit_script. Walking a root variant yields no
+        edits — distinguishable from 'variant not found' by not raising."""
+        sid = create_session(db, brief="x")
+        root = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        assert iter_edits_on_path(db, root) == []
+
+    def test_single_edit_variant_returns_one_statement(self, db):
+        """A ROOT → EDIT chain yields exactly one parsed edit."""
+        sid = create_session(db, brief="x")
+        root = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        v1 = create_variant(
+            db, session_id=sid, parent_id=root,
+            primitive="EDIT", edit_script="delete @title",
+            doc=_small_doc(),
+        )
+        edits = iter_edits_on_path(db, v1)
+        assert len(edits) == 1
+        # Shape: a DeleteStatement targeting 'title'.
+        from dd.markup_l3 import DeleteStatement
+        assert isinstance(edits[0], DeleteStatement)
+
+    def test_multi_edit_chain_returns_root_to_leaf_order(self, db):
+        """Edits on a linear chain concatenate in chronological order
+        (root → leaf). M1 needs this order to feed apply_edits /
+        render_applied_doc — applying out of order would splice the
+        wrong tree."""
+        sid = create_session(db, brief="x")
+        root = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        v1 = create_variant(
+            db, session_id=sid, parent_id=root,
+            primitive="EDIT", edit_script="delete @title",
+            doc=_small_doc(),
+        )
+        v2 = create_variant(
+            db, session_id=sid, parent_id=v1,
+            primitive="EDIT", edit_script="delete @screen-root",
+            doc=_small_doc(),
+        )
+        edits = iter_edits_on_path(db, v2)
+        assert len(edits) == 2
+        from dd.markup_l3 import DeleteStatement
+        assert all(isinstance(e, DeleteStatement) for e in edits)
+        # Root-to-leaf: title delete comes before screen-root delete.
+        assert edits[0].target.path == "title"
+        assert edits[1].target.path == "screen-root"
+
+    def test_skips_non_edit_variants(self, db):
+        """NAME / DRILL / CLIMB variants have edit_script=NULL — the
+        walker traverses them but yields no statements. Semantic
+        variants affect the agent's focus state, not the applied
+        tree."""
+        sid = create_session(db, brief="x")
+        root = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        name = create_variant(
+            db, session_id=sid, parent_id=root,
+            primitive="NAME", edit_script=None,
+            doc=_small_doc(),
+        )
+        drill = create_variant(
+            db, session_id=sid, parent_id=name,
+            primitive="DRILL", edit_script=None,
+            doc=_small_doc(),
+        )
+        edit = create_variant(
+            db, session_id=sid, parent_id=drill,
+            primitive="EDIT", edit_script="delete @title",
+            doc=_small_doc(),
+        )
+        edits = iter_edits_on_path(db, edit)
+        assert len(edits) == 1
+
+    def test_raises_when_variant_missing(self, db):
+        """Surface this clearly, not as an empty list — the caller's
+        session wiring is broken, not 'the session had no edits'."""
+        with pytest.raises(ValueError) as exc:
+            iter_edits_on_path(db, "01ZZZNOTAREALULID00000000000")
+        assert "not found" in str(exc.value).lower()
+
+    def test_raises_on_parent_cycle(self, db):
+        """Codex flagged this: guard against cycles / corrupt parent
+        pointers. Variants should form a DAG via parent_id, but a
+        future writer (or a misaligned migration) could leave a cycle.
+        The walker tracks visited ids and fails loudly."""
+        sid = create_session(db, brief="x")
+        # Create two variants linearly.
+        v1 = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_small_doc(),
+        )
+        v2 = create_variant(
+            db, session_id=sid, parent_id=v1,
+            primitive="EDIT", edit_script="delete @title",
+            doc=_small_doc(),
+        )
+        # Corrupt the tree: parent v1 points at v2 (cycle).
+        db.execute(
+            "UPDATE variants SET parent_id=? WHERE id=?",
+            (v2, v1),
+        )
+        db.commit()
+        with pytest.raises(ValueError) as exc:
+            iter_edits_on_path(db, v2)
+        assert "cycle" in str(exc.value).lower()

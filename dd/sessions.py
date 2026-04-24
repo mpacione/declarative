@@ -182,6 +182,71 @@ def load_variant(
     )
 
 
+def iter_edits_on_path(
+    conn: sqlite3.Connection, variant_id: str,
+) -> list[object]:
+    """Walk ``parent_id`` from ROOT → ``variant_id`` and return the
+    concatenated L3 edit statements in root-to-leaf order.
+
+    Each variant's ``edit_script`` is the raw L3 markup that was
+    applied at that step (e.g. ``"delete @rectangle-22280"``). NAME /
+    DRILL / CLIMB / ROOT variants carry ``edit_script=NULL`` and
+    contribute nothing. The returned list is flat and suitable to
+    feed :func:`dd.markup_l3.apply_edits` or
+    :func:`dd.apply_render.render_applied_doc`.
+
+    M1 of the authoring-loop Figma round-trip uses this to reconstruct
+    the cumulative edit sequence that turned the starting screen into
+    the session's final variant — the renderer's nid/spec-key maps
+    need the original AST + the full edit list to stay aligned through
+    ``rebuild_maps_after_edits``. Stage 4+ MCTS will use the same
+    walker to reconstruct any point in the variant DAG.
+
+    Raises ``ValueError`` when ``variant_id`` is absent, an
+    intermediate variant references a missing parent, or the
+    parent_id chain contains a cycle (per Codex risk note on corrupt
+    parent pointers).
+    """
+    from dd.markup_l3 import parse_l3
+
+    # Walk leaf-to-root first, collecting variants as we go.
+    chain: list[VariantRow] = []
+    visited: set[str] = set()
+    cursor: Optional[str] = variant_id
+
+    while cursor is not None:
+        if cursor in visited:
+            raise ValueError(
+                f"parent_id cycle detected at variant {cursor!r}"
+            )
+        visited.add(cursor)
+        row = conn.execute(
+            "SELECT id, parent_id, edit_script FROM variants WHERE id=?",
+            (cursor,),
+        ).fetchone()
+        if row is None:
+            if not chain:
+                raise ValueError(
+                    f"variant {variant_id!r} not found"
+                )
+            raise ValueError(
+                f"variant {cursor!r} referenced as parent but not "
+                "found (corrupt parent chain)"
+            )
+        chain.append(row)
+        cursor = row["parent_id"]
+
+    # Reverse to root-to-leaf, concat edits.
+    edits: list[object] = []
+    for row in reversed(chain):
+        src = row["edit_script"]
+        if not src:
+            continue
+        parsed = parse_l3(src)
+        edits.extend(parsed.edits)
+    return edits
+
+
 def list_variants(
     conn: sqlite3.Connection, session_id: str,
 ) -> list[VariantRow]:
