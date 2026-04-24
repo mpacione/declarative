@@ -342,6 +342,179 @@ def build_move_tool_schema(
     }
 
 
+# Property identifier shape — same kebab/dot pattern grammar accepts
+# (e.g. ``variant``, ``layout.gap``, ``$ext.nid``). The capability
+# table at apply time is what gates which properties are valid for
+# which type; the schema is permissive at the syntax layer.
+_PROPERTY_PATTERN = r"^[a-z][a-z0-9.\-_$]{0,40}$"
+
+
+def build_set_tool_schema(eids: list[str]) -> dict[str, Any]:
+    """Stage 1.1 — `set @<eid> <prop>=<value>` schema.
+
+    The most-common edit verb in repair / variant flows. Schema
+    constrains ``target_eid`` to the doc's actual eid set (no
+    hallucination). ``property`` is open at the schema layer
+    (kebab-case pattern only) — apply_edits + the per-backend
+    capability table do the closed-set rejection at apply time. Per
+    plan §1.4 principle: keep dispatch fields closed, addressing /
+    label fields open.
+    """
+    return {
+        "name": "emit_set_edit",
+        "description": (
+            "Emit one `set @<eid> <property>=<value>` statement "
+            "modifying a single property on an existing node. Use "
+            "for variant flips (variant=disabled), text content "
+            "(label=\"Save\"), token rebinds (color={color.brand.600})"
+            ", and other single-property updates."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target_eid": {
+                    "type": "string", "enum": eids,
+                    "description": "Eid of the node to modify.",
+                },
+                "property": {
+                    "type": "string",
+                    "pattern": _PROPERTY_PATTERN,
+                    "description": (
+                        "Property key (e.g. `variant`, `label`, "
+                        "`color`, `layout.gap`). Must be a valid "
+                        "property for the target's type per the "
+                        "capability table — apply will reject "
+                        "unknown keys at apply time."
+                    ),
+                },
+                "value": {
+                    "type": "string",
+                    "description": (
+                        "Property value as a string. May be a "
+                        "literal (\"Save\"), an enum value "
+                        "(disabled), a number (16), or a token "
+                        "reference ({color.brand.600})."
+                    ),
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "One-sentence reason.",
+                },
+            },
+            "required": ["target_eid", "property", "value", "rationale"],
+        },
+    }
+
+
+def build_swap_tool_schema(
+    eids: list[str],
+    component_paths: list[str],
+) -> dict[str, Any]:
+    """Stage 1.1 — `swap @<eid> with=-> <component_path>` schema.
+
+    Pivots an existing instance to a different component master
+    (Mode-1 swap). Distinct from `replace` (subtree substitution).
+    ``with_component`` is enum-constrained to the project's CKR so
+    the LLM can't hallucinate component names like
+    ``icon/menu-v2``.
+    """
+    return {
+        "name": "emit_swap_edit",
+        "description": (
+            "Emit one `swap @<eid> with=-> <component_path>` "
+            "statement pivoting an existing instance to a different "
+            "library component. Pick the with_component from the "
+            "project's known component paths."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target_eid": {
+                    "type": "string", "enum": eids,
+                    "description": "Eid of the instance to swap.",
+                },
+                "with_component": {
+                    "type": "string",
+                    "enum": component_paths,
+                    "description": (
+                        "Path of the replacement library "
+                        "component (e.g. `icon/close`, "
+                        "`button/primary/lg`). Must already exist "
+                        "in the project's CKR."
+                    ),
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "One-sentence reason.",
+                },
+            },
+            "required": ["target_eid", "with_component", "rationale"],
+        },
+    }
+
+
+def build_replace_tool_schema(
+    eids: list[str],
+    child_types: tuple[str, ...] = _APPENDABLE_TYPES,
+) -> dict[str, Any]:
+    """Stage 1.1 — `replace @<eid> { ... }` schema.
+
+    Wholesale subtree substitution. The replacement subtree's root
+    follows the same flat-row shape used elsewhere (catalog type +
+    new kebab-case eid + visible text). Reuses
+    ``_APPENDABLE_TYPES`` for the new root type so the LLM can't
+    swap in a `screen` mid-tree.
+    """
+    return {
+        "name": "emit_replace_edit",
+        "description": (
+            "Emit one `replace @<eid> { TYPE #NEW_EID \"TEXT\" }` "
+            "statement swapping the named subtree for a fresh one. "
+            "Use when the existing subtree's structure is wrong; "
+            "use `swap` when only the master needs to change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target_eid": {
+                    "type": "string", "enum": eids,
+                    "description": "Eid of the subtree to replace.",
+                },
+                "replacement_root_type": {
+                    "type": "string",
+                    "enum": list(child_types),
+                    "description": "Type of the new subtree's root.",
+                },
+                "replacement_root_eid": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{1,38}$",
+                    "description": (
+                        "Globally-unique kebab-case eid for the "
+                        "new root (no leading @)."
+                    ),
+                },
+                "replacement_root_text": {
+                    "type": "string",
+                    "minLength": 0, "maxLength": 80,
+                    "description": (
+                        "Visible text for the new root. Required "
+                        "for text/heading; ignored for non-text "
+                        "types."
+                    ),
+                },
+                "rationale": {
+                    "type": "string",
+                    "description": "One-sentence reason.",
+                },
+            },
+            "required": [
+                "target_eid", "replacement_root_type",
+                "replacement_root_eid", "rationale",
+            ],
+        },
+    }
+
+
 # ---------------------------------------------------------------
 # Verifiers (post-apply AST inspection)
 # ---------------------------------------------------------------
