@@ -28,6 +28,7 @@ from dd.apply_render import (
     RenderedApplied,
     SwapUnresolvedInCKR,
     adjust_spec_elements_for_edits,
+    execute_script_via_bridge,
     rebuild_maps_after_edits,
     render_applied_doc,
     walk_rendered_via_bridge,
@@ -946,3 +947,160 @@ class TestWalkRenderedViaBridge:
                 script="const x = 1;", walk_script=walk,
             )
         assert "no output JSON" in str(exc.value)
+
+
+class TestExecuteScriptViaBridge:
+    """Fire-and-ack wrapper: send a Figma script to the plugin bridge
+    without walking the rendered tree.
+
+    M1 of the authoring-loop Figma round-trip needs to run the generated
+    `render_applied_doc` script in the user's live Figma session, with
+    no downstream verification — the visible canvas IS the demo. Walking
+    would add 30-60s per call and expose the demo to every walk-class
+    failure mode (large trees, hidden subtrees under
+    skipInvisibleInstanceChildren) for no benefit.
+
+    The wrapper shells out to a thin Node script
+    (`render_test/execute_ref.js`) that opens a WebSocket to the bridge,
+    sends `{type: "PROXY_EXECUTE", id, code, timeout}`, and waits for
+    the `PROXY_EXECUTE_RESULT` ack. Any bridge-side error surfaces as
+    BridgeError — same shape as `walk_rendered_via_bridge`."""
+
+    def test_raises_when_execute_script_missing(self, tmp_path) -> None:
+        bogus = tmp_path / "does-not-exist.js"
+        with pytest.raises(BridgeError) as exc:
+            execute_script_via_bridge(
+                script="const x = 1;",
+                execute_script=bogus,
+            )
+        assert "execute script not found" in str(exc.value)
+
+    def test_raises_when_node_binary_missing(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """Same invariant as walk: no silent fallback — caller must
+        surface the missing-node case explicitly."""
+        execute = tmp_path / "execute_ref.js"
+        execute.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: None)
+        with pytest.raises(BridgeError) as exc:
+            execute_script_via_bridge(
+                script="const x = 1;",
+                execute_script=execute,
+            )
+        assert "node" in str(exc.value).lower()
+
+    def test_success_path_returns_bridge_ack(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """Subprocess exits 0 → the wrapper returns an ack dict that
+        carries the PROXY_EXECUTE_RESULT payload (errors list + any
+        returned M references the caller may want to log).
+
+        The execute helper writes an ack JSON to out_path the same way
+        walk_ref does, but the payload shape is
+        `{__ok: bool, errors: [...], request_id: str}` — no eid_map,
+        no rendered_root, no counts. Only what the bridge itself
+        reported back."""
+        execute = tmp_path / "execute_ref.js"
+        execute.write_text("// stub")
+        fake_node = tmp_path / "node"
+        fake_node.write_text("#!/bin/sh\necho stub")
+        fake_node.chmod(0o755)
+        monkeypatch.setattr("shutil.which", lambda _: str(fake_node))
+
+        expected = {
+            "__ok": True,
+            "errors": [],
+            "request_id": "exec_123",
+        }
+
+        def fake_run(cmd, *args, **kwargs):
+            out_path = Path(cmd[3])
+            out_path.write_text(json.dumps(expected))
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        payload = execute_script_via_bridge(
+            script="const x = 1;", execute_script=execute,
+        )
+        assert payload == expected
+
+    def test_raises_on_nonzero_exit_with_bridge_error(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """Codex's risk — silent partial execution. When the bridge
+        replies `{error: "..."}` or times out, the Node wrapper exits
+        non-zero with the message on stderr. Surface it verbatim so a
+        demo failure looks like `bridge rejected: ...`, not `Figma is
+        slow`."""
+        execute = tmp_path / "execute_ref.js"
+        execute.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            return subprocess.CompletedProcess(
+                cmd, returncode=1, stdout="",
+                stderr="FAIL: PROXY_EXECUTE rejected: bad script",
+            )
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            execute_script_via_bridge(
+                script="const x = 1;", execute_script=execute,
+            )
+        assert "exited 1" in str(exc.value)
+        assert "bad script" in str(exc.value)
+
+    def test_raises_on_timeout(self, tmp_path, monkeypatch) -> None:
+        execute = tmp_path / "execute_ref.js"
+        execute.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        def fake_run(cmd, *args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        with pytest.raises(BridgeError) as exc:
+            execute_script_via_bridge(
+                script="const x = 1;",
+                execute_script=execute,
+                timeout=5.0,
+            )
+        assert "timed out after 5.0s" in str(exc.value)
+
+    def test_sends_configured_ws_port_in_cmd(
+        self, tmp_path, monkeypatch,
+    ) -> None:
+        """The ws_port arg is what routes the demo to the user's
+        bridge (Desktop Bridge picks between 9223-9231 depending on
+        what's bound). Explicitly confirm the value is passed through
+        to the subprocess — a silent default would send the demo to
+        the wrong port."""
+        execute = tmp_path / "execute_ref.js"
+        execute.write_text("// stub")
+        monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/node")
+
+        captured_cmds: list[list[str]] = []
+
+        def fake_run(cmd, *args, **kwargs):
+            captured_cmds.append(cmd)
+            Path(cmd[3]).write_text(
+                json.dumps({"__ok": True, "errors": [], "request_id": "x"})
+            )
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="", stderr="",
+            )
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+
+        execute_script_via_bridge(
+            script="const x = 1;",
+            execute_script=execute,
+            ws_port=9231,
+        )
+        assert captured_cmds
+        assert "9231" in captured_cmds[0]

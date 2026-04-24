@@ -498,6 +498,7 @@ class BridgeError(RuntimeError):
 
 
 _DEFAULT_WALK_SCRIPT = Path("render_test/walk_ref.js")
+_DEFAULT_EXECUTE_SCRIPT = Path("render_test/execute_ref.js")
 
 
 def walk_rendered_via_bridge(
@@ -581,6 +582,95 @@ def walk_rendered_via_bridge(
         # logs, partial payloads) without race-ing on rmdir. When the
         # caller passed an artifact_dir, leave it intact — the
         # sidecars belong to them.
+        if artifact_dir is None:
+            import shutil as _shutil
+            _shutil.rmtree(workdir, ignore_errors=True)
+    return payload
+
+
+def execute_script_via_bridge(
+    *,
+    script: str,
+    ws_port: int = 9228,
+    execute_script: Path = _DEFAULT_EXECUTE_SCRIPT,
+    timeout: float = 320.0,
+    node_binary: Optional[str] = None,
+    keep_artifacts: bool = False,
+    artifact_dir: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Send ``script`` to a live Figma plugin bridge and return the
+    bridge ack — no tree walk.
+
+    M1 of the authoring-loop Figma round-trip: we want the generated
+    script to run in the user's Figma session so the canvas visibly
+    updates, but we don't need to verify the rendered tree. Walking
+    (see :func:`walk_rendered_via_bridge`) adds 30-60s per call and
+    exposes the demo to walk-class failures (hidden subtrees under
+    ``skipInvisibleInstanceChildren``, large-tree traversal timeouts)
+    for no benefit — the visible canvas IS the demo.
+
+    The wrapper shells out to ``render_test/execute_ref.js``, which
+    opens a WebSocket to ``ws://localhost:<ws_port>``, sends
+    ``{type: "PROXY_EXECUTE", id, code, timeout}``, and writes the
+    ack payload to ``out_path``. The Python side reads that payload
+    and returns it. Shape: ``{__ok: bool, errors: [...], request_id: str}``.
+
+    Same error surface as :func:`walk_rendered_via_bridge`: node binary
+    missing, wrapper script missing, subprocess timeout, non-zero exit,
+    invalid JSON output all raise :class:`BridgeError` with a
+    human-readable cause.
+    """
+    if node_binary is None:
+        node_binary = shutil.which("node") or ""
+    if not node_binary:
+        raise BridgeError(
+            "`node` not on PATH — Figma plugin bridge wrapper can't "
+            "run without a Node.js binary."
+        )
+    if not execute_script.exists():
+        raise BridgeError(
+            f"bridge execute script not found at {execute_script}; "
+            "pass execute_script= to override."
+        )
+
+    workdir = artifact_dir or Path(tempfile.mkdtemp(prefix="m7_bridge_exec_"))
+    workdir.mkdir(parents=True, exist_ok=True)
+    script_path = workdir / "script.js"
+    out_path = workdir / "ack.json"
+    script_path.write_text(script)
+
+    cmd = [
+        node_binary, str(execute_script),
+        str(script_path), str(out_path), str(ws_port),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+            cwd=Path.cwd(),
+        )
+    except subprocess.TimeoutExpired as e:
+        raise BridgeError(
+            f"execute_ref.js timed out after {timeout}s "
+            f"(port {ws_port}); is the Figma plugin listening?"
+        ) from e
+
+    if proc.returncode != 0:
+        raise BridgeError(
+            f"execute_ref.js exited {proc.returncode}: "
+            f"{(proc.stderr or proc.stdout or '').strip()[:500]}"
+        )
+    if not out_path.exists():
+        raise BridgeError(
+            "execute_ref.js produced no ack JSON — check stderr: "
+            f"{proc.stderr.strip()[:500]}"
+        )
+    try:
+        payload = json.loads(out_path.read_text())
+    except json.JSONDecodeError as e:
+        raise BridgeError(
+            f"execute_ref.js wrote invalid JSON: {e}"
+        ) from e
+    if not keep_artifacts:
         if artifact_dir is None:
             import shutil as _shutil
             _shutil.rmtree(workdir, ignore_errors=True)
