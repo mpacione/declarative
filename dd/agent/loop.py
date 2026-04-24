@@ -231,7 +231,15 @@ _SYSTEM_PROMPT = (
     "append / insert / move / swap / replace) plus three focus "
     "primitives (name_subtree / drill / climb) and an explicit "
     "emit_done tool. Call exactly ONE tool per turn. When the design "
-    "is complete and no further edits are needed, call emit_done."
+    "is complete and no further edits are needed, call emit_done.\n\n"
+    "**Targeting discipline.** When the brief refers to 'the X' "
+    "and multiple candidate Xs exist in the tree (e.g. 'the toolbar' "
+    "with several toolbar instances, 'the header' across multiple "
+    "headers), call emit_drill FIRST to narrow scope to the "
+    "specific subtree before editing. Picking the wrong target "
+    "with a confident-sounding edit verb is worse than spending "
+    "one turn to confirm scope. Use emit_name_subtree to label a "
+    "region you want to keep working on across multiple iterations."
 )
 
 
