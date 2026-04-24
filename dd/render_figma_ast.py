@@ -575,7 +575,26 @@ def _emit_phase1(
                 raw_visual = db_visuals.get(nid, {}) or {}
 
         spec_key = spec_key_map.get(id(node), eid)
-        element = spec_elements.get(spec_key, {}) if spec_elements else {}
+        # Path 1 demo fix: merge AST-head properties onto the spec-based
+        # element so (a) new nodes from append/insert/replace get emitted
+        # with their layout/padding/fill/etc. — they have no spec entry
+        # OR nid_map entry — and (b) set-on-original nodes pick up
+        # head-overlaid properties too (e.g. `set @existing-btn fill=...`
+        # would have been silently dropped previously). Precedence:
+        # head.properties → spec["elements"][key] → defaults. db_visuals
+        # stays untouched on its own path at lines 648-651 (the
+        # build_visual_from_db render-tree shape is richer than the
+        # sparse IR visual and must not be replaced). See
+        # dd/ast_to_element.py for the resolver.
+        from dd.ast_to_element import resolve_element
+        element = resolve_element(
+            node=node,
+            spec_elements=spec_elements if spec_elements else {},
+            spec_key=spec_key,
+            db_visuals={},
+            nid=None,
+            nid_map={},
+        )
 
         component_key = raw_visual.get("component_key")
         component_figma_id = raw_visual.get("component_figma_id")
