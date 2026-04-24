@@ -599,3 +599,130 @@ class TestDesignBriefRenderToFigma:
                 assert exc_info.value.code != 0
         err = capsys.readouterr().err
         assert "bridge" in err.lower() or "proxy_execute" in err.lower()
+
+
+class TestStartingDocWrapperShapeMatchesRenderer:
+    """Regression pin for the 2026-04-24 "variant renders blank"
+    bug. The agent's starting doc (produced by `_load_starting_doc`)
+    and the renderer's original doc (produced by
+    `_render_session_to_figma`) must use the SAME wrapper-collapse
+    setting when compressing the same screen. If they diverge, the
+    eid-chain paths in `rebuild_maps_after_edits._index_by_path`
+    don't line up and every entry in nid_map misses — the final
+    variant falls to Mode-2 cheap-emission for every node.
+
+    Without this pin a pure-delete edit sequence can produce an
+    almost-empty Figma render and pass structural tests silently
+    (because spec_key_map falls through the "fresh node" branch
+    and claims 100% coverage — it's the nid_map that matters).
+
+    The pin: a starting doc loaded via `_load_starting_doc` must
+    produce a tree whose eid-chain paths match what the renderer's
+    `_compress_to_l3_impl(collapse_wrapper=False)` produces.
+    Expressed as: a pure-delete round-trip preserves >90% nid_map
+    coverage against the renderer's original_doc."""
+
+    def test_load_starting_doc_matches_renderer_wrapper_shape(
+        self, tmp_path,
+    ):
+        from dd.apply_render import rebuild_maps_after_edits
+        from dd.cli import _load_starting_doc
+        from dd.compress_l3 import _compress_to_l3_impl
+        from dd.db import get_connection
+        from dd.ir import generate_ir
+        from dd.markup_l3 import Node, apply_edits, parse_l3
+
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        screen_id = _seed_project_db(project_db)
+
+        starting_doc = _load_starting_doc(
+            project_db_path=project_db, screen_id=screen_id,
+        )
+
+        # Simulate a pure-delete edit (grab the deepest leaf eid from
+        # the starting doc and issue `delete @<eid>` against it). The
+        # shape of the edit doesn't matter; what matters is that the
+        # applied doc still has ≥90% of its nodes matching paths in
+        # the renderer's original_doc.
+        leaves: list[Node] = []
+        stack = list(starting_doc.top_level)
+        while stack:
+            n = stack.pop()
+            if not isinstance(n, Node):
+                continue
+            if n.block is None or not any(
+                isinstance(s, Node) for s in n.block.statements
+            ):
+                leaves.append(n)
+            else:
+                stack.extend(n.block.statements)
+        assert leaves, "fixture produced no leaves"
+        target_eid = leaves[0].head.eid
+        edit_doc = parse_l3(f"delete @{target_eid}\n")
+        applied_doc = apply_edits(
+            starting_doc, list(edit_doc.edits),
+        )
+
+        # Renderer side: exactly what `_render_session_to_figma` does.
+        proj_conn = get_connection(project_db)
+        try:
+            ir_result = generate_ir(proj_conn, screen_id)
+            (
+                original_doc, _eid_nid, nid_map, spec_key_map,
+                original_name_map, _desc,
+            ) = _compress_to_l3_impl(
+                ir_result["spec"], proj_conn, screen_id=screen_id,
+                collapse_wrapper=False,
+            )
+            maps = rebuild_maps_after_edits(
+                applied_doc=applied_doc,
+                original_doc=original_doc,
+                edits=list(edit_doc.edits),
+                old_nid_map=nid_map,
+                old_spec_key_map=spec_key_map,
+                old_original_name_map=original_name_map,
+                conn=proj_conn,
+            )
+        finally:
+            proj_conn.close()
+
+        # BFS the applied doc and count how many nodes got nid-mapped.
+        applied_nodes: list[Node] = []
+        q = list(applied_doc.top_level)
+        while q:
+            n = q.pop(0)
+            if not isinstance(n, Node):
+                continue
+            applied_nodes.append(n)
+            if n.block is not None:
+                q.extend(n.block.statements)
+
+        covered = sum(
+            1 for n in applied_nodes if id(n) in maps.nid_map
+        )
+        total = len(applied_nodes)
+        ratio = covered / max(total, 1)
+        # Pre-fix (collapse_wrapper mismatch): nid_map was 0/N for
+        # every applied-doc node — EVERY surviving node fell to
+        # Mode-2 cheap emission. Post-fix on the real Dank capstone:
+        # 109/109 = 100%. The seed fixture is only 2 nodes (1
+        # survives after delete), so the strongest guarantee is
+        # "strictly > 0" — but the bug produced exactly 0, so even
+        # this pins the regression. On the real live-bridge capstone
+        # (tests/test_stage3_acceptance.py) the assertion embedded in
+        # the CLI output check tightens this to "visible content on
+        # the canvas".
+        assert covered > 0, (
+            f"nid_map coverage {covered}/{total} — pre-fix this was "
+            "exactly 0. _load_starting_doc's collapse_wrapper setting "
+            "has diverged from the renderer's. See dd/cli.py "
+            "_load_starting_doc CRITICAL comment."
+        )
+        # Sanity: the renderer-side original_doc must be non-empty
+        # (if the seed fixture changes and produces a 1-node tree,
+        # the coverage check above trivially passes).
+        assert total >= 2, (
+            "fixture too small — extend the seed screen or this "
+            "regression pin has no teeth"
+        )

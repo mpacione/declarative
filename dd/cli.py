@@ -2027,7 +2027,7 @@ def _load_starting_doc(*, project_db_path: str, screen_id: int):
     project DB doesn't have the screen — better than reaching the
     Anthropic client and burning an API call on a doomed session.
     """
-    from dd.compress_l3 import compress_to_l3
+    from dd.compress_l3 import compress_to_l3_with_maps
     from dd.db import get_connection
     from dd.ir import generate_ir
     from dd.markup_l3 import emit_l3, parse_l3
@@ -2046,8 +2046,23 @@ def _load_starting_doc(*, project_db_path: str, screen_id: int):
             )
             sys.exit(1)
         ir_result = generate_ir(conn, screen_id)
-        doc = compress_to_l3(
+        # CRITICAL: ``collapse_wrapper=False`` must match the value
+        # used by the canonical render path (``generate_screen`` →
+        # ``_compress_to_l3_impl`` at dd/renderers/figma.py:2554).
+        # The public ``compress_to_l3`` defaults to collapse_wrapper=True
+        # (a grammar- and round-trip-test shape); using that shape
+        # produces an L3 doc whose eid-chain paths DIFFER from the
+        # renderer's original_doc, so every entry in
+        # ``rebuild_maps_after_edits``'s nid_map misses and the final
+        # variant falls to Mode-2 cheap-emission (an almost-empty
+        # frame) even though the agent's edits were minimal. Root
+        # cause of the M1 live-capstone "variant is blank" regression
+        # — diagnosed 2026-04-24 by a subagent-driven path-coverage
+        # experiment (0/109 at True, 109/109 at False against the
+        # same applied doc).
+        doc, *_ = compress_to_l3_with_maps(
             ir_result["spec"], conn=conn, screen_id=screen_id,
+            collapse_wrapper=False,
         )
         # Round-trip through emit/parse so the agent sees the exact
         # shape `apply_edits` would produce, not the compressor's
