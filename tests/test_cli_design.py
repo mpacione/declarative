@@ -566,6 +566,59 @@ class TestDesignBriefRenderToFigma:
         assert "Figma page" in out or "figma page" in out.lower()
         assert "design session" in out
 
+    def test_dump_scripts_writes_original_and_variant_to_disk(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """`--dump-scripts <dir>` is an additive diagnostic side-channel:
+        both JS render scripts land on disk AND the bridge still runs.
+        Useful when the bridge times out or the variant render comes
+        up empty — the on-disk files are the only thing left to read.
+        """
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        dump_dir = tmp_path / "scripts"
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--dump-scripts", str(dump_dir),
+                ])
+
+        original_path = dump_dir / "original.js"
+        variant_path = dump_dir / "variant.js"
+        assert original_path.exists(), (
+            f"expected {original_path} to be written"
+        )
+        assert variant_path.exists(), (
+            f"expected {variant_path} to be written"
+        )
+        assert original_path.read_text().strip(), (
+            "original.js was written but is empty"
+        )
+        assert variant_path.read_text().strip(), (
+            "variant.js was written but is empty"
+        )
+        # Additive — bridge was still called for both renders.
+        assert len(bridge_calls) == 2, (
+            f"--dump-scripts must not skip bridge I/O; got "
+            f"{len(bridge_calls)} bridge calls"
+        )
+
     def test_render_to_figma_bridge_error_reaches_user(
         self, tmp_db_path, tmp_path, capsys,
     ):
@@ -599,6 +652,272 @@ class TestDesignBriefRenderToFigma:
                 assert exc_info.value.code != 0
         err = capsys.readouterr().err
         assert "bridge" in err.lower() or "proxy_execute" in err.lower()
+
+    def test_render_session_page_name_includes_variant_id(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Page collision fix: a session's page_name must embed both
+        the session prefix AND the final variant prefix. Two renders
+        against the same session_id land on DIFFERENT pages (one per
+        variant leaf) so the multi-turn demo doesn't stack renders
+        at identical coordinates on a single page."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        page_names_called: list[str] = []
+
+        def fake_execute(**kwargs):
+            script = kwargs.get("script", "")
+            # The render_figma_ast preamble embeds the page name as
+            # a JS string literal — capture it via regex.
+            import re
+            m = re.search(r'p\.name === "([^"]+)"', script)
+            if m:
+                page_names_called.append(m.group(1))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        # Both bridge calls target the same page, so there should be
+        # two identical entries (one per script).
+        assert len(page_names_called) == 2, (
+            f"expected 2 bridge scripts with page_name preambles, got "
+            f"{page_names_called}"
+        )
+        assert page_names_called[0] == page_names_called[1], (
+            f"original + variant must target same page, got "
+            f"{page_names_called}"
+        )
+        pn = page_names_called[0]
+        # Session prefix still present.
+        assert pn.startswith("design session "), (
+            f"page_name {pn!r} must start with 'design session '"
+        )
+        # Variant-prefix substring also present — " / <ULID prefix>".
+        import re
+        # "design session XXXXXXXX / YYYYYYYYYYYY" — variant prefix
+        # extends into the ULID random region (12 chars) so back-to-
+        # back resumes within the same millisecond don't collide.
+        m = re.match(
+            r"design session ([0-9A-Z]{8}) / ([0-9A-Z]{12})$", pn,
+        )
+        assert m is not None, (
+            f"page_name {pn!r} must carry BOTH session prefix and "
+            "variant prefix — expected 'design session <SID8> / "
+            "<VID12>'"
+        )
+        # Pull the actual session + variant ids out of the DB and
+        # confirm the prefixes match (not just that two prefixes exist).
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = list_sessions(conn)
+            assert len(sessions) == 1
+            sid = sessions[0].id
+            variants = list_variants(conn, sid)
+            # The final variant is the leaf of the session — in a
+            # done-immediately flow it's just the root.
+            vids = [v.id for v in variants]
+        finally:
+            conn.close()
+        assert m.group(1) == sid[:8], (
+            f"session prefix mismatch: page_name had {m.group(1)!r}, "
+            f"session id starts with {sid[:8]!r}"
+        )
+        assert m.group(2) in {v[:12] for v in vids}, (
+            f"variant prefix {m.group(2)!r} not in session variants "
+            f"{[v[:12] for v in vids]}"
+        )
+
+
+class TestDesignResumeRenderToFigma:
+    """Bug 1 + Bug 2 regression pin: `dd design resume` must support
+    the same render-to-figma flag family as `--brief`, AND distinct
+    resume renders against the same session must land on DIFFERENT
+    pages (variant-prefix in page_name).
+
+    Without this, the multi-turn demo (brief A, resume w/ refining
+    brief B) can't ship — either `resume` can't render at all, or
+    two renders stack at identical coordinates on the same page."""
+
+    def test_resume_supports_render_flags(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Argparse-level smoke: the resume subparser accepts the
+        same render-family flags as --brief. Failure mode pre-fix:
+        argparse rejects the flags as unknown. We don't exercise the
+        full pipeline here — just prove the flags parse."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        # Bootstrap a resumable variant so the dispatcher reaches
+        # _run_design_resume instead of exiting before argparse even
+        # sees the resume-render flags.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+
+        def fake_execute(**kwargs):
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                # Must not raise argparse errors.
+                cli_main([
+                    "design", "resume", vid,
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+    def test_resume_render_to_figma_creates_per_variant_page(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """End-to-end: `--brief` once, then `resume <leaf>` with
+        --render-to-figma. Asserts two bridge executions per render
+        (original + variant = 4 total) and that each render lands on
+        a DIFFERENT page (per-variant page_name, not per-session).
+
+        Uses a `run_session` stub on the resume turn so the test
+        deterministically creates a NEW leaf variant (a real done-
+        immediately mock returns the parent we resumed from, which
+        masks the page-collision under-test)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        page_names_by_call: list[str] = []
+
+        def fake_execute(**kwargs):
+            script = kwargs.get("script", "")
+            import re
+            m = re.search(r'p\.name === "([^"]+)"', script)
+            if m:
+                page_names_by_call.append(m.group(1))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        # 1. First render — `--brief`. Done-immediately is fine; the
+        # session creates its ROOT variant before halting.
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "a",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        # Grab the brief's session + leaf-variant for the resume.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = list_sessions(conn)
+            assert len(sessions) == 1
+            sid = sessions[0].id
+            variants = list_variants(conn, sid)
+            assert len(variants) >= 1
+            brief_leaf_vid = variants[-1].id
+        finally:
+            conn.close()
+
+        # 2. Resume — stub run_session so it creates a fresh child
+        # variant under the same session and returns the new id as
+        # final_variant_id. This is the "agent did productive work"
+        # shape — without it the page-name collision under test
+        # is masked by the no-new-variant edge case.
+        from dd.agent.loop import SessionRunResult
+        from dd.sessions import create_variant as _cv
+        from dd.markup_l3 import parse_l3 as _pl3
+
+        def fake_resume_run_session(conn, **kwargs):
+            new_vid = _cv(
+                conn,
+                session_id=sid,
+                parent_id=kwargs["parent_variant_id"],
+                primitive="EDIT",
+                edit_script="set @screen-root brief-resumed=1",
+                doc=_pl3("screen #screen-root brief-resumed=1\n"),
+            )
+            return SessionRunResult(
+                session_id=sid,
+                iterations=1,
+                halt_reason="done",
+                final_variant_id=new_vid,
+                move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_resume_run_session):
+                with patch("dd.apply_render.execute_script_via_bridge",
+                           side_effect=fake_execute):
+                    cli_main([
+                        "design", "resume", brief_leaf_vid,
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                    ])
+
+        # 4 bridge calls total — 2 per render.
+        assert len(page_names_by_call) == 4, (
+            f"expected 4 bridge calls (2 per render × 2 renders), "
+            f"got {len(page_names_by_call)}: {page_names_by_call}"
+        )
+        # Within each render the two scripts share a page.
+        assert page_names_by_call[0] == page_names_by_call[1], (
+            f"--brief render split across pages: {page_names_by_call}"
+        )
+        assert page_names_by_call[2] == page_names_by_call[3], (
+            f"resume render split across pages: {page_names_by_call}"
+        )
+        # The two renders must NOT share a page — that's the
+        # page-collision regression. Different variant leaves =
+        # different page names.
+        brief_page = page_names_by_call[0]
+        resume_page = page_names_by_call[2]
+        assert brief_page != resume_page, (
+            f"brief + resume landed on the same page "
+            f"({brief_page!r}); page-collision regression. Each "
+            "variant leaf must get its own page."
+        )
+        # Both pages should carry the shared session-prefix substring
+        # (so the sidebar relationship is visible to the user).
+        shared_session_prefix = f"design session {sid[:8]}"
+        assert shared_session_prefix in brief_page, (
+            f"brief page_name {brief_page!r} missing shared session "
+            f"prefix {shared_session_prefix!r}"
+        )
+        assert shared_session_prefix in resume_page, (
+            f"resume page_name {resume_page!r} missing shared "
+            f"session prefix {shared_session_prefix!r}"
+        )
 
 
 class TestStartingDocWrapperShapeMatchesRenderer:

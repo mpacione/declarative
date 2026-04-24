@@ -1733,6 +1733,19 @@ def main(argv: list | None = None) -> None:
         help="Path to the project DB (classified screens, tokens, "
              "CKR). Defaults to --db when omitted.",
     )
+    # Diagnostic side-channel: write the generated JS render scripts
+    # to <dir>/original.js and <dir>/variant.js so a human can inspect
+    # what would ship to the Figma bridge. Additive — the bridge call
+    # still runs. Useful when `--render-to-figma` times out or lands
+    # an unexpected result and the question is "what did we send?".
+    design_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts to "
+             "<DIR>/original.js and <DIR>/variant.js for inspection "
+             "(additive — bridge calls still run). Requires "
+             "--render-to-figma.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1748,6 +1761,40 @@ def main(argv: list | None = None) -> None:
         help="Max iterations (default 4 — matches --brief default)",
     )
     design_resume_parser.add_argument("--db", help="Database path")
+    # M2 demo-blocker — multi-turn iteration needs the same Figma
+    # round-trip flags on `resume` as on `--brief`. Without these,
+    # the user can kick off a session with `--brief --render-to-figma`
+    # but can't re-render after `resume`, which kills the
+    # progressive-constraint demo (brief A, then resume with
+    # refining brief B). ``starting_screen`` is not persisted on the
+    # session row — user re-passes it, same as `--brief`.
+    design_resume_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the original-"
+             "render baseline (same value used on the initial "
+             "`--brief` run). Required with --render-to-figma.",
+    )
+    design_resume_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After the resume session halts, render the starting "
+             "screen + the NEW final variant to a new Figma page via "
+             "the plugin bridge. Each resume lands on its own page "
+             "(variant ULID in the page name), so iterations don't "
+             "stack on top of each other.",
+    )
+    design_resume_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
+    design_resume_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts to "
+             "<DIR>/original.js and <DIR>/variant.js for inspection "
+             "(additive — bridge calls still run). Requires "
+             "--render-to-figma.",
+    )
 
     design_score_parser = design_subparsers.add_parser(
         "score",
@@ -1899,12 +1946,19 @@ def _run_design(db_path: str, args) -> None:
             starting_screen=args.starting_screen,
             render_to_figma=args.render_to_figma,
             project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
         )
         return
 
     if sub == "resume":
         _run_design_resume(
-            db_path, variant_id=args.variant_id, max_iters=args.max_iters,
+            db_path,
+            variant_id=args.variant_id,
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
         )
         return
 
@@ -1936,6 +1990,7 @@ def _run_design_brief(
     starting_screen: int | None = None,
     render_to_figma: bool = False,
     project_db: str | None = None,
+    dump_scripts: str | None = None,
 ) -> None:
     """M1 of the authoring-loop Figma round-trip (docs/rationale/
     stage-3-session-loop.md + Codex sign-off 2026-04-24).
@@ -2012,6 +2067,7 @@ def _run_design_brief(
             session_id=result.session_id,
             final_variant_id=result.final_variant_id,
             starting_screen_id=starting_screen,
+            dump_scripts=Path(dump_scripts) if dump_scripts else None,
         )
         page_hint = (
             f"\n  → rendered to Figma page '{page_name}' "
@@ -2090,6 +2146,7 @@ def _render_session_to_figma(
     session_id: str,
     final_variant_id: str,
     starting_screen_id: int,
+    dump_scripts: Path | None = None,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2102,10 +2159,30 @@ def _render_session_to_figma(
     diagnose by looking at the canvas.
 
     Page-name + canvas-position split:
-      - Original render:  page_name="design session <ULID 8>",
+      - Original render:  page_name="design session <SID8> / <VID12>",
                           canvas_position=(0, 0).
       - Variant render:   same page_name,
                           canvas_position=(screen_width + 200, 0).
+
+    The variant-ULID suffix is the M2 page-collision fix: within a
+    single session, successive resumes produce different final
+    variants; keying the page name on BOTH the session AND the new
+    leaf variant means each resume lands on its own page rather than
+    stacking on top of a previous render. The shared session prefix
+    keeps the iteration history visible in Figma's sidebar (all
+    "design session 01ABCD / …" pages cluster alphabetically).
+    The variant prefix is 12 chars (not 8) so it spans into the ULID
+    random region; 10 chars is the time prefix only and two variants
+    created in the same millisecond share that whole window.
+    Resuming a session within the same millisecond as another
+    resume is unlikely but happens in tests.
+
+    ``dump_scripts``: if set, additionally write the generated JS to
+    ``<dir>/original.js`` and ``<dir>/variant.js`` BEFORE shipping to
+    the bridge. Diagnostic side-channel — bridge I/O is unchanged, so
+    the dump survives even when the bridge rejects the variant script
+    (at which point the on-disk file is the only thing left to
+    inspect).
     """
     from dd.apply_render import (
         BridgeError, DegradedMapping, execute_script_via_bridge,
@@ -2117,9 +2194,15 @@ def _render_session_to_figma(
     from dd.renderers.figma import collect_fonts, generate_screen
     from dd.sessions import iter_edits_on_path, load_variant
 
-    # Session ULIDs are 26 chars; 8-char prefix is plenty for a
-    # human-readable page name that stays unique per run.
-    page_name = f"design session {session_id[:8]}"
+    # ``session_id[:8]`` is the time prefix only — fine for grouping,
+    # since the resume-loop creates new variants UNDER the same
+    # session row. ``final_variant_id[:12]`` extends into the random
+    # region so resumes that fire within the same millisecond still
+    # land on distinct pages (10-char ULID time prefix + 2 chars of
+    # the random suffix).
+    page_name = (
+        f"design session {session_id[:8]} / {final_variant_id[:12]}"
+    )
 
     # --- Original render -------------------------------------------
     project_conn = get_connection(project_db_path)
@@ -2135,6 +2218,9 @@ def _render_session_to_figma(
             page_name=page_name,
         )
         original_script = original_result["structure_script"]
+        if dump_scripts is not None:
+            dump_scripts.mkdir(parents=True, exist_ok=True)
+            (dump_scripts / "original.js").write_text(original_script)
     finally:
         project_conn.close()
 
@@ -2216,6 +2302,9 @@ def _render_session_to_figma(
             )
             sys.exit(1)
         variant_script = variant_rendered.script
+        if dump_scripts is not None:
+            dump_scripts.mkdir(parents=True, exist_ok=True)
+            (dump_scripts / "variant.js").write_text(variant_script)
     finally:
         session_conn.close()
         project_conn.close()
@@ -2241,10 +2330,38 @@ def _render_session_to_figma(
 
 
 def _run_design_resume(
-    db_path: str, *, variant_id: str, max_iters: int,
+    db_path: str,
+    *,
+    variant_id: str,
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+    dump_scripts: str | None = None,
 ) -> None:
+    """M2 demo-blocker: resume must support the same Figma round-trip
+    flag family as --brief so the multi-turn iteration story lands.
+
+    Mirrors `_run_design_brief`'s post-session render path. Each
+    resume produces a new leaf variant; ``_render_session_to_figma``
+    keys the Figma page on BOTH the session prefix and the new
+    variant prefix, so successive resumes land on different pages
+    and the user can see the iteration history in the sidebar.
+    """
     from dd.agent.loop import run_session
     from dd.db import get_connection, init_db
+
+    # Same flag-combination invariant as --brief: rendering to Figma
+    # with no starting screen produces an empty-canvas render that's
+    # confusing for the user. Fail loudly.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Same auto-init contract as --brief. Idempotent on populated DBs.
     init_db(db_path).close()
@@ -2262,11 +2379,28 @@ def _run_design_resume(
         sys.exit(1)
     finally:
         conn.close()
+
+    page_hint = ""
+    if render_to_figma:
+        page_name = _render_session_to_figma(
+            session_db_path=db_path,
+            project_db_path=project_db or db_path,
+            session_id=result.session_id,
+            final_variant_id=result.final_variant_id,
+            starting_screen_id=starting_screen,
+            dump_scripts=Path(dump_scripts) if dump_scripts else None,
+        )
+        page_hint = (
+            f"\n  → rendered to Figma page '{page_name}' "
+            f"(original at x=0, variant offset right)"
+        )
+
     print(result.session_id)
     print(
         f"  iterations: {result.iterations}  "
         f"halt: {result.halt_reason}  "
         f"final_variant: {result.final_variant_id}"
+        f"{page_hint}"
     )
 
 
