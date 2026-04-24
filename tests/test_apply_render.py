@@ -1104,3 +1104,302 @@ class TestExecuteScriptViaBridge:
         )
         assert captured_cmds
         assert "9231" in captured_cmds[0]
+
+
+class TestRebuildMapsStrictCoverage:
+    """Opt-in invariant on ``rebuild_maps_after_edits``: when the
+    caller passes ``strict_mapping=<floor>``, the function must raise
+    :class:`DegradedMapping` if ``nid_map`` covers less than
+    ``floor`` fraction of the applied-doc nodes whose eid-chain paths
+    also appear in the original doc (the "expected survivors").
+
+    Rationale from the 2026-04-24 M1 live-capstone bug — a silent
+    wrapper-collapse mismatch produced 0/109 nid_map coverage on a
+    pure-delete session; every surviving node fell to Mode-2
+    cheap-emission and the Figma render came out as an empty frame.
+    The function reported success. Codex's framing: don't flag on a
+    flat floor — measure against expected survivors so legit heavy-
+    delete edits don't false-positive.
+
+    The CLI's demo path (``dd design --render-to-figma``) passes
+    ``strict_mapping=0.9`` so the next wrapper-collapse-class bug
+    surfaces as a loud BridgeError equivalent rather than a blank
+    render that looks successful."""
+
+    def _setup_maps(self):
+        from dd.markup_l3 import apply_edits, parse_l3
+        # 30+ node fixture so the M1-class (root-only survivor) is
+        # clearly distinguishable from floor=0.9. The shape-mismatch
+        # case collapses to ~1 mapped over ~30 eligible (3.3%), well
+        # below any reasonable floor.
+        #
+        # Structure: screen > header/main/footer, each with nested
+        # frames + texts. Total = 1 screen + 3 section frames
+        # + 3 sub-frames + 24 text/button leaves = 31 nodes.
+        chunks = ["screen #s1 {\n"]
+        for sect in ("header", "main", "footer"):
+            chunks.append(f"  frame #{sect} {{\n")
+            for sub_i in range(1, 3):
+                chunks.append(
+                    f"    frame #{sect}-sub{sub_i} {{\n"
+                )
+                for leaf_i in range(1, 5):
+                    chunks.append(
+                        f"      text #{sect}-sub{sub_i}-t{leaf_i} "
+                        f'"leaf-{sect}-{sub_i}-{leaf_i}"\n'
+                    )
+                chunks.append("    }\n")
+            chunks.append("  }\n")
+        chunks.append("}\n")
+        doc = parse_l3("".join(chunks))
+        # Fake nid map with entries for every node in the original doc.
+        from dd.markup_l3 import Node
+        nodes = []
+        q = list(doc.top_level)
+        while q:
+            n = q.pop(0)
+            if isinstance(n, Node):
+                nodes.append(n)
+                if n.block is not None:
+                    q.extend(n.block.statements)
+        nid_map = {id(n): 1000 + i for i, n in enumerate(nodes)}
+        spec_key_map = {id(n): n.head.eid for n in nodes}
+        original_name_map = {id(n): n.head.eid for n in nodes}
+        return doc, nid_map, spec_key_map, original_name_map
+
+    @staticmethod
+    def _build_wrapper_collapse_applied():
+        """Parse an applied doc with the same eids as ``_setup_maps``
+        but wrapped under an extra frame. Every descendant's eid-path
+        shifts by one level, so path-based rebuild misses the old
+        nid_map; eid set still overlaps at ~100%. This is the M1
+        2026-04-24 wrapper-collapse regression class."""
+        from dd.markup_l3 import parse_l3
+        chunks = ["screen #s1 {\n  frame #wrapper-extra {\n"]
+        for sect in ("header", "main", "footer"):
+            chunks.append(f"    frame #{sect} {{\n")
+            for sub_i in range(1, 3):
+                chunks.append(f"      frame #{sect}-sub{sub_i} {{\n")
+                for leaf_i in range(1, 5):
+                    chunks.append(
+                        f"        text #{sect}-sub{sub_i}-t{leaf_i} "
+                        f'"leaf-{sect}-{sub_i}-{leaf_i}"\n'
+                    )
+                chunks.append("      }\n")
+            chunks.append("    }\n")
+        chunks.append("  }\n}\n")
+        return parse_l3("".join(chunks))
+
+    def test_strict_mapping_passes_on_well_aligned_trees(self):
+        """When applied and original were compressed with the same
+        settings, path-match covers every eligible surviving node —
+        coverage is 100% and strict_mapping succeeds."""
+        from dd.markup_l3 import apply_edits, parse_l3
+        orig, nid_map, spec_key_map, original_name_map = (
+            self._setup_maps()
+        )
+        # Pure-delete edit: drop one leaf. Every other node stays
+        # eid-matched + path-matched with 100% nid_map coverage.
+        edit_doc = parse_l3("delete @header-sub1-t1\n")
+        applied = apply_edits(orig, list(edit_doc.edits))
+        # Pass the strict floor — should not raise.
+        maps = rebuild_maps_after_edits(
+            applied_doc=applied,
+            original_doc=orig,
+            edits=list(edit_doc.edits),
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=None,  # no swaps in this test, conn unused
+            strict_mapping=0.9,
+        )
+        # Applied doc = 34 orig nodes − 1 deleted leaf = 33. All
+        # remaining eids exist in original, all paths match, all
+        # get nid_map entries.
+        from dd.markup_l3 import Node
+        applied_nodes = []
+        q = list(applied.top_level)
+        while q:
+            n = q.pop(0)
+            if isinstance(n, Node):
+                applied_nodes.append(n)
+                if n.block is not None:
+                    q.extend(n.block.statements)
+        assert len(applied_nodes) == 33
+        assert len(maps.nid_map) == 33
+
+    def test_strict_mapping_raises_on_shape_mismatch(self):
+        """When applied and original were compressed with different
+        wrapper shapes (the M1 regression class), every descendant
+        eid-path shifts under the extra wrapper. Path-based rebuild
+        can't carry forward the old nid_map — only root survives.
+        Coverage plummets to 1/34 ≈ 2.9%, well below 0.9 floor.
+
+        eid_overlap stays at 100% (the wrapper just adds one new
+        eid to applied, so overlap = 34/35 against min=34). That
+        satisfies the >0.8 second-check guard, so the invariant
+        fires and names the compression-shape cause."""
+        from dd.apply_render import DegradedMapping
+        from dd.markup_l3 import parse_l3
+        orig, nid_map, spec_key_map, original_name_map = (
+            self._setup_maps()
+        )
+        applied = self._build_wrapper_collapse_applied()
+        # Non-empty edit list so rebuild_maps_after_edits doesn't
+        # short-circuit back to identity maps.
+        edits = list(parse_l3("delete @non-existent-eid\n").edits)
+        with pytest.raises(DegradedMapping) as exc:
+            rebuild_maps_after_edits(
+                applied_doc=applied,
+                original_doc=orig,
+                edits=edits,
+                old_nid_map=nid_map,
+                old_spec_key_map=spec_key_map,
+                old_original_name_map=original_name_map,
+                conn=None,
+                strict_mapping=0.9,
+            )
+        msg = str(exc.value)
+        # Diagnostic names coverage ratio, eid_overlap, AND points
+        # at compression-shape as the likely cause (Codex's risk
+        # note — fail with context, not just a number).
+        assert "coverage" in msg.lower() or "mapped" in msg.lower()
+        assert "eid_overlap" in msg.lower()
+        assert "wrapper" in msg.lower() or "compress" in msg.lower()
+
+    def test_no_strict_mapping_defaults_silent(self):
+        """The invariant is OPT-IN. Callers that don't pass
+        strict_mapping get the historical silent-degradation
+        behavior — Mode-3 composition, synthetic-gen, and all the
+        pre-existing tests continue to work unchanged. A case that
+        WOULD raise under strict_mapping=0.9 must pass silently
+        when no strict_mapping is given."""
+        from dd.markup_l3 import parse_l3
+        orig, nid_map, spec_key_map, original_name_map = (
+            self._setup_maps()
+        )
+        applied = self._build_wrapper_collapse_applied()
+        edits = list(parse_l3("delete @non-existent-eid\n").edits)
+        # No strict_mapping kwarg → no raise, even though coverage
+        # is 2.9%.
+        maps = rebuild_maps_after_edits(
+            applied_doc=applied,
+            original_doc=orig,
+            edits=edits,
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=None,
+        )
+        # Only root s1 gets carried forward (same eid-path in both
+        # trees). Everything below diverges by the wrapper-extra
+        # level. Silent degradation: most nodes fall to Mode-2
+        # cheap-emit with no DB nid. This is the historical
+        # behavior the M1 bug rode on.
+        assert len(maps.nid_map) == 1
+
+    def test_strict_mapping_handles_heavy_delete_without_false_positive(
+        self,
+    ):
+        """Codex's framing: the invariant must not false-positive on
+        legit heavy deletes. Measure against "eligible" (applied-doc
+        nodes whose head.eid is in the original) rather than a flat
+        fraction of applied-doc nodes.
+
+        A session that deletes 80% of the tree should still pass
+        strict_mapping=0.9 if the remaining 20% are all correctly
+        eid-matched."""
+        from dd.markup_l3 import apply_edits, parse_l3
+        orig, nid_map, spec_key_map, original_name_map = (
+            self._setup_maps()
+        )
+        # Delete many leaves across the tree — heavy delete.
+        heavy_delete = "\n".join(
+            f"delete @header-sub1-t{i}"
+            for i in range(1, 5)
+        ) + "\n" + "\n".join(
+            f"delete @main-sub1-t{i}"
+            for i in range(1, 5)
+        ) + "\n" + "\n".join(
+            f"delete @footer-sub2-t{i}"
+            for i in range(1, 5)
+        ) + "\n"
+        edit_doc = parse_l3(heavy_delete)
+        applied = apply_edits(orig, list(edit_doc.edits))
+        # Should succeed: surviving nodes all eid-match the original.
+        rebuild_maps_after_edits(
+            applied_doc=applied,
+            original_doc=orig,
+            edits=list(edit_doc.edits),
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=None,
+            strict_mapping=0.9,
+        )
+
+    def test_strict_mapping_passes_on_heavy_append_with_reused_eids(
+        self,
+    ):
+        """Codex's eid_overlap risk note: a session can legitimately
+        introduce new subtrees whose eids collide with eids already
+        elsewhere in the original doc. Grammar §2.3.1 only forbids
+        duplicate eids within a parent block — cousin subtrees can
+        reuse eids freely.
+
+        In that case the applied doc's eid set is a superset of the
+        original's (new nodes use reused-from-elsewhere eids), but
+        those new nodes wouldn't be in the nid_map. Coverage could
+        look low, but it's a legitimate append pattern — not a
+        compression-shape mismatch.
+
+        The eid_overlap > 0.8 guard keeps this case quiet: applied
+        has every original eid + new ones, so ``|applied ∩ orig| /
+        min(|applied|, |orig|)`` = 1.0 (all original eids present),
+        but the invariant should still not fire because coverage is
+        high against the *eligible* set.
+
+        Edge case: if the reused eids cause applied_eids to contain
+        many duplicates, eid_overlap stays high and coverage stays
+        high — the invariant passes cleanly."""
+        from dd.markup_l3 import apply_edits, parse_l3
+        orig, nid_map, spec_key_map, original_name_map = (
+            self._setup_maps()
+        )
+        # Append a new subtree to footer whose children reuse eids
+        # that exist elsewhere in the tree (legal — different
+        # parents). The new nodes have fresh id()s and no nid_map
+        # entry.
+        append_src = (
+            "append to=@footer {\n"
+            "  frame #new-section {\n"
+            # These eids already exist in header / main subtrees —
+            # legal to reuse under different parents.
+            "    text #header-sub1-t1 \"reused-from-header\"\n"
+            "    text #main-sub1-t2 \"reused-from-main\"\n"
+            "  }\n"
+            "}\n"
+        )
+        edit_doc = parse_l3(append_src)
+        applied = apply_edits(orig, list(edit_doc.edits))
+        # Should NOT raise: the original 30+ nodes all eid-match and
+        # are covered by nid_map. The 3 new nodes (new-section +
+        # 2 text children) add to the eligible pool because their
+        # eids happen to be in the original, but those new id()s
+        # aren't in nid_map. Coverage drops from 100% to ~94%
+        # (30/32), still above the 0.9 floor. Even if it dropped
+        # below, the eid_overlap guard would keep quiet because
+        # applied introduces a new eid (`new-section`) that isn't
+        # in the original — eid_overlap = 30/31 ≈ 0.97, still >0.8,
+        # so this test verifies the coverage stays high enough
+        # even when the eid_overlap guard cannot save it.
+        rebuild_maps_after_edits(
+            applied_doc=applied,
+            original_doc=orig,
+            edits=list(edit_doc.edits),
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=None,
+            strict_mapping=0.9,
+        )

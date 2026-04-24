@@ -2098,7 +2098,8 @@ def _render_session_to_figma(
                           canvas_position=(screen_width + 200, 0).
     """
     from dd.apply_render import (
-        BridgeError, execute_script_via_bridge, render_applied_doc,
+        BridgeError, DegradedMapping, execute_script_via_bridge,
+        render_applied_doc,
     )
     from dd.compress_l3 import _compress_to_l3_impl
     from dd.db import get_connection
@@ -2172,21 +2173,38 @@ def _render_session_to_figma(
         )
         fonts = collect_fonts(spec, db_visuals=visuals)
 
-        variant_rendered = render_applied_doc(
-            applied_doc=final_variant.doc,
-            original_doc=original_doc,
-            edits=cumulative_edits,
-            spec=spec,
-            conn=project_conn,
-            db_visuals=visuals,
-            fonts=fonts,
-            old_nid_map=nid_map,
-            old_spec_key_map=spec_key_map,
-            old_original_name_map=original_name_map,
-            ckr_built=ckr_built,
-            page_name=page_name,
-            canvas_position=(screen_width + 200.0, 0.0),
-        )
+        # ``strict_mapping=0.9`` — Codex's A' invariant (sign-off
+        # 2026-04-24): if nid_map coverage drops below 90% of
+        # eligible applied-doc nodes, raise DegradedMapping instead
+        # of silently producing a Mode-2 empty frame. Originally
+        # hit as the M1 "variant renders blank" bug
+        # (wrapper-collapse mismatch between the agent's
+        # starting-doc compression and the renderer's original-doc
+        # compression). A future regression of the same class
+        # surfaces as a user-visible BridgeError-like failure.
+        try:
+            variant_rendered = render_applied_doc(
+                applied_doc=final_variant.doc,
+                original_doc=original_doc,
+                edits=cumulative_edits,
+                spec=spec,
+                conn=project_conn,
+                db_visuals=visuals,
+                fonts=fonts,
+                old_nid_map=nid_map,
+                old_spec_key_map=spec_key_map,
+                old_original_name_map=original_name_map,
+                ckr_built=ckr_built,
+                page_name=page_name,
+                canvas_position=(screen_width + 200.0, 0.0),
+                strict_mapping=0.9,
+            )
+        except DegradedMapping as e:
+            print(
+                f"dd design: variant render would be degraded — {e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         variant_script = variant_rendered.script
     finally:
         session_conn.close()

@@ -51,6 +51,30 @@ class SwapUnresolvedInCKR(Exception):
     """
 
 
+class DegradedMapping(Exception):
+    """Raised when ``rebuild_maps_after_edits(strict_mapping=<floor>)``
+    observes ``nid_map`` coverage below the caller-specified floor
+    against *eligible* applied-doc nodes (nodes whose ``head.eid``
+    exists somewhere in the original doc).
+
+    The common trigger is a wrapper-collapse / compression-shape
+    mismatch between the two docs: every non-root path diverges and
+    every surviving node falls to Mode-2 cheap-emission. Historically
+    silent (the M1 2026-04-24 live-capstone bug: 0/109 coverage
+    produced an empty Figma render that looked successful). Opt-in
+    invariant — callers pass ``strict_mapping=0.9`` on demo/prod paths
+    where silent degradation would be visible as a fidelity loss.
+
+    Codex's "A'" framing: measure against eid-set intersection, not
+    path-set intersection, and second-guard with eid_overlap>0.8 so
+    legitimate heavy-append-with-reused-eids sessions don't
+    false-positive.
+
+    Message carries the measured coverage ratio, the eid_overlap
+    ratio, and a hint at the likely cause (compression-shape
+    mismatch, usually ``collapse_wrapper``)."""
+
+
 @dataclass
 class AppliedRenderMaps:
     """Result of :func:`rebuild_maps_after_edits`.
@@ -174,6 +198,70 @@ def _lookup_master_in_ckr(
     return row[0]
 
 
+def _assert_coverage_or_raise(
+    *,
+    applied_doc: L3Document,
+    original_doc: L3Document,
+    new_nid_map: dict[int, int],
+    old_nid_map: dict[int, int],
+    floor: float,
+) -> None:
+    """Strict-mapping invariant: fail loudly when ``new_nid_map``
+    covers less than ``floor`` fraction of the *eligible* applied-doc
+    nodes.
+
+    "Eligible" = applied-doc nodes whose ``head.eid`` exists somewhere
+    in the original doc. This is Codex's "A'" framing (M1 sign-off
+    2026-04-24): measure against eid-set intersection, not path-set
+    intersection. Path-set false-positives on wrapper-shift classes
+    because the whole subtree diverges except the root, leaving too
+    few matching paths to even measure. eid-set catches those.
+
+    Second guard (Codex's risk note): only raise when
+    ``eid_overlap`` is high. ``eid_overlap = |applied∩original| /
+    min(|applied|, |original|)``. When the eid sets barely overlap
+    (<=0.8), the session is legitimately introducing new subtrees
+    whose eids happen to clash with elsewhere in the original — not
+    a compression-shape mismatch. Keep quiet.
+
+    Skips the check when ``old_nid_map`` was empty (no DB backing)
+    or when fewer than 2 eligible nodes (trivially-small trees —
+    nothing to measure).
+    """
+    if not old_nid_map:
+        return
+
+    applied_nodes = _bfs_nodes(applied_doc)
+    original_nodes = _bfs_nodes(original_doc)
+
+    applied_eids = {n.head.eid for n in applied_nodes if n.head.eid}
+    orig_eids = {n.head.eid for n in original_nodes if n.head.eid}
+
+    eligible = [n for n in applied_nodes if n.head.eid and n.head.eid in orig_eids]
+    total = len(eligible)
+    if total < 2:
+        return  # not enough signal to measure
+
+    covered = sum(1 for n in eligible if id(n) in new_nid_map)
+    ratio = covered / total
+
+    overlap_denom = max(min(len(applied_eids), len(orig_eids)), 1)
+    eid_overlap = len(applied_eids & orig_eids) / overlap_denom
+
+    if eid_overlap > 0.8 and ratio < floor:
+        raise DegradedMapping(
+            f"nid_map coverage {covered}/{total} "
+            f"({ratio:.1%}) below strict_mapping floor "
+            f"{floor:.1%} (eid_overlap={eid_overlap:.1%}) — the "
+            "applied doc and original doc likely have incompatible "
+            "compression shapes (most commonly a ``collapse_wrapper`` "
+            "mismatch between the caller that produced the starting "
+            "doc and the renderer that built ``original_doc``). See "
+            "dd/cli.py::_load_starting_doc's CRITICAL comment for the "
+            "canonical shape alignment."
+        )
+
+
 def rebuild_maps_after_edits(
     *,
     applied_doc: L3Document,
@@ -183,6 +271,7 @@ def rebuild_maps_after_edits(
     old_spec_key_map: dict[int, str],
     old_original_name_map: dict[int, str],
     conn: sqlite3.Connection,
+    strict_mapping: Optional[float] = None,
 ) -> AppliedRenderMaps:
     """Re-key the old renderer maps onto the applied doc's node ids.
 
@@ -320,6 +409,15 @@ def rebuild_maps_after_edits(
 
     walk(applied_doc.top_level, ())
 
+    if strict_mapping is not None:
+        _assert_coverage_or_raise(
+            applied_doc=applied_doc,
+            original_doc=original_doc,
+            new_nid_map=new_nid_map,
+            old_nid_map=old_nid_map,
+            floor=strict_mapping,
+        )
+
     return AppliedRenderMaps(
         nid_map=new_nid_map,
         spec_key_map=new_spec_key_map,
@@ -416,6 +514,7 @@ def render_applied_doc(
     ckr_built: bool = True,
     page_name: Optional[str] = None,
     canvas_position: Optional[tuple[float, float]] = None,
+    strict_mapping: Optional[float] = None,
 ) -> RenderedApplied:
     """Render the applied L3 doc as a full Figma script.
 
@@ -427,7 +526,14 @@ def render_applied_doc(
 
     The caller keeps ``db_visuals`` read-only — the wrapper merges the
     synthetic swap patches into a local copy so the original stays
-    reusable across multiple swap attempts."""
+    reusable across multiple swap attempts.
+
+    ``strict_mapping`` is forwarded to :func:`rebuild_maps_after_edits`
+    — opt-in coverage invariant. When set, raises
+    :class:`DegradedMapping` if the rebuilt nid_map covers less than
+    the floor fraction of eligible applied-doc nodes. Demo / prod
+    callers should pass ~0.9 to surface wrapper-shape mismatches
+    loudly rather than rendering as an empty Mode-2 frame."""
     from dd.render_figma_ast import render_figma
 
     maps = rebuild_maps_after_edits(
@@ -438,6 +544,7 @@ def render_applied_doc(
         old_spec_key_map=old_spec_key_map,
         old_original_name_map=old_original_name_map,
         conn=conn,
+        strict_mapping=strict_mapping,
     )
 
     original_elements = spec.get("elements") or {}
