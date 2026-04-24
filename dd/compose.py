@@ -118,7 +118,25 @@ def compose_screen(
     type_counters: dict[str, int] = {}
     elements: dict[str, dict[str, Any]] = {}
 
-    def _allocate_id(comp_type: str) -> str:
+    def _allocate_id(comp_type: str, preferred_eid: str | None = None) -> str:
+        """Allocate an eid for a new element.
+
+        Stage 0.4: when the planner supplied a ``preferred_eid`` (a
+        named entity like ``product-showcase-section``), honour it so
+        the LLM's own ontology survives into downstream addressing
+        (edit grammar, drift check, session log). Falls back to the
+        counter form when the preferred eid is missing, non-string,
+        whitespace-only, or already taken — callers rely on compose
+        never crashing on a duplicate, even though Stage 0.6's drift
+        check is expected to surface duplicate-eid as KIND_PLAN_DRIFT
+        before composition runs.
+        """
+        if (
+            isinstance(preferred_eid, str)
+            and preferred_eid.strip()
+            and preferred_eid not in elements
+        ):
+            return preferred_eid
         type_counters[comp_type] = type_counters.get(comp_type, 0) + 1
         return f"{comp_type}-{type_counters[comp_type]}"
 
@@ -210,7 +228,7 @@ def compose_screen(
             return spliced_eid
 
         comp_type = comp["type"]
-        eid = _allocate_id(comp_type)
+        eid = _allocate_id(comp_type, preferred_eid=comp.get("eid"))
 
         element: dict[str, Any] = {"type": comp_type}
 

@@ -135,6 +135,68 @@ class TestComposeScreen:
         assert spec["version"] == "1.0"
 
 
+class TestComposePreservesPlannerEids:
+    """Stage 0.4 — LLM-provided ``eid`` survives into ``spec['elements']``.
+
+    Pre-Stage-0 the counter allocator discards whatever the planner named
+    an entity and emits ``<type>-<N>``. That destroys downstream
+    addressability: the edit grammar, session log, and drift check can
+    no longer refer to ``product-showcase-section`` because compose
+    silently renamed it to ``frame-1``.
+    """
+
+    def test_eid_on_top_level_node_survives(self):
+        spec = compose_screen([{"type": "card", "eid": "product-showcase-section"}])
+        assert "product-showcase-section" in spec["elements"]
+        assert spec["elements"]["product-showcase-section"]["type"] == "card"
+
+    def test_eid_on_nested_node_survives(self):
+        spec = compose_screen([{
+            "type": "card",
+            "eid": "product-showcase-section",
+            "children": [
+                {"type": "heading", "eid": "section-title"},
+                {"type": "text", "eid": "section-body"},
+            ],
+        }])
+        assert "section-title" in spec["elements"]
+        assert "section-body" in spec["elements"]
+        card = spec["elements"]["product-showcase-section"]
+        assert set(card["children"]) == {"section-title", "section-body"}
+
+    def test_missing_eid_falls_back_to_counter(self):
+        """Nodes without ``eid`` still get the legacy counter form so
+        pre-Stage-0 callers aren't broken."""
+        spec = compose_screen([{"type": "card"}, {"type": "card"}])
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+        assert all(eid.startswith("card-") for eid in card_ids)
+
+    def test_eid_collision_falls_back_to_counter(self):
+        """Two LLM nodes that claim the same ``eid`` keep it for the
+        first; the second falls back to the counter form. Stage 0.6's
+        drift check is expected to surface duplicate-eid as KIND_PLAN_DRIFT
+        before we reach compose, but compose itself must not crash.
+        """
+        spec = compose_screen([
+            {"type": "card", "eid": "my-card"},
+            {"type": "card", "eid": "my-card"},
+        ])
+        assert "my-card" in spec["elements"]
+        # Second one got a counter-allocated id
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+
+    def test_invalid_eid_falls_back_to_counter(self):
+        """Non-string / empty / whitespace eids fall back silently.
+        Validation of eid shape is the planner's job; compose is lenient.
+        """
+        spec = compose_screen([{"type": "card", "eid": ""}, {"type": "card", "eid": "   "}])
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+        assert all(eid.startswith("card-") for eid in card_ids)
+
+
 # ---------------------------------------------------------------------------
 # build_template_visuals tests
 # ---------------------------------------------------------------------------
