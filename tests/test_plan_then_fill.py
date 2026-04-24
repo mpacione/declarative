@@ -193,6 +193,265 @@ class TestSystemPromptVocabulary:
 
 
 # --------------------------------------------------------------------------- #
+# Stage 0.3 — flat named-node plan contract                                   #
+# --------------------------------------------------------------------------- #
+
+class TestValidateFlatPlan:
+    """Stage 0.3: new output contract is a flat table of named nodes
+    addressed by parent_eid. Every node has an explicit eid; nesting
+    relationships are explicit via parent_eid; LLM-intended order is
+    explicit via ``order``. Downstream addressing (edit grammar,
+    drift check, session log) relies on every node carrying its own
+    eid from day one.
+    """
+
+    def test_accepts_flat_plan_with_root(self):
+        from dd.composition.plan import validate_flat_plan
+        plan = {"nodes": [
+            {"eid": "hdr", "type": "header", "parent_eid": None, "order": 0},
+            {"eid": "back", "type": "icon_button", "parent_eid": "hdr", "order": 0},
+            {"eid": "title", "type": "text", "parent_eid": "hdr", "order": 1},
+        ]}
+        validate_flat_plan(plan)  # no raise
+
+    def test_accepts_frame_as_neutral_wrapper(self):
+        from dd.composition.plan import validate_flat_plan
+        plan = {"nodes": [
+            {"eid": "screen-root", "type": "frame", "parent_eid": None, "order": 0},
+            {"eid": "product-showcase-section", "type": "frame", "parent_eid": "screen-root", "order": 1},
+            {"eid": "section-title", "type": "heading", "parent_eid": "product-showcase-section", "order": 0},
+            {"eid": "feature-card", "type": "card", "parent_eid": "product-showcase-section", "order": 1, "repeat": 3},
+        ]}
+        validate_flat_plan(plan)  # no raise
+
+    def test_rejects_non_dict_root(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="object"):
+            validate_flat_plan([{"eid": "x", "type": "card", "parent_eid": None, "order": 0}])
+
+    def test_rejects_missing_nodes_key(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="'nodes'"):
+            validate_flat_plan({"components": []})
+
+    def test_rejects_missing_eid(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="missing 'eid'"):
+            validate_flat_plan({"nodes": [
+                {"type": "card", "parent_eid": None, "order": 0},
+            ]})
+
+    def test_rejects_missing_type(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="missing 'type'"):
+            validate_flat_plan({"nodes": [
+                {"eid": "x", "parent_eid": None, "order": 0},
+            ]})
+
+    def test_rejects_unknown_type(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="unknown type"):
+            validate_flat_plan({"nodes": [
+                {"eid": "x", "type": "holographic_widget", "parent_eid": None, "order": 0},
+            ]})
+
+    def test_rejects_duplicate_eids(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="duplicate"):
+            validate_flat_plan({"nodes": [
+                {"eid": "same", "type": "card", "parent_eid": None, "order": 0},
+                {"eid": "same", "type": "card", "parent_eid": None, "order": 1},
+            ]})
+
+    def test_rejects_dangling_parent_eid(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="parent_eid"):
+            validate_flat_plan({"nodes": [
+                {"eid": "child", "type": "card", "parent_eid": "ghost", "order": 0},
+            ]})
+
+    def test_rejects_invalid_repeat(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="repeat"):
+            validate_flat_plan({"nodes": [
+                {"eid": "x", "type": "card", "parent_eid": None, "order": 0, "repeat": 0},
+            ]})
+
+    def test_rejects_non_int_order(self):
+        from dd.composition.plan import PlanValidationError, validate_flat_plan
+        with pytest.raises(PlanValidationError, match="order"):
+            validate_flat_plan({"nodes": [
+                {"eid": "x", "type": "card", "parent_eid": None, "order": "first"},
+            ]})
+
+
+class TestFlatPlanToTree:
+    """Stage 0.3: flat-row plans convert to the tree shape that the
+    fill prompt + compose_screen consume. ``repeat: N`` expands
+    deterministically to ``eid__1``, ``eid__2`` ... siblings at the
+    adapter layer so compose sees a concrete tree with no repeat
+    semantics to interpret.
+    """
+
+    def test_single_root_produces_tree(self):
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "hdr", "type": "header", "parent_eid": None, "order": 0},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        assert tree == [{"type": "header", "id": "hdr"}]
+
+    def test_two_roots_preserve_order(self):
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "second", "type": "card", "parent_eid": None, "order": 1},
+            {"eid": "first", "type": "header", "parent_eid": None, "order": 0},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        assert [n["id"] for n in tree] == ["first", "second"]
+
+    def test_nested_children_by_parent_eid(self):
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "hdr", "type": "header", "parent_eid": None, "order": 0},
+            {"eid": "title", "type": "text", "parent_eid": "hdr", "order": 0},
+            {"eid": "back", "type": "icon_button", "parent_eid": "hdr", "order": 1},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        assert tree[0]["id"] == "hdr"
+        # Preserve ORDER for children (first = title at order 0)
+        assert [c["id"] for c in tree[0]["children"]] == ["title", "back"]
+
+    def test_repeat_expands_to_numbered_siblings(self):
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "section", "type": "frame", "parent_eid": None, "order": 0},
+            {"eid": "feature-card", "type": "card", "parent_eid": "section", "order": 0, "repeat": 3},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        section = tree[0]
+        assert [c["id"] for c in section["children"]] == [
+            "feature-card__1", "feature-card__2", "feature-card__3",
+        ]
+        # Every expanded sibling carries the same TYPE
+        assert {c["type"] for c in section["children"]} == {"card"}
+
+    def test_repeat_one_emits_original_eid(self):
+        """repeat=1 is the same as no repeat — the original eid is the
+        only survivor."""
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "parent", "type": "frame", "parent_eid": None, "order": 0},
+            {"eid": "only-child", "type": "text", "parent_eid": "parent", "order": 0, "repeat": 1},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        assert tree[0]["children"][0]["id"] == "only-child"
+
+    def test_multiple_parents_preserve_membership(self):
+        from dd.composition.plan import flat_plan_to_tree
+        plan = {"nodes": [
+            {"eid": "a", "type": "frame", "parent_eid": None, "order": 0},
+            {"eid": "b", "type": "frame", "parent_eid": None, "order": 1},
+            {"eid": "a-child", "type": "text", "parent_eid": "a", "order": 0},
+            {"eid": "b-child", "type": "text", "parent_eid": "b", "order": 0},
+        ]}
+        tree = flat_plan_to_tree(plan)
+        a = next(n for n in tree if n["id"] == "a")
+        b = next(n for n in tree if n["id"] == "b")
+        assert [c["id"] for c in a["children"]] == ["a-child"]
+        assert [c["id"] for c in b["children"]] == ["b-child"]
+
+
+class TestFlatPlanSystemPrompt:
+    """Stage 0.7: the new planner system prompt. Contract spelled out
+    explicitly so the LLM can't drift into the old nested-tree shape
+    without failing validation."""
+
+    @staticmethod
+    def _flat_prompt() -> str:
+        from dd.composition.plan import _build_flat_plan_system
+        return _build_flat_plan_system()
+
+    def test_advertises_flat_nodes_array(self):
+        prompt = self._flat_prompt()
+        assert "nodes" in prompt
+        assert "parent_eid" in prompt
+
+    def test_advertises_eid_as_open_vocabulary(self):
+        prompt = self._flat_prompt()
+        # eid must appear; so must some phrasing that conveys it's
+        # invented by the LLM (not an enum)
+        assert "eid" in prompt
+
+    def test_advertises_type_as_closed_vocabulary(self):
+        prompt = self._flat_prompt()
+        # Catalog types must be listed
+        assert "frame" in prompt
+        assert "card" in prompt
+
+    def test_advertises_repeat(self):
+        prompt = self._flat_prompt()
+        assert "repeat" in prompt
+
+    def test_no_nested_children_example(self):
+        """The new prompt must NOT advertise the old `children` nested-
+        array shape. Otherwise the LLM is free to drift back."""
+        prompt = self._flat_prompt()
+        # Specific fingerprint: the old example's `"children":` JSON
+        # key. The new contract uses parent_eid, never nested children.
+        assert '"children":' not in prompt
+
+
+class TestPlanThenFillAcceptsFlatShape:
+    """Stage 0.3/0.7 orchestrator acceptance: plan_then_fill now
+    drives the flat-plan contract by default. The planner LLM is
+    asked for a flat `{"nodes": [...]}` response; plan_then_fill
+    adapts that to the tree form for the fill prompt + downstream
+    compose.
+    """
+
+    def test_plan_then_fill_routes_flat_plan_through_adapter(self):
+        flat_plan = {"nodes": [
+            {"eid": "hdr", "type": "header", "parent_eid": None, "order": 0},
+            {"eid": "feed", "type": "list", "parent_eid": None, "order": 1},
+            {"eid": "post", "type": "card", "parent_eid": "feed", "order": 0, "repeat": 4},
+        ]}
+        fill_components = [
+            {"type": "header", "children": [{"type": "text"}]},
+            {"type": "list", "children": [
+                {"type": "card"}, {"type": "card"},
+                {"type": "card"}, {"type": "card"},
+            ]},
+        ]
+        client = _mock_client(
+            _plan_response(flat_plan),
+            _fill_response(fill_components),
+        )
+        result = plan_then_fill("a home feed", client)
+        assert result.get("components") == fill_components
+        # The adapter exposes the ORIGINAL flat plan so downstream
+        # drift check can compare against the LLM's own intent.
+        assert result.get("plan") == flat_plan
+
+    def test_plan_then_fill_still_accepts_legacy_tree_shape(self):
+        """Legacy nested-tree plans stay working — Stage 0 is Option C
+        (narrow, backwards-compat). Stage 1 will delete this path."""
+        legacy_plan = [
+            {"type": "header", "id": "hdr", "children": [
+                {"type": "text", "id": "title"},
+            ]},
+        ]
+        fill_components = [{"type": "header", "children": [{"type": "text"}]}]
+        client = _mock_client(
+            _plan_response(legacy_plan),
+            _fill_response(fill_components),
+        )
+        result = plan_then_fill("anything", client)
+        assert result.get("components") == fill_components
+        assert result.get("plan") == legacy_plan
+
+
+# --------------------------------------------------------------------------- #
 # plan_diff                                                                   #
 # --------------------------------------------------------------------------- #
 
