@@ -1746,6 +1746,21 @@ def main(argv: list | None = None) -> None:
              "(additive — bridge calls still run). Requires "
              "--render-to-figma.",
     )
+    # Demo-recovery: rendering the source screen against a fresh
+    # Figma file containing the 87k-descendant Dank 1.0 library page
+    # consistently times out at the 300s PROXY_EXECUTE cap. The
+    # original render is the heavier of the two (more findOne calls
+    # under the preamble's currentPage side-effect dance).
+    # `--variant-only` skips the original render entirely; the user
+    # can compare to the original by opening it directly in the
+    # source file.
+    design_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render and ship only the final variant. Use when the "
+             "source file is large enough that the original render "
+             "times out at the PROXY_EXECUTE cap.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1794,6 +1809,16 @@ def main(argv: list | None = None) -> None:
              "<DIR>/original.js and <DIR>/variant.js for inspection "
              "(additive — bridge calls still run). Requires "
              "--render-to-figma.",
+    )
+    # Mirror of --brief's --variant-only: skip the heavy original
+    # render on resume too, so the multi-turn demo can iterate
+    # without re-paying the source-file walk cost each turn.
+    design_resume_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render and ship only the final variant. Use when the "
+             "source file is large enough that the original render "
+             "times out at the PROXY_EXECUTE cap.",
     )
 
     design_score_parser = design_subparsers.add_parser(
@@ -1947,6 +1972,7 @@ def _run_design(db_path: str, args) -> None:
             render_to_figma=args.render_to_figma,
             project_db=args.project_db,
             dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
         )
         return
 
@@ -1959,6 +1985,7 @@ def _run_design(db_path: str, args) -> None:
             render_to_figma=args.render_to_figma,
             project_db=args.project_db,
             dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
         )
         return
 
@@ -1991,6 +2018,7 @@ def _run_design_brief(
     render_to_figma: bool = False,
     project_db: str | None = None,
     dump_scripts: str | None = None,
+    variant_only: bool = False,
 ) -> None:
     """M1 of the authoring-loop Figma round-trip (docs/rationale/
     stage-3-session-loop.md + Codex sign-off 2026-04-24).
@@ -2068,11 +2096,19 @@ def _run_design_brief(
             final_variant_id=result.final_variant_id,
             starting_screen_id=starting_screen,
             dump_scripts=Path(dump_scripts) if dump_scripts else None,
+            variant_only=variant_only,
         )
-        page_hint = (
-            f"\n  → rendered to Figma page '{page_name}' "
-            f"(original at x=0, variant offset right)"
-        )
+        if variant_only:
+            page_hint = (
+                f"\n  → rendered variant only to Figma page "
+                f"'{page_name}' (compare to original at screen "
+                f"{starting_screen} in the source file)"
+            )
+        else:
+            page_hint = (
+                f"\n  → rendered to Figma page '{page_name}' "
+                f"(original at x=0, variant offset right)"
+            )
 
     print(result.session_id)
     print(
@@ -2147,6 +2183,7 @@ def _render_session_to_figma(
     final_variant_id: str,
     starting_screen_id: int,
     dump_scripts: Path | None = None,
+    variant_only: bool = False,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2163,6 +2200,15 @@ def _render_session_to_figma(
                           canvas_position=(0, 0).
       - Variant render:   same page_name,
                           canvas_position=(screen_width + 200, 0).
+
+    ``variant_only``: when True, skip the original render entirely
+    and ship only the variant. The variant lands at canvas_position
+    (0, 0) since there's no original to sit beside. The user
+    compares against the original by opening the source file
+    directly. Demo-recovery escape hatch for source files large
+    enough that the original render times out at the 300s
+    PROXY_EXECUTE cap (e.g. the Dank 1.0 library page with 87k
+    descendants).
 
     The variant-ULID suffix is the M2 page-collision fix: within a
     single session, successive resumes produce different final
@@ -2205,6 +2251,13 @@ def _render_session_to_figma(
     )
 
     # --- Original render -------------------------------------------
+    # Skipped under ``variant_only`` (demo-recovery: avoid the heavy
+    # original render against large source files that time out at the
+    # 300s PROXY_EXECUTE cap). We still need ``screen_width`` for the
+    # variant's canvas position when not variant-only, so the width
+    # query stays — but the generate_screen + dump_scripts/original.js
+    # writes are gated.
+    original_script: str | None = None
     project_conn = get_connection(project_db_path)
     try:
         screen_row = project_conn.execute(
@@ -2212,15 +2265,16 @@ def _render_session_to_figma(
         ).fetchone()
         screen_width = float(screen_row["width"] or 428.0) if screen_row else 428.0
 
-        original_result = generate_screen(
-            project_conn, starting_screen_id,
-            canvas_position=(0.0, 0.0),
-            page_name=page_name,
-        )
-        original_script = original_result["structure_script"]
-        if dump_scripts is not None:
-            dump_scripts.mkdir(parents=True, exist_ok=True)
-            (dump_scripts / "original.js").write_text(original_script)
+        if not variant_only:
+            original_result = generate_screen(
+                project_conn, starting_screen_id,
+                canvas_position=(0.0, 0.0),
+                page_name=page_name,
+            )
+            original_script = original_result["structure_script"]
+            if dump_scripts is not None:
+                dump_scripts.mkdir(parents=True, exist_ok=True)
+                (dump_scripts / "original.js").write_text(original_script)
     finally:
         project_conn.close()
 
@@ -2278,6 +2332,13 @@ def _render_session_to_figma(
         # starting-doc compression and the renderer's original-doc
         # compression). A future regression of the same class
         # surfaces as a user-visible BridgeError-like failure.
+        # When variant_only, place the variant at the page origin —
+        # there's no original beside it to offset from.
+        variant_canvas = (
+            (0.0, 0.0)
+            if variant_only
+            else (screen_width + 200.0, 0.0)
+        )
         try:
             variant_rendered = render_applied_doc(
                 applied_doc=final_variant.doc,
@@ -2292,7 +2353,7 @@ def _render_session_to_figma(
                 old_original_name_map=original_name_map,
                 ckr_built=ckr_built,
                 page_name=page_name,
-                canvas_position=(screen_width + 200.0, 0.0),
+                canvas_position=variant_canvas,
                 strict_mapping=0.9,
             )
         except DegradedMapping as e:
@@ -2310,13 +2371,15 @@ def _render_session_to_figma(
         project_conn.close()
 
     # --- Bridge I/O ------------------------------------------------
-    # Two PROXY_EXECUTE calls. Any BridgeError reaches the user via
-    # sys.stderr + non-zero exit — we do NOT silently skip the variant
-    # render if the original succeeded (the user wants both; half is
-    # a bug, not a feature).
+    # Two PROXY_EXECUTE calls (or one, under ``variant_only``). Any
+    # BridgeError reaches the user via sys.stderr + non-zero exit —
+    # we do NOT silently skip the variant render if the original
+    # succeeded (the user wants both; half is a bug, not a feature).
     try:
         from dd import apply_render as _ap
-        _ap.execute_script_via_bridge(script=original_script)
+        if not variant_only:
+            assert original_script is not None  # narrow for type-checkers
+            _ap.execute_script_via_bridge(script=original_script)
         _ap.execute_script_via_bridge(script=variant_script)
     except BridgeError as e:
         print(
@@ -2338,6 +2401,7 @@ def _run_design_resume(
     render_to_figma: bool = False,
     project_db: str | None = None,
     dump_scripts: str | None = None,
+    variant_only: bool = False,
 ) -> None:
     """M2 demo-blocker: resume must support the same Figma round-trip
     flag family as --brief so the multi-turn iteration story lands.
@@ -2389,11 +2453,19 @@ def _run_design_resume(
             final_variant_id=result.final_variant_id,
             starting_screen_id=starting_screen,
             dump_scripts=Path(dump_scripts) if dump_scripts else None,
+            variant_only=variant_only,
         )
-        page_hint = (
-            f"\n  → rendered to Figma page '{page_name}' "
-            f"(original at x=0, variant offset right)"
-        )
+        if variant_only:
+            page_hint = (
+                f"\n  → rendered variant only to Figma page "
+                f"'{page_name}' (compare to original at screen "
+                f"{starting_screen} in the source file)"
+            )
+        else:
+            page_hint = (
+                f"\n  → rendered to Figma page '{page_name}' "
+                f"(original at x=0, variant offset right)"
+            )
 
     print(result.session_id)
     print(

@@ -740,6 +740,129 @@ class TestDesignBriefRenderToFigma:
             f"{[v[:12] for v in vids]}"
         )
 
+    def test_variant_only_skips_original_render(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Demo-recovery flag: `--variant-only` skips the heavy
+        original-screen render and ships ONLY the final variant.
+
+        Why it exists: rendering the source screen against a fresh
+        Figma file containing the 87k-descendant Dank 1.0 library page
+        consistently times out at the 300s PROXY_EXECUTE cap. The
+        original render does many findOne calls under the preamble's
+        currentPage side-effect dance and is the heavier of the two.
+        The user can compare to the original by opening it directly
+        in the source file — they don't need a fresh copy.
+
+        Pin: with --variant-only, the bridge is called exactly ONCE
+        (not twice), and the lone script carries the variant render
+        (it has the page-name preamble + `appendChild` calls)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--variant-only",
+                ])
+
+        # The key invariant: ONE bridge call, not two. The whole
+        # point of the flag is to skip the original render.
+        assert len(bridge_calls) == 1, (
+            f"--variant-only must skip the original render and ship "
+            f"exactly one script (the variant); got "
+            f"{len(bridge_calls)} calls"
+        )
+        # The lone script is a render — it carries the page-name
+        # preamble + the variant's appendChild compose phase.
+        script = bridge_calls[0]
+        assert "design session" in script, (
+            "single script must carry the page-name preamble"
+        )
+        assert "appendChild" in script, (
+            "single script must be a render (variant render's compose "
+            "phase emits appendChild)"
+        )
+        # Canvas position: with variant-only there's no original to
+        # sit beside, so the variant should land at x=0 (not offset
+        # right by screen_width + 200).
+        import re
+        after_page = script.split("setCurrentPageAsync", 1)
+        tail = after_page[1] if len(after_page) > 1 else script
+        m = re.search(r"\.x = (\d+(?:\.\d+)?);", tail)
+        assert m is not None, (
+            "could not find root frame x= in script tail"
+        )
+        assert float(m.group(1)) == 0.0, (
+            f"variant-only must place variant at x=0 (no original "
+            f"beside it), got x={m.group(1)}"
+        )
+
+    def test_variant_only_works_with_resume(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Sibling flag plumbing: `--variant-only` is also accepted on
+        `resume` and produces the same single-script behavior, so the
+        multi-turn demo (brief + resume) can still avoid the heavy
+        original render on every iteration."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        # Bootstrap a resumable variant so the dispatcher reaches
+        # _run_design_resume rather than exiting before flag parsing.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "resume", vid,
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--variant-only",
+                ])
+
+        assert len(bridge_calls) == 1, (
+            f"resume --variant-only must ship exactly one script "
+            f"(the variant); got {len(bridge_calls)} calls"
+        )
+        script = bridge_calls[0]
+        assert "design session" in script
+        assert "appendChild" in script
+
 
 class TestDesignResumeRenderToFigma:
     """Bug 1 + Bug 2 regression pin: `dd design resume` must support
