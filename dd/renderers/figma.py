@@ -2475,7 +2475,9 @@ def _emit_text_props(
 
 def generate_screen(
     conn: sqlite3.Connection, screen_id: int,
-    *, canvas_position: Optional[tuple[float, float]] = None,
+    *,
+    canvas_position: Optional[tuple[float, float]] = None,
+    page_name: Optional[str] = None,
 ) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
 
@@ -2559,6 +2561,7 @@ def generate_screen(
         original_name_map=original_name_map,
         db_visuals=visuals, ckr_built=ckr_built,
         canvas_position=canvas_position,
+        page_name=page_name,
         _spec_elements=spec["elements"],
         _spec_tokens=spec.get("tokens", {}),
         descendant_visibility_resolver=descendant_visibility_resolver,

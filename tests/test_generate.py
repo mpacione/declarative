@@ -1119,6 +1119,42 @@ class TestGenerateScreen:
         # Should produce a script (may be empty if no token refs match)
         assert isinstance(rebind_script, str)
 
+    def test_page_name_kwarg_lands_in_script(self, db: sqlite3.Connection):
+        """M1 of the Figma round-trip needs the caller to direct which
+        Figma page the render lands on — the generated script's preamble
+        must find-or-create that page by name. Without the kwarg the
+        render lands on whatever page currently happens to be
+        ``figma.currentPage``, which (per ``feedback_never_trust_current
+        page.md``) is unreliable after any async node lookup.
+
+        Side-by-side demo contract: two calls sharing the same
+        ``page_name`` land as siblings on one page. The find-or-create
+        branch in render_figma_ast is the emission gate for that
+        behavior."""
+        result = generate_screen(
+            db, screen_id=1,
+            page_name="design session 01ABC — demo",
+        )
+        script = result["structure_script"]
+        # The find-or-create preamble must reference the page name.
+        assert 'p.name === "design session 01ABC — demo"' in script
+        assert "figma.createPage()" in script
+
+    def test_no_page_name_stays_backward_compatible(
+        self, db: sqlite3.Connection,
+    ):
+        """Existing callers (sweep, dd generate, baseline parity) don't
+        pass page_name. The script then falls through to the legacy
+        ``_rootPage`` attach — no createPage, no find-by-name. Guards
+        against accidentally changing the 204/204 sweep's output."""
+        result = generate_screen(db, screen_id=1)
+        script = result["structure_script"]
+        # Legacy path: root attach via _rootPage (already implicitly
+        # the first page of the file).
+        assert "_rootPage.appendChild" in script
+        # Must NOT have created a new page.
+        assert "figma.createPage()" not in script
+
 
 class TestGenerateCLI:
     """Verify generate CLI command."""
