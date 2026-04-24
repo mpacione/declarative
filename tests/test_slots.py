@@ -13,7 +13,7 @@ import sqlite3
 
 import pytest
 
-from dd.slots import (
+from dd.master_slots import (
     cluster_children,
     derive_slots_for_canonical_type,
     dominant_cluster,

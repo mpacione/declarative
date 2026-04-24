@@ -10,7 +10,13 @@ on ``backend``.
 - :mod:`~dd.composition.providers.project_ckr` — reads the user's own
   corpus via ``component_key_registry`` + ``variant_token_binding``.
   Priority 100 (always wins if it has a match).
-- :mod:`~dd.composition.providers.ingested` — ingested external design
-  systems (shadcn, Material 3, ...) fed by ``ADR-006`` adapters.
-  Priority 50.
+- :mod:`~dd.composition.providers.corpus_retrieval` — full-subtree
+  splice from a donor screen. Priority 150 (highest).
+
+Plan §4.1 Stage-2 cleanup: the prior ``IngestedSystemProvider``
+shell (priority 50) was deleted as dead code (zero callers; the
+audit 2026-04-23 confirmed it was a phantom placeholder). When
+external-system ingest comes back as a real ADR-006 effort, it
+should be a fresh provider with concrete data, not the empty
+shell that was here.
 """

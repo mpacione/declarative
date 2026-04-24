@@ -692,9 +692,9 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
 def _default_provider_registry():
     """Lazy-built default registry for Mode-3 synthesis.
 
-    Only the universal provider is wired in v0.1. Project CKR and
-    ingested providers join the registry once their DB wiring is in
-    place in the generate-prompt code path (which has a DB connection).
+    Only the universal provider is wired in v0.1. Project CKR joins
+    the registry once its DB wiring is in place in the
+    generate-prompt code path (which has a DB connection).
     """
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import build_registry_from_env

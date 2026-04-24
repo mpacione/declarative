@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from dd.db import get_connection
-    from dd.slots import (
+    from dd.master_slots import (
         derive_slots_for_canonical_type, make_anthropic_invoker,
     )
     import anthropic
