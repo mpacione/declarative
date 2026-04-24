@@ -462,16 +462,24 @@ def prompt_to_figma(
 def _build_mode3_registry(conn: sqlite3.Connection):
     """Assemble the Mode-3 provider cascade.
 
-    CorpusRetrievalProvider (priority 150) is always included — its
-    ``supports()`` gates on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally,
-    so when the flag is off it returns False and the registry falls
-    through to UniversalCatalogProvider (priority 10).
+    Priority-ordered cascade (highest first):
+    - CorpusRetrievalProvider (150) — full-subtree splice from a donor
+      screen. Gated on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally.
+    - ProjectCKRProvider (100) — project-native Mode-1 lookup against
+      the user's component_key_registry + variant_token_binding rows.
+      Stage 0 cleanup (docs/plan-authoring-loop.md §4.1): without this
+      the project's own components never win the cascade.
+    - UniversalCatalogProvider (10) — hand-authored universal defaults
+      (shadcn-flavoured) for cold-start / types the project hasn't
+      classified yet.
     """
     from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.project_ckr import ProjectCKRProvider
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import ProviderRegistry
 
     return ProviderRegistry(providers=[
         CorpusRetrievalProvider(conn=conn),
+        ProjectCKRProvider(conn=conn),
         UniversalCatalogProvider(),
     ])

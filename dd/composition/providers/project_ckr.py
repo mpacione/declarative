@@ -39,21 +39,29 @@ class ProjectCKRProvider:
     def _bindings_for(
         self, catalog_type: str, variant: str | None,
     ) -> list[dict[str, Any]]:
-        """Fetch variant_token_binding rows for a (type, variant) pair."""
-        if variant is not None:
-            rows = self.conn.execute(
-                "SELECT slot, token_id, literal_value, confidence, source "
-                "FROM variant_token_binding "
-                "WHERE catalog_type = ? AND variant = ?",
-                (catalog_type, variant),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT slot, token_id, literal_value, confidence, source "
-                "FROM variant_token_binding "
-                "WHERE catalog_type = ?",
-                (catalog_type,),
-            ).fetchall()
+        """Fetch variant_token_binding rows for a (type, variant) pair.
+
+        Returns an empty list when the table doesn't exist — matches
+        the tolerant gate in :meth:`supports`, so ``resolve`` paths
+        that reached this point via the CKR branch don't fail hard.
+        """
+        try:
+            if variant is not None:
+                rows = self.conn.execute(
+                    "SELECT slot, token_id, literal_value, confidence, source "
+                    "FROM variant_token_binding "
+                    "WHERE catalog_type = ? AND variant = ?",
+                    (catalog_type, variant),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT slot, token_id, literal_value, confidence, source "
+                    "FROM variant_token_binding "
+                    "WHERE catalog_type = ?",
+                    (catalog_type,),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
         return [
             {"slot": r[0], "token_id": r[1], "literal_value": r[2], "confidence": r[3], "source": r[4]}
             for r in rows
@@ -70,22 +78,39 @@ class ProjectCKRProvider:
         template. The ``resolve`` path may still fall back to a minimal
         shape plus a ``KIND_VARIANT_BINDING_MISSING`` entry when the
         binding isn't populated yet.
-        """
-        binding_count = self.conn.execute(
-            "SELECT COUNT(*) FROM variant_token_binding "
-            "WHERE catalog_type = ?",
-            (catalog_type,),
-        ).fetchone()[0]
-        if binding_count > 0:
-            return True
 
-        # CKR entry whose name namespace matches the catalog type.
-        ckr_count = self.conn.execute(
-            "SELECT COUNT(*) FROM component_key_registry "
-            "WHERE name LIKE ? OR name = ?",
-            (f"{catalog_type}/%", catalog_type),
-        ).fetchone()[0]
-        return ckr_count > 0
+        Either backing table may be missing on fresh-install DBs
+        (``component_key_registry`` is created by an extraction step;
+        ``variant_token_binding`` by cluster_variants). Treat absence
+        as "this provider has nothing to contribute" — not as an
+        error — so this provider can participate in the default
+        cascade without tripping the callers of ``generate_from_prompt``
+        on a bare test DB. The alternative (raising sqlite3.
+        OperationalError) would force every caller of the Mode-3
+        registry to construct a full-extraction DB just to compose.
+        """
+        try:
+            binding_count = self.conn.execute(
+                "SELECT COUNT(*) FROM variant_token_binding "
+                "WHERE catalog_type = ?",
+                (catalog_type,),
+            ).fetchone()[0]
+            if binding_count > 0:
+                return True
+        except sqlite3.OperationalError:
+            # variant_token_binding table doesn't exist yet. Fall
+            # through to the CKR check, which may itself be absent.
+            pass
+
+        try:
+            ckr_count = self.conn.execute(
+                "SELECT COUNT(*) FROM component_key_registry "
+                "WHERE name LIKE ? OR name = ?",
+                (f"{catalog_type}/%", catalog_type),
+            ).fetchone()[0]
+            return ckr_count > 0
+        except sqlite3.OperationalError:
+            return False
 
     def resolve(
         self,

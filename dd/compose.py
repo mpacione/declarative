@@ -703,18 +703,28 @@ def _default_provider_registry():
 
 
 def _build_default_mode3_registry(conn: sqlite3.Connection):
-    """Build the default Mode-3 cascade with corpus retrieval.
+    """Build the default Mode-3 cascade with the full provider stack.
 
-    Always includes CorpusRetrievalProvider — its ``supports()`` gates
-    on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally, so when the flag is
-    off the provider quietly falls through to UniversalCatalogProvider.
+    Priority-ordered cascade (highest first):
+    - CorpusRetrievalProvider (150) — full-subtree splice from a donor
+      screen. Gated on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally, so
+      when the flag is off the provider falls through.
+    - ProjectCKRProvider (100) — project-native Mode-1 lookup against
+      component_key_registry + variant_token_binding. Stage 0 cleanup
+      (docs/plan-authoring-loop.md §4.1): the mirror of
+      ``dd.prompt_parser._build_mode3_registry``. Keep both sites in
+      sync; otherwise ``generate_from_prompt`` direct callers get a
+      weaker cascade than ``prompt_to_figma``.
+    - UniversalCatalogProvider (10) — hand-authored universal defaults.
     """
     from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.project_ckr import ProjectCKRProvider
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import build_registry_from_env
 
     return build_registry_from_env([
         CorpusRetrievalProvider(conn=conn),
+        ProjectCKRProvider(conn=conn),
         UniversalCatalogProvider(),
     ])
 
