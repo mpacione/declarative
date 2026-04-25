@@ -1603,20 +1603,49 @@ For high-leverage moments (especially the IR refactor):
 The user has access to multiple parallel Codex instances at
 `gpt-5.5` (the current ChatGPT-account flagship; verified
 2026-04-25) with `model_reasoning_effort: high`. Use them
-liberally.
+liberally — but assign work to the right tier.
 
-Model selection notes:
-- **Default for design forks + critique**: `gpt-5.5` +
-  `model_reasoning_effort: high`.
-- **Earlier-tier acceptable for trivial questions**:
-  `gpt-5.4` works. `gpt-5.2` works.
+**Model tier policy** (per user 2026-04-25):
+
+- **`gpt-5.5`** — thinking partner / second opinion /
+  architect. Use for: design forks, plan critique,
+  architectural decisions, ship/no-ship gates,
+  multi-perspective synthesis. **Singular per decision**:
+  one well-framed 5.5 call beats three 5.4 calls.
+  Don't burn it on mechanical tasks.
+
+- **`gpt-5.4`** — mechanical Codex tasks. Use for: code
+  review, "find dead paths," sanity checks, basic refactor
+  proposals, "is this safe to delete," dependency-graph
+  questions. Plural — fan out 5.4 calls in parallel for
+  breadth.
+
+- **Sonnet subagents** — parallel mechanical execution +
+  lens-specific critique (compiler architect lens, ML
+  pragmatist lens, designer lens, systems-engineer lens).
+  Plural by default. The MoE-of-critics pattern uses
+  Sonnet, not Codex.
+
 - **NOT available on ChatGPT account**: `gpt-5.5-pro`. The
   Codex MCP returns 400 if requested. Don't ask for it.
 
-The MoE-of-critics pattern (the v1→v2→v3 plan revision used
-5 critics with 4 different lenses; convergence on REVISE
-forced the right shape) should be the DEFAULT for any
-architecture-class decision, not a once-per-week treat.
+The MoE-of-critics pattern (v1→v2→v3 plan revision used 4
+Sonnet lenses + 1 Codex strategic synthesis; convergence on
+REVISE forced the right shape) should be the DEFAULT for
+any architecture-class decision, not a once-per-week treat.
+
+**Right shape for a hard decision**:
+1. Spawn 3-4 Sonnet subagents in parallel, each with a
+   distinct lens, on the question
+2. Spawn 1-2 `gpt-5.4` Codex calls for sanity-check or
+   "what's missing" framing
+3. Synthesize their answers (coordinator's job)
+4. Send the synthesis to ONE `gpt-5.5` Codex for the
+   ship/no-ship call
+
+That's ~5 calls of varied tier, not 5 calls of the same
+tier. It's also faster — Sonnet subagents return faster than
+gpt-5.5 typically does.
 
 When to dispatch a Codex (not just one — multiple in
 parallel where useful):
