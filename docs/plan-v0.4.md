@@ -1601,12 +1601,22 @@ For high-leverage moments (especially the IR refactor):
 ### Codex consult points
 
 The user has access to multiple parallel Codex instances at
-`gpt-5.2` with `model_reasoning_effort: high`. Use them
-liberally. The MoE-of-critics pattern (the v1→v2→v3 plan
-revision used 5 critics with 4 different lenses; convergence
-on REVISE forced the right shape) should be the DEFAULT
-for any architecture-class decision, not a once-per-week
-treat.
+`gpt-5.5` (the current ChatGPT-account flagship; verified
+2026-04-25) with `model_reasoning_effort: high`. Use them
+liberally.
+
+Model selection notes:
+- **Default for design forks + critique**: `gpt-5.5` +
+  `model_reasoning_effort: high`.
+- **Earlier-tier acceptable for trivial questions**:
+  `gpt-5.4` works. `gpt-5.2` works.
+- **NOT available on ChatGPT account**: `gpt-5.5-pro`. The
+  Codex MCP returns 400 if requested. Don't ask for it.
+
+The MoE-of-critics pattern (the v1→v2→v3 plan revision used
+5 critics with 4 different lenses; convergence on REVISE
+forced the right shape) should be the DEFAULT for any
+architecture-class decision, not a once-per-week treat.
 
 When to dispatch a Codex (not just one — multiple in
 parallel where useful):
