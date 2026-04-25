@@ -246,6 +246,14 @@ def _fill_to_value(fill: dict) -> Optional[Value]:
     typ = fill.get("type", "").lower()
     if typ == "solid":
         color = fill.get("color")
+        # Brace-wrapped strings like `"{color.surface.6}"` are real
+        # Figma Variable refs in the IR (see `dd/ir.py:normalize_fills`
+        # line 68 — token bindings overlay as `"{token.name}"`). Emit
+        # them as `TokenRef` so the markup renders as
+        # `fill={color.surface.6}` and parses back losslessly.
+        # Mirrors `_effects_to_shadow` color discipline (F3 fix).
+        if isinstance(color, str) and color.startswith("{") and color.endswith("}"):
+            return TokenRef(path=color[1:-1])
         if isinstance(color, str) and color.startswith("#"):
             # Validate hex color shape (6 or 8 digits)
             rest = color[1:]
