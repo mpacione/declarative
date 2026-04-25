@@ -4975,6 +4975,81 @@ class TestPrefetchNullSafety:
         # Must be wrapped in a try/catch IIFE that pushes to __errors
         assert "prefetch_failed" in script
 
+    def test_prefetch_batched_via_promise_all(self):
+        """N sequential `const _pN = await ...` lines serialize roughly
+        ~600ms each on heavy files; 48 prefetches blew through the 300s
+        PROXY_EXECUTE cap. Pattern: collapse to a single Promise.all so
+        Figma fires all lookups in parallel, mirrors the font-load batching
+        in feedback_phase1_perf_wins.md.
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["btn-1", "btn-2", "btn-3"]},
+            "btn-1": {"type": "button"},
+            "btn-2": {"type": "button"},
+            "btn-3": {"type": "button"},
+        })
+        spec["_node_id_map"] = {
+            "screen-1": -1, "btn-1": -2, "btn-2": -3, "btn-3": -4,
+        }
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "k1", "component_figma_id": "1:101", "bindings": []},
+            -3: {"component_key": "k2", "component_figma_id": "1:102", "bindings": []},
+            -4: {"component_key": "k3", "component_figma_id": "1:103", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # Exactly one Promise.all for the prefetch block (font-load
+        # Promise.all is acceptable; we expect either 1 or 2 total — but
+        # zero `const _pN = await (async () =>` IIFE-style lines).
+        assert "const _p0 = await (async () =>" not in script
+        assert "const _p1 = await (async () =>" not in script
+        # Batched shape: destructure into _p0/_p1/... from a single
+        # Promise.all whose entries are getNodeByIdAsync(...).catch(...).
+        assert "const [_p0, _p1, _p2] = await Promise.all([" in script
+        # Per-id null-safety still preserved through .catch.
+        assert script.count(".catch(__e =>") >= 3
+        # Error-channel shape unchanged from feedback_phase1_perf_wins.md
+        # twin: kind:"prefetch_failed", id:"<id>", error: String(...).
+        assert 'kind:"prefetch_failed"' in script
+        assert 'id:"1:101"' in script
+        assert 'id:"1:102"' in script
+        assert 'id:"1:103"' in script
+
+    def test_prefetch_single_id_still_uses_promise_all(self):
+        """Don't special-case 1-element Promise.all — the destructure
+        still works, and a uniform shape avoids a code path the Phase 1
+        fast-track never exercises in tests.
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["btn-1"]},
+            "btn-1": {"type": "button"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "btn-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"component_key": "k", "component_figma_id": "1:200", "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert "const [_p0] = await Promise.all([" in script
+        assert "const _p0 = await (async () =>" not in script
+
+    def test_prefetch_omits_block_when_no_ids(self):
+        """Mode 2 only: no component_figma_id targets → no Promise.all
+        block at all. Avoids emitting `const [] = await Promise.all([])`
+        which is JS-legal but wasteful."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["rect-1"]},
+            "rect-1": {"type": "rectangle"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "rect-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {"bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        # No prefetch block when there are no component_figma_ids
+        assert "Pre-fetch component nodes" not in script
+
 
 class TestExplicitStateHarness:
     """figma.getNodeByIdAsync() side-effects figma.currentPage, silently
