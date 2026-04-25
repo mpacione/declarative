@@ -480,7 +480,12 @@ class TestDesignBriefRenderToFigma:
         for the final variant. Both share a page_name keyed on the
         session ULID (render_figma_ast's find-or-create preamble
         makes the second call land beside the first on the same
-        page)."""
+        page).
+
+        Passes ``--no-labels`` so we isolate the render-to-figma
+        page-name behavior from the demo-labels third bridge call
+        (the labels-on path is pinned separately in
+        :class:`TestDesignBriefRenderToFigmaLabels`)."""
         project_db = str(tmp_path / "project.db")
         init_db(project_db).close()
         _seed_project_db(project_db)
@@ -501,6 +506,7 @@ class TestDesignBriefRenderToFigma:
                     "--project-db", project_db,
                     "--db", tmp_db_path,
                     "--render-to-figma",
+                    "--no-labels",
                 ])
 
         # Two bridge calls — original render + variant render.
@@ -597,6 +603,7 @@ class TestDesignBriefRenderToFigma:
                     "--db", tmp_db_path,
                     "--render-to-figma",
                     "--dump-scripts", str(dump_dir),
+                    "--no-labels",
                 ])
 
         original_path = dump_dir / "original.js"
@@ -745,6 +752,7 @@ class TestDesignBriefRenderToFigma:
                     "--project-db", project_db,
                     "--db", tmp_db_path,
                     "--render-to-figma",
+                    "--no-labels",
                 ])
 
         # Both bridge calls target the same page, so there should be
@@ -836,6 +844,7 @@ class TestDesignBriefRenderToFigma:
                     "--db", tmp_db_path,
                     "--render-to-figma",
                     "--variant-only",
+                    "--no-labels",
                 ])
 
         # The key invariant: ONE bridge call, not two. The whole
@@ -911,6 +920,7 @@ class TestDesignBriefRenderToFigma:
                     "--db", tmp_db_path,
                     "--render-to-figma",
                     "--variant-only",
+                    "--no-labels",
                 ])
 
         assert len(bridge_calls) == 1, (
@@ -1011,6 +1021,7 @@ class TestDesignResumeRenderToFigma:
                     "--project-db", project_db,
                     "--db", tmp_db_path,
                     "--render-to-figma",
+                    "--no-labels",
                 ])
 
         # Grab the brief's session + leaf-variant for the resume.
@@ -1064,6 +1075,7 @@ class TestDesignResumeRenderToFigma:
                         "--project-db", project_db,
                         "--db", tmp_db_path,
                         "--render-to-figma",
+                        "--no-labels",
                     ])
 
         # 4 bridge calls total — 2 per render.
@@ -1099,6 +1111,159 @@ class TestDesignResumeRenderToFigma:
             f"resume page_name {resume_page!r} missing shared "
             f"session prefix {shared_session_prefix!r}"
         )
+
+
+class TestDesignBriefRenderToFigmaLabels:
+    """Demo-grade labels on the side-by-side render: ORIGINAL /
+    VARIANT / brief text. So a Loom audience can immediately read
+    what they're looking at on a shared screen.
+
+    Default: labels ON (a third bridge call after original + variant).
+    Opt-out: ``--no-labels`` for clean parity renders. The labels
+    script is additive — a labels failure does not invalidate the
+    completed frame renders."""
+
+    def test_labels_emitted_alongside_renders(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """With --render-to-figma (default labels ON), the bridge is
+        called THREE times: original, variant, labels. The third
+        call is the label-emission script; without it the demo
+        audience has no on-page cue for which frame is which."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief",
+                    "Hide the entire bottom toolbar. Keep the rest.",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        # Three bridge calls — original + variant + labels.
+        assert len(bridge_calls) == 3, (
+            f"expected original + variant + labels bridge calls; "
+            f"got {len(bridge_calls)}"
+        )
+        # The third script is the labels script — it creates text
+        # nodes with the labels we promised.
+        labels_script = bridge_calls[2]
+        assert "createText" in labels_script, (
+            "third script must be the labels script (createText calls)"
+        )
+        assert "ORIGINAL" in labels_script
+        assert "VARIANT" in labels_script
+        # The brief text must be in there verbatim (the headline of
+        # the demo). We escape-normalize quotes via _escape_js so
+        # the check is a substring match against the unquoted text.
+        assert "Hide the entire bottom toolbar" in labels_script
+
+    def test_no_labels_flag_skips_labels(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """``--no-labels`` suppresses the third bridge call. Useful
+        for clean parity renders (automated visual diffs) where the
+        demo labels would add noise."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief",
+                    "Hide the entire bottom toolbar. Keep the rest.",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--no-labels",
+                ])
+
+        # Exactly two bridge calls — original + variant, no labels.
+        assert len(bridge_calls) == 2, (
+            f"--no-labels must skip the labels bridge call; got "
+            f"{len(bridge_calls)} calls"
+        )
+        # Neither script is the labels script (they're renderer
+        # scripts with appendChild, not just createText labels).
+        for i, script in enumerate(bridge_calls):
+            assert "VARIANT (demo label)" not in script, (
+                f"call {i} must not carry the demo-label artefact"
+            )
+
+    def test_labels_script_includes_brief_verbatim(self):
+        """Direct-call pin: :func:`_build_labels_script` embeds the
+        brief as a JS string literal and includes both ORIGINAL and
+        VARIANT label text. Unit-level check that doesn't need the
+        CLI plumbing or the bridge."""
+        from dd.cli import _build_labels_script
+
+        brief = "Hide the entire bottom toolbar. Keep everything else."
+        script = _build_labels_script(
+            page_name="design session 01ABCDEF / 01ABCDEFGHIJ",
+            brief=brief,
+            original_x=0.0,
+            original_y=0.0,
+            variant_x=628.0,
+            variant_y=0.0,
+            screen_width=428.0,
+        )
+        # The brief text lands as a string literal inside the
+        # generated JS — the demo audience reads it verbatim.
+        assert brief in script, (
+            f"brief text missing from labels script; got:\n"
+            f"{script[:400]}"
+        )
+        # Both label headlines present.
+        assert "ORIGINAL" in script
+        assert "VARIANT" in script
+        # And it's a createText-shaped script (not an accidental
+        # copy of the render script).
+        assert "figma.createText" in script
+        assert "loadFontAsync" in script
+
+    def test_labels_script_variant_only_skips_original_label(self):
+        """With variant_only=True there's no original frame beside
+        the variant to label — ORIGINAL is omitted; VARIANT and the
+        brief still emit."""
+        from dd.cli import _build_labels_script
+
+        script = _build_labels_script(
+            page_name="design session 01ABCDEF / 01ABCDEFGHIJ",
+            brief="Move the CTA to the top",
+            original_x=0.0,
+            original_y=0.0,
+            variant_x=0.0,
+            variant_y=0.0,
+            screen_width=428.0,
+            variant_only=True,
+        )
+        assert "VARIANT" in script
+        assert "Move the CTA to the top" in script
+        # ORIGINAL label is skipped — no original frame to label.
+        assert "ORIGINAL" not in script
 
 
 class TestStartingDocWrapperShapeMatchesRenderer:

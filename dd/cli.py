@@ -1761,6 +1761,20 @@ def main(argv: list | None = None) -> None:
              "source file is large enough that the original render "
              "times out at the PROXY_EXECUTE cap.",
     )
+    # Demo-grade labels (ORIGINAL / VARIANT / Brief: ...) on the
+    # rendered Figma page so a Loom audience can immediately read
+    # what they're looking at. Default ON; `--no-labels` skips the
+    # third bridge call for clean side-by-side parity renders.
+    design_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON). Use for clean parity "
+             "renders or when running automated visual checks.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1819,6 +1833,16 @@ def main(argv: list | None = None) -> None:
              "render and ship only the final variant. Use when the "
              "source file is large enough that the original render "
              "times out at the PROXY_EXECUTE cap.",
+    )
+    design_resume_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON). Use for clean parity "
+             "renders or when running automated visual checks.",
     )
 
     design_score_parser = design_subparsers.add_parser(
@@ -1973,6 +1997,7 @@ def _run_design(db_path: str, args) -> None:
             project_db=args.project_db,
             dump_scripts=args.dump_scripts,
             variant_only=args.variant_only,
+            labels=args.labels,
         )
         return
 
@@ -1986,6 +2011,7 @@ def _run_design(db_path: str, args) -> None:
             project_db=args.project_db,
             dump_scripts=args.dump_scripts,
             variant_only=args.variant_only,
+            labels=args.labels,
         )
         return
 
@@ -2019,6 +2045,7 @@ def _run_design_brief(
     project_db: str | None = None,
     dump_scripts: str | None = None,
     variant_only: bool = False,
+    labels: bool = True,
 ) -> None:
     """M1 of the authoring-loop Figma round-trip (docs/rationale/
     stage-3-session-loop.md + Codex sign-off 2026-04-24).
@@ -2097,6 +2124,8 @@ def _run_design_brief(
             starting_screen_id=starting_screen,
             dump_scripts=Path(dump_scripts) if dump_scripts else None,
             variant_only=variant_only,
+            labels=labels,
+            brief=brief,
         )
         if variant_only:
             page_hint = (
@@ -2175,6 +2204,137 @@ def _load_starting_doc(*, project_db_path: str, screen_id: int):
         conn.close()
 
 
+def _build_labels_script(
+    *,
+    page_name: str,
+    brief: str,
+    original_x: float,
+    original_y: float,
+    variant_x: float,
+    variant_y: float,
+    screen_width: float,
+    variant_only: bool = False,
+) -> str:
+    """Emit a standalone Figma JS script that adds three demo-grade
+    text labels to ``page_name``: "ORIGINAL" above the original
+    frame, "VARIANT" above the variant frame, and a multi-line
+    "Brief: ..." below both frames.
+
+    Shape mirrors the renderer's preamble / try-catch / __errors
+    contract so the bridge ack surfaces the same shape as an
+    original/variant script and :func:`_check_bridge_ack` treats
+    mid-script throws uniformly. Script is intentionally small:
+    three createText() calls, two font loads, one find-or-create
+    page block.
+
+    ``variant_only``: when True, skip the "ORIGINAL" label (there's
+    no original frame beside the variant to label). "VARIANT" and
+    "Brief" still emit — the brief text is the demo's headline and
+    works regardless.
+
+    Colors are baked RGB (mid-grey #666666 / 0.4,0.4,0.4) so the
+    labels read against both light and dark backgrounds.
+    """
+    from dd.renderers.figma import _escape_js
+
+    escaped_name = _escape_js(page_name)
+    brief_js = _escape_js(brief or "")
+
+    # Position math: labels sit above their frame (y - LABEL_OFFSET),
+    # with a small x-inset so the label text doesn't lie flush to the
+    # frame's left edge. The brief spans from x=0 across the full
+    # two-column layout, below both frames.
+    LABEL_OFFSET_Y = 60.0  # px above the frame top
+    LABEL_INSET_X = 10.0   # px inset from frame's left edge
+    # Phone screens are ~926px tall; iPad Pro 12.9" is ~1366px. 1500
+    # puts the brief below either comfortably without measuring every
+    # screen's height precisely — good enough for a Loom demo.
+    BRIEF_OFFSET_BELOW_FRAME = 1500.0
+    orig_label_x = original_x + LABEL_INSET_X
+    orig_label_y = original_y - LABEL_OFFSET_Y
+    var_label_x = variant_x + LABEL_INSET_X
+    var_label_y = variant_y - LABEL_OFFSET_Y
+    brief_y = max(original_y, variant_y) + BRIEF_OFFSET_BELOW_FRAME
+    # The brief spans from x=0 (page origin) to the right edge of the
+    # variant frame — screen_width + gap + screen_width for the
+    # side-by-side layout, or a single screen_width under --variant-only.
+    brief_width = (
+        screen_width if variant_only else screen_width * 2.0 + 200.0
+    )
+    # Grey for label legibility against both light + dark backgrounds.
+    grey_fill = (
+        '[{type:"SOLID", color:{r:0.4, g:0.4, b:0.4}}]'
+    )
+
+    lines: list[str] = []
+    lines.append("let __errors = [];")
+    lines.append("try {")
+    lines.append(
+        'await figma.loadFontAsync({family: "Inter", style: "Bold"});'
+    )
+    lines.append(
+        'await figma.loadFontAsync({family: "Inter", style: "Regular"});'
+    )
+    lines.append(
+        f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
+    )
+    lines.append(
+        f'if (!_page) {{ _page = figma.createPage(); _page.name = "{escaped_name}"; }}'
+    )
+    lines.append("await figma.setCurrentPageAsync(_page);")
+
+    if not variant_only:
+        lines.append("const _origLabel = figma.createText();")
+        lines.append("_page.appendChild(_origLabel);")
+        lines.append(
+            '_origLabel.fontName = {family: "Inter", style: "Bold"};'
+        )
+        lines.append("_origLabel.fontSize = 40;")
+        lines.append('_origLabel.characters = "ORIGINAL";')
+        lines.append(f"_origLabel.x = {orig_label_x};")
+        lines.append(f"_origLabel.y = {orig_label_y};")
+        lines.append(f"_origLabel.fills = {grey_fill};")
+        lines.append('_origLabel.name = "ORIGINAL (demo label)";')
+
+    lines.append("const _varLabel = figma.createText();")
+    lines.append("_page.appendChild(_varLabel);")
+    lines.append('_varLabel.fontName = {family: "Inter", style: "Bold"};')
+    lines.append("_varLabel.fontSize = 40;")
+    lines.append('_varLabel.characters = "VARIANT";')
+    lines.append(f"_varLabel.x = {var_label_x};")
+    lines.append(f"_varLabel.y = {var_label_y};")
+    lines.append(f"_varLabel.fills = {grey_fill};")
+    lines.append('_varLabel.name = "VARIANT (demo label)";')
+
+    lines.append("const _briefLabel = figma.createText();")
+    lines.append("_page.appendChild(_briefLabel);")
+    lines.append(
+        '_briefLabel.fontName = {family: "Inter", style: "Regular"};'
+    )
+    lines.append("_briefLabel.fontSize = 22;")
+    lines.append(f'_briefLabel.characters = "Brief: {brief_js}";')
+    lines.append("_briefLabel.x = 0;")
+    lines.append(f"_briefLabel.y = {brief_y};")
+    lines.append(
+        '_briefLabel.textAutoResize = "HEIGHT";'
+    )
+    lines.append(f"_briefLabel.resize({brief_width}, _briefLabel.height);")
+    lines.append(f"_briefLabel.fills = {grey_fill};")
+    lines.append('_briefLabel.name = "Brief (demo label)";')
+
+    lines.append("} catch (__thrown) {")
+    lines.append(
+        '  __errors.push({kind: "render_thrown", '
+        'error: String(__thrown && __thrown.message || __thrown), '
+        'stack: (__thrown && __thrown.stack) ? '
+        'String(__thrown.stack).split("\\n").slice(0, 6).join(" | ") : null});'
+    )
+    lines.append("}")
+    lines.append("return {__ok: true, errors: __errors};")
+
+    return "\n".join(lines)
+
+
 def _render_session_to_figma(
     *,
     session_db_path: str,
@@ -2184,6 +2344,8 @@ def _render_session_to_figma(
     starting_screen_id: int,
     dump_scripts: Path | None = None,
     variant_only: bool = False,
+    labels: bool = True,
+    brief: str | None = None,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2395,6 +2557,32 @@ def _render_session_to_figma(
             _check_bridge_ack(original_ack, phase="original")
         variant_ack = _ap.execute_script_via_bridge(script=variant_script)
         _check_bridge_ack(variant_ack, phase="variant")
+
+        # Demo-grade labels — third bridge call (see
+        # _build_labels_script docstring). Additive: a labels-script
+        # failure does NOT invalidate the completed renders. Labels
+        # are a demo feature, not a render-fidelity feature; a
+        # screen that's legible without "ORIGINAL"/"VARIANT" is
+        # still a successful demo. We still surface mid-script
+        # throws via _check_bridge_ack for visibility.
+        if labels:
+            labels_script = _build_labels_script(
+                page_name=page_name,
+                brief=brief or "",
+                original_x=0.0,
+                original_y=0.0,
+                variant_x=0.0 if variant_only else screen_width + 200.0,
+                variant_y=0.0,
+                screen_width=screen_width,
+                variant_only=variant_only,
+            )
+            if dump_scripts is not None:
+                dump_scripts.mkdir(parents=True, exist_ok=True)
+                (dump_scripts / "labels.js").write_text(labels_script)
+            labels_ack = _ap.execute_script_via_bridge(
+                script=labels_script,
+            )
+            _check_bridge_ack(labels_ack, phase="labels")
     except BridgeError as e:
         print(
             f"dd design: render-to-figma bridge call failed: {e}\n"
@@ -2459,6 +2647,7 @@ def _run_design_resume(
     project_db: str | None = None,
     dump_scripts: str | None = None,
     variant_only: bool = False,
+    labels: bool = True,
 ) -> None:
     """M2 demo-blocker: resume must support the same Figma round-trip
     flag family as --brief so the multi-turn iteration story lands.
@@ -2503,6 +2692,22 @@ def _run_design_resume(
 
     page_hint = ""
     if render_to_figma:
+        # Fetch the session's brief from the DB so the demo-grade
+        # label script can render it verbatim below both frames.
+        # Resume doesn't carry the brief in its argv (it's on the
+        # parent session row) — fall back to "" if labels=False.
+        session_brief = ""
+        if labels:
+            lookup_conn = get_connection(db_path)
+            try:
+                row = lookup_conn.execute(
+                    "SELECT brief FROM design_sessions WHERE id=?",
+                    (result.session_id,),
+                ).fetchone()
+                session_brief = (row["brief"] if row else "") or ""
+            finally:
+                lookup_conn.close()
+
         page_name = _render_session_to_figma(
             session_db_path=db_path,
             project_db_path=project_db or db_path,
@@ -2511,6 +2716,8 @@ def _run_design_resume(
             starting_screen_id=starting_screen,
             dump_scripts=Path(dump_scripts) if dump_scripts else None,
             variant_only=variant_only,
+            labels=labels,
+            brief=session_brief,
         )
         if variant_only:
             page_hint = (
