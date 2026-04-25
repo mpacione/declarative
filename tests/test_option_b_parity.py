@@ -527,14 +527,29 @@ class TestM1dPipelineHealth:
     def test_script_size_ratio_pipeline_health(
         self, db_conn: sqlite3.Connection, sid: int,
     ) -> None:
-        """M1d pipeline-health ratio: ≥ 0.90 against baseline.
+        """M1d pipeline-health ratio: within [0.97, 1.65] against baseline.
 
-        The plan originally cited 0.95–1.05 as the ratio band; M1d's
-        current transitional shim lands consistently at 0.93–0.94 on
-        the 3 reference fixtures — the last 5% comes from `cornerRadius`
-        / `strokeWeight` DB-fallback lookups, `figma.group` deferred
-        creation, and `relativeTransform` for rotated nodes. Those
-        three gap classes are tracked for M2 byte-parity work.
+        The plan originally cited 0.95–1.05; the band widened to cover
+        Phase 1 per-op guard wrapping (2026-04-24 demo-B fix). Each
+        naked ``{var}.prop = ...`` assignment in Phase 1 is now wrapped
+        in ``try { ... } catch (__e) { __errors.push(...) }``, which
+        adds ~95–110 bytes per prop write. On heavy screens (237 has
+        ~800 prop writes) that inflates Option B from 1.05x to
+        ~1.58x the baseline. Content-identical; the wrap is pure
+        per-op error routing. Demo-B postmortem: Phase 1 throws were
+        cascading into the outer end-wrapper `render_thrown` and
+        skipping the root ``_page.appendChild`` — creating orphans on
+        ``figma.currentPage``. Twin of the Phase 2 F3 follow-up.
+
+        The upper bound (1.65) has ~5% headroom over the worst current
+        fixture (237: 1.585). Any regression that inflates this
+        further should either (a) widen the band with a new comment
+        noting the reason, or (b) shrink the guard wrapper shape (see
+        ``_guarded_op`` in ``dd/renderers/figma.py``).
+
+        Lower bound is unchanged at 0.97 — any shrinkage under that
+        indicates a regression dropping emission content, not a guard
+        change.
         """
         from dd.render_figma_ast import render_figma
 
@@ -557,9 +572,9 @@ class TestM1dPipelineHealth:
             _spec_tokens=ir["spec"].get("tokens", {}),
         )
         ratio = len(script_b) / len(script_a)
-        assert 0.97 <= ratio <= 1.03, (
+        assert 0.97 <= ratio <= 1.65, (
             f"screen {sid}: script-size ratio {ratio:.3f} outside "
-            f"[0.97, 1.03] (baseline={len(script_a)}, "
+            f"[0.97, 1.65] (baseline={len(script_a)}, "
             f"option_b={len(script_b)})"
         )
 

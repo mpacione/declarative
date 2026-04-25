@@ -2375,12 +2375,26 @@ def _render_session_to_figma(
     # BridgeError reaches the user via sys.stderr + non-zero exit —
     # we do NOT silently skip the variant render if the original
     # succeeded (the user wants both; half is a bug, not a feature).
+    #
+    # BridgeError vs script-thrown: the bridge ack returns 200/__ok
+    # even when the script throws mid-execution. The thrown error
+    # lands in ``ack["errors"]`` as a ``kind:"render_thrown"`` entry
+    # (emitted by ``_emit_end_wrapper`` in render_figma_ast). Before
+    # this landed, the CLI discarded the ack and printed "success"
+    # while Phase 1 had aborted and stranded the created nodes as
+    # orphans on ``figma.currentPage``. Now we inspect the ack and
+    # fail fast with the last-completed stage so the user can
+    # diagnose without picking through the demo page for orphans.
     try:
         from dd import apply_render as _ap
         if not variant_only:
             assert original_script is not None  # narrow for type-checkers
-            _ap.execute_script_via_bridge(script=original_script)
-        _ap.execute_script_via_bridge(script=variant_script)
+            original_ack = _ap.execute_script_via_bridge(
+                script=original_script,
+            )
+            _check_bridge_ack(original_ack, phase="original")
+        variant_ack = _ap.execute_script_via_bridge(script=variant_script)
+        _check_bridge_ack(variant_ack, phase="variant")
     except BridgeError as e:
         print(
             f"dd design: render-to-figma bridge call failed: {e}\n"
@@ -2390,6 +2404,49 @@ def _render_session_to_figma(
         sys.exit(1)
 
     return page_name
+
+
+def _check_bridge_ack(ack: dict, *, phase: str) -> None:
+    """Fail fast on a script-thrown bridge ack.
+
+    The bridge returns ``{__ok, errors, perf, request_id}``. ``__ok``
+    is the wrapper's "script completed execution" flag — it does NOT
+    capture runtime throws inside the script, because those are
+    swallowed by the outer try/catch in ``_emit_end_wrapper`` and
+    pushed into ``__errors`` as ``kind:"render_thrown"``. When that
+    happens, every op after the throw was skipped — including the
+    root page-attach. Nodes already created in Phase 1 are stranded
+    on ``figma.currentPage`` as orphans and the user sees a "success"
+    message for a broken render.
+    """
+    if not isinstance(ack, dict):
+        return
+    script_errors = ack.get("errors") or []
+    render_thrown = [
+        e for e in script_errors
+        if isinstance(e, dict) and e.get("kind") == "render_thrown"
+    ]
+    if not render_thrown:
+        return
+    perf = ack.get("perf") or {}
+    stages = perf.get("stages") or {} if isinstance(perf, dict) else {}
+    if stages and isinstance(stages, dict):
+        try:
+            last_stage = max(stages, key=lambda k: stages[k])
+        except (TypeError, ValueError):
+            last_stage = "<none>"
+    else:
+        last_stage = "<none>"
+    err_msg = render_thrown[0].get("error", "<no message>")
+    if not isinstance(err_msg, str):
+        err_msg = str(err_msg)
+    print(
+        f"dd design: {phase} render threw mid-script. "
+        f"Last completed stage: {last_stage}. "
+        f"Error: {err_msg[:300]}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _run_design_resume(

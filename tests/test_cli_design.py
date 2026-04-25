@@ -653,6 +653,64 @@ class TestDesignBriefRenderToFigma:
         err = capsys.readouterr().err
         assert "bridge" in err.lower() or "proxy_execute" in err.lower()
 
+    def test_render_thrown_in_ack_surfaces_to_user(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """When the bridge ack carries a ``render_thrown`` entry in
+        ``__errors`` (the outer try/catch in ``_emit_end_wrapper``
+        caught a mid-script throw), the CLI MUST fail loudly — not
+        discard the return value and print a success summary. The
+        demo-B postmortem (2026-04-24) traced 38 orphan nodes on
+        ``figma.currentPage`` to exactly this silent-failure mode:
+        Phase 1 threw, Phase 2 was skipped including
+        ``_page.appendChild(root_var)``, but the CLI exited 0.
+        """
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def thrown_execute(**kwargs):
+            return {
+                "__ok": True,
+                "errors": [
+                    {
+                        "kind": "render_thrown",
+                        "error": "oh no",
+                        "stack": "at n0 | at Phase1 | at eval",
+                    },
+                ],
+                "perf": {
+                    "stages": {
+                        "prefetch_done": 50,
+                        "phase1_done": 100,
+                    },
+                },
+                "request_id": "x",
+            }
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=thrown_execute):
+                with pytest.raises(SystemExit) as exc_info:
+                    cli_main([
+                        "design", "--brief", "x",
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                    ])
+                assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "phase1_done" in err, (
+            f"expected last-completed stage 'phase1_done' in stderr; "
+            f"got: {err!r}"
+        )
+        assert "oh no" in err, (
+            f"expected the thrown error message surfaced in stderr; "
+            f"got: {err!r}"
+        )
+
     def test_render_session_page_name_includes_variant_id(
         self, tmp_db_path, tmp_path, capsys,
     ):

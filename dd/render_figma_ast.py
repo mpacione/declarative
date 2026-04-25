@@ -54,6 +54,7 @@ from dd.renderers.figma import (
     _emit_vector_paths,
     _emit_visual,
     _escape_js,
+    _guarded_op,
     _resolve_layout_sizing,
     _walk_elements,
 )
@@ -538,6 +539,92 @@ def _walk_ast(doc: L3Document) -> list[tuple[Node, Optional[Node]]]:
     return out
 
 
+def _guard_naked_prop_lines(
+    lines: list[str], eid: str, kind: str,
+) -> list[str]:
+    """Post-process a list of JS lines and wrap any naked per-prop
+    write (``{var}.{prop} = {value};``) in ``_guarded_op``.
+
+    Preserves lines that are already guarded (start with ``try``),
+    comments, and anything not shaped like a prop assignment. This
+    lets helpers that emit a mix of guarded + naked lines (e.g.
+    ``_emit_text_props``, ``_emit_visual``'s registry path,
+    ``_emit_vector_paths``) be post-processed by the Phase 1 caller
+    uniformly.
+
+    Rationale: Phase 1 ops are wrapped in a single outer try/catch
+    (``_emit_end_wrapper``). Without per-op guards, one throw
+    cascades through every remaining Phase 1 op AND Phase 2's
+    ``_page.appendChild(root_var)`` — the root attach — stranding
+    the already-created nodes on ``figma.currentPage`` as orphans.
+    Twin of the Phase 2 F3 follow-up at lines 1212-1219.
+    """
+    out: list[str] = []
+    for raw in lines:
+        stripped = raw.lstrip()
+        # Already guarded, a comment, or an empty line.
+        if (
+            not stripped
+            or stripped.startswith("try ")
+            or stripped.startswith("try{")
+            or stripped.startswith("//")
+        ):
+            out.append(raw)
+            continue
+        # Skip bookkeeping writes on the M dict and diagnostic writes.
+        if stripped.startswith("M[") or stripped.startswith("__"):
+            out.append(raw)
+            continue
+        # Skip const/let/var declarations (the creation lines are
+        # load-bearing; nothing to guard at the variable-declaration
+        # boundary).
+        if (
+            stripped.startswith("const ")
+            or stripped.startswith("let ")
+            or stripped.startswith("var ")
+        ):
+            out.append(raw)
+            continue
+        # Skip JS control-flow block openers. These have ``=`` (from
+        # ``=>`` arrows or inline assignments in ``for`` headers) and
+        # ``.`` (from ``obj.findAll`` calls in ``for`` headers) and
+        # would otherwise match the shape check below, producing
+        # syntactically broken output (e.g.
+        # ``try { for (...) { } catch ...`` with a dangling brace).
+        # Twin of the ``M[`` / ``__`` / ``const`` skips — structural
+        # lines are load-bearing, not per-op writes.
+        control_prefixes = (
+            "for ", "for(",
+            "if ", "if(",
+            "else ", "else{", "else {",
+            "while ", "while(",
+            "do ", "do{", "do {",
+            "switch ", "switch(",
+            "return ", "return;", "return}",
+            "throw ",
+            "function ", "function(",
+            "async ", "await ",  # bare await/async at statement start
+            "}", "{",  # brace-only lines (block close/open)
+        )
+        if stripped.startswith(control_prefixes):
+            out.append(raw)
+            continue
+        # Shape check: ``<var>.<prop>...`` with an ``=`` in the LHS
+        # portion before the first ``=``. That covers both simple
+        # assignments and method calls like ``.resize(...)``.
+        if "=" in stripped and "." in stripped.split("=", 1)[0]:
+            out.append(_guarded_op(stripped, eid, kind))
+            continue
+        # Method calls without assignment (e.g. ``{var}.resize(w, h);``).
+        # They still throw on leaf node types and cascade the same way.
+        if stripped.startswith(tuple("abcdefghijklmnopqrstuvwxyz_")) and \
+                "(" in stripped and "." in stripped.split("(", 1)[0]:
+            out.append(_guarded_op(stripped, eid, kind))
+            continue
+        out.append(raw)
+    return out
+
+
 def _emit_phase1(
     walk: list[tuple[Node, Optional[Node]]],
     var_map: dict[int, str],
@@ -641,7 +728,23 @@ def _emit_phase1(
                 ),
             )
             if mode1_ok:
-                lines.extend(emitted)
+                # Guard Mode 1 post-create prop writes. The first
+                # emitted line is the async-IIFE create (``const
+                # {var} = await (async () => {{...}})();``) — that
+                # stays naked because the variable declaration is
+                # load-bearing, and its internal try/catch already
+                # routes missing-component failures into ``__errors``.
+                # Every subsequent ``{var}.name = ...`` / rotation /
+                # opacity / visible write is what this guard covers —
+                # before, a throw there cascaded into the outer
+                # end-wrapper ``render_thrown`` and skipped the root
+                # page-attach. Twin of the Mode 2 guard below.
+                mode1_err_eid = spec_key_map.get(id(node), eid)
+                if emitted:
+                    lines.append(emitted[0])
+                    lines.extend(_guard_naked_prop_lines(
+                        emitted[1:], mode1_err_eid, "phase1_mode1_prop_failed",
+                    ))
                 uses_placeholder = True
                 m_key = spec_key_map.get(id(node), eid)
                 lines.append(
@@ -669,9 +772,21 @@ def _emit_phase1(
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
 
+        # Mode 2 post-create prop-write boundary. Every naked
+        # ``{var}.foo = ...`` assignment emitted below goes into
+        # ``node_ops`` instead of ``lines``; at the end of the
+        # per-node block we pass ``node_ops`` through
+        # ``_guard_naked_prop_lines`` and extend ``lines``. Without
+        # this, one throw inside a Phase 1 prop write cascaded
+        # through the rest of Phase 1 AND Phase 2's root
+        # ``_page.appendChild(root_var)`` — stranding the created
+        # nodes as orphans on ``figma.currentPage``. Twin of the
+        # Phase 2 per-op guard at lines 1283-1289.
+        node_ops: list[str] = []
+
         original_name = original_name_map.get(id(node)) or eid
         name_js = _escape_js(original_name)
-        lines.append(f'{var}.name = "{name_js}";')
+        node_ops.append(f'{var}.name = "{name_js}";')
 
         if element:
             # Build visual from raw DB data — matches baseline Phase 1
@@ -715,7 +830,7 @@ def _emit_phase1(
                     var, spec_key_for_emit, visual, spec_tokens,
                     node_type=_FIGMA_NODE_TYPE.get(etype),
                 )
-                lines.extend(visual_lines)
+                node_ops.extend(visual_lines)
                 # `_emit_visual` returns pre-built ``(eid, prop,
                 # token_name)`` 3-tuples keyed on the eid it received
                 # (== ``spec_key_for_emit``). Pass through — rebuilding
@@ -725,10 +840,10 @@ def _emit_phase1(
                 # synthetic compose.py path.
                 token_refs.extend(visual_refs)
             elif etype == "frame":
-                lines.append(f"{var}.fills = [];")
-                lines.append(f"{var}.clipsContent = false;")
+                node_ops.append(f"{var}.fills = [];")
+                node_ops.append(f"{var}.clipsContent = false;")
             elif etype in ("rectangle", "ellipse", "vector", "boolean_operation"):
-                lines.append(f"{var}.fills = [];")
+                node_ops.append(f"{var}.fills = [];")
 
             text_auto_resize = None
             if is_text:
@@ -739,17 +854,17 @@ def _emit_phase1(
                     var, spec_key_for_emit, layout, spec_tokens,
                     text_auto_resize=text_auto_resize, etype=etype,
                 )
-                lines.extend(layout_lines)
+                node_ops.extend(layout_lines)
                 token_refs.extend(layout_refs)
 
             if is_text:
                 db_font = raw_visual.get("font") or raw_visual
                 _emit_text_props(
-                    var, element, style, spec_tokens, lines,
+                    var, element, style, spec_tokens, node_ops,
                     db_font=db_font, eid=spec_key_for_emit,
                 )
             if etype in ("vector", "boolean_operation") and raw_visual:
-                _emit_vector_paths(var, raw_visual, lines)
+                _emit_vector_paths(var, raw_visual, node_ops)
 
             # Clear default fills on non-text nodes when the DB row
             # has no fills — matches baseline figma.py:1401–1402. Any
@@ -757,14 +872,14 @@ def _emit_phase1(
             # ships with a default white fill, which has to be cleared
             # explicitly when the DB says the node is unfilled.
             if not is_text and not visual.get("fills"):
-                lines.append(f"{var}.fills = [];")
+                node_ops.append(f"{var}.fills = [];")
 
             # Clear default stroke on vector / line — `createVector()`
             # and `createLine()` ship with a 1px black stroke that
             # must be cleared when the DB row has no strokes. Matches
             # baseline figma.py:1404–1413.
             if etype in ("vector", "line") and not visual.get("strokes"):
-                lines.append(f"{var}.strokes = [];")
+                node_ops.append(f"{var}.strokes = [];")
 
             # Clear default `clipsContent=true` on frames when the DB
             # value is NULL / falsy. Matches baseline
@@ -775,13 +890,13 @@ def _emit_phase1(
                 etype == "frame"
                 and not visual.get("clipsContent")
             ):
-                lines.append(f"{var}.clipsContent = false;")
+                node_ops.append(f"{var}.clipsContent = false;")
         else:
             if etype == "frame":
-                lines.append(f"{var}.fills = [];")
-                lines.append(f"{var}.clipsContent = false;")
+                node_ops.append(f"{var}.fills = [];")
+                node_ops.append(f"{var}.clipsContent = false;")
             elif etype in ("rectangle", "ellipse", "vector", "boolean_operation"):
-                lines.append(f"{var}.fills = [];")
+                node_ops.append(f"{var}.fills = [];")
             elif etype in _TEXT_TYPES:
                 font_js = (
                     f'{{family: "{_DEFAULT_TEXT_FONT_FAMILY}", '
@@ -789,7 +904,7 @@ def _emit_phase1(
                 )
                 err_eid = spec_key_map.get(id(node), eid)
                 err_eid_js = _escape_js(err_eid)
-                lines.append(
+                node_ops.append(
                     f"try {{ {var}.fontName = {font_js}; }} "
                     f"catch (__e) {{ __errors.push({{eid:\"{err_eid_js}\", "
                     f"kind:\"text_set_failed\", "
@@ -811,7 +926,16 @@ def _emit_phase1(
         # Dank screen — a 85-node-per-screen gap on ipad-12.9-69.
         # Applies to both shim and no-shim paths (reads AST only).
         if _ast_prop_is_false(node, "visible"):
-            lines.append(f"{var}.visible = false;")
+            node_ops.append(f"{var}.visible = false;")
+
+        # Guard every Mode 2 per-op prop write accumulated in this
+        # iteration, then splice into `lines`. See the ``node_ops``
+        # declaration above for the rationale (Phase 2 root-attach
+        # cascade).
+        guard_err_eid = spec_key_map.get(id(node), eid)
+        lines.extend(_guard_naked_prop_lines(
+            node_ops, guard_err_eid, "phase1_mode2_prop_failed",
+        ))
 
         m_key = spec_key_map.get(id(node), eid)
         lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')
