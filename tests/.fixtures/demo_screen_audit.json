@@ -138,20 +138,23 @@
   "demo_d_compose_with_real_components": {
     "intent": "New instance, right variant axis, slots filled \u2014 from one sentence.",
     "screen": {
-      "id": 243,
-      "name": "iPad Pro 12.9\" - 40",
+      "id": 311,
+      "name": "iPad Pro 12.9\" - 25",
       "width": 1536.0,
       "height": 1152.0,
       "device_class": "ipad_13",
       "screen_type": "app_screen"
     },
+    "screen_choice_rationale": "Originally picked 243 (same shape \u2014 24 large/12 small/4 solid translucent buttons + 'button/toolbar' container with 7 children). Moved to 311 because 243 is in the iPad-translucent-cluster drift set per feedback_ipad_component_frame_inlining.md (0.96 round-trip parity). Demo D's append op is unaffected by missing_child class drift, but using a clean screen removes the yellow flag entirely. Screen 311 has identical inventory (24 large + 12 small + 4 solid + 6 toolbars) and is not in any known drift set.",
     "target_container": {
-      "id": 40717,
+      "id": 72405,
+      "figma_node_id": "5749:99599",
       "name": "button/toolbar",
       "node_type": "FRAME",
       "layout_mode": "VERTICAL",
-      "current_instance_children": 7,
-      "rationale": "VERTICAL auto-layout container already holding 7 button INSTANCEs. Appending an 8th INSTANCE with the size-axis variant flipped is a realistic composition operation."
+      "current_instance_children": 8,
+      "current_children_all": "button/large/translucent (homogeneous)",
+      "rationale": "VERTICAL auto-layout container holding 8 large translucent button INSTANCEs. Appending a 9th INSTANCE with size=small flips the size axis on a single child \u2014 visually obvious because the new button is shorter than its siblings."
     },
     "screen_button_inventory": [
       {
@@ -165,6 +168,10 @@
       {
         "name": "button/small/solid",
         "count": 4
+      },
+      {
+        "name": "button/toolbar",
+        "count": 6
       }
     ],
     "component_to_append": {
@@ -178,8 +185,13 @@
       "note": "These are the actual variant properties recorded in component_variants for this component family. Plan v3 cited {size:lg, leading:icon, trailing:chevron} \u2014 those slot/leading axes are NOT modeled in this corpus. We use the concrete corpus axes."
     },
     "demo_brief_proposed": "Add a small translucent button to the toolbar at the right side of the screen.",
-    "kill_shot": "Variant chips in the panel light up matching the rendered INSTANCE; componentKey 74a7396e... matches CKR.",
-    "verdict": "PASS"
+    "kill_shot": "Variant chips in the panel light up matching the rendered INSTANCE; componentKey 74a7396e\u2026 matches CKR; new button visibly shorter than the 8 large-variant siblings.",
+    "verdict": "PASS",
+    "drift_status": {
+      "screen_in_pre_split_drift_25": false,
+      "screen_in_post_split_drift_14": false,
+      "note": "Screen 311 is NOT in any known drift set. Original pick (243) WAS \u2014 moved to 311 to keep Demo D's anchor on a clean screen."
+    }
   },
   "global_constraints": {
     "no_chip_in_corpus": "Demo C as plan-v3 wrote it (chip-typed node) cannot run. Battery Icon is a structurally analogous small-isolated-element substitute.",

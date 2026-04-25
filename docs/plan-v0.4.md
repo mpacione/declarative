@@ -1352,7 +1352,7 @@ corpus changes:
 | **A** | DS-correct edit | 333 (`iPad Pro 11" - 43`) | 82169 (`button/large/translucent` INSTANCE) | CKR `689e60bd…`; `cornerRadius=radius.11`, `padding=space.13` |
 | **B** | Token propagation | 333 | (any node bound to `color.border.tertiary`) | `color.border.tertiary` = `#047AFF`, used 2920× corpus-wide, 21× on screen 333 |
 | **C** | Adversarial verifier | 118 (`iPad Pro 12.9" - 7`) | 798 (`Battery Icon`, GROUP, 26.5×12) | bait literal `#FFFFFF` → nearest token `color.border.primary` (`#FFFFFF`, ΔE=0) |
-| **D** | Compose with real components | 243 (`iPad Pro 12.9" - 40`) | 40717 (`button/toolbar` FRAME, VERTICAL auto-layout, 7 button children) | append `button/small/translucent` INSTANCE (CKR `74a7396e…`); variant axis `size: small`, `style: translucent` |
+| **D** | Compose with real components | 311 (`iPad Pro 12.9" - 25`) | 72405 (`button/toolbar` FRAME, VERTICAL auto-layout, 8 button children, NOT in any drift cluster) | append `button/small/translucent` INSTANCE (CKR `74a7396e…`); variant axis `size: small`, `style: translucent` |
 
 The audit JSON `tests/.fixtures/demo_screen_audit.json` is
 the canonical record of these anchors and the queries used
@@ -2068,19 +2068,29 @@ from one sentence."
 **Brief**: `"Add a small translucent button to the toolbar
 on the right side of the screen."`
 
-**Pre-flight verified in W0.A**: Screen 243 (`iPad Pro
-12.9" - 40`) has container node 40717 (`button/toolbar`
-FRAME, VERTICAL auto-layout, currently 7 INSTANCE
-children). Component to append:
-`button/small/translucent` (CKR
+**Pre-flight verified in W0.A**: Screen 311 (`iPad Pro
+12.9" - 25`) has container node 72405 (`button/toolbar`
+FRAME, VERTICAL auto-layout, currently 8 INSTANCE
+children, all `button/large/translucent`). Component to
+append: `button/small/translucent` (CKR
 `74a7396ef95439c83d69e125077ecd6afcde1fb4`, 2604 corpus
 instances). Variant axes recorded in `component_variants`:
 `size`, `style` (no `leading`/`trailing` slot axes
 captured in this corpus, so the original v3 plan's
 `leading: "icon", trailing: "chevron"` axes are dropped —
-see "deviations" in §11.1 below). Screen 243 already
-holds 12 INSTANCEs of `button/small/translucent`,
-confirming the size-axis sibling is import-resolvable.
+see "deviations" in §11.1 below). Screen 311 holds 12
+INSTANCEs of `button/small/translucent` elsewhere on the
+screen, confirming the size-axis sibling is
+import-resolvable.
+
+(W0.A originally picked screen 243 with the same shape,
+but 243 is in the iPad-translucent-cluster drift set per
+`feedback_ipad_component_frame_inlining.md` — 0.96 parity
+on round-trip. Demo D's append op is unaffected by
+missing_child class drift, but using a clean screen
+removes the yellow flag entirely. Screen 311 has identical
+component-family inventory and is not in any known drift
+set.)
 
 **Failure budget**: if `importComponentByKeyAsync` fails
 or variant axis selection is wrong, recording shifts to
@@ -2088,8 +2098,8 @@ pre-recorded version.
 
 **Agent verbs**:
 ```
-emit_drill(@toolbar-40717) →
-emit_append(@toolbar-40717, {
+emit_drill(@toolbar-72405) →
+emit_append(@toolbar-72405, {
   component_key: resolved_from_path("button/small/translucent"),
   variant: {size: "small", style: "translucent"}
 }) →
@@ -2097,7 +2107,7 @@ emit_done
 ```
 
 **Canvas**: real INSTANCE node, sized at the small variant
-dimensions, appended as the 8th child of the VERTICAL
+dimensions, appended as the 9th child of the VERTICAL
 auto-layout toolbar. `componentKey` matches CKR
 `74a7396e…`; auto-layout handles position automatically.
 All cornerRadius / padding / itemSpacing tokens propagate
@@ -2108,7 +2118,7 @@ from the master.
 componentKey: button/small/translucent (74a7396e…)
 variant.size: small
 variant.style: translucent
-parent: @toolbar-40717 (auto-layout VERTICAL, 8 children)
+parent: @toolbar-72405 (auto-layout VERTICAL, 9 children)
 ```
 
 **Why prompt+MCP can't**: requires path→component_key
@@ -2116,8 +2126,9 @@ resolver + variant axis catalog. Figma MCP can't import a
 component by name; needs the resolved key.
 
 **Kill-shot**: variant-axis chips in the panel light up
-matching the rendered INSTANCE; the toolbar grows from 7
-to 8 buttons in one verb.
+matching the rendered INSTANCE; the toolbar grows from 8
+to 9 buttons in one verb, with the new button visibly
+shorter than its 8 large-variant siblings.
 
 **Wall-clock unedited**: ~110s. **Edited**: ~55s.
 
@@ -2133,7 +2144,7 @@ following:
 | Demo A: screen 333 button bound to `color.action.primary`, tap-state variant | Screen 333 button INSTANCE bound to `radius.11`, `space.13`, `space.10` (real auto-named tokens); no `state` variant axis in corpus | Tokens table was empty pre-cluster; auto-cluster names by role + lightness; `state` axis not captured in `component_variants` for translucent buttons |
 | Demo B: screen 217 cart-totals + `color.feedback.success` | Screen 333, divider with `color.border.tertiary` accent | Screen 217 is bare iPhone, no cart shape; no `feedback.success` token in auto-named namespace. Real fan-out propagation token is `color.border.tertiary` |
 | Demo C: screen 091 chip + `color.feedback.success` | Screen 118 Battery Icon (GROUP) + `color.border.primary` (=`#FFFFFF`) | Screen 091 is icon_def, not an app screen; zero `chip` canonical_type instances anywhere in corpus; corpus has no green/success-named token. Battery Icon is a structurally analogous small-isolated-element substitute |
-| Demo D: screen 412 list-row/destructive with size/leading/trailing axes | Screen 243 toolbar (40717) + `button/small/translucent` with size/style axes | Screen 412 doesn't exist (max id 338); zero `list_row` canonical_type instances; `list-row/destructive` not in CKR; no `destructive` component anywhere; corpus only captures `size`/`style` axes for buttons |
+| Demo D: screen 412 list-row/destructive with size/leading/trailing axes | Screen 311 toolbar (72405) + `button/small/translucent` with size/style axes | Screen 412 doesn't exist (max id 338); zero `list_row` canonical_type instances; `list-row/destructive` not in CKR; no `destructive` component anywhere; corpus only captures `size`/`style` axes for buttons. Anchor moved 243 → 311 mid-Phase 0 to escape the iPad-translucent drift cluster |
 
 **The four demo intents are preserved.** A still proves
 DS-correct edit; B still proves token-mutation
@@ -2153,8 +2164,8 @@ workstream, not v0.4 scope.
 
 | | A | B | C | D |
 |---|---|---|---|---|
-| **Pre-flight** | Dank-EXP-02 open on screen 333; clean session DB; bridge healthy | Dank-EXP-02 open on screen 333; Variables panel docked; clean session | Dank-EXP-02 open on screen 118; verifier in `strict` mode; clean session | Dank-EXP-02 open on screen 243; library `button/small/translucent` indexed |
-| **CLI** | `dd design --brief @briefs/A.txt --screen 333 --record demos/A.cast` | `dd design --brief @briefs/B.txt --screen 333 --record demos/B.cast` | `dd design --brief @briefs/C.txt --screen 118 --verifier strict --record demos/C.cast` | `dd design --brief @briefs/D.txt --screen 243 --record demos/D.cast` |
+| **Pre-flight** | Dank-EXP-02 open on screen 333; clean session DB; bridge healthy | Dank-EXP-02 open on screen 333; Variables panel docked; clean session | Dank-EXP-02 open on screen 118; verifier in `strict` mode; clean session | Dank-EXP-02 open on screen 311; library `button/small/translucent` indexed |
+| **CLI** | `dd design --brief @briefs/A.txt --screen 333 --record demos/A.cast` | `dd design --brief @briefs/B.txt --screen 333 --record demos/B.cast` | `dd design --brief @briefs/C.txt --screen 118 --verifier strict --record demos/C.cast` | `dd design --brief @briefs/D.txt --screen 311 --record demos/D.cast` |
 | **MCP-verify** | Probe-tested in W0.B | Probe-tested in W0.B | Probe-tested in W0.B | Probe-tested in W0.B |
 | **Recording** | Edited; raw in `demos/raw/A.mov` | Edited; raw in `demos/raw/B.mov` | Edited; raw in `demos/raw/C.mov` | Edited; raw in `demos/raw/D.mov` |
 
