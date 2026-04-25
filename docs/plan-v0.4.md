@@ -1,17 +1,20 @@
 # v0.4 Plan — Design-System Compiler, Made Provable
 
-> **Status: v2 — COMPLETE AND AUTHORITATIVE as of
-> 2026-04-25.** This document is the canonical plan for v0.4.
-> When prior plans, rationale docs, or Loom scripts conflict
-> with anything here, this document wins.
+> **Status: v3 — COMPLETE AND AUTHORITATIVE as of
+> 2026-04-25** (pin to the commit-hash that ships this
+> document; check `git log docs/plan-v0.4.md` and use the
+> tip commit-sha for subagent dispatch). This document is
+> the canonical plan for v0.4. When prior plans, rationale
+> docs, or Loom scripts conflict with anything here, this
+> document wins.
 >
 > **History**: v1 (commit `eccdab5`) red-teamed by 5
 > critics; all returned REVISE. v2 (commit `596afc7`)
-> integrated all critical findings. v3 minor revisions
-> (this revision) added Phase-0 Day-1 runbook, gate metric
-> commands, enum-size bounds, cost authorization, interim
-> demo logistics — items Codex's final shippability
-> review flagged.
+> integrated all critical findings. v3 (this version)
+> added Phase-0 Day-1 runbook, gate metric commands,
+> enum-size bounds, cost authorization, interim demo
+> logistics — items Codex's final shippability review
+> flagged.
 >
 > **Conventions**: this plan references CLAUDE.md
 > conventions (TDD, test factories with `Partial[T]`
@@ -1416,6 +1419,9 @@ makes them machine-checkable.
 | Cache hit rate >80% | `dd design log --cache-stats --since=24h` | aggregates Anthropic cache headers from session metadata (W6 must record them) |
 | 7 consecutive nights clean | `tools/check-nightly-streak.sh` | reads CI history; expects last 7 nightly runs all green |
 | Schema enum size within Anthropic limit | `python3 -c "from dd.agent.catalog_inject import all_session_tokens_for; ...; assert len(...) <= 250"` | hard-coded ceiling at 250 enum members per prop class (Anthropic tool API safe limit) |
+| 0 cases where unresolved input renders without error | `pytest tests/test_resolve_adversarial.py -v` | strict-mode resolver tests assert `ResolveResult.ir is None` and `errors[].kind == KIND_*` for each adversarial input |
+| Smoke 4/4 pass | `pytest tests/acceptance/runner.py --tier=smoke` | exit-zero gates merge; per-fixture pass/fail in stdout |
+| 0 silent-drop regressions in dwell period | `tools/check-nightly-streak.sh --metric=intolerable-zero` | scans last 7 nightlies' `v2_v1_diff.jsonl` for any non-zero `intolerable.length` |
 
 Each command is implementable as part of the corresponding
 workstream. Commands that don't exist yet (e.g.,
