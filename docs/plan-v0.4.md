@@ -1,11 +1,24 @@
 # v0.4 Plan — Design-System Compiler, Made Provable
 
-> **Version: v2 (in progress)**. v1 (commit `eccdab5`) was
-> red-teamed by 5 critics; all returned REVISE. Critical
-> issues integrated below. v2 is being written section-by-
-> section; this revision covers §1-§4 W4. §5-§15 still
-> reflect v1 framing and are flagged with `[V1 — REVISING]`
-> until updated.
+> **Status: v2 — COMPLETE AND AUTHORITATIVE as of
+> 2026-04-25.** This document is the canonical plan for v0.4.
+> When prior plans, rationale docs, or Loom scripts conflict
+> with anything here, this document wins.
+>
+> **History**: v1 (commit `eccdab5`) red-teamed by 5
+> critics; all returned REVISE. v2 (commit `596afc7`)
+> integrated all critical findings. v3 minor revisions
+> (this revision) added Phase-0 Day-1 runbook, gate metric
+> commands, enum-size bounds, cost authorization, interim
+> demo logistics — items Codex's final shippability
+> review flagged.
+>
+> **Conventions**: this plan references CLAUDE.md
+> conventions (TDD, test factories with `Partial[T]`
+> overrides, no schema redefinition in tests). The
+> conventions live in the user's global config at
+> `~/.claude/CLAUDE.md`. The next session inherits them
+> automatically.
 >
 > **For the next session.** You are arriving cold. This
 > document is self-contained — it captures the audit
@@ -1246,6 +1259,263 @@ spans 6-7 weeks, with W0 added.)
 
 ---
 
+## 8.1 Phase-0 Day-1 runbook (cold-start operational guide)
+
+The next session arrives cold. Day 1 of Phase 0 looks like
+this, in order:
+
+### Hour 1 — Read + orient
+
+```bash
+# Read the plan (this document)
+.venv/bin/python -m pytest --collect-only 2>&1 | tail -3
+# Confirm test suite collects clean (catches import errors
+# from any drift since plan was written)
+
+git log --oneline -20  # confirm tip is post-v0.4-plan-commit
+git status              # confirm clean working tree
+```
+
+Read in this order:
+1. This plan (`docs/plan-v0.4.md`) — full
+2. `ENTRYPOINT.md` — current project status snapshot
+3. `~/.claude/CLAUDE.md` — TDD + test conventions
+
+### Hour 2-3 — W0.A demo screen DB verification
+
+For each of the four demo screens (333, 217, 091, 412),
+verify the structural property the corresponding demo
+depends on. Output: `tests/.fixtures/demo_screen_audit.json`.
+
+```bash
+mkdir -p tests/.fixtures
+
+.venv/bin/python -c '
+import sqlite3, json
+DB = "Dank-EXP-02.declarative.db"
+conn = sqlite3.connect(DB)
+conn.row_factory = sqlite3.Row
+
+audits = {}
+
+# Demo A: Screen 333 - button/large/translucent INSTANCE
+# bound to color.action.primary with state variant
+audits["333"] = list(conn.execute("""
+    SELECT n.id, n.name, n.node_type, sci.canonical_type
+    FROM nodes n
+    LEFT JOIN screen_component_instances sci ON sci.node_id = n.id
+    WHERE n.screen_id = 333
+      AND (n.name LIKE "%button%translucent%"
+           OR sci.canonical_type LIKE "%button%")
+    LIMIT 20
+""").fetchall())
+
+# Demo B: Screen 217 - color.feedback.success token defined,
+# cart-totals row exists
+# Demo C: Screen 091 - chip-typed node in scope
+# Demo D: Screen 412 - list-row/destructive in CKR with
+# {size: lg, leading: icon, trailing: chevron} variants
+
+# (Run analogous queries; pin actual column shapes once
+# you've inspected the schema)
+
+with open("tests/.fixtures/demo_screen_audit.json", "w") as f:
+    json.dump({k: [dict(r) for r in v] for k, v in audits.items()},
+              f, indent=2)
+print("Audit complete:", audits.keys())
+'
+```
+
+**Success criterion**: each of 333/217/091/412 returns
+non-empty rows matching the demo's pre-flight assumption.
+**Failure criterion**: empty or wrong shape — REVISE §11
+demo before any code lands.
+
+### Hour 3-5 — W0.B MCP-verify queryability probe
+
+For each demo's MCP-verify command, run it through
+`figma_execute` against a known fixture and confirm the
+assertion shape returns. The bridge must be healthy
+(figma-console-mcp listening on `localhost:9228`).
+
+```bash
+# Confirm bridge alive
+python3 -c "import socket; s = socket.create_connection(('localhost', 9228), timeout=0.5); print('bridge OK'); s.close()"
+```
+
+For each demo, write a probe script in
+`tests/.fixtures/mcp_probes/<demo>.js` that:
+- Resolves a known node
+- Returns the assertion fields (componentKey,
+  cornerRadius, boundVariables, etc.)
+- Confirms the field is queryable through the figma-console
+  MCP, not just the Plugin API in isolation
+
+Run via `mcp__figma-console__figma_execute`. Output:
+`tests/.fixtures/mcp_probe_results.json`. Each demo's
+verify-shape must be queryable; otherwise the demo can't be
+asserted at recording time.
+
+### Hour 5-8 — W0.C Dank-Test-v0.4 file creation
+
+Create a new Figma file `Dank-Test-v0.4` in the same team
+as Dank Experimental. Single page `Test/v0.4`. Seed with
+~200 components covering all variant axes the demos use.
+
+This is multi-day work; allow 2-4 days. The Day-1 task is
+just to create the empty file + commit
+`tools/dd-test-fixture-create.py` skeleton with the
+documented seeding plan.
+
+```bash
+cat > tools/dd-test-fixture-create.py <<'EOF'
+"""Seed Dank-Test-v0.4 with the components the demos
+depend on. Idempotent — running twice is safe.
+
+Usage: python3 tools/dd-test-fixture-create.py --bridge-port 9228
+"""
+# (Implementation across days 2-4 of W0.C)
+EOF
+```
+
+### End of Day 1 — checklist for go/no-go to W1
+
+- [ ] `tests/.fixtures/demo_screen_audit.json` shows all
+      four screens have the cited structural properties
+- [ ] `tests/.fixtures/mcp_probe_results.json` shows all
+      four MCP-verify commands return the asserted shapes
+- [ ] `Dank-Test-v0.4` file exists; setup script
+      committed (skeleton OK; full seed during W0.C days
+      2-4)
+- [ ] `tests/.fixtures/baseline_screens.json` committed
+      with the 190 (= 204 - 14 known drift) baseline screen
+      IDs from `feedback_dank_corpus_drift_25.md`
+- [ ] Plan commit-hash pinned in `tools/subagent_dispatch_template.md`
+      so all spawned subagents read this plan at this exact
+      hash
+
+If any checkbox fails: pause, escalate to plan author,
+revise §11 demos or §10 baselines as needed.
+
+---
+
+## 8.2 Gate metric commands (how each phase gate is measured)
+
+Every numerical gate in §10 has an explicit command that
+computes it. v1 left these as English; v2 with this section
+makes them machine-checkable.
+
+| Gate | Command | File / output |
+|---|---|---|
+| Token-rate >0% on smoke | `dd design log --coverage --since=24h` | aggregates `move_log.payload.feature_flags.token_props` |
+| Token-rate >50% on smoke | same command | reports per-prop literal/token rates |
+| KIND_TOKEN_DROP rate <5% | `pytest tests/acceptance/runner.py --tier=smoke --metrics` | aggregates KIND_* from `__errors` per session |
+| Verb-selection rate >=80% | `pytest tests/acceptance/runner.py --tier=smoke --metric=verb-rate` | first-tool-call match per fixture |
+| `intolerable.length == 0` | `pytest tests/test_v2_v1_equivalence.py -m parity_baseline` | reads `tests/.fixtures/v2_v1_diff.jsonl` |
+| `placeholder_count == 0` | same equivalence test | reads same JSONL |
+| Cache hit rate >80% | `dd design log --cache-stats --since=24h` | aggregates Anthropic cache headers from session metadata (W6 must record them) |
+| 7 consecutive nights clean | `tools/check-nightly-streak.sh` | reads CI history; expects last 7 nightly runs all green |
+| Schema enum size within Anthropic limit | `python3 -c "from dd.agent.catalog_inject import all_session_tokens_for; ...; assert len(...) <= 250"` | hard-coded ceiling at 250 enum members per prop class (Anthropic tool API safe limit) |
+
+Each command is implementable as part of the corresponding
+workstream. Commands that don't exist yet (e.g.,
+`dd design log --coverage`) are themselves W7 deliverables.
+
+**Schema enum-size bound**: Anthropic's tool API supports
+JSON-Schema enum up to ~256KB total schema size. With 7
+verbs × ~5 prop classes × N tokens ≈ 250 tokens per
+prop class as a safe ceiling. If a project's catalog
+exceeds this, W6 must implement an "enum slicing"
+strategy: split high-cardinality token families
+(typography variants, color shades) into per-component
+sub-enums driven by component-class. Plan: detect at
+W6 implementation time; design the slicing strategy
+then. Phase-0 measurement step:
+
+```bash
+.venv/bin/python -c '
+import sqlite3
+conn = sqlite3.connect("Dank-EXP-02.declarative.db")
+n = conn.execute("SELECT COUNT(DISTINCT path) FROM tokens").fetchone()[0]
+print(f"Total token paths: {n}")
+print(f"Within bound: {n <= 250}")
+'
+```
+
+If `n > 250`, W6 ships with enum slicing as a P0
+sub-task, not a P1 follow-up.
+
+---
+
+## 8.3 Cost authorization (must be explicit before W7 lands)
+
+W7 ships nightly + weekly live-Sonnet runs. Estimated cost:
+
+- Per-commit smoke (cassette replay): ~$0/run
+- Re-record cassettes (weekly or schema-bump): ~$2/regen
+- Nightly 50-fixture: ~$5-15/night = ~$150-450/month
+- Weekly 200-fixture: ~$20-60/week = ~$80-240/month
+
+**Total: ~$230-690/month** for live-runs (nightly +
+weekly). Plus ad-hoc dev runs: ~$50-200/month.
+
+**Authorization gate**: before W7 enables nightly/weekly
+live runs, the plan author confirms the project budget.
+If unauthorized, W7 ships smoke-only (cassette replay,
+~$0/month) and live-Sonnet evaluations are gated on
+manual operator runs only.
+
+The plan-executor (next session) MUST NOT enable
+nightly/weekly without explicit authorization in the
+session it's enabled. Default to smoke-only if uncertain.
+
+---
+
+## 8.4 Interim status demo logistics
+
+End of Phase 1 (week 1) the executor records a 2-minute
+scope-honest Loom for stakeholders.
+
+**Filename**: `demos/interim/v0.4-week-1-status.mp4`
+**Companion script**: `demos/interim/SCRIPT.md`
+**Audience**: Anthropic Claude Code design staff +
+internal reviewers
+
+**Suggested script** (executor adapts as needed):
+
+> "Quick update on declarative-build's v0.4 work. We're
+> three weeks into a 6-7 week architectural overhaul.
+> Today I'll show what works end-to-end TODAY against a
+> real screen, and name what we're closing in v0.4.
+>
+> [Run a `dd design --brief` against Dank screen 333]
+>
+> What you see: the agent operates a real session loop
+> against a real Figma screen. Real Sonnet inference,
+> real bridge, real persisted edits.
+>
+> What you DON'T see: design-system awareness. The
+> button you see is a generic frame, not an INSTANCE of
+> the user's `button/large/translucent` component. The
+> color is a literal hex, not a token reference. v0.4
+> closes that gap.
+>
+> Next checkpoint: 4 kill-shot demos at v0.4 ship,
+> ~5 weeks out. Each demo proves a different property
+> of the compiler that makes it different from prompt+MCP.
+>
+> Questions go to [stakeholder channel]."
+
+**Acceptance checklist**:
+- [ ] Recording is 2-3 minutes wall-clock
+- [ ] Includes one live demo run (or cleanly-edited
+      pre-recorded)
+- [ ] Names the gap (literal hex / generic frame) explicitly
+- [ ] Names the next milestone (v0.4 ship + 4 demos)
+- [ ] Companion script committed alongside
+
+---
+
 ## 9. Parallel-agent execution pattern
 
 This plan executes via multi-agent delegation with the
@@ -1824,6 +2094,8 @@ between cutover-stable and demo-recording.
 
 ---
 
-*v2 complete. All §1-§16 reflect critique-pass integrations
-across architecture, workstreams, phasing, demos, risks,
-and rollback. Phase 4 critique pass next.*
+*v3 complete (2026-04-25). Plan is authoritative and
+ready for next-session execution. §8.1-§8.4 added per
+Codex's final shippability review: Phase-0 Day-1 runbook,
+gate metric commands, enum-size bound + measurement,
+cost authorization gate, interim demo logistics.*
