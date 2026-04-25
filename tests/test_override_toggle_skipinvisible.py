@@ -126,14 +126,21 @@ class TestOverrideToggleAroundFindOne:
         )
 
     def test_path_override_visible_block_also_toggles(self):
-        """The second findOne-based override site lives in
+        """The second visibility-override site lives in
         ``dd/render_figma_ast.py`` — the
-        ``descendant_visibility_resolver`` path emits
-        ``{instance}.findOne(... endsWith(';<fid>'))`` to apply
-        ``PathOverride .visible`` flips. Same flag, same blindness, same
-        fix needed. Verified by emitting a tiny doc through the renderer
-        and asserting the toggle bracket appears around the findOne
-        line."""
+        ``descendant_visibility_resolver`` path emits a lookup against
+        ``id.split(';').pop()`` to apply ``PathOverride .visible``
+        flips. Same flag, same blindness, same fix needed. Verified by
+        emitting a tiny doc through the renderer and asserting the
+        toggle bracket wraps the lookup call.
+
+        Codex Option B (2026-04-24) replaced the previous per-override
+        ``findOne`` shape with a batched ``findAll`` + Map lookup —
+        the perf flag still needs to be flipped off around the lookup
+        because ``findAll`` has the same hidden-subtree blindness as
+        ``findOne``. The assertion is on the lookup BEING present, not
+        on its specific shape (which is now the batched form).
+        """
         # Build a synthetic resolver bucket + node to drive emission.
         # Easier path: import the helper used by render_figma's
         # head-properties pipe, give it a PathOverride, and check the
@@ -168,15 +175,17 @@ class TestOverrideToggleAroundFindOne:
             lines=lines,
         )
         joined = "\n".join(lines)
-        assert "findOne" in joined, (
-            "expected the path-override block to emit a findOne call"
+        assert "findAll(" in joined, (
+            "expected the path-override block to emit a findAll call "
+            "(Codex Option B batched shape — replaces per-override "
+            "findOne so heavy masters don't pay 30+ subtree walks)"
         )
         assert "skipInvisibleInstanceChildren = false" in joined, (
-            "path-override emission needs the same toggle-off as "
-            "_emit_override_tree (same findOne blindness root cause)"
+            "path-override emission needs the toggle-off (same hidden-"
+            "subtree blindness whether the call is findOne or findAll)"
         )
         assert "skipInvisibleInstanceChildren = true" in joined, (
-            "and the same toggle-on restore"
+            "and the matching toggle-on restore"
         )
 
     def test_multiple_child_overrides_each_get_their_own_toggle_block(self):
@@ -207,4 +216,195 @@ class TestOverrideToggleAroundFindOne:
         )
         assert toggle_ons == 2, (
             f"expected one toggle-on per child target (2), got {toggle_ons}"
+        )
+
+    def test_multiple_overrides_on_one_instance_emit_single_toggle(self):
+        """Codex Option B perf fix (2026-04-24): when an instance head
+        carries N `.visible` PathOverrides, the AST renderer must emit
+        ONE toggle window + ONE subtree walk (findAll), not N toggles +
+        N findOne calls.
+
+        Bug measured 2026-04-24: each ``inst.findOne(n =>
+        n.id.endsWith(';<fid>'))`` walks the full master subtree in
+        linear time. With ~30 instances × 3 overrides each = 90 walks,
+        the heaviest masters (e.g. `button/large/translucent`) push
+        Phase 1 past 59s per instance and total render past 300s. Codex
+        Option B batches all overrides per instance into a single
+        toggle window with one ``findAll`` populating a Map, then
+        K straight-line ``map.get(fig_id)`` assignments.
+
+        Risk per Codex: ``skipInvisibleInstanceChildren`` is global
+        state. The batched block must be synchronous (no ``await``)
+        inside the try/finally so the flag is always restored.
+        """
+        from dd.markup_l3 import Literal_, Node, NodeHead, PathOverride
+        from dd.render_figma_ast import _emit_visibility_path_overrides
+
+        # Three .visible overrides on the same instance — the demo-2
+        # screen-333 case the user diagnosed has heads with 3+ overrides
+        # each.
+        path_overrides = (
+            PathOverride(
+                path="slot-1.visible",
+                value=Literal_(lit_kind="bool", raw="true", py=True),
+            ),
+            PathOverride(
+                path="slot-2.visible",
+                value=Literal_(lit_kind="bool", raw="false", py=False),
+            ),
+            PathOverride(
+                path="slot-3.visible",
+                value=Literal_(lit_kind="bool", raw="true", py=True),
+            ),
+        )
+        resolver = {
+            "button-1": {
+                "slot-1.visible": "5749:11111",
+                "slot-2.visible": "5749:22222",
+                "slot-3.visible": "5749:33333",
+            },
+        }
+        head = NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/large/translucent",
+            eid="button-1",
+            positional=None,
+            properties=path_overrides,
+        )
+        node = Node(head=head, block=None)
+        spec_key_map: dict[int, str] = {id(node): "button-1"}
+
+        lines: list[str] = []
+        _emit_visibility_path_overrides(
+            node=node,
+            var="instance_var",
+            spec_key_map=spec_key_map,
+            descendant_visibility_resolver=resolver,
+            lines=lines,
+        )
+        joined = "\n".join(lines)
+
+        # ONE toggle window per instance — not per override.
+        toggle_offs = joined.count("skipInvisibleInstanceChildren = false")
+        toggle_ons = joined.count("skipInvisibleInstanceChildren = true")
+        assert toggle_offs == 1, (
+            f"Codex Option B: expected ONE toggle-off per instance head "
+            f"(batched window), got {toggle_offs}. Per-override toggling "
+            f"is the 300s timeout root cause."
+        )
+        assert toggle_ons == 1, (
+            f"Codex Option B: expected ONE toggle-on per instance head, "
+            f"got {toggle_ons}."
+        )
+
+        # Batched lookup pattern: one findAll populating a Map.
+        assert "findAll(" in joined, (
+            "Codex Option B: expected one findAll() to walk the subtree "
+            "once and populate a lookup Map; got no findAll. The bug is "
+            "that we emit findOne per override, walking the subtree N "
+            "times instead of once."
+        )
+
+        # Same instance must NOT emit repeated findOne calls — they're
+        # the perf cost we're eliminating.
+        find_one_count = joined.count("findOne(")
+        assert find_one_count == 0, (
+            f"Codex Option B: batched block must use findAll once (not "
+            f"findOne K times). Got {find_one_count} findOne calls — "
+            f"that's the per-override walk cost we're removing."
+        )
+
+        # All three fig_ids must still be addressed in the emitted block
+        # (we batched the calls, we did NOT drop any overrides).
+        for fid in ("5749:11111", "5749:22222", "5749:33333"):
+            assert fid in joined, (
+                f"batched block dropped fig_id {fid!r} — overrides must "
+                f"all be applied, just batched."
+            )
+
+        # try/finally still guards the flag restore (Codex risk note).
+        assert "try" in joined and "finally" in joined, (
+            "batched block must keep try/finally so an exception inside "
+            "doesn't leak the flipped flag state."
+        )
+
+    def test_single_override_on_instance_still_emits_toggle(self):
+        """Edge case: when an instance has only one `.visible` override,
+        the batched-shape emitter must still emit a toggle window. Codex
+        Option B is degenerate K=1 in this case — same shape, just one
+        assignment inside.
+        """
+        from dd.markup_l3 import Literal_, Node, NodeHead, PathOverride
+        from dd.render_figma_ast import _emit_visibility_path_overrides
+
+        path_override = PathOverride(
+            path="only-slot.visible",
+            value=Literal_(lit_kind="bool", raw="true", py=True),
+        )
+        resolver = {"button-1": {"only-slot.visible": "5749:99999"}}
+        head = NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/primary",
+            eid="button-1",
+            positional=None,
+            properties=(path_override,),
+        )
+        node = Node(head=head, block=None)
+        spec_key_map: dict[int, str] = {id(node): "button-1"}
+
+        lines: list[str] = []
+        _emit_visibility_path_overrides(
+            node=node,
+            var="instance_var",
+            spec_key_map=spec_key_map,
+            descendant_visibility_resolver=resolver,
+            lines=lines,
+        )
+        joined = "\n".join(lines)
+
+        # Even K=1 must emit a toggle (the perf flag is still on by
+        # default from preamble — we still need to flip it off).
+        assert "skipInvisibleInstanceChildren = false" in joined
+        assert "skipInvisibleInstanceChildren = true" in joined
+        assert "5749:99999" in joined
+
+    def test_no_visible_overrides_emits_nothing(self):
+        """Edge case: if an instance head carries PathOverrides but none
+        are `.visible`, the emitter must produce zero lines (no toggle,
+        no walk). Other override types take the per-call path elsewhere
+        — this batched emitter only touches `.visible`.
+        """
+        from dd.markup_l3 import Literal_, Node, NodeHead, PathOverride
+        from dd.render_figma_ast import _emit_visibility_path_overrides
+
+        # Non-`.visible` PathOverride — the emitter should skip it.
+        path_override = PathOverride(
+            path="some-slot.text",
+            value=Literal_(lit_kind="str", raw='"hi"', py="hi"),
+        )
+        resolver: dict[str, dict[str, str]] = {
+            "button-1": {"some-slot.text": "5749:88888"},
+        }
+        head = NodeHead(
+            head_kind="comp-ref",
+            type_or_path="button/primary",
+            eid="button-1",
+            positional=None,
+            properties=(path_override,),
+        )
+        node = Node(head=head, block=None)
+        spec_key_map: dict[int, str] = {id(node): "button-1"}
+
+        lines: list[str] = []
+        _emit_visibility_path_overrides(
+            node=node,
+            var="instance_var",
+            spec_key_map=spec_key_map,
+            descendant_visibility_resolver=resolver,
+            lines=lines,
+        )
+        # Empty fig_ids list → emit nothing at all.
+        assert lines == [], (
+            f"expected no emission for an instance with zero `.visible` "
+            f"PathOverrides, got: {lines!r}"
         )

@@ -138,6 +138,19 @@ def render_figma_preamble(
 
     preamble: list[str] = []
     preamble.append("const __errors = [];")
+    # Per-stage timing instrumentation (2026-04-24). Diagnostic only;
+    # cost is microseconds. Each `__mark(name)` records a delta from
+    # the prior marker so a partial run (e.g. PROXY_EXECUTE timeout
+    # mid-script) leaves __perf populated up to the last reached
+    # stage. M["__perf"] = __perf is appended in _emit_end_wrapper.
+    # Callers that iterate M (walk_ref.js / execute_ref.js) filter
+    # "__perf" alongside "__errors" / "__canary".
+    preamble.append("const __perf = { stages: {}, t0: Date.now() };")
+    preamble.append("let __t_last = __perf.t0;")
+    preamble.append(
+        "const __mark = (name) => { const now = Date.now(); "
+        "__perf.stages[name] = now - __t_last; __t_last = now; };"
+    )
     # Phase 1 perf (2026-04-22): make document traversal faster by
     # skipping invisible instance children. Figma docs flag this as
     # the default in Dev Mode and "significantly speeds up"
@@ -175,6 +188,7 @@ def render_figma_preamble(
             + ",\n  ".join(font_entries)
             + "\n]);"
         )
+    preamble.append('__mark("preamble_done");')
 
     preamble.append("const M = {};")
     if not ckr_built:
@@ -206,6 +220,10 @@ def render_figma_preamble(
                 f'return null; }} '
                 f'}})();'
             )
+    preamble.append(
+        '__perf.prefetch_count = ' + str(len(needed_node_ids)) + ';'
+    )
+    preamble.append('__mark("prefetch_done");')
 
     preamble.append("")
     # Baseline wraps Phases 1-3 in a single `try { ... } catch` block to
@@ -799,6 +817,9 @@ def _emit_phase1(
         lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')
         lines.append("")
 
+    lines.append(f"__perf.phase1_node_count = {len(walk)};")
+    lines.append('__mark("phase1_done");')
+
     return lines, uses_placeholder, token_refs, override_deferred
 
 
@@ -1008,18 +1029,36 @@ def _emit_visibility_path_overrides(
     descendant_visibility_resolver: dict[str, dict[str, str]],
     lines: list[str],
 ) -> None:
-    """Emit ``findOne``-based ``.visible`` flips for descendant
-    PathOverrides on this instance head.
+    """Emit ``.visible`` flips for descendant PathOverrides on this
+    instance head as a single batched lookup.
 
-    Wraps each emission in a scoped
-    ``figma.skipInvisibleInstanceChildren = false; try { ... } finally
-    { ... = true; }`` toggle so ``findOne`` can reach master-default-
-    hidden descendants. Without the toggle the global perf flag set in
-    the preamble (line 148) silently makes ``findOne`` skip every hidden
-    subtree, the unhide never runs, and the rendered instance shows
-    only the master defaults — confirmed by the screen-333 visual gap
-    investigation 2026-04-23. See
-    ``tests/test_override_toggle_skipinvisible.py`` for the contract.
+    Codex Option B (2026-04-24): collect all ``.visible`` overrides for
+    THIS instance into one lookup pass. Open ONE
+    ``skipInvisibleInstanceChildren = false`` toggle window, do ONE
+    ``findAll`` walk that populates a ``Set``-keyed ``Map`` from
+    ``fig_id`` → node, then K straight-line ``map.get(...).visible =
+    ...`` assignments, then restore the flag in ``finally``. This
+    replaces the previous shape that opened a fresh toggle + ran a
+    fresh ``findOne`` subtree walk per override — measured at
+    ~59s/instance for heavy masters (e.g. ``button/large/translucent``)
+    and the root cause of the 300s render timeout on demo-2's
+    screen-333 brief.
+
+    The toggle is still scoped per instance head (not per render run)
+    so the global perf flag is back on as soon as this instance's
+    overrides are applied. The walk itself is synchronous (no
+    ``await``) — required because ``skipInvisibleInstanceChildren`` is
+    global state and any awaited boundary inside the try would let
+    other code observe the flipped flag.
+
+    Without the toggle the global perf flag set in the preamble (line
+    148) silently makes ``findAll`` skip every hidden subtree, the
+    unhide never runs, and the rendered instance shows only the master
+    defaults — confirmed by the screen-333 visual gap investigation
+    2026-04-23.
+
+    See ``tests/test_override_toggle_skipinvisible.py`` for the
+    contract (single-toggle batching + try/finally restore).
     """
     spec_key_for_resolver = spec_key_map.get(
         id(node), node.head.eid,
@@ -1027,6 +1066,11 @@ def _emit_visibility_path_overrides(
     resolver_bucket = descendant_visibility_resolver.get(
         spec_key_for_resolver, {},
     )
+
+    # Collect all (fig_id, js_bool) pairs for this instance head.
+    # Skip non-PathOverride props, non-`.visible` paths, missing
+    # resolver entries, and non-bool values — same filter as before.
+    targets: list[tuple[str, str]] = []
     for prop in node.head.properties:
         if not isinstance(prop, PathOverride):
             continue
@@ -1039,18 +1083,45 @@ def _emit_visibility_path_overrides(
         if not isinstance(bool_py, bool):
             continue
         js_bool = "true" if bool_py else "false"
-        suffix = f";{fig_child_id}"
-        esc_suffix = _escape_js(suffix)
+        targets.append((fig_child_id, js_bool))
+
+    # No `.visible` overrides for this head — emit nothing. The toggle
+    # cost is non-trivial; skipping it when there's nothing to do
+    # matters for instances that carry only non-`.visible` overrides.
+    if not targets:
+        return
+
+    # Build the JS Set literal of fig_ids to look up. Duplicates here
+    # would be defensively idempotent on the JS side (Map.set last
+    # wins), but the input shape rarely has them.
+    js_id_literals = ", ".join(
+        f'"{_escape_js(fid)}"' for fid, _ in targets
+    )
+
+    # Single toggle window + single walk + K straight-line assigns.
+    # The findAll callback splits on ";" and compares the LAST segment
+    # — that's the same id-suffix convention findOne(endsWith) used,
+    # but we evaluate it once per node instead of once per override.
+    lines.append("figma.skipInvisibleInstanceChildren = false;")
+    lines.append("try {")
+    lines.append(f"  const _ids = new Set([{js_id_literals}]);")
+    lines.append("  const _targets = new Map();")
+    lines.append(
+        f"  for (const _n of {var}.findAll(n => "
+        '_ids.has(n.id.split(";").pop()))) {'
+    )
+    lines.append('    _targets.set(_n.id.split(";").pop(), _n);')
+    lines.append("  }")
+    lines.append("  let _t;")
+    for fid, js_bool in targets:
+        esc_fid = _escape_js(fid)
         lines.append(
-            "figma.skipInvisibleInstanceChildren = false; "
-            "try { "
-            f'const _h = {var}.findOne(n => '
-            f'n.id.endsWith("{esc_suffix}")); '
-            f"if (_h) _h.visible = {js_bool}; "
-            "} finally { "
-            "figma.skipInvisibleInstanceChildren = true; "
-            "}"
+            f'  _t = _targets.get("{esc_fid}"); '
+            f"if (_t) _t.visible = {js_bool};"
         )
+    lines.append("} finally {")
+    lines.append("  figma.skipInvisibleInstanceChildren = true;")
+    lines.append("}")
 
 
 def _collect_text_chars(
@@ -1212,6 +1283,8 @@ def _emit_phase2(
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
 
+    lines.append('__mark("phase2_done");')
+
     if doc.top_level:
         root_node = doc.top_level[0]
         root_var = var_map.get(id(root_node))
@@ -1265,6 +1338,8 @@ def _emit_phase2(
                     f'kind:"position_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+
+    lines.append('__mark("root_attach_done");')
 
     return lines
 
@@ -1411,15 +1486,17 @@ def _emit_phase3(
                 f'error: String(__e && __e.message || __e)}}); }}'
             )
 
-    if not ops:
-        return []
-
     lines: list[str] = []
-    lines.append("")
-    lines.append("// Phase 3: Hydrate — text content, position, constraints")
-    lines.append("await new Promise(r => setTimeout(r, 0));")
-    lines.append("")
-    lines.extend(ops)
+    if ops:
+        lines.append("")
+        lines.append(
+            "// Phase 3: Hydrate — text content, position, constraints"
+        )
+        lines.append("await new Promise(r => setTimeout(r, 0));")
+        lines.append("")
+        lines.extend(ops)
+    lines.append('__perf.phase3_op_count = ' + str(len(ops)) + ';')
+    lines.append('__mark("phase3_done");')
     return lines
 
 
@@ -1439,6 +1516,13 @@ def _emit_end_wrapper() -> list[str]:
         ": null});",
         "}",
         'M["__errors"] = __errors;',
+        # Per-stage timing instrumentation (2026-04-24). Diagnostic
+        # only — every consumer that iterates M filters this key
+        # alongside __errors / __canary. See preamble for the marker
+        # protocol; partial __perf is the only signal a timed-out run
+        # leaves behind.
+        '__perf.total_ms = Date.now() - __perf.t0;',
+        'M["__perf"] = __perf;',
         "return M;",
     ]
 

@@ -70,7 +70,7 @@ ${body}
 // Invert M so we can walk the rendered subtree keyed by eid.
 const idToEid = {};
 for (const k of Object.keys(M)) {
-  if (k === '__errors' || k === '__canary') continue;
+  if (k === '__errors' || k === '__canary' || k === '__perf') continue;
   idToEid[M[k]] = k;
 }
 
@@ -176,6 +176,7 @@ if (rootNode) {
 return {
   __ok: true,
   errors: M['__errors'] || [],
+  perf: M['__perf'] || null,
   rendered_root: rootId,
   rendered_root_width: rootNode ? rootNode.width : 0,
   rendered_root_height: rootNode ? rootNode.height : 0,

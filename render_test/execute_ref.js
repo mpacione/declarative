@@ -47,6 +47,7 @@ ${body}
 return {
   __ok: true,
   errors: (typeof M !== 'undefined' && M.__errors) ? M.__errors : [],
+  perf: (typeof M !== 'undefined' && M.__perf) ? M.__perf : null,
 };
 `;
 
@@ -80,13 +81,17 @@ return {
         const ack = {
           __ok: result.__ok !== false,
           errors: result.errors || [],
+          perf: result.perf || null,
           request_id: id,
         };
         fs.writeFileSync(outPath, JSON.stringify(ack, null, 2));
         const err_ct = ack.errors.length;
+        const perf_summary = ack.perf
+          ? (' perf=' + JSON.stringify(ack.perf.stages || {}))
+          : '';
         console.log(
           'wrote ' + outPath + ' — ack ' + (ack.__ok ? 'ok' : 'FAIL')
-          + ', ' + err_ct + ' script errors'
+          + ', ' + err_ct + ' script errors' + perf_summary
         );
         resolve();
       }
