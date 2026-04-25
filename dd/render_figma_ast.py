@@ -716,7 +716,9 @@ def _emit_phase1(
             )
         )
 
-        if use_mode1 and (component_figma_id or instance_figma_node_id):
+        if use_mode1 and (
+            component_figma_id or instance_figma_node_id or component_key
+        ):
             emitted, mode1_ok = _emit_mode1_create(
                 var, node, spec_key_map, original_name_map,
                 component_figma_id, instance_figma_node_id,
@@ -726,6 +728,7 @@ def _emit_phase1(
                 descendant_visibility_resolver=(
                     descendant_visibility_resolver
                 ),
+                component_key=component_key,
             )
             if mode1_ok:
                 # Guard Mode 1 post-create prop writes. The first
@@ -975,6 +978,7 @@ def _emit_mode1_create(
     descendant_visibility_resolver: Optional[
         dict[str, dict[str, str]]
     ] = None,
+    component_key: Optional[str] = None,
 ) -> tuple[list[str], bool]:
     """Emit the Mode 1 createInstance block for one node.
 
@@ -994,6 +998,23 @@ def _emit_mode1_create(
     `deferred_lines` accumulates override-tree ops that need to run
     after Phase 2 appendChild (e.g. ``layoutSizing`` on swap targets).
     Caller threads these into Phase 3.
+
+    Resolution precedence — preserves the existing fallback chain
+    (which the renderer's gate already mirrors) and adds the
+    component-key path that was previously missing:
+
+      1. ``component_figma_id`` → ``getNodeByIdAsync`` → ``createInstance``
+      2. ``instance_figma_node_id`` → ``getNodeByIdAsync`` →
+         ``getMainComponentAsync`` → ``createInstance`` (handles
+         unpublished/local components and INSTANCE rows whose master
+         id we don't have cached)
+      3. ``component_key`` (F1) → ``importComponentByKeyAsync`` →
+         ``createInstance``. Required for Mode-3 prompt composition
+         where ``build_template_visuals`` resolves a real component_key
+         from ``component_templates`` but ``component_key_registry``
+         hasn't yet been populated with figma_node_ids (fresh DBs).
+         Without this branch, every Mode-3 element with a key but
+         no resolved figma_id silently fell through to ``createFrame``.
     """
     lines: list[str] = []
     eid = node.head.eid
@@ -1051,6 +1072,32 @@ def _emit_mode1_create(
             f'try {{ return __master.createInstance(); }} '
             f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", '
             f'kind:"create_instance_failed", id:"{id_lit}", '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'return {fallback_js}; }} '
+            f'}})();'
+        )
+    elif component_key:
+        # F1: component-key-only path. Used by Mode-3 prompt
+        # composition when build_template_visuals resolves a real
+        # component_key from component_templates but the CKR row's
+        # figma_node_id is empty (fresh DBs). Same null-safety
+        # contract as the other branches: a missing key surfaces in
+        # __errors and degrades to the wireframe placeholder instead
+        # of throwing or silently rendering as a generic frame.
+        # `_emit_composition_children` already uses this exact API
+        # (`importComponentByKeyAsync`) for keyed children — adding it
+        # here makes the main element emission consistent.
+        id_lit = _escape_js(component_key)
+        lines.append(
+            f'const {var} = await (async () => {{ '
+            f'try {{ '
+            f'const __master = await figma.importComponentByKeyAsync("{id_lit}"); '
+            f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", '
+            f'kind:"missing_component_key", id:"{id_lit}"}}); '
+            f'return {fallback_js}; }} '
+            f'return __master.createInstance(); '
+            f'}} catch (__e) {{ __errors.push({{eid:"{eid_lit}", '
+            f'kind:"import_component_failed", id:"{id_lit}", '
             f'error: String(__e && __e.message || __e)}}); '
             f'return {fallback_js}; }} '
             f'}})();'

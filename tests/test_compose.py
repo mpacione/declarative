@@ -431,6 +431,139 @@ class TestGenerateFromPrompt:
         assert isinstance(result["template_rebind_entries"], list)
 
 
+class TestF1ImportComponentByKey:
+    """F1 regression: when component_templates resolves a component_key
+    but ``component_key_registry`` lacks the figma_node_id (the common
+    case on freshly-extracted DBs without a CKR build pass), the
+    generated script must emit ``importComponentByKeyAsync(<key>)``
+    rather than silently falling through to ``createFrame()``.
+
+    Pre-fix behavior: 0 imports, every keyed element rendered as a
+    generic frame (verified against the audit DB at
+    ``audit/20260425-1042/sections/08-mode3-composition``).
+    """
+
+    @pytest.fixture
+    def db_with_keyed_button(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        # Real component_key, no component_figma_id (simulates fresh DB
+        # where CKR.figma_node_id is null)
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, padding_top, padding_right, "
+            "padding_bottom, padding_left, item_spacing, fills, corner_radius, opacity) "
+            "VALUES ('button', 'project/primary', 'real_button_key_abc', 50, "
+            "'HORIZONTAL', 100, 40, 8, 16, 8, 16, 8, "
+            "'[{\"type\":\"SOLID\",\"color\":{\"r\":0,\"g\":0.5,\"b\":1,\"a\":1}}]', "
+            "'8', 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('card', 'project/default', 'real_card_key_xyz', 100, "
+            "'VERTICAL', 320, 200)"
+        )
+        # CKR table exists but figma_node_id is null (the broken state
+        # this fix addresses).
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES ('real_button_key_abc', NULL, 'project/primary', 50), "
+            "       ('real_card_key_xyz', NULL, 'project/default', 100)"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_emits_import_component_by_key(self, db_with_keyed_button):
+        """A keyed button should be emitted via importComponentByKeyAsync."""
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{"type": "button", "props": {"text": "Submit"}}],
+        )
+        script = result["structure_script"]
+        assert 'importComponentByKeyAsync("real_button_key_abc")' in script
+        # F1 regression guard: pre-fix this asserted == 0; the bug was
+        # that the renderer silently fell through to createFrame.
+        assert script.count("importComponentByKeyAsync") >= 1
+
+    def test_emits_import_for_keyed_card_with_children(
+        self, db_with_keyed_button,
+    ):
+        """A card with children must still resolve to its keyed instance.
+
+        The pre-F1 behavior was to fall through to createFrame because
+        the renderer's gate accepted component_key but no emission
+        branch matched it. The instance subtree handles its own
+        children — the LLM-supplied children are still spliced via the
+        override tree path.
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{
+                "type": "card",
+                "children": [
+                    {"type": "heading", "props": {"text": "Title"}},
+                    {"type": "button", "props": {"text": "Submit"}},
+                ],
+            }],
+        )
+        script = result["structure_script"]
+        assert "importComponentByKeyAsync" in script
+        # Both the card AND the button are keyed
+        assert script.count("importComponentByKeyAsync") >= 2
+
+    def test_falls_back_to_frame_when_no_key_at_all(self, db_with_keyed_button):
+        """A type with no template at all still falls through to a frame
+        (the F1 fix is component_key-aware, not a blanket override).
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{"type": "frame", "children": []}],
+        )
+        script = result["structure_script"]
+        # `frame` has no template row; renderer creates a Mode-2 frame.
+        assert "figma.createFrame()" in script
+
+    def test_universal_text_types_do_not_warn(self, db_with_keyed_button):
+        """text/heading/link/frame are universal IR primitives — they
+        render via createText() or createFrame() respectively and should
+        NOT emit a "no template" warning even though they don't have a
+        component_templates row. Pre-F1 the warning fired for `link`
+        (a text type) which was misleading.
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [
+                {"type": "link", "props": {"text": "Forgot password?"}},
+                {"type": "frame", "children": []},
+                {"type": "text", "props": {"text": "Hello"}},
+            ],
+        )
+        warnings = result.get("warnings", [])
+        misleading = [
+            w for w in warnings
+            if "Type 'link'" in w
+            or "Type 'frame'" in w
+            or "Type 'text'" in w
+            or "Type 'heading'" in w
+        ]
+        assert misleading == [], (
+            f"Universal types should not warn 'no template': {misleading}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Variant-aware template selection tests
 # ---------------------------------------------------------------------------

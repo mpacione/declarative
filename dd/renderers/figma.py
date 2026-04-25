@@ -1147,7 +1147,10 @@ def generate_figma_script(
         #   2. instance figma_node_id (from DB, INSTANCE node) → getMainComponentAsync → createInstance
         #      (handles unpublished/local components that importComponentByKeyAsync rejects;
         #       also covers fresh DBs where CKR hasn't been built yet)
-        #   3. Fall through to Mode 2 (createFrame) if no usable ID
+        #   3. component_key (Mode-3 prompt path) → importComponentByKeyAsync → createInstance
+        #      (used when component_templates resolves a key but CKR.figma_node_id is null;
+        #       e.g. fresh extracted DBs without a CKR build pass — F1)
+        #   4. Fall through to Mode 2 (createFrame) if no usable ID
         #
         # ADR-007 Session A: the gate now also reaches path 2 when only
         # `instance_figma_node_id` + `node_type='INSTANCE'` are populated.
@@ -1205,6 +1208,25 @@ def generate_figma_script(
                     f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"no_main_component", id:"{id_lit}"}}); return {fallback_js}; }} '
                     f'try {{ return __master.createInstance(); }} '
                     f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
+                    f'}})();'
+                )
+            elif component_key:
+                # F1: component-key-only Mode-1 path. Twin of the
+                # AST-renderer branch in dd/render_figma_ast.py — needed
+                # because Mode-3 composition resolves a key from
+                # component_templates without an upstream
+                # component_key_registry pass having populated figma_ids.
+                # `_emit_composition_children` already uses this exact API
+                # (`importComponentByKeyAsync`) for keyed children — adding
+                # it at the top-level keeps the two emission sites
+                # consistent.
+                id_lit = _escape_js(component_key)
+                phase1_lines.append(
+                    f'const {var} = await (async () => {{ '
+                    f'try {{ const __master = await figma.importComponentByKeyAsync("{id_lit}"); '
+                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_key", id:"{id_lit}"}}); return {fallback_js}; }} '
+                    f'return __master.createInstance(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"import_component_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
                     f'}})();'
                 )
             else:

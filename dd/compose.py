@@ -1477,11 +1477,20 @@ def validate_components(
         total_hoists += n
 
     available_types = set(templates.keys())
+    # Universal text types are emitted via createText() and don't need
+    # a component_templates row; warning about them as "missing template"
+    # was misleading. Same for `frame`, which is the documented
+    # universal structural primitive (per SYSTEM_PROMPT in prompt_parser).
+    _UNIVERSAL_TYPES = frozenset({"text", "heading", "link", "frame"})
     warnings: list[str] = []
 
     def _check(comp: dict[str, Any]) -> None:
         comp_type = _semantic_type(comp)
-        if comp_type and comp_type not in available_types:
+        if (
+            comp_type
+            and comp_type not in available_types
+            and comp_type not in _UNIVERSAL_TYPES
+        ):
             warnings.append(
                 f"Type '{comp_type}' has no template in this project — will render as empty frame"
             )
