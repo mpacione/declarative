@@ -922,14 +922,45 @@ class _Cursor:
         return self.advance()
 
 
+def _is_unsigned_integer_number(value: str) -> bool:
+    """Return True iff `value` is the lexer's NUMBER form for an
+    unsigned positive integer (no sign, no decimal, no exponent).
+
+    Used by the dotted-path parsers to recognise numeric path segments
+    in token-refs (e.g. `{color.surface.21}` — real Figma Variables in
+    the Dank corpus use Material-3-style numeric tier names). Decimal
+    (`1.5`), exponent (`1e2`), and signed (`-1`) NUMBER tokens are NOT
+    valid path segments — those are real number literals and treating
+    them as path segments would create grammar ambiguity. The check is
+    conservative: digit-only.
+    """
+    return bool(value) and all(ch.isdigit() for ch in value)
+
+
 def _parse_dotted_path(c: _Cursor) -> str:
-    """Parse an IDENT ('.' IDENT)* path — for namespace, tokens keys."""
+    """Parse an IDENT ('.' IDENT|DIGITS)* path — for namespace, tokens keys.
+
+    Path segments after the leading IDENT may be unsigned-integer NUMBER
+    tokens (Material-3-style numeric tier names like `color.surface.21`).
+    See `_is_unsigned_integer_number` for the discipline.
+    """
     first = c.expect("IDENT", kind="KIND_BAD_PATH")
     parts = [first.value]
     while c.peek().type == "DOT":
         c.advance()
-        seg = c.expect("IDENT", kind="KIND_BAD_PATH")
-        parts.append(seg.value)
+        nxt = c.peek()
+        if nxt.type == "IDENT":
+            seg = c.advance()
+            parts.append(seg.value)
+        elif nxt.type == "NUMBER" and _is_unsigned_integer_number(nxt.value):
+            seg = c.advance()
+            parts.append(seg.value)
+        else:
+            raise DDMarkupParseError(
+                f"expected IDENT, got {nxt.type} `{nxt.value}`",
+                kind="KIND_BAD_PATH",
+                line=nxt.line, col=nxt.col,
+            )
     return ".".join(parts)
 
 
@@ -1064,12 +1095,26 @@ def _parse_brace_value(c: _Cursor) -> Value:
     # followed by `=` means PropGroup.
     first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
     if c.peek().type == "DOT" or c.peek().type == "RBRACE":
-        # TokenRef
+        # TokenRef. Path segments after the leading IDENT may be
+        # unsigned-integer NUMBER tokens (Material-3-style numeric tier
+        # names — real Figma Variables in the Dank corpus use these).
+        # See `_is_unsigned_integer_number` for the discipline.
         parts = [first.value]
         while c.peek().type == "DOT":
             c.advance()
-            seg = c.expect("IDENT", kind="KIND_BAD_PATH")
-            parts.append(seg.value)
+            nxt = c.peek()
+            if nxt.type == "IDENT":
+                seg = c.advance()
+                parts.append(seg.value)
+            elif nxt.type == "NUMBER" and _is_unsigned_integer_number(nxt.value):
+                seg = c.advance()
+                parts.append(seg.value)
+            else:
+                raise DDMarkupParseError(
+                    f"expected IDENT, got {nxt.type} `{nxt.value}`",
+                    kind="KIND_BAD_PATH",
+                    line=nxt.line, col=nxt.col,
+                )
         c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
         return TokenRef(path=".".join(parts))
     if c.peek().type == "EQ":

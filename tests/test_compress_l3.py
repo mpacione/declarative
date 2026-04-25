@@ -926,6 +926,109 @@ class TestMainAxisEnumNormalization:
 
 
 # ---------------------------------------------------------------------------
+# F3 regression — token-ref color in shadow effect with numeric path segment
+# ---------------------------------------------------------------------------
+
+
+def test_shadow_token_ref_color_with_numeric_path_round_trips() -> None:
+    """A drop-shadow effect whose `color` is a token-ref string with a
+    numeric terminal path segment (e.g. `{color.surface.21}`) must
+    round-trip through compress -> emit -> parse.
+
+    Real Figma Variables in the Dank corpus carry numeric tier names
+    (Material-3 style: `color.surface.21`, `space.4`, `opacity.10`). The
+    IR (`dd/ir.py:normalize_effects`) writes the token name verbatim
+    into `effect["color"]` as `"{color.surface.21}"`. The compressor
+    (`dd/compress_l3.py:_effects_to_shadow`) historically stuffed this
+    string into a `Literal_(lit_kind="hex-color", ...)`, producing
+    syntactically invalid markup that failed to parse back.
+
+    This was the root cause of 201/204 Tier-1 corpus failures (F3).
+    The fix has two parts:
+    - Compressor recognises brace-wrapped color strings as token refs,
+      not hex literals.
+    - Parser accepts unsigned-integer NUMBER tokens as path segments
+      after the leading IDENT.
+    """
+    from dd.compress_l3 import _effects_to_shadow
+    from dd.markup_l3 import (
+        FunctionCall, TokenRef, parse_l3, emit_l3,
+        L3Document, Node, NodeHead, PropAssign,
+    )
+
+    # Direct unit test — compressor input has a token-ref color string
+    effect = {
+        "type": "drop-shadow",
+        "color": "{color.surface.21}",
+        "offset": {"x": 0.0, "y": 4.0},
+        "blur": 0.0,
+        "spread": 0,
+    }
+    shadow = _effects_to_shadow([effect])
+    assert isinstance(shadow, FunctionCall)
+    assert shadow.name == "shadow"
+    color_arg = next(a for a in shadow.args if a.name == "color")
+    assert isinstance(color_arg.value, TokenRef), (
+        f"expected TokenRef, got {type(color_arg.value).__name__}"
+    )
+    assert color_arg.value.path == "color.surface.21"
+
+    # End-to-end round trip via emit_l3 / parse_l3 — wrap in a
+    # self-contained doc with a `tokens { }` preamble so the parser's
+    # `_check_unresolved_refs` semantic pass also passes.
+    from dd.markup_l3 import Literal_, TokenAssign
+    tokens_preamble = (
+        TokenAssign(
+            path="color.surface.21",
+            value=Literal_(
+                lit_kind="hex-color", raw="#0000000D", py="#0000000D",
+            ),
+        ),
+    )
+    doc = L3Document(
+        tokens=tokens_preamble,
+        top_level=(Node(head=NodeHead(
+            head_kind="type",
+            type_or_path="frame",
+            eid="f",
+            properties=(PropAssign(key="shadow", value=shadow),),
+        )),),
+    )
+    emitted = emit_l3(doc)
+    assert "color={color.surface.21}" in emitted
+    parsed = parse_l3(emitted)
+    assert parsed == doc
+
+
+def test_compressor_emits_tokens_preamble_for_referenced_paths(
+    db_conn: sqlite3.Connection,
+) -> None:
+    """The compressor walks the emitted Node tree, collects every
+    TokenRef path, looks each one up in the corpus DB, and emits a
+    `TokenAssign` per ref so the document is self-contained.
+
+    Screen 118 from the Dank corpus emits markup that references
+    `{color.border.5}` and `{color.border.6}` — paths with numeric
+    terminal segments matching real Figma Variables in the DB. After
+    compress, the L3Document should carry a `tokens` preamble entry
+    per reference so `parse_l3(emit_l3(doc))` succeeds the
+    `_check_unresolved_refs` semantic pass. F3 fix.
+    """
+    spec = generate_ir(
+        db_conn, 118, semantic=True, filter_chrome=False,
+    )["spec"]
+    doc = compress_to_l3(spec, db_conn, screen_id=118)
+    paths = {ta.path for ta in doc.tokens}
+    assert "color.border.5" in paths or "color.border.6" in paths, (
+        f"expected at least one numeric-segment token in preamble, "
+        f"got {sorted(paths)}"
+    )
+    # Round-trip parses without semantic error
+    emitted = emit_l3(doc)
+    parse_l3(emitted)
+
+
+# ---------------------------------------------------------------------------
 # Full-corpus Tier 1 sweep — the headline proof for Stage 1.3/1.4
 # ---------------------------------------------------------------------------
 

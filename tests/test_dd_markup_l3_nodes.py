@@ -171,6 +171,55 @@ class TestValueForms:
         assert isinstance(stmt.value, TokenRef)
         assert stmt.value.path == "color.surface.default"
 
+    def test_token_ref_with_trailing_numeric_segment(self) -> None:
+        """Token paths with numeric terminal segments must parse and
+        round-trip.
+
+        Real Figma Variables in the Dank corpus use Material-3-style
+        numeric tier names like `color.surface.21`, `space.4`,
+        `opacity.10`. The grammar's `DottedPath ::= IDENT ('.' IDENT)*`
+        historically forbade these, but real source-of-truth data
+        demands them. The parser now accepts unsigned-integer NUMBER
+        tokens as path segments after the leading IDENT; the path
+        string preserves the segment verbatim.
+
+        Wrapped in a self-contained `tokens { }` preamble so the
+        parser's `_check_unresolved_refs` semantic pass also passes —
+        this test exercises grammar shape, not Figma-Variable
+        resolution.
+        """
+        for path in ("color.surface.21", "space.4", "opacity.10",
+                     "color.border.primary.5"):
+            source = (
+                "tokens { " + path + " = #FF0000 }\n"
+                "screen #s { fill={" + path + "} }"
+            )
+            doc = parse_l3(source)
+            stmt = doc.top_level[0].block.statements[0]
+            assert isinstance(stmt.value, TokenRef), (
+                f"path={path!r}: expected TokenRef, got {type(stmt.value).__name__}"
+            )
+            assert stmt.value.path == path
+            assert any(ta.path == path for ta in doc.tokens), (
+                f"path={path!r}: not present in tokens preamble"
+            )
+            # Round-trip through emit
+            assert "{" + path + "}" in emit_l3(doc)
+
+    def test_token_ref_decimal_segment_still_rejected(self) -> None:
+        """Decimal/exponent NUMBER tokens are NOT valid path segments.
+
+        Only unsigned integer literals are accepted. Decimal segments
+        (`a.1.5`), exponent segments (`a.1e2`), and negative segments
+        (`a.-1`) remain syntax errors — they are not real Figma Variable
+        path shapes and accepting them would create parser ambiguity
+        with value-position number literals.
+        """
+        from dd.markup_l3 import DDMarkupParseError
+        for bad in ("a.1.5", "a.1e2"):
+            with pytest.raises(DDMarkupParseError):
+                parse_l3('screen #s { fill={' + bad + '} }')
+
     def test_enum_literal(self) -> None:
         doc = parse_l3('screen #s { layout=vertical align=center }')
         stmts = doc.top_level[0].block.statements
