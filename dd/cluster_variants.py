@@ -90,7 +90,12 @@ def _cluster_and_label(
     """Return labelled clusters for a catalog type.
 
     v0.1 shell: treats all instances as a single cluster and calls the
-    VLM once to label them. Per-feature k-means + silhouette lands
+    VLM once with an EMPTY images list (no real rendered thumbnails are
+    plumbed yet). The CLI-injected ``vlm_call`` returns early on empty
+    images, so the verdict is always ``unknown`` and the cluster is
+    persisted as ``custom_1`` with confidence=0 — pure schema padding
+    so ``ProjectCKRProvider`` can query the table without 404'ing.
+    Per-feature k-means + silhouette + real Gemini labelling lands
     alongside when real corpus coverage is wired up.
 
     Output shape per cluster dict:
