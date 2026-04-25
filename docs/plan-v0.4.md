@@ -1346,6 +1346,21 @@ assertion shape returns. The bridge must be healthy
 python3 -c "import socket; s = socket.create_connection(('localhost', 9228), timeout=0.5); print('bridge OK'); s.close()"
 ```
 
+If the bridge is NOT alive: the figma-console-mcp is
+spawned by Claude Desktop when that client is running with
+the patched MCP config. See
+`patches/figma-console-mcp-proxy-execute.patch` and
+`~/.claude/projects/-Users-mattpacione-declarative-build/memory/reference_figma_script_execution.md`.
+Quickest recovery: restart Claude Desktop, wait ~15s for
+the MCP to rebind. Bridge binds IPv6 `::1` (use
+`localhost`, not `127.0.0.1`). Port may be 9224 or 9228 —
+the recovery memo notes the canonical patched port is
+9228.
+
+```bash
+mkdir -p tests/.fixtures/mcp_probes
+```
+
 For each demo, write a probe script in
 `tests/.fixtures/mcp_probes/<demo>.js` that:
 - Resolves a known node
@@ -1366,11 +1381,11 @@ as Dank Experimental. Single page `Test/v0.4`. Seed with
 ~200 components covering all variant axes the demos use.
 
 This is multi-day work; allow 2-4 days. The Day-1 task is
-just to create the empty file + commit
-`tools/dd-test-fixture-create.py` skeleton with the
-documented seeding plan.
+just to create the empty file + commit a skeleton seeding
+script with the documented seeding plan.
 
 ```bash
+mkdir -p tools
 cat > tools/dd-test-fixture-create.py <<'EOF'
 """Seed Dank-Test-v0.4 with the components the demos
 depend on. Idempotent — running twice is safe.
@@ -2078,6 +2093,8 @@ between cutover-stable and demo-recording.
 
 ## 16. References
 
+### In-repo (relative to repo root)
+
 - `docs/plan-authoring-loop.md` — v0.3 plan (shipped)
 - `docs/rationale/README.md` — v0.3 rationale
 - `docs/demo-vision.md` — harness idea (post-v0.4)
@@ -2085,6 +2102,17 @@ between cutover-stable and demo-recording.
   changes in v0.4)
 - `LOOM_SCRIPT.md` — original 5-7 minute Loom plan
   (deferred to post-v0.4)
+- `ENTRYPOINT.md` — current project status snapshot
+- `patches/figma-console-mcp-proxy-execute.patch` — bridge
+  patch reference
+
+### User-global memory (NOT in this repo)
+
+The following feedback memos live in user memory, not the
+repo. A fresh Claude session inherits them automatically
+via the auto-memory system. Path:
+`~/.claude/projects/-Users-mattpacione-declarative-build/memory/`
+
 - `feedback_capability_gated_emission.md` — per-backend
   capability gate pattern
 - `feedback_boundary_contract.md` — SQL-only-in-loaders
@@ -2097,6 +2125,11 @@ between cutover-stable and demo-recording.
   out-of-scope justification
 - `feedback_dank_corpus_drift_25.md` — baseline-204 set
   derivation
+- `reference_figma_script_execution.md` — bridge protocol
+  + restart procedure
+
+If the auto-memory system doesn't surface a referenced
+memo, read it directly from the path above.
 
 ---
 
