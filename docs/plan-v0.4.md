@@ -1,6 +1,6 @@
 # v0.4 Plan — Design-System Compiler, Made Provable
 
-> **Status: v3 — COMPLETE AND AUTHORITATIVE as of
+> **Status: v3.1 — corpus-aligned demo anchors as of
 > 2026-04-25** (pin to the commit-hash that ships this
 > document; check `git log docs/plan-v0.4.md` and use the
 > tip commit-sha for subagent dispatch). This document is
@@ -10,11 +10,20 @@
 >
 > **History**: v1 (commit `eccdab5`) red-teamed by 5
 > critics; all returned REVISE. v2 (commit `596afc7`)
-> integrated all critical findings. v3 (this version)
+> integrated all critical findings. v3 (commit `cbfb5eb`)
 > added Phase-0 Day-1 runbook, gate metric commands,
 > enum-size bounds, cost authorization, interim demo
 > logistics — items Codex's final shippability review
-> flagged.
+> flagged. **v3.1** (this version) repointed §11 demos from
+> hand-picked screen IDs (333/217/091/412 against
+> hand-named tokens like `color.action.primary`) to
+> corpus-real anchors (333/333/118/243 against auto-named
+> tokens like `radius.12`, `color.border.tertiary`,
+> `color.border.primary`) after the 2026-04-25 W0.A audit
+> showed only 1/4 of the v3 IDs verified. §8.1 W0.A
+> runbook converted from "verify-pre-named-IDs" to
+> "discover-then-pick" with `dd cluster` as a pre-step.
+> §11.1 documents the deviations.
 >
 > **Conventions**: this plan references CLAUDE.md
 > conventions (TDD, test factories with `Partial[T]`
@@ -1284,55 +1293,77 @@ Read in this order:
 2. `ENTRYPOINT.md` — current project status snapshot
 3. `~/.claude/CLAUDE.md` — TDD + test conventions
 
-### Hour 2-3 — W0.A demo screen DB verification
+### Hour 2-3 — W0.A demo screen DB verification (DISCOVER-THEN-PICK)
 
-For each of the four demo screens (333, 217, 091, 412),
-verify the structural property the corresponding demo
-depends on. Output: `tests/.fixtures/demo_screen_audit.json`.
+**v3.1 update (2026-04-25)**: prior plan revisions cited four
+specific screen IDs (333, 217, 091, 412) and two
+hand-named tokens (`color.action.primary`,
+`color.feedback.success`). The 2026-04-25 audit found:
+
+- Only screen 333 matched the cited structural property.
+- 217 was a bare iPhone screen (no cart/total/banner shape).
+- 091 was an icon definition (`icon/pixel`, screen_type=icon_def).
+- 412 did not exist (max screen_id = 338).
+- The `tokens` table was EMPTY pre-cluster (no named tokens
+  in the corpus); 293K bindings were `unbound`.
+- Auto-clustering names tokens by role + lightness rank
+  (`color.surface.primary`, `color.border.tertiary` …) not
+  by intent (`color.action.primary` …). Hand-named "intent"
+  tokens are not produced by `dd cluster`.
+- Zero `chip` / `list_row` / `banner` / `destructive`
+  canonical_type instances exist anywhere in the corpus.
+
+**Conclusion**: the W0.A runbook is now **discover-then-pick**,
+not verify-pre-named-IDs. The plan author cannot pre-name
+screen IDs, token paths, or component paths against a
+specific Dank corpus without running the audit first; the
+corpus reality is the authority.
+
+**Pre-step**: run `dd cluster` then `dd accept-all` to
+populate the tokens table (auto-named role + lightness).
+Idempotent; reversible via the snapshot in
+`archive/db-snapshots/`.
 
 ```bash
-mkdir -p tests/.fixtures
+# Snapshot DB first (reversible)
+cp Dank-EXP-02.declarative.db \
+   archive/db-snapshots/Dank-EXP-02.declarative.pre-v0.4-cluster-$(date +%Y%m%d-%H%M%S).bak.db
 
-.venv/bin/python -c '
-import sqlite3, json
-DB = "Dank-EXP-02.declarative.db"
-conn = sqlite3.connect(DB)
-conn.row_factory = sqlite3.Row
-
-audits = {}
-
-# Demo A: Screen 333 - button/large/translucent INSTANCE
-# bound to color.action.primary with state variant
-audits["333"] = list(conn.execute("""
-    SELECT n.id, n.name, n.node_type, sci.canonical_type
-    FROM nodes n
-    LEFT JOIN screen_component_instances sci ON sci.node_id = n.id
-    WHERE n.screen_id = 333
-      AND (n.name LIKE "%button%translucent%"
-           OR sci.canonical_type LIKE "%button%")
-    LIMIT 20
-""").fetchall())
-
-# Demo B: Screen 217 - color.feedback.success token defined,
-# cart-totals row exists
-# Demo C: Screen 091 - chip-typed node in scope
-# Demo D: Screen 412 - list-row/destructive in CKR with
-# {size: lg, leading: icon, trailing: chevron} variants
-
-# (Run analogous queries; pin actual column shapes once
-# you've inspected the schema)
-
-with open("tests/.fixtures/demo_screen_audit.json", "w") as f:
-    json.dump({k: [dict(r) for r in v] for k, v in audits.items()},
-              f, indent=2)
-print("Audit complete:", audits.keys())
-'
+# Populate tokens (~5 seconds)
+.venv/bin/python -m dd cluster
+.venv/bin/python -m dd accept-all
+.venv/bin/python -m dd status   # confirm 300+ tokens, ~64% bound coverage
 ```
 
-**Success criterion**: each of 333/217/091/412 returns
-non-empty rows matching the demo's pre-flight assumption.
-**Failure criterion**: empty or wrong shape — REVISE §11
-demo before any code lands.
+**Discover-then-pick** queries: for each demo intent
+(DS-correct edit / token propagation / adversarial verifier
+/ compose with real components), find the best-fit
+candidate from corpus reality. Output:
+`tests/.fixtures/demo_screen_audit.json` (final,
+post-cluster, with the four selected anchors and the
+verified tokens / components on each).
+
+The 2026-04-25 audit produced these picks; subsequent
+re-runs of W0.A may re-derive different anchors if the
+corpus changes:
+
+| Demo | Intent | Screen | Anchor node | Component / token |
+|---|---|---|---|---|
+| **A** | DS-correct edit | 333 (`iPad Pro 11" - 43`) | 82169 (`button/large/translucent` INSTANCE) | CKR `689e60bd…`; `cornerRadius=radius.11`, `padding=space.13` |
+| **B** | Token propagation | 333 | (any node bound to `color.border.tertiary`) | `color.border.tertiary` = `#047AFF`, used 2920× corpus-wide, 21× on screen 333 |
+| **C** | Adversarial verifier | 118 (`iPad Pro 12.9" - 7`) | 798 (`Battery Icon`, GROUP, 26.5×12) | bait literal `#FFFFFF` → nearest token `color.border.primary` (`#FFFFFF`, ΔE=0) |
+| **D** | Compose with real components | 243 (`iPad Pro 12.9" - 40`) | 40717 (`button/toolbar` FRAME, VERTICAL auto-layout, 7 button children) | append `button/small/translucent` INSTANCE (CKR `74a7396e…`); variant axis `size: small`, `style: translucent` |
+
+The audit JSON `tests/.fixtures/demo_screen_audit.json` is
+the canonical record of these anchors and the queries used
+to derive them. §11 below references the audit JSON for
+exact node IDs and proposed briefs.
+
+**Success criterion**: each of the four demos has a
+verified anchor in the audit JSON with verdict `PASS`.
+**Failure criterion**: any verdict is `FAIL` or anchor data
+is missing — re-run discover-then-pick or escalate to plan
+author.
 
 ### Hour 3-5 — W0.B MCP-verify queryability probe
 
@@ -1775,7 +1806,12 @@ v2 defines:
   zero — not absolute count.
 
 ### Phase 0 gate
-- All 4 demo screens DB-verified
+- W0.A discover-then-pick complete:
+  `tests/.fixtures/demo_screen_audit.json` shows verdict
+  `PASS` for all four demo intents (post-cluster, with
+  real anchors)
+- `dd cluster` + `dd accept-all` run; `tokens` table
+  populated (≥300 tokens, ≥60% binding coverage)
 - All 4 MCP-verify commands probe-tested
 - `Dank-Test-v0.4` file exists, versioned, with setup script
 - Baseline-179 snapshot committed
@@ -1856,12 +1892,20 @@ next to it."
 **Objection**: "How do I know your output isn't a hex-coded
 knockoff that looks like our DS?"
 
-**Brief**: `"Increase the radius on the primary CTA in the
-Profile screen to 12 and fix its tap state."`
+**Brief**: `"Increase the radius on the primary CTA in this
+screen to 12."`
 
-**Pre-flight verified in W0.A**: Screen 333 has a
-`button/large/translucent` INSTANCE bound to
-`color.action.primary` with a tap-state variant.
+**Pre-flight verified in W0.A**: Screen 333 (`iPad Pro 11" - 43`)
+has 26 INSTANCEs of `button/large/translucent` (CKR
+`689e60bd3db9ef304a9304eb585566a888a18237`, 3891 corpus-wide
+instances). Anchor node 82169. Currently bound to
+`cornerRadius=radius.11` (=10), `padding=space.13` (=14),
+`itemSpacing=space.10` (=10). Token `radius.12` exists with
+value 12 — exact match for "set radius to 12". Variant axes
+in the corpus: `size`, `style` (no per-instance `state`
+axis recorded, so the original v3 plan's
+`variant.state=pressed` step is dropped — see "deviations"
+in §11.1 below).
 
 **Failure budget**: if agent picks `replace` instead of
 `set`, recording shifts to a pre-recorded golden run.
@@ -1869,33 +1913,35 @@ Documented in `demos/RECORDING_NOTES.md`.
 
 **Agent verbs**:
 ```
-emit_drill(@profile-cta) →
-emit_set_edit(@profile-cta, {radius: 12}) →
-emit_set_edit(@profile-cta, {variant.state: "pressed"}) →
+emit_drill(@btn-82169) →
+emit_set_edit(@btn-82169, {cornerRadius: token_ref("radius.12")}) →
 emit_done
 ```
 
-**Canvas**: same INSTANCE node id, `instance.componentId`
-unchanged, `cornerRadius=12`, variant axis `state=pressed`,
-fill still bound to `color.action.primary`. No detached
+**Canvas**: same INSTANCE node id (82169),
+`instance.componentId` = `689e60bd…` unchanged,
+`cornerRadius` rebound to `radius.12` (=12), padding /
+itemSpacing tokens preserved across the edit, no detached
 frame.
 
 **Panel via `dd design log --panel`**:
 ```
-cornerRadius ← (literal 12) ✓ within token scale
-fill ← color.action.primary
-typography ← typography.button
-componentKey: 8a2f… (unchanged)
-variant.state: default → pressed
+cornerRadius     ← radius.12 (=12)
+padding.left     ← space.13  (=14, unchanged)
+padding.right    ← space.13  (=14, unchanged)
+itemSpacing      ← space.10  (=10, unchanged)
+componentKey:      689e60bd… (unchanged)
 ```
 
-**Why prompt+MCP can't**: Figma MCP `set_node` accepts hex;
-nothing forces variant-axis routing or refuses to detach.
-Our verifier rejects detach + KIND_PATH_UNRESOLVED gates
-the variant swap.
+**Why prompt+MCP can't**: Figma MCP `set_node` accepts a
+literal `cornerRadius=12`; nothing forces token-ref
+selection (`radius.12`) over the literal, nothing prevents
+detach. Our verifier insists on the token reference when
+one exists at ΔE/Δlength=0.
 
 **Kill-shot**: bottom-right of panel shows `componentKey:
-8a2f…` unchanged before and after.
+689e60bd…` unchanged before and after, with all four
+spatial-token bindings intact.
 
 **Wall-clock unedited**: ~60s. **Edited**: ~30s.
 
@@ -1907,10 +1953,23 @@ No re-prompt."
 **Objection**: "Couldn't an LLM just spit out the right hex
 once?"
 
-**Brief**: `"Add a success banner above the cart total."`
+**Brief**: `"Add a divider line below the primary content
+area, using this screen's accent color."`
 
-**Pre-flight verified in W0.A**: Screen 217 has
-`color.feedback.success` defined.
+**Pre-flight verified in W0.A**: Demo runs on screen 333
+(same as Demo A — real iPad app screen). High-fan-out
+accent token: `color.border.tertiary` (`#047AFF`, 2920
+corpus uses, 21 uses on screen 333). Mutating this token
+in Figma Variables visibly re-paints all 21 bindings on
+this screen, plus thousands corpus-wide.
+
+(The 2026-04-25 audit also flagged `color.border.4`
+(`#000000`, 33,026 corpus uses, 154 on screen 333) as the
+absolute fan-out winner. We pick `color.border.tertiary`
+instead because (a) the brief is more visually obvious
+when an accent color flips than when black-borders flip,
+and (b) `#047AFF` is a recognizable accent that maps
+cleanly onto a propagation story.)
 
 **Failure budget**: token mutation propagation requires the
 binding to be live in Figma at render-time, not deferred.
@@ -1919,19 +1978,21 @@ recorded version.
 
 **Agent verbs**:
 ```
-emit_append(@cart-totals-row, banner_template) →
-emit_set_edit(@new-banner, {fill: token_ref("color.feedback.success"), text_style: token_ref("typography.body.emphasized")}) →
+emit_append(@area, divider_frame_template) →
+emit_set_edit(@new-divider, {strokes: [{color: token_ref("color.border.tertiary"), weight: 1}]}) →
 emit_done
 ```
 
-**Canvas**: banner renders green-bound. Operator opens
-Figma Variables, edits `color.feedback.success` from
-`#1F8A3B` → `#0E5C26`. Agent panel re-resolves; canvas
-re-paints darker green with no agent call.
+**Canvas**: divider renders blue-bound. Operator opens
+Figma Variables, edits `color.border.tertiary` from
+`#047AFF` → (e.g.) `#00CC66`. Agent panel re-resolves; the
+new divider AND the 21 other bindings on this screen all
+re-paint green with no agent call.
 
-**Panel**: `fill ← color.feedback.success → resolved
-#1F8A3B` then live-updates to `→ resolved #0E5C26` after
-the variable edit.
+**Panel**: `stroke.0.color ← color.border.tertiary →
+resolved #047AFF` then live-updates to `→ resolved
+#00CC66` after the variable edit. Surrounding nodes' bound
+colors update in lockstep.
 
 **Why prompt+MCP can't**: existing tools emit literals.
 There is no Bound[T] leaf; nothing for a token mutation to
@@ -1939,7 +2000,9 @@ propagate through.
 
 **Kill-shot**: Figma Variables panel and our agent panel
 visible side-by-side; operator changes the swatch and
-within one frame both update. No CLI call.
+within one frame both update. No CLI call. The
+"propagation" is real because 21 *other* nodes on screen
+also flip color.
 
 **Wall-clock unedited**: ~75s. **Edited**: ~37s.
 
@@ -1948,15 +2011,20 @@ within one frame both update. No CLI call.
 **Title**: "An LLM constrained by a type system."
 
 **Objection**: "Agents hallucinate. Won't yours emit
-`#1F8A3B` and call it a day?"
+`#FFFFFF` and call it a day?"
 
-**Brief**: `"Match the success-state color used elsewhere in
-the app for this confirmation chip."` (Vague to bait a
-literal.)
+**Brief**: `"Match the white status-icon color used
+elsewhere in this app for the Battery Icon."` (Vague to
+bait a literal.)
 
-**Pre-flight verified in W0.A**: Screen 091 has a chip-
-typed node + `color.feedback.success` token within
-ΔE=5 of the brief's intent.
+**Pre-flight verified in W0.A**: Screen 118 (`iPad Pro
+12.9" - 7`) has node 798 (`Battery Icon`, GROUP, 26.5×12).
+Token `color.border.primary` exists with hex `#FFFFFF`
+(7758 corpus uses). The bait literal `#FFFFFF` matches
+this token at ΔE=0; verifier rejects the literal and
+suggests the token. Note: the corpus has zero `chip`
+canonical_type instances, so this demo uses a small
+isolated icon-shape (functionally equivalent).
 
 **Failure budget**: if first-attempt emits the token
 directly (no rejection), recording uses pre-recorded
@@ -1964,21 +2032,22 @@ version where rejection fires.
 
 **Agent verbs**:
 ```
-emit_set_edit(@chip, {fill: "#1F8A3C"}) →
-[verifier rejects: KIND_TOKEN_DROP, nearest=color.feedback.success ΔE=0.4] →
-emit_set_edit(@chip, {fill: token_ref("color.feedback.success")}) →
+emit_set_edit(@battery-798, {fill: "#FFFFFF"}) →
+[verifier rejects: KIND_BINDING_REQUIRED_LITERAL,
+ nearest=color.border.primary ΔE=0] →
+emit_set_edit(@battery-798, {fill: token_ref("color.border.primary")}) →
 emit_done
 ```
 
-**Canvas**: chip ends green, bound. Transcript shows
-rejected first attempt, verifier message including
+**Canvas**: Battery Icon ends white, bound. Transcript
+shows rejected first attempt, verifier message including
 nearest-token suggestion, retried attempt.
 
 **Panel**:
 ```
-attempt 1: fill ← #1F8A3C ✗ KIND_TOKEN_DROP
-                     (nearest: color.feedback.success ΔE=0.4)
-attempt 2: fill ← color.feedback.success ✓
+attempt 1: fill ← #FFFFFF ✗ KIND_BINDING_REQUIRED_LITERAL
+                     (nearest: color.border.primary ΔE=0)
+attempt 2: fill ← color.border.primary ✓
 ```
 
 **Why prompt+MCP can't**: no adversarial verifier; the
@@ -1996,11 +2065,22 @@ from one sentence."
 
 **Objection**: "Sure you can edit. Can you compose?"
 
-**Brief**: `"Add a destructive 'Delete account' row to the
-bottom of Settings."`
+**Brief**: `"Add a small translucent button to the toolbar
+on the right side of the screen."`
 
-**Pre-flight verified in W0.A**: Screen 412 library has
-`list-row/destructive` with the cited variant axes.
+**Pre-flight verified in W0.A**: Screen 243 (`iPad Pro
+12.9" - 40`) has container node 40717 (`button/toolbar`
+FRAME, VERTICAL auto-layout, currently 7 INSTANCE
+children). Component to append:
+`button/small/translucent` (CKR
+`74a7396ef95439c83d69e125077ecd6afcde1fb4`, 2604 corpus
+instances). Variant axes recorded in `component_variants`:
+`size`, `style` (no `leading`/`trailing` slot axes
+captured in this corpus, so the original v3 plan's
+`leading: "icon", trailing: "chevron"` axes are dropped —
+see "deviations" in §11.1 below). Screen 243 already
+holds 12 INSTANCEs of `button/small/translucent`,
+confirming the size-axis sibling is import-resolvable.
 
 **Failure budget**: if `importComponentByKeyAsync` fails
 or variant axis selection is wrong, recording shifts to
@@ -2008,44 +2088,73 @@ pre-recorded version.
 
 **Agent verbs**:
 ```
-emit_drill(@settings-list) →
-emit_append(list_row_instance, {
-  component_key: resolved_from_path("list-row/destructive"),
-  variant: {size: "lg", leading: "icon", trailing: "chevron"},
-  slots: {label: "Delete account", icon: icon.trash}
+emit_drill(@toolbar-40717) →
+emit_append(@toolbar-40717, {
+  component_key: resolved_from_path("button/small/translucent"),
+  variant: {size: "small", style: "translucent"}
 }) →
 emit_done
 ```
 
-**Canvas**: real INSTANCE node, axes correctly selected,
-label slot filled, icon slot bound to `icon.trash`, fill
-bound to `color.action.destructive`.
+**Canvas**: real INSTANCE node, sized at the small variant
+dimensions, appended as the 8th child of the VERTICAL
+auto-layout toolbar. `componentKey` matches CKR
+`74a7396e…`; auto-layout handles position automatically.
+All cornerRadius / padding / itemSpacing tokens propagate
+from the master.
 
 **Panel**:
 ```
-componentKey: list-row/destructive (3c91…)
-variant.size: lg
-variant.leading: icon
-variant.trailing: chevron
-slot.label: "Delete account"
-slot.icon ← icon.trash
-fill ← color.action.destructive
+componentKey: button/small/translucent (74a7396e…)
+variant.size: small
+variant.style: translucent
+parent: @toolbar-40717 (auto-layout VERTICAL, 8 children)
 ```
 
 **Why prompt+MCP can't**: requires path→component_key
-resolver + slot-fill grammar + variant axis catalog.
+resolver + variant axis catalog. Figma MCP can't import a
+component by name; needs the resolved key.
 
 **Kill-shot**: variant-axis chips in the panel light up
-matching the rendered row.
+matching the rendered INSTANCE; the toolbar grows from 7
+to 8 buttons in one verb.
 
 **Wall-clock unedited**: ~110s. **Edited**: ~55s.
+
+### 11.1 Deviations from prior plan revisions
+
+This section documents what changed between plan-v3
+(commit `cbfb5eb`) and plan-v3.1 (this revision)
+regarding §11 demos. The 2026-04-25 W0.A audit forced the
+following:
+
+| Plan-v3 reference | Plan-v3.1 reality | Reason |
+|---|---|---|
+| Demo A: screen 333 button bound to `color.action.primary`, tap-state variant | Screen 333 button INSTANCE bound to `radius.11`, `space.13`, `space.10` (real auto-named tokens); no `state` variant axis in corpus | Tokens table was empty pre-cluster; auto-cluster names by role + lightness; `state` axis not captured in `component_variants` for translucent buttons |
+| Demo B: screen 217 cart-totals + `color.feedback.success` | Screen 333, divider with `color.border.tertiary` accent | Screen 217 is bare iPhone, no cart shape; no `feedback.success` token in auto-named namespace. Real fan-out propagation token is `color.border.tertiary` |
+| Demo C: screen 091 chip + `color.feedback.success` | Screen 118 Battery Icon (GROUP) + `color.border.primary` (=`#FFFFFF`) | Screen 091 is icon_def, not an app screen; zero `chip` canonical_type instances anywhere in corpus; corpus has no green/success-named token. Battery Icon is a structurally analogous small-isolated-element substitute |
+| Demo D: screen 412 list-row/destructive with size/leading/trailing axes | Screen 243 toolbar (40717) + `button/small/translucent` with size/style axes | Screen 412 doesn't exist (max id 338); zero `list_row` canonical_type instances; `list-row/destructive` not in CKR; no `destructive` component anywhere; corpus only captures `size`/`style` axes for buttons |
+
+**The four demo intents are preserved.** A still proves
+DS-correct edit; B still proves token-mutation
+propagation; C still proves adversarial verifier
+self-correction; D still proves compose-with-real-CKR.
+The anchors are corpus-real instead of plan-author-guessed,
+which is what W0.A is for.
+
+**Token authoring is anti-scope (§13).** v0.4 will not
+hand-author "intent" tokens (`color.action.primary`,
+`color.feedback.success`) to match the original demo
+narrative. If demo recording feedback later argues for
+intent-named tokens, that's a v0.5 token-authoring
+workstream, not v0.4 scope.
 
 ### Execution checklist (for v0.4 close)
 
 | | A | B | C | D |
 |---|---|---|---|---|
-| **Pre-flight** | Dank-EXP-02 open on screen 333; clean session DB; bridge healthy | Screen 217 open; Variables panel docked; clean session | Screen 091 open; verifier in `strict` mode; clean session | Screen 412 open; library `list-row/destructive` indexed |
-| **CLI** | `dd design --brief @briefs/A.txt --screen 333 --record demos/A.cast` | `dd design --brief @briefs/B.txt --screen 217 --record demos/B.cast` | `dd design --brief @briefs/C.txt --screen 091 --verifier strict --record demos/C.cast` | `dd design --brief @briefs/D.txt --screen 412 --record demos/D.cast` |
+| **Pre-flight** | Dank-EXP-02 open on screen 333; clean session DB; bridge healthy | Dank-EXP-02 open on screen 333; Variables panel docked; clean session | Dank-EXP-02 open on screen 118; verifier in `strict` mode; clean session | Dank-EXP-02 open on screen 243; library `button/small/translucent` indexed |
+| **CLI** | `dd design --brief @briefs/A.txt --screen 333 --record demos/A.cast` | `dd design --brief @briefs/B.txt --screen 333 --record demos/B.cast` | `dd design --brief @briefs/C.txt --screen 118 --verifier strict --record demos/C.cast` | `dd design --brief @briefs/D.txt --screen 243 --record demos/D.cast` |
 | **MCP-verify** | Probe-tested in W0.B | Probe-tested in W0.B | Probe-tested in W0.B | Probe-tested in W0.B |
 | **Recording** | Edited; raw in `demos/raw/A.mov` | Edited; raw in `demos/raw/B.mov` | Edited; raw in `demos/raw/C.mov` | Edited; raw in `demos/raw/D.mov` |
 

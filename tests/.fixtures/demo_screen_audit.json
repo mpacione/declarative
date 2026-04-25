@@ -1,0 +1,190 @@
+{
+  "_meta": {
+    "audit_version": "v2",
+    "audit_date": "2026-04-25",
+    "plan_commit_at_audit": "cbfb5eb",
+    "db_path": "Dank-EXP-02.declarative.db",
+    "db_size_bytes": 258719744,
+    "db_provenance": {
+      "file_key": "drxXOUOdYEBBQ09mrXJeYu",
+      "name": "Dank (Experimental)",
+      "extracted_at": "2026-04-16T19:18:03Z",
+      "screen_count": 338,
+      "max_screen_id": 338
+    },
+    "tokens_pre_cluster": 0,
+    "tokens_post_cluster": 327,
+    "node_token_bindings_total": 293183,
+    "node_token_bindings_bound": 188207,
+    "cluster_run": "2026-04-25T00:58 (dd cluster + dd accept-all)",
+    "db_snapshot_pre_cluster": "archive/db-snapshots/Dank-EXP-02.declarative.pre-v0.4-cluster-20260425-005855.bak.db",
+    "audit_finding_summary": "Plan \u00a711 cited 4 demo screens (333/217/091/412) by ID. Audit found only 333 matches its description. 217/091/412 fail (217 is bare iPhone, 091 is icon_def, 412 doesn't exist). Plan also assumed semantic token names like color.action.primary; corpus had EMPTY tokens table pre-cluster and auto-clustering produces role+lightness names like color.surface.primary / color.border.tertiary. Plan \u00a711 needs revision against corpus reality. This audit selects 4 screens that match each demo INTENT using shapes that actually exist."
+  },
+  "rejected_picks_from_plan_v3": {
+    "screen_217": "FAIL \u2014 bare 'iPhone 13 Pro Max - 82'; no cart/total/banner/success matches in node names or text content.",
+    "screen_091": "FAIL \u2014 screen_type='icon_def', name='icon/pixel', 20x20 (an icon definition, not an app screen).",
+    "screen_412": "FAIL \u2014 does not exist (max screen id = 338).",
+    "color.action.primary_token": "DOES NOT EXIST as a named token. Cluster auto-names tokens by role+lightness; closest match is color.surface.* / color.border.tertiary (#047AFF \u2248 iOS system blue).",
+    "color.feedback.success_token": "DOES NOT EXIST. No 'feedback' or 'success' or green-by-name token in the auto-clustered namespace.",
+    "list-row/destructive_component": "DOES NOT EXIST in component_key_registry. No 'list_row' canonical_type instances anywhere in corpus (only list_item, n=179).",
+    "chip_canonical_type": "ZERO instances corpus-wide. Plan's Demo C 'chip' shape cannot be sourced from this DB.",
+    "implication": "Demo intents (DS-correct edit / token propagation / adversarial verifier / compose with real components) are still achievable, but with different anchor shapes than the plan author hand-picked. Picks below."
+  },
+  "demo_a_ds_correct_edit": {
+    "intent": "Agent edits inside the design system, not next to it.",
+    "screen": {
+      "id": 333,
+      "name": "iPad Pro 11\" - 43",
+      "width": 834.0,
+      "height": 1194.0,
+      "device_class": "ipad_11",
+      "screen_type": "app_screen"
+    },
+    "target_node": {
+      "id": 82169,
+      "name": "button/large/translucent",
+      "node_type": "INSTANCE",
+      "component_key": "689e60bd3db9ef304a9304eb585566a888a18237",
+      "ckr_corpus_instance_count": 3891
+    },
+    "bound_tokens_on_target": [
+      {
+        "property": "cornerRadius",
+        "token": "radius.11",
+        "value": "10"
+      },
+      {
+        "property": "itemSpacing",
+        "token": "space.10",
+        "value": "10"
+      },
+      {
+        "property": "padding.left",
+        "token": "space.13",
+        "value": "14"
+      },
+      {
+        "property": "padding.right",
+        "token": "space.13",
+        "value": "14"
+      }
+    ],
+    "demo_brief_proposed": "Increase the radius on the primary CTA in this screen to 12.",
+    "expected_agent_output": "emit_set_edit(@btn, {cornerRadius: token_ref('radius.12')}) \u2014 radius.12 token exists with value 12, exact match.",
+    "kill_shot": "Panel shows componentKey 689e60bd... unchanged; cornerRadius bound to radius.12; padding/spacing tokens preserved across edit.",
+    "verdict": "PASS"
+  },
+  "demo_b_token_propagation": {
+    "intent": "Change the token, the agent's output changes. No re-prompt.",
+    "screen": {
+      "id": 333,
+      "name": "iPad Pro 11\" - 43",
+      "width": 834.0,
+      "height": 1194.0,
+      "device_class": "ipad_11",
+      "screen_type": "app_screen"
+    },
+    "screen_choice_rationale": "Stay on screen 333 (real iPad app screen) for visual coherence. Subagent suggested screen 334 (3881x2622 'Frame 429') for max binding density (1039 nodes), but 334 is a design canvas not an app_screen \u2014 would undermine demo credibility.",
+    "high_fanout_token_for_propagation": {
+      "name": "color.border.4",
+      "resolved_value": "#000000",
+      "corpus_usage": 33026,
+      "screen_333_usage": 154
+    },
+    "alternate_token_options": [
+      {
+        "name": "color.border.tertiary",
+        "value": "#047AFF",
+        "screen_333_usage": 21,
+        "note": "iOS system blue accent \u2014 would be a cleaner accent demo than black"
+      },
+      {
+        "name": "color.surface.54",
+        "value": "#09090B",
+        "screen_333_usage": 28,
+        "note": "near-black surface accent"
+      }
+    ],
+    "demo_brief_proposed": "Add a divider line below the primary content area, using the screen's primary border color.",
+    "expected_agent_output": "emit_append(@area, divider_frame_with_stroke_bound_to_color.border.tertiary). Operator opens Figma Variables, edits color.border.tertiary from #047AFF to (e.g.) #00CC66. Divider repaints + the 21 other bindings on this screen also flip color.",
+    "kill_shot": "Figma Variables panel and agent panel side-by-side; operator changes swatch and within one frame both update with no CLI call.",
+    "verdict": "PASS"
+  },
+  "demo_c_adversarial_verifier": {
+    "intent": "An LLM constrained by a type system. Agent emits a literal close to a real token; verifier rejects + suggests the token.",
+    "screen": {
+      "id": 118,
+      "name": "iPad Pro 12.9\" - 7",
+      "width": 1536.0,
+      "height": 1152.0,
+      "device_class": "ipad_13",
+      "screen_type": "app_screen"
+    },
+    "target_node": {
+      "id": 798,
+      "name": "Battery Icon",
+      "node_type": "GROUP",
+      "screen_id": 118,
+      "current_fill_visible": false,
+      "current_fill_color": "#FFFFFF (visible=false)"
+    },
+    "demo_brief_proposed": "Match the white status-icon color used elsewhere in the app for this Battery Icon.",
+    "expected_first_attempt": "agent emits {fill: #FFFFFF} (literal hex)",
+    "verifier_response": "KIND_BINDING_REQUIRED_LITERAL \u2014 nearest token color.border.primary (#FFFFFF, \u0394E=0)",
+    "expected_second_attempt": "emit_set_edit(@battery, {fill: token_ref('color.border.primary')}) \u2014 succeeds",
+    "kill_shot": "Visible verifier rejection line in the transcript next to the corrected canvas.",
+    "verdict": "PASS"
+  },
+  "demo_d_compose_with_real_components": {
+    "intent": "New instance, right variant axis, slots filled \u2014 from one sentence.",
+    "screen": {
+      "id": 243,
+      "name": "iPad Pro 12.9\" - 40",
+      "width": 1536.0,
+      "height": 1152.0,
+      "device_class": "ipad_13",
+      "screen_type": "app_screen"
+    },
+    "target_container": {
+      "id": 40717,
+      "name": "button/toolbar",
+      "node_type": "FRAME",
+      "layout_mode": "VERTICAL",
+      "current_instance_children": 7,
+      "rationale": "VERTICAL auto-layout container already holding 7 button INSTANCEs. Appending an 8th INSTANCE with the size-axis variant flipped is a realistic composition operation."
+    },
+    "screen_button_inventory": [
+      {
+        "name": "button/large/translucent",
+        "count": 24
+      },
+      {
+        "name": "button/small/translucent",
+        "count": 12
+      },
+      {
+        "name": "button/small/solid",
+        "count": 4
+      }
+    ],
+    "component_to_append": {
+      "name": "button/small/translucent",
+      "component_key": "74a7396ef95439c83d69e125077ecd6afcde1fb4",
+      "ckr_corpus_instance_count": 2604
+    },
+    "variant_axis_selection": {
+      "size": "small",
+      "style": "translucent",
+      "note": "These are the actual variant properties recorded in component_variants for this component family. Plan v3 cited {size:lg, leading:icon, trailing:chevron} \u2014 those slot/leading axes are NOT modeled in this corpus. We use the concrete corpus axes."
+    },
+    "demo_brief_proposed": "Add a small translucent button to the toolbar at the right side of the screen.",
+    "kill_shot": "Variant chips in the panel light up matching the rendered INSTANCE; componentKey 74a7396e... matches CKR.",
+    "verdict": "PASS"
+  },
+  "global_constraints": {
+    "no_chip_in_corpus": "Demo C as plan-v3 wrote it (chip-typed node) cannot run. Battery Icon is a structurally analogous small-isolated-element substitute.",
+    "no_destructive_component": "Demo D as plan-v3 wrote it (list-row/destructive) cannot run. button/small/translucent is a structurally analogous small-button-with-variant-axis substitute.",
+    "no_semantic_screen_names": "All 204 app_screens are bare device labels. Demos must reference IDs, not names.",
+    "tokens_are_role_indexed": "Auto-cluster names tokens color.<role>.<lightness-rank> not color.<intent>.<state>. Demo briefs must use role-named tokens (color.border.primary etc.) not intent-named (color.action.primary etc.)."
+  }
+}
