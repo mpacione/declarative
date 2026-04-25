@@ -277,6 +277,299 @@ class TestDesignScore:
 
 
 # --------------------------------------------------------------------------- #
+# `dd design log <session-id>` — human-readable move_log replay               #
+# --------------------------------------------------------------------------- #
+
+class TestDesignLog:
+    """`dd design log <session-id>` prints every move_log entry in
+    order — brief, created-at, status, then one block per entry with
+    iter number (EDIT only), primitive name, payload detail, and
+    rationale. Surfaces the agent's reasoning trail without raw SQL.
+
+    The move_log row shape is the ``MoveLogEntry.to_dict()`` dict
+    verbatim (commit fd5c5c5): ``primitive`` / ``scope_eid`` /
+    ``payload`` / ``rationale`` / ``ts``. Primitive values observed
+    in the wild: EDIT, NAME, DRILL, CLIMB, DONE, REBRIEF.
+
+    Risk-guards per task brief:
+    - Tolerant parsing: missing fields → ``<missing>`` placeholders,
+      never a crash.
+    - Pagination: ``--limit N`` (default 50), ``--all`` to disable.
+    - Golden test: a pinned fixture renders to a known-shape output.
+    """
+
+    def _seed_session(
+        self, tmp_db_path, brief="Add a sign-out button", entries=None,
+    ) -> str:
+        """Insert a session + a list of MoveLogEntry-shaped dicts."""
+        from dd.db import get_connection
+        from dd.focus import MoveLogEntry
+        from dd.sessions import append_move_log_entry, create_session
+
+        conn = get_connection(tmp_db_path)
+        try:
+            sid = create_session(conn, brief=brief)
+            for e in entries or []:
+                append_move_log_entry(
+                    conn, session_id=sid, variant_id=e.get("variant_id"),
+                    entry=MoveLogEntry(
+                        primitive=e["primitive"],
+                        scope_eid=e.get("scope_eid"),
+                        payload=e.get("payload") or {},
+                        rationale=e.get("rationale"),
+                    ),
+                )
+        finally:
+            conn.close()
+        return sid
+
+    def test_log_prints_session_brief_and_status(
+        self, tmp_db_path, capsys,
+    ):
+        sid = self._seed_session(
+            tmp_db_path,
+            brief="Add a sign-out button at the top-right of the toolbar",
+            entries=[{
+                "primitive": "EDIT",
+                "payload": {
+                    "edit_source": "set @button x=10",
+                    "tool_name": "edit_verb",
+                },
+                "rationale": "moved it",
+            }],
+        )
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        assert sid in out
+        assert (
+            "Add a sign-out button at the top-right of the toolbar" in out
+        )
+        # Status from the session row.
+        assert "open" in out.lower()
+
+    def test_log_prints_each_move_with_iter_number(
+        self, tmp_db_path, capsys,
+    ):
+        """EDIT entries are numbered; non-EDIT (DONE / REBRIEF /
+        NAME / DRILL / CLIMB) are not."""
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a x=1",
+                         "tool_name": "edit_verb"},
+             "rationale": "first move"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a y=2",
+                         "tool_name": "edit_verb"},
+             "rationale": "second move"},
+            {"primitive": "REBRIEF",
+             "payload": {"new_brief": "now blue",
+                         "previous_variant": "01KQX"},
+             "rationale": "user provided a new brief mid-session"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a fill=\"#00f\"",
+                         "tool_name": "edit_verb"},
+             "rationale": "third move"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "all set"},
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # EDIT counter re-uses iter numbers 1..3; REBRIEF + DONE have no iter.
+        assert "iter 1" in out
+        assert "iter 2" in out
+        assert "iter 3" in out
+        assert "iter 4" not in out  # REBRIEF isn't an iter; DONE isn't.
+        assert "EDIT" in out
+        assert "REBRIEF" in out
+        assert "DONE" in out
+        assert "first move" in out
+        assert "second move" in out
+        assert "third move" in out
+        # Edit source text surfaces to the user.
+        assert "set @a x=1" in out
+
+    def test_log_truncates_when_limit_reached(
+        self, tmp_db_path, capsys,
+    ):
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": f"set @n-{i} x={i}",
+                         "tool_name": "edit_verb"},
+             "rationale": f"edit number {i}"}
+            for i in range(1, 11)  # 10 entries
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path,
+            "--limit", "3",
+        ])
+        out = capsys.readouterr().out
+        # First 3 rendered.
+        assert "edit number 1" in out
+        assert "edit number 2" in out
+        assert "edit number 3" in out
+        # Remaining 7 NOT rendered.
+        assert "edit number 4" not in out
+        assert "edit number 10" not in out
+        # Truncation notice tells the user how many were hidden.
+        assert "7 more" in out
+        assert "--limit" in out or "--all" in out
+
+    def test_log_all_flag_disables_truncation(self, tmp_db_path, capsys):
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": f"set @n-{i} x={i}",
+                         "tool_name": "edit_verb"},
+             "rationale": f"edit number {i}"}
+            for i in range(1, 11)
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path,
+            "--all",
+        ])
+        out = capsys.readouterr().out
+        assert "edit number 1" in out
+        assert "edit number 10" in out
+        assert "more" not in out.lower() or "7 more" not in out
+
+    def test_log_handles_missing_fields_gracefully(
+        self, tmp_db_path, capsys,
+    ):
+        """Malformed / schema-drift payloads must not crash. Each
+        missing field renders as ``<missing>`` so the operator sees
+        *something* instead of a traceback."""
+        import json
+        from dd.db import get_connection
+        from dd.sessions import create_session
+
+        conn = get_connection(tmp_db_path)
+        try:
+            sid = create_session(conn, brief="tolerant")
+            # Hand-craft a payload that is missing rationale + payload
+            # + scope_eid — but has primitive (required by
+            # list_move_log's reconstruction).
+            conn.execute(
+                "INSERT INTO move_log (session_id, variant_id, "
+                " primitive, payload) VALUES (?, ?, ?, ?)",
+                (sid, None, "EDIT", json.dumps({"primitive": "EDIT"})),
+            )
+            # Second row: EDIT with empty payload dict.
+            conn.execute(
+                "INSERT INTO move_log (session_id, variant_id, "
+                " primitive, payload) VALUES (?, ?, ?, ?)",
+                (sid, None, "EDIT", json.dumps({
+                    "primitive": "EDIT",
+                    "payload": {},
+                    "rationale": None,
+                })),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # Didn't crash.
+        assert sid in out
+        # Placeholder shows up somewhere for a field that was absent.
+        assert "<missing>" in out
+
+    def test_log_unknown_session_fails_fast(self, tmp_db_path):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main([
+                "design", "log", "no-such-session",
+                "--db", tmp_db_path,
+            ])
+        assert exc_info.value.code != 0
+
+    def test_log_renders_known_session_consistently(
+        self, tmp_db_path, capsys,
+    ):
+        """Golden test. Pin a compact fixture session against the
+        formatter so accidental formatting regressions surface.
+
+        The fixture replays the 3-primitive skeleton of a real demo
+        session: EDIT → REBRIEF → EDIT → DONE."""
+        fixture_entries = [
+            {"primitive": "EDIT",
+             "payload": {
+                 "edit_source": (
+                     "append to=@button-toolbar { frame "
+                     "#button-sign-out { text "
+                     "#button-sign-out-label \"Sign Out\" } }"
+                 ),
+                 "tool_name": "edit_verb"},
+             "rationale": "appended a sign-out button"},
+            {"primitive": "REBRIEF",
+             "payload": {
+                 "new_brief": "make it blue",
+                 "previous_variant": "01KQX"},
+             "rationale": "user provided a new brief mid-session"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @button-sign-out fill=\"#00f\"",
+                         "tool_name": "edit_verb"},
+             "rationale": "changed fill to blue"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "done and dusted"},
+        ]
+        sid = self._seed_session(
+            tmp_db_path,
+            brief="Add a sign-out button at the top-right of the toolbar",
+            entries=fixture_entries,
+        )
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # Header block.
+        assert sid in out
+        assert "Add a sign-out button at the top-right of the toolbar" in out
+        # iter numbering ONLY for EDITs — REBRIEF slots in without
+        # incrementing, and DONE shows no iter.
+        assert "iter 1" in out
+        assert "iter 2" in out
+        assert "iter 3" not in out
+        # Primitive labels all render.
+        assert "EDIT" in out
+        assert "REBRIEF" in out
+        assert "DONE" in out
+        # Payload bodies reach the user.
+        assert "button-sign-out" in out
+        assert "make it blue" in out
+        # Rationales reach the user (at least one known phrase).
+        assert "appended a sign-out button" in out
+        assert "changed fill to blue" in out
+        assert "done and dusted" in out
+
+    def test_log_json_flag_emits_raw_array(self, tmp_db_path, capsys):
+        """``--json`` bypasses the pretty formatter and prints the
+        raw move_log payload list. Useful for piping to ``jq``."""
+        import json
+
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a x=1",
+                         "tool_name": "edit_verb"},
+             "rationale": "first"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "done"},
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path, "--json",
+        ])
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert isinstance(parsed, list)
+        assert len(parsed) == 2
+        assert parsed[0]["primitive"] == "EDIT"
+        assert parsed[1]["primitive"] == "DONE"
+
+
+# --------------------------------------------------------------------------- #
 # Error surface: missing api key                                              #
 # --------------------------------------------------------------------------- #
 

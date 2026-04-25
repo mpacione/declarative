@@ -1872,6 +1872,36 @@ def main(argv: list | None = None) -> None:
     )
     design_score_parser.add_argument("--db", help="Database path")
 
+    # `dd design log <session-id>` — surface the agent's full
+    # reasoning trail in the terminal. Every `--brief` / `resume` run
+    # already writes rich move_log rows (primitives, scope_eids, edit
+    # sources, rationales); this is the read-back path.
+    design_log_parser = design_subparsers.add_parser(
+        "log",
+        help="Print a human-readable summary of every move_log "
+             "entry for a session (ordered, with rationales).",
+    )
+    design_log_parser.add_argument(
+        "session_id", help="Session ULID to render the move log for",
+    )
+    design_log_parser.add_argument("--db", help="Database path")
+    design_log_parser.add_argument(
+        "--limit", type=int, default=50,
+        help="Maximum number of move_log entries to render "
+             "(default 50). Use --all to disable truncation.",
+    )
+    design_log_parser.add_argument(
+        "--all", dest="show_all", action="store_true",
+        help="Render every move_log entry, regardless of --limit. "
+             "Useful for long sessions where you need the complete "
+             "trail.",
+    )
+    design_log_parser.add_argument(
+        "--json", dest="as_json", action="store_true",
+        help="Emit the raw move_log entries as a JSON array instead "
+             "of the pretty-printed summary. Useful for `jq` piping.",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -2035,6 +2065,16 @@ def _run_design(db_path: str, args) -> None:
 
     if sub == "score":
         _run_design_score(db_path, session_id=args.session_id)
+        return
+
+    if sub == "log":
+        _run_design_log(
+            db_path,
+            session_id=args.session_id,
+            limit=args.limit,
+            show_all=args.show_all,
+            as_json=args.as_json,
+        )
         return
 
 
@@ -2802,6 +2842,228 @@ def _run_design_score(db_path: str, *, session_id: str) -> None:
         )
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# `dd design log <session-id>` — human-readable move_log replay               #
+# --------------------------------------------------------------------------- #
+#
+# Every `dd design --brief` / `resume` run writes a MoveLogEntry per
+# agent turn (dd/focus.py::MoveLogEntry). The row shape carries
+# primitive (EDIT / NAME / DRILL / CLIMB / DONE / REBRIEF) +
+# scope_eid + payload + rationale. That IS the agent's reasoning
+# trail. Without a CLI read-back, the only way to inspect it is raw
+# SQL — `_run_design_log` is the pretty-print path.
+#
+# Risk-guards per task brief:
+#   - Tolerant parsing: missing fields render as "<missing>" rather
+#     than crashing. Schema evolves; old session reads keep working.
+#   - Pagination: --limit (default 50), --all disables.
+#   - Golden test (test_cli_design.py::TestDesignLog) pins the shape
+#     so accidental formatting regressions surface in CI.
+
+
+# Body-line indent under the iter/primitive label column.
+_LOG_BODY_INDENT = "                   "  # 19 spaces — aligns under payload
+
+# Rationale wrap width (inclusive of the "rationale: " prefix).
+_LOG_WRAP_WIDTH = 70
+
+# Per-primitive payload-field preference order. First hit wins for
+# the one-line body summary; everything else is printed as
+# "key=value" on continuation lines.
+_PRIMITIVE_PRIMARY_FIELDS: dict[str, tuple[str, ...]] = {
+    "EDIT": ("edit_source",),
+    "NAME": ("description", "eid"),
+    "DRILL": ("focus_goal", "eid"),
+    "CLIMB": (),
+    "DONE": (),
+    "REBRIEF": ("new_brief",),
+}
+
+
+def _wrap_body(text: str, *, indent: str, width: int) -> list[str]:
+    """Word-wrap ``text`` to ``width``-long lines. Lines after the
+    first are prefixed with ``indent`` so they align under the first
+    line's body column.
+
+    Minimal textwrap-ish so there's no surprise dependency. Keeps
+    run-together tokens together (doesn't break on `=`), which
+    matters for edit_source literals like `fill="#FF3B30"`.
+    """
+    if not text:
+        return [""]
+    words = text.split(" ")
+    lines: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for w in words:
+        add = (1 if cur else 0) + len(w)
+        if cur and cur_len + add > width:
+            lines.append(" ".join(cur))
+            cur = [w]
+            cur_len = len(w)
+        else:
+            cur.append(w)
+            cur_len += add
+    if cur:
+        lines.append(" ".join(cur))
+    if len(lines) == 1:
+        return lines
+    return [lines[0]] + [indent + line for line in lines[1:]]
+
+
+def _render_move_log_entry(
+    entry, *, edit_iter: int | None,  # noqa: ANN001 — MoveLogEntry
+) -> list[str]:
+    """Return the block of lines rendering one ``MoveLogEntry``.
+
+    ``edit_iter`` is the 1-based iter counter (EDIT only); pass
+    None for non-EDIT primitives (they don't get a number).
+    Missing fields fall through to ``<missing>`` — never crashes.
+    """
+    primitive = entry.primitive or "<missing>"
+    payload = entry.payload or {}
+
+    # Leading label: "iter 1   EDIT  " (EDIT) or "         DONE  "
+    # (others). Width tuned so body lines line up visually under one
+    # indent column.
+    if edit_iter is not None:
+        label = f"  iter {edit_iter:<3d} {primitive:<8s}"
+    else:
+        label = f"  {'':<8} {primitive:<8s}"
+
+    # Primary body line — the field that best describes what the
+    # primitive did. Missing → <missing>.
+    primary_fields = _PRIMITIVE_PRIMARY_FIELDS.get(primitive, ())
+    primary_value: str | None = None
+    for f in primary_fields:
+        if f in payload and payload[f] not in (None, ""):
+            primary_value = str(payload[f])
+            break
+    if primary_value is None and primary_fields:
+        primary_value = "<missing>"
+
+    scope_suffix = ""
+    if entry.scope_eid:
+        scope_suffix = f" scope=@{entry.scope_eid}"
+
+    # Build the first block line.
+    if primary_value is not None:
+        first = f"{label} {primary_value}{scope_suffix}"
+    else:
+        first = f"{label}{scope_suffix}".rstrip()
+
+    lines = _wrap_body(
+        first, indent=_LOG_BODY_INDENT, width=_LOG_WRAP_WIDTH,
+    )
+
+    # Secondary payload fields (NOT the primary, NOT internal
+    # plumbing like tool_name). Keep stable order — sorted keys.
+    skip_keys = {"tool_name"}
+    if primary_fields and primary_value != "<missing>":
+        skip_keys.add(primary_fields[0])
+    for k in sorted(payload):
+        if k in skip_keys:
+            continue
+        v = payload[k]
+        if v in (None, "", {}, []):
+            continue
+        body = f"{k}={v}"
+        wrapped = _wrap_body(
+            _LOG_BODY_INDENT + body,
+            indent=_LOG_BODY_INDENT,
+            width=_LOG_WRAP_WIDTH,
+        )
+        lines.extend(wrapped)
+
+    # Rationale — missing → <missing>.
+    rationale = entry.rationale
+    if rationale is None:
+        rationale_line = "rationale: <missing>"
+    else:
+        rationale_line = f"rationale: {rationale}"
+    lines.extend(_wrap_body(
+        _LOG_BODY_INDENT + rationale_line,
+        indent=_LOG_BODY_INDENT,
+        width=_LOG_WRAP_WIDTH,
+    ))
+
+    return lines
+
+
+def _run_design_log(
+    db_path: str,
+    *,
+    session_id: str,
+    limit: int = 50,
+    show_all: bool = False,
+    as_json: bool = False,
+) -> None:
+    """Pretty-print every move_log entry for ``session_id``.
+
+    Exits 1 if the session doesn't exist. Truncates to ``limit``
+    entries unless ``show_all`` is True; ``--json`` always renders
+    the full list (scripts pipe that to `jq` and expect complete
+    data).
+    """
+    from dd.db import get_connection
+    from dd.sessions import list_move_log, list_sessions
+
+    conn = get_connection(db_path)
+    try:
+        sessions = {s.id: s for s in list_sessions(conn)}
+        session = sessions.get(session_id)
+        if session is None:
+            print(
+                f"dd design: session {session_id!r} not found.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        entries = list_move_log(conn, session_id)
+    finally:
+        conn.close()
+
+    if as_json:
+        print(json.dumps([e.to_dict() for e in entries], indent=2))
+        return
+
+    # Header block.
+    print(f"Session: {session.id}")
+    print(f"Brief: {session.brief}")
+    print(f"Created: {session.created_at}")
+    print(f"Status: {session.status}")
+    print()
+
+    total = len(entries)
+    if total == 0:
+        print("Move log: (no entries yet)")
+        return
+
+    shown = entries if show_all else entries[:limit]
+    truncated = total - len(shown)
+
+    print(f"Move log ({total} {'entry' if total == 1 else 'entries'}):")
+    print()
+
+    edit_counter = 0
+    for entry in shown:
+        if entry.primitive == "EDIT":
+            edit_counter += 1
+            iter_num = edit_counter
+        else:
+            iter_num = None
+        for line in _render_move_log_entry(entry, edit_iter=iter_num):
+            print(line)
+        print()  # Blank line between entries.
+
+    if truncated > 0:
+        print(
+            f"... {truncated} more "
+            f"{'entry' if truncated == 1 else 'entries'}; "
+            f"rerun with --limit {total} (or --all) to see the rest."
+        )
 
 
 if __name__ == "__main__":
