@@ -192,33 +192,20 @@ def render_figma_preamble(
     needed_node_ids = _collect_prefetch_ids(db_visuals)
 
     if needed_node_ids:
-        # Phase 1 perf (2026-04-24): batch component-node prefetches via a
-        # single Promise.all instead of N sequential awaits. Each lookup
-        # on heavy files takes ~600ms; 48 serial awaits = ~30s and blew
-        # through the 300s PROXY_EXECUTE cap. Same pattern as the
-        # font-load batching in feedback_phase1_perf_wins.md. Promise.all
-        # preserves resolution order, so destructuring [_p0, _p1, ...]
-        # binds each var to the same node it would have under the serial
-        # form. Per-id .catch keeps null-safety + structured error shape.
-        sorted_ids = sorted(needed_node_ids)
-        var_names = [f"_p{i}" for i in range(len(sorted_ids))]
-        prefetch_entries: list[str] = []
-        for fid in sorted_ids:
+        preamble.append(
+            "// Pre-fetch component nodes (deduplicated, null-safe)"
+        )
+        for i, fid in enumerate(sorted(needed_node_ids)):
+            var_name = f"_p{i}"
             id_lit = _escape_js(fid)
-            prefetch_entries.append(
-                f'figma.getNodeByIdAsync("{id_lit}")'
-                f'.catch(__e => {{ __errors.push({{kind:"prefetch_failed", '
+            preamble.append(
+                f'const {var_name} = await (async () => {{ '
+                f'try {{ return await figma.getNodeByIdAsync("{id_lit}"); }} '
+                f'catch (__e) {{ __errors.push({{kind:"prefetch_failed", '
                 f'id:"{id_lit}", error: String(__e && __e.message || __e)}}); '
-                f'return null; }})'
+                f'return null; }} '
+                f'}})();'
             )
-        preamble.append(
-            "// Pre-fetch component nodes (deduplicated, null-safe, batched)"
-        )
-        preamble.append(
-            f"const [{', '.join(var_names)}] = await Promise.all([\n  "
-            + ",\n  ".join(prefetch_entries)
-            + "\n]);"
-        )
 
     preamble.append("")
     # Baseline wraps Phases 1-3 in a single `try { ... } catch` block to
