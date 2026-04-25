@@ -705,7 +705,7 @@ existing `walk_ref.js` machinery. The compat wrapper:
    ```
 
 **Cutover gate**: `intolerable.length == 0` across the
-**baseline-204 set** (see §10 for baseline definition;
+**baseline-179 set** (see §10 for baseline definition;
 not all 204 screens are in baseline because of pre-existing
 walk_failed / drift screens).
 
@@ -717,7 +717,7 @@ node). But they're tracked separately as
 screen in the JSONL. Cutover requires:
 - `intolerable.length == 0` (no semantic divergence on
   rendered nodes)
-- `placeholder_count == 0` on the baseline-204 set
+- `placeholder_count == 0` on the baseline-179 set
   (every screen fully resolves in strict mode)
 
 The placeholder-coverage metric is the safety net against
@@ -732,7 +732,7 @@ within 48 hours. This is the change v1 missed.
   4-fixture smoke set (Dank-Test-v0.4 file). ~10 minutes.
   Gates merge.
 - **Nightly full**: rendered-property diff on the
-  baseline-204 set (Dank Experimental). Gates next-day work.
+  baseline-179 set (Dank Experimental). Gates next-day work.
 
 **Size**: 6 days, mostly waiting on W2 + W3. ~300 LOC core
 + ~700 LOC tests + ~150 LOC summary tool.
@@ -1066,7 +1066,7 @@ apply_composite per leaf type.
 
 **D. End-to-end equivalence (THE GATING TEST)**
 `tests/test_v2_v1_equivalence.py` — for each screen in
-the **baseline-204 set** (see §10):
+the **baseline-179 set** (see §10):
 ```python
 old = render_figma(ast, conn, nid_map, _spec_elements=..., ...)
 ir  = resolve(ast, build_catalog_from_db(conn), mode="compat")
@@ -1235,11 +1235,11 @@ spans 6-7 weeks, with W0 added.)
 
 **Workstreams active**:
 - W3 + W4 — close out divergences
-- W7 — gate baseline-204 nightly
+- W7 — gate baseline-179 nightly
 
 **Phase gate**:
-- `intolerable.length == 0` across baseline-204
-- `placeholder_count == 0` on baseline-204 (strict mode)
+- `intolerable.length == 0` across baseline-179
+- `placeholder_count == 0` on baseline-179 (strict mode)
 - 7 consecutive nights of clean nightly runs
 - All four demos pre-recorded with failure-budget
   fallbacks
@@ -1406,7 +1406,7 @@ EOF
       committed (skeleton OK; full seed during W0.C days
       2-4)
 - [ ] `tests/.fixtures/baseline_screens.json` committed
-      with the 190 (= 204 - 14 known drift) baseline screen
+      with the 179 (= 204 - 25 known drift, per feedback_dank_corpus_drift_25.md) baseline screen
       IDs from `feedback_dank_corpus_drift_25.md`
 - [ ] Plan commit-hash pinned in `tools/subagent_dispatch_template.md`
       so all spawned subagents read this plan at this exact
@@ -1723,17 +1723,25 @@ The next session is not just dispatching. They write:
 
 Each phase has a numerical gate. Numerical when possible.
 
-### The baseline-204 set (new in v2)
+### The baseline-179 set (new in v2)
 
-v1's "204/204 absolute gate" was uncomputable: 14 known-drift
-screens + ~17% intermittent timeouts pre-existing.
+v1's "204/204 absolute gate" was uncomputable: 25 known-drift
+screens + ~17% intermittent timeouts pre-existing
+(per `feedback_dank_corpus_drift_25.md`).
 
 v2 defines:
-- **Baseline-204 set** = the 204 Dank-EXP-02 screens MINUS
-  the 14 known-drift screens documented in
+- **Baseline-179 set** = the 204 Dank-EXP-02 screens MINUS
+  the 25 known-drift screens documented in
   `feedback_dank_corpus_drift_25.md` AT THE TIME OF v0.4
   KICKOFF. This becomes a snapshot in `tests/.fixtures/
   baseline_screens.json` committed at end of Phase 0.
+
+  **NOTE for executor**: read the memo to extract the 25
+  drift screen IDs. If the memo's "current state" line
+  has changed since plan-write (memo is dated 2026-04-21;
+  the project ships fixes), re-derive the drift list from
+  the latest sweep results before committing the baseline
+  snapshot. Phase 0 includes this verification step.
 - **Cutover gate**: delta against this baseline must be
   zero — not absolute count.
 
@@ -1741,7 +1749,7 @@ v2 defines:
 - All 4 demo screens DB-verified
 - All 4 MCP-verify commands probe-tested
 - `Dank-Test-v0.4` file exists, versioned, with setup script
-- Baseline-204 snapshot committed
+- Baseline-179 snapshot committed
 
 ### Phase 1 gate
 - `dd/resolved_ir.py` mypy-clean with R1-R8
@@ -1767,8 +1775,8 @@ v2 defines:
 - Smoke 4/4 pass
 
 ### Phase 4 gate (PRE-CUTOVER)
-- `intolerable.length == 0` across baseline-204
-- `placeholder_count == 0` on baseline-204 (strict mode)
+- `intolerable.length == 0` across baseline-179
+- `placeholder_count == 0` on baseline-179 (strict mode)
 - 7 consecutive clean nightly runs
 - Demos pre-recorded with failure-budget fallbacks
 
@@ -2078,7 +2086,7 @@ What survives:
 - Phase 1 per-op guards — unchanged
 - Bridge-ack surfacing — unchanged
 - 204/204 round-trip parity (verified 2026-04-19) —
-  baseline-204 set defined in §10
+  baseline-179 set defined in §10
 - `dd/catalog.py` 65-type taxonomy — used as input to
   `DesignSystemCatalog`
 
@@ -2162,7 +2170,7 @@ via the auto-memory system. Path:
   204/204 can hold while demo regresses; W5 motivation
 - `feedback_mode3_visual_gap_root_cause.md` — Mode-3
   out-of-scope justification
-- `feedback_dank_corpus_drift_25.md` — baseline-204 set
+- `feedback_dank_corpus_drift_25.md` — baseline-179 set
   derivation
 - `reference_figma_script_execution.md` — bridge protocol
   + restart procedure
