@@ -102,32 +102,34 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
     if not census:
         return {"tokens_created": 0, "bindings_updated": 0}
 
-    # Deduplicate and group values
-    unique_values = {}
+    # Group by exact value so semantically distinct radii (e.g. 0.75 vs 1.0)
+    # never collapse into one token. Two close values become two tokens with
+    # disambiguated names ("radius.xs" + "radius.xs.2").
+    unique_values: dict[float, list[str]] = {}
     for row in census:
         val = float(row['resolved_value'])
 
-        # Group 0 and 9999+ as "full" radius
+        # Group 0 and 9999+ as "full" radius (these are semantically equivalent)
         if val == 0 or val >= 9999:
-            key = 99999  # Use a special key for full radius
+            key: float = 99999.0
         else:
-            key = round(val)  # Round to nearest int for grouping
+            key = val  # Exact-value grouping
 
         if key not in unique_values:
             unique_values[key] = []
         unique_values[key].append(row['resolved_value'])
 
     # Sort by value, but keep 99999 (full radius) at the end
-    sorted_values = sorted([k for k in unique_values if k != 99999])
-    if 99999 in unique_values:
-        sorted_values.append(99999)
+    sorted_values = sorted([k for k in unique_values if k != 99999.0])
+    if 99999.0 in unique_values:
+        sorted_values.append(99999.0)
 
     tokens_created = 0
     bindings_updated = 0
     existing_tokens = set()
 
     # Check if we have a full radius value
-    has_full = 99999 in unique_values
+    has_full = 99999.0 in unique_values
 
     # Create tokens for each unique value
     for idx, value in enumerate(sorted_values):

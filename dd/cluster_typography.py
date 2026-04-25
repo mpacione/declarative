@@ -334,8 +334,13 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
             bindings_updated += cursor.rowcount
 
         # 4. lineHeight token (if not None and if bindings exist)
+        # Filter binding update by the tier's specific line_height value via the
+        # nodes.line_height JSON column. Without this filter, nodes with different
+        # actual lineHeight (AUTO / PIXELS / PERCENT) but the same
+        # (font_size, family, weight) would all bind to a single token, causing
+        # silent semantic loss flagged later by binding_token_consistency.
         if tier['line_height'] is not None:
-            # Check if there are any lineHeight bindings for this tier
+            # Check if there are any lineHeight bindings for this tier matching the tier's value
             cursor = conn.execute("""
                 SELECT COUNT(*) as count
                 FROM node_token_bindings ntb
@@ -347,7 +352,8 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
                     AND n.font_size = ?
                     AND n.font_family = ?
                     AND n.font_weight = ?
-            """, (file_id, tier['font_size'], tier['font_family'], tier['font_weight']))
+                    AND json_extract(n.line_height, '$.value') = ?
+            """, (file_id, tier['font_size'], tier['font_family'], tier['font_weight'], tier['line_height']))
 
             has_bindings = cursor.fetchone()['count'] > 0
 
@@ -369,7 +375,9 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
                     tokens_created += 1
                     existing_names.add(line_height_name)
 
-                    # Update lineHeight bindings
+                    # Update lineHeight bindings — restricted to nodes whose actual
+                    # lineHeight JSON value matches the tier (so AUTO / PERCENT
+                    # variants stay unbound and flow to mark_default_bindings).
                     cursor = conn.execute("""
                         UPDATE node_token_bindings
                         SET token_id = ?, binding_status = 'proposed', confidence = 1.0
@@ -382,8 +390,9 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
                                     AND n.font_size = ?
                                     AND n.font_family = ?
                                     AND n.font_weight = ?
+                                    AND json_extract(n.line_height, '$.value') = ?
                             )
-                    """, (line_height_token_id, file_id, tier['font_size'], tier['font_family'], tier['font_weight']))
+                    """, (line_height_token_id, file_id, tier['font_size'], tier['font_family'], tier['font_weight'], tier['line_height']))
                     bindings_updated += cursor.rowcount
 
     conn.commit()
