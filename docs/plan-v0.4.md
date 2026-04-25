@@ -1600,16 +1600,45 @@ For high-leverage moments (especially the IR refactor):
 
 ### Codex consult points
 
-- **After each major merge in W1/W2/W3**: type errors across
-  repo, dead-path detection, API ergonomics review
+The user has access to multiple parallel Codex instances at
+`gpt-5.2` with `model_reasoning_effort: high`. Use them
+liberally. The MoE-of-critics pattern (the v1→v2→v3 plan
+revision used 5 critics with 4 different lenses; convergence
+on REVISE forced the right shape) should be the DEFAULT
+for any architecture-class decision, not a once-per-week
+treat.
+
+When to dispatch a Codex (not just one — multiple in
+parallel where useful):
+
+- **After each major merge in W1/W2/W3**: type errors
+  across repo, dead-path detection, API ergonomics review.
+  Spawn TWO Codex instances with different framings
+  (e.g., "review for correctness" vs "review for what's
+  missing"); compare answers.
 - **Design forks**: e.g., the W6 "should reachable filtering
-  be in user-message hint or schema enum" decision (already
-  made: hint, not enum)
-- **The architecture audit at end of Phase 2**: is the
-  resolver shape holding up, or do we need to redesign?
+  be in user-message hint or schema enum" decision. Always
+  posit the user's own framing (if any) in addition to your
+  own interpretation; the user has caught real shapes I
+  missed.
+- **Architecture audit at end of Phase 2**: is the resolver
+  shape holding up? Spawn a fresh Codex thread (no prior
+  context) to get an independent view; compare against the
+  thread that's been on the work.
 - **Cutover sign-off**: Codex reviews the
   `placeholder_count` + `intolerable` JSONL before either
-  cutover commit ships
+  cutover commit ships.
+- **Any time a multi-agent build produces conflicting
+  recommendations**: dispatch a fresh Codex to break the
+  tie; that's cheaper than coordinator deliberation.
+
+Mixed swarms (Codex + Sonnet) are the high-leverage shape:
+Codex for sharp strategic reads, Sonnet subagents for
+parallel mechanical execution and lens-specific critique
+(e.g., compiler-architect lens, ML-pragmatist lens). The
+v1→v2 revision used exactly this pattern and surfaced the
+critical pass-3/4 ordering bug, the Composite leaf gap, and
+the cache-bust risk.
 
 ### Parallelization map for W6 (agent-side)
 
