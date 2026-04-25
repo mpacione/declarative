@@ -484,6 +484,8 @@ def run_session(
         )
 
     # ── Bootstrap ────────────────────────────────────────────────────────
+    resume_override_brief: Optional[str] = None
+    resume_parent_vid: Optional[str] = None
     if parent_variant_id:
         parent = load_variant(conn, parent_variant_id)
         if parent is None:
@@ -492,12 +494,23 @@ def run_session(
             )
         session_id = parent.session_id
         starting = parent.doc
-        # Resume brief from the existing session row (read it back).
+        # Resume brief resolution: an explicit ``brief`` arg overrides
+        # the session's stored brief (M2 iteration UX — the user wants
+        # to refine this iteration with a new instruction). The stored
+        # brief column is NOT modified; it's a log of the original
+        # goal. A REBRIEF move_log entry is appended below so the
+        # iteration history surfaces the new instruction.
         sess_row = conn.execute(
             "SELECT brief FROM design_sessions WHERE id=?",
             (session_id,),
         ).fetchone()
-        active_brief = sess_row["brief"] if sess_row else (brief or "")
+        stored_brief = sess_row["brief"] if sess_row else ""
+        if brief:
+            active_brief = brief
+            resume_override_brief = brief
+            resume_parent_vid = parent_variant_id
+        else:
+            active_brief = stored_brief or ""
     else:
         session_id = create_session(conn, brief=brief)
         starting = starting_doc if starting_doc is not None else _empty_starting_doc()
@@ -508,6 +521,24 @@ def run_session(
             conn, session_id=session_id, parent_id=None,
             primitive="ROOT", edit_script=None,
             doc=starting,
+        )
+
+    # Resume-with-new-brief: append a REBRIEF entry so the iteration
+    # history is auditable. No variant row (the doc hasn't changed
+    # yet; the REBRIEF is metadata, not a structural edit).
+    if resume_override_brief is not None:
+        append_move_log_entry(
+            conn, session_id=session_id,
+            variant_id=resume_parent_vid,
+            entry=MoveLogEntry(
+                primitive="REBRIEF",
+                scope_eid=None,
+                payload={
+                    "new_brief": resume_override_brief,
+                    "previous_variant": resume_parent_vid,
+                },
+                rationale="user provided a new brief mid-session",
+            ),
         )
 
     focus = FocusContext.root(starting)

@@ -1790,6 +1790,23 @@ def main(argv: list | None = None) -> None:
         help="Max iterations (default 4 — matches --brief default)",
     )
     design_resume_parser.add_argument("--db", help="Database path")
+    # M2 iteration UX: supply a NEW brief on resume. The LLM sees the
+    # new brief in per-turn user messages; the session's stored brief
+    # column is NOT modified (it's the log of the original goal). A
+    # REBRIEF move-log entry is appended so the iteration history is
+    # auditable. Without this flag, resume inherits the session's
+    # original brief (existing behavior, unchanged).
+    design_resume_parser.add_argument(
+        "--brief",
+        default=None,
+        help="Optional new brief to refine this resume iteration. "
+             "The LLM receives this in place of the session's stored "
+             "brief for the duration of this resume; the stored brief "
+             "is NOT modified. Example: first run was 'build a login "
+             "form', then resume with --brief 'now make the submit "
+             "button red' to continue from the prior variant's state "
+             "with a new instruction.",
+    )
     # M2 demo-blocker — multi-turn iteration needs the same Figma
     # round-trip flags on `resume` as on `--brief`. Without these,
     # the user can kick off a session with `--brief --render-to-figma`
@@ -2012,6 +2029,7 @@ def _run_design(db_path: str, args) -> None:
             dump_scripts=args.dump_scripts,
             variant_only=args.variant_only,
             labels=args.labels,
+            override_brief=args.brief,
         )
         return
 
@@ -2648,6 +2666,7 @@ def _run_design_resume(
     dump_scripts: str | None = None,
     variant_only: bool = False,
     labels: bool = True,
+    override_brief: str | None = None,
 ) -> None:
     """M2 demo-blocker: resume must support the same Figma round-trip
     flag family as --brief so the multi-turn iteration story lands.
@@ -2657,6 +2676,11 @@ def _run_design_resume(
     keys the Figma page on BOTH the session prefix and the new
     variant prefix, so successive resumes land on different pages
     and the user can see the iteration history in the sidebar.
+
+    When ``override_brief`` is provided, it's passed to ``run_session``
+    which substitutes it for the session's stored brief in each LLM
+    turn and logs a ``REBRIEF`` move_log entry. The stored brief
+    column is unchanged — it remains the original goal.
     """
     from dd.agent.loop import run_session
     from dd.db import get_connection, init_db
@@ -2681,6 +2705,7 @@ def _run_design_resume(
     try:
         result = run_session(
             conn, parent_variant_id=variant_id,
+            brief=override_brief,
             client=client, max_iters=max_iters,
             progress_stream=sys.stderr,
         )
@@ -2696,17 +2721,23 @@ def _run_design_resume(
         # label script can render it verbatim below both frames.
         # Resume doesn't carry the brief in its argv (it's on the
         # parent session row) — fall back to "" if labels=False.
+        # When the user supplied --brief on resume, prefer THAT as
+        # the label — it's the active instruction for this iteration
+        # and that's what the demo audience needs to read.
         session_brief = ""
         if labels:
-            lookup_conn = get_connection(db_path)
-            try:
-                row = lookup_conn.execute(
-                    "SELECT brief FROM design_sessions WHERE id=?",
-                    (result.session_id,),
-                ).fetchone()
-                session_brief = (row["brief"] if row else "") or ""
-            finally:
-                lookup_conn.close()
+            if override_brief:
+                session_brief = override_brief
+            else:
+                lookup_conn = get_connection(db_path)
+                try:
+                    row = lookup_conn.execute(
+                        "SELECT brief FROM design_sessions WHERE id=?",
+                        (result.session_id,),
+                    ).fetchone()
+                    session_brief = (row["brief"] if row else "") or ""
+                finally:
+                    lookup_conn.close()
 
         page_name = _render_session_to_figma(
             session_db_path=db_path,

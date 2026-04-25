@@ -169,6 +169,70 @@ class TestDesignResume:
                 ])
             assert exc_info.value.code != 0
 
+    def test_resume_with_new_brief_overrides_session_brief(
+        self, tmp_db_path,
+    ):
+        """M2 iteration UX: when `dd design resume <vid> --brief "..."`
+        is given a NEW brief, the per-turn user message sent to the LLM
+        must carry the NEW brief, not the session's stored original.
+
+        The stored ``design_sessions.brief`` column stays unchanged (it's
+        the audit log of the original goal). This is what lets the
+        multi-step demo work: brief A, see result, resume with refining
+        brief B, agent edits against A's doc state using B's intent."""
+        sid, vid = self._bootstrap_session(tmp_db_path)
+        # Baseline: the session's stored brief is "seed".
+        client = _mock_client()  # done immediately on the first turn
+        with patch("dd.cli._make_anthropic_client", return_value=client):
+            cli_main([
+                "design", "resume", vid,
+                "--brief", "make the button red",
+                "--db", tmp_db_path,
+            ])
+
+        # Assertion 1: the LLM was called with a user message that
+        # contains the new brief, not the seed brief.
+        assert client.messages.create.called
+        calls = client.messages.create.call_args_list
+        assert calls, "no LLM call captured"
+        # The per-turn user message is the first (and only) message.
+        all_user_text = ""
+        for c in calls:
+            msgs = c.kwargs.get("messages") or []
+            for m in msgs:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if isinstance(content, str):
+                        all_user_text += content
+                    else:
+                        for blk in (content or []):
+                            if isinstance(blk, dict) and blk.get("type") == "text":
+                                all_user_text += blk.get("text", "")
+        assert "make the button red" in all_user_text, (
+            f"new brief missing from LLM user message. Got:\n"
+            f"{all_user_text[:500]}"
+        )
+        assert "seed" not in all_user_text, (
+            f"resume must use the override brief, not the session's "
+            f"stored 'seed'. Got:\n{all_user_text[:500]}"
+        )
+
+        # Assertion 2: the session row's brief column is untouched.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT brief FROM design_sessions WHERE id=?",
+                (sid,),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["brief"] == "seed", (
+            f"stored brief must remain the original 'seed', got "
+            f"{row['brief']!r}"
+        )
+
 
 # --------------------------------------------------------------------------- #
 # `dd design score` — A2's deferred-scoring entry point                       #

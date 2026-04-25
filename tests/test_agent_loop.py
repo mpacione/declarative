@@ -402,6 +402,59 @@ class TestRunSessionResume:
         variants = list_variants(db, sid)
         assert len(variants) >= 2
 
+    def test_run_session_resume_with_new_brief_logs_rebrief(self, db):
+        """M2 iteration UX: when `run_session` is called with BOTH
+        ``parent_variant_id`` and ``brief``, the new brief overrides
+        the session's stored brief for the LLM turn AND a REBRIEF
+        entry is appended to the move log so the iteration history
+        is auditable."""
+        from dd.focus import MoveLogEntry  # noqa: F401 — doc-only
+        sid = create_session(db, brief="X")
+        v0 = create_variant(
+            db, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=_starter_doc(),
+        )
+        client = _mock_client_seq(_mock_done("nothing to change"))
+        run_session(
+            db, parent_variant_id=v0, brief="Y",
+            client=client, max_iters=3,
+        )
+
+        # 1) The per-turn user message carries the NEW brief, not "X".
+        calls = client.messages.create.call_args_list
+        assert calls
+        user_text = ""
+        for c in calls:
+            for m in (c.kwargs.get("messages") or []):
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if isinstance(content, str):
+                        user_text += content
+        assert "Y" in user_text, (
+            f"override brief 'Y' missing from LLM user message. "
+            f"Got:\n{user_text[:400]}"
+        )
+
+        # 2) A REBRIEF entry is in the move log.
+        log = list_move_log(db, sid)
+        kinds = [e.primitive for e in log]
+        assert "REBRIEF" in kinds, (
+            f"resume with new brief must append a REBRIEF entry. "
+            f"Got primitives: {kinds}"
+        )
+        rebrief_entries = [e for e in log if e.primitive == "REBRIEF"]
+        assert len(rebrief_entries) == 1
+        rb = rebrief_entries[0]
+        assert rb.payload.get("new_brief") == "Y"
+        assert rb.payload.get("previous_variant") == v0
+
+        # 3) The stored session brief remains "X".
+        row = db.execute(
+            "SELECT brief FROM design_sessions WHERE id=?", (sid,),
+        ).fetchone()
+        assert row["brief"] == "X"
+
     def test_resume_preserves_prior_movelog(self, db):
         from dd.focus import MoveLogEntry
         from dd.sessions import append_move_log_entry
