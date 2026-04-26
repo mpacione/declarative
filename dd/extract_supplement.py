@@ -155,6 +155,23 @@ async function walkNode(node) {{
     if (gts.length > 0) entry.gt = gts;
   }}
 
+  // Stroke gradient enrichment: same logic as fills, but for the strokes
+  // array. Pre-fix this branch did not exist; gradient strokes rendered
+  // with no Plugin API transform got skipped at emission, surfacing as
+  // the screen-68 missing_asset DRIFT (Ellipse 58 with GRADIENT_ANGULAR
+  // stroke). The Plugin API Paint union is shared between fills and
+  // strokes, so the enrichment shape is identical.
+  if (node.strokes && node.strokes.length > 0) {{
+    const sgts = [];
+    for (let i = 0; i < node.strokes.length; i++) {{
+      const s = node.strokes[i];
+      if (s.gradientTransform) {{
+        sgts.push({{ strokeIndex: i, gradientTransform: s.gradientTransform }});
+      }}
+    }}
+    if (sgts.length > 0) entry.sgt = sgts;
+  }}
+
   // textAutoResize: Plugin API-only field for TEXT nodes.
   // The REST API does not return this field. Without it, the renderer
   // defaults to WIDTH_AND_HEIGHT which causes text to resize incorrectly.
@@ -340,6 +357,29 @@ def apply_supplement(conn: sqlite3.Connection, supplement_data: dict[str, dict[s
                     conn.execute(
                         "UPDATE nodes SET fills = ? WHERE figma_node_id = ?",
                         (json.dumps(existing_fills), figma_node_id),
+                    )
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+
+        # Stroke gradient enrichment: same shape as `gt`/fills, but for strokes.
+        # Pre-fix this branch did not exist — gradient strokes had no Plugin
+        # API transform, the renderer skipped them, and verifier reported
+        # missing_asset DRIFT (screen-68 Ellipse 58 in the Phase E sweep).
+        if "sgt" in fields:
+            row = conn.execute(
+                "SELECT strokes FROM nodes WHERE figma_node_id = ?",
+                (figma_node_id,),
+            ).fetchone()
+            if row and row[0]:
+                try:
+                    existing_strokes = json.loads(row[0])
+                    for sgt_entry in fields["sgt"]:
+                        idx = sgt_entry["strokeIndex"]
+                        if 0 <= idx < len(existing_strokes):
+                            existing_strokes[idx]["gradientTransform"] = sgt_entry["gradientTransform"]
+                    conn.execute(
+                        "UPDATE nodes SET strokes = ? WHERE figma_node_id = ?",
+                        (json.dumps(existing_strokes), figma_node_id),
                     )
                 except (json.JSONDecodeError, KeyError, TypeError):
                     pass

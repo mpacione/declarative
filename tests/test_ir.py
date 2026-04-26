@@ -180,6 +180,56 @@ class TestNormalizeStrokes:
         strokes = normalize_strokes(STROKE_JSON, bindings, {"stroke_weight": 1})
         assert strokes[0]["color"] == "{color.border}"
 
+    def test_gradient_stroke_preserved_in_ir(self):
+        """Gradient stroke is materialized in IR with type and stops.
+
+        Pre-fix dd/ir.py:143 had `if stroke.get("type") != "SOLID": continue`
+        which silently dropped every non-SOLID stroke. This is the
+        IR-layer half of the screen-68 missing_asset fix.
+        """
+        stroke_json = json.dumps([{
+            "type": "GRADIENT_ANGULAR",
+            "gradientStops": [
+                {"position": 0, "color": {"r": 0.26, "g": 0.86, "b": 0.94, "a": 1.0}},
+                {"position": 0.5, "color": {"r": 0.81, "g": 0.37, "b": 0.93, "a": 1.0}},
+                {"position": 1, "color": {"r": 0.98, "g": 0.30, "b": 0.58, "a": 1.0}},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 8})
+        assert len(strokes) == 1
+        assert strokes[0]["type"] == "gradient-angular"
+        assert strokes[0]["width"] == 8
+        assert len(strokes[0]["stops"]) == 3
+        # Transform preserved for renderer (Plugin API needs the matrix)
+        assert strokes[0]["gradientTransform"] == [[1, 0, 0], [0, 1, 0]]
+
+    def test_gradient_stroke_without_transform_still_carries_stops(self):
+        """When supplement extractor hasn't enriched the stroke yet,
+        the IR still carries stops + type so the renderer can decide
+        what to do (skip gradient body, keep strokeWeight)."""
+        stroke_json = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "gradientStops": [
+                {"position": 0, "color": {"r": 1, "g": 0, "b": 0, "a": 1}},
+                {"position": 1, "color": {"r": 0, "g": 0, "b": 1, "a": 1}},
+            ],
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 2})
+        assert strokes[0]["type"] == "gradient-linear"
+        assert "gradientTransform" not in strokes[0]
+
+    def test_image_stroke_preserved_in_ir(self):
+        stroke_json = json.dumps([{
+            "type": "IMAGE",
+            "imageRef": "abc123",
+            "scaleMode": "FILL",
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 1})
+        assert len(strokes) == 1
+        assert strokes[0]["type"] == "image"
+        assert strokes[0]["asset_hash"] == "abc123"
+
 
 class TestNormalizeEffects:
     def test_drop_shadow(self):

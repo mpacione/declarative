@@ -3663,6 +3663,56 @@ class TestHexToFigmaRgba:
         js = lines[0]
         assert "a:0.251" in js or "a:0.25" in js
 
+    def test_emit_effects_propagates_subproperty_token_refs(self):
+        """Effect sub-property token refs (spread, blur, offsetX, offsetY)
+        should reach the renderer's refs output.
+
+        Pre-fix: dd/ir.py:197-203 collected these into entry["_token_refs"]
+        but dd/renderers/figma.py:_emit_effects only emitted the color ref
+        (line 2530), silently dropping spread/blur/offset token bindings.
+        Result: cluster validator never saw the binding, axis coverage
+        was misreported.
+        """
+        from dd.renderers.figma import _emit_effects
+
+        effects = [{
+            "type": "drop-shadow",
+            "color": "#00000040",
+            "offset": {"x": 0, "y": 4},
+            "blur": 8,
+            "spread": 1,
+            "_token_refs": {
+                "spread": "shadow.lg.spread",
+                "radius": "shadow.lg.blur",
+                "offsetY": "shadow.lg.offsetY",
+            },
+        }]
+        _, refs = _emit_effects("v", "e", effects, {})
+
+        ref_props = {(r[1], r[2]) for r in refs}
+        assert ("effect.0.spread", "shadow.lg.spread") in ref_props
+        assert ("effect.0.radius", "shadow.lg.blur") in ref_props
+        assert ("effect.0.offsetY", "shadow.lg.offsetY") in ref_props
+
+    def test_emit_effects_token_refs_handle_inner_shadow(self):
+        """Same propagation applies to inner-shadow effects."""
+        from dd.renderers.figma import _emit_effects
+
+        effects = [{
+            "type": "inner-shadow",
+            "color": "#00000080",
+            "offset": {"x": 1, "y": 2},
+            "blur": 4,
+            "spread": 0,
+            "_token_refs": {
+                "offsetX": "shadow.inner.offsetX",
+            },
+        }]
+        _, refs = _emit_effects("v", "e", effects, {})
+
+        ref_props = {(r[1], r[2]) for r in refs}
+        assert ("effect.0.offsetX", "shadow.inner.offsetX") in ref_props
+
 
 class TestEmitMissingVisualProperties:
     """Verify emission of visual properties previously extracted but not emitted."""

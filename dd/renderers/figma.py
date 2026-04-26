@@ -2382,45 +2382,52 @@ def _emit_vector_paths(
         lines.append(f"{var}.vectorPaths = [{path_entries}];")
 
 
-def _emit_fills(
-    var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
+def _format_paint_array(
+    paints_in: list[dict[str, Any]],
+    eid: str,
+    tokens: dict[str, Any],
+    binding_prefix: str,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma fills array from IR normalized fills.
+    """Shared paint formatter for both fills and strokes.
 
-    Handles SOLID and GRADIENT_* types. Gradient emission requires
-    gradientTransform (Plugin API format) — stored by supplement extraction.
-    If gradientTransform is missing, the gradient is skipped (REST API
-    handlePositions cannot be used directly by the Plugin API).
+    Returns a pair of (paint_js_strs, token_refs). Each paint_js_str is a
+    single Figma Plugin API Paint object (SOLID / GRADIENT_* / IMAGE).
+    Token-binding property paths use ``binding_prefix`` so the same logic
+    serves "fill.{i}.color" and "stroke.{i}.color" alike.
+
+    Gradients without ``gradientTransform`` are skipped (mirrors the
+    pre-fix fill behavior — REST handlePositions cannot be reliably
+    converted to Plugin API transforms; supplement extraction populates
+    the correct value). For strokes this is a degraded intermediate
+    until the supplement extractor is extended to enrich strokes.
     """
-    paints: list[str] = []
+    paint_strs: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
-    for i, fill in enumerate(fills):
-        fill_type = fill.get("type", "")
+    for i, paint in enumerate(paints_in):
+        paint_type = paint.get("type", "")
 
-        if fill_type == "solid":
-            color_val = fill.get("color", "")
+        if paint_type == "solid":
+            color_val = paint.get("color", "")
             resolved, token_name = resolve_style_value(color_val, tokens)
             if resolved and isinstance(resolved, str) and resolved.startswith("#"):
                 rgb = hex_to_figma_rgba(resolved)
-                paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
-                opacity = fill.get("opacity")
+                base = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
+                opacity = paint.get("opacity")
                 if opacity is not None and opacity < 1.0:
-                    paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}, opacity: {opacity}}}'
-                paints.append(paint)
+                    base = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}, opacity: {opacity}}}'
+                paint_strs.append(base)
             if token_name:
-                refs.append((eid, f"fill.{i}.color", token_name))
+                refs.append((eid, f"{binding_prefix}.{i}.color", token_name))
 
-        elif fill_type in _GRADIENT_EMIT_MAP:
-            gradient_transform = fill.get("gradientTransform")
+        elif paint_type in _GRADIENT_EMIT_MAP:
+            gradient_transform = paint.get("gradientTransform")
             if not gradient_transform:
-                # No Plugin API transform — REST handlePositions can't be
-                # converted reliably. Skip the gradient entirely rather
-                # than emitting a wrong matrix. Supplement extraction
-                # populates the correct transform from the Plugin API.
+                # See docstring — skip gradients lacking Plugin API
+                # transform rather than emitting a wrong matrix.
                 continue
-            figma_type = _GRADIENT_EMIT_MAP[fill_type]
-            stops = fill.get("stops", [])
+            figma_type = _GRADIENT_EMIT_MAP[paint_type]
+            stops = paint.get("stops", [])
             stop_strs = []
             for j, stop in enumerate(stops):
                 color_val = stop.get("color", "#000000")
@@ -2431,68 +2438,89 @@ def _emit_fills(
                         f'{{color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:{rgb["a"]}}}, position: {stop.get("position", 0)}}}'
                     )
                 if token_name:
-                    refs.append((eid, f"fill.{i}.gradient.stop.{j}.color", token_name))
+                    refs.append((
+                        eid,
+                        f"{binding_prefix}.{i}.gradient.stop.{j}.color",
+                        token_name,
+                    ))
 
             if stop_strs:
                 gt = gradient_transform
-                opacity = fill.get("opacity")
-                opacity_str = f", opacity: {opacity}" if opacity is not None and opacity < 1.0 else ""
-                paints.append(
+                opacity = paint.get("opacity")
+                opacity_str = (
+                    f", opacity: {opacity}"
+                    if opacity is not None and opacity < 1.0 else ""
+                )
+                paint_strs.append(
                     f'{{type: "{figma_type}", '
                     f'gradientTransform: [[{gt[0][0]},{gt[0][1]},{gt[0][2]}],[{gt[1][0]},{gt[1][1]},{gt[1][2]}]], '
                     f'gradientStops: [{", ".join(stop_strs)}]'
                     f'{opacity_str}}}'
                 )
 
-        elif fill_type == "image":
-            asset_hash = fill.get("asset_hash")
+        elif paint_type == "image":
+            asset_hash = paint.get("asset_hash")
             if asset_hash:
-                scale_mode = fill.get("scaleMode", "fill").upper()
-                image_transform = fill.get("imageTransform")
+                scale_mode = paint.get("scaleMode", "fill").upper()
+                image_transform = paint.get("imageTransform")
                 # REST API uses STRETCH; Plugin API needs CROP when
-                # imageTransform is present (crop/zoom), FILL otherwise
+                # imageTransform is present (crop/zoom), FILL otherwise.
+                # For strokes, scaleMode behavior is the same per
+                # Figma Plugin API (Paint union is shared across
+                # fills/strokes).
                 if scale_mode == "STRETCH":
                     scale_mode = "CROP" if image_transform else "FILL"
-                opacity = fill.get("opacity")
-                opacity_str = f', opacity: {opacity}' if opacity is not None and opacity < 1.0 else ""
+                opacity = paint.get("opacity")
+                opacity_str = (
+                    f', opacity: {opacity}'
+                    if opacity is not None and opacity < 1.0 else ""
+                )
                 transform_str = ""
                 if image_transform:
                     r0 = image_transform[0]
                     r1 = image_transform[1]
                     transform_str = f", imageTransform: [[{r0[0]},{r0[1]},{r0[2]}],[{r1[0]},{r1[1]},{r1[2]}]]"
-                paints.append(
+                paint_strs.append(
                     f'{{type: "IMAGE", scaleMode: "{scale_mode}", '
                     f'imageHash: "{_escape_js(asset_hash)}"{transform_str}{opacity_str}}}'
                 )
 
-    if paints:
-        paints_str = ", ".join(paints)
-        return ([f"{var}.fills = [{paints_str}];"], refs)
+    return paint_strs, refs
 
+
+def _emit_fills(
+    var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit Figma fills array from IR normalized fills.
+
+    Handles SOLID, GRADIENT_*, and IMAGE types via the shared
+    ``_format_paint_array`` helper.
+    """
+    paint_strs, refs = _format_paint_array(fills, eid, tokens, "fill")
+    if paint_strs:
+        return ([f"{var}.fills = [{', '.join(paint_strs)}];"], refs)
     return ([], refs)
 
 
 def _emit_strokes(
     var: str, eid: str, strokes: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma strokes array from IR normalized strokes."""
-    paints: list[str] = []
-    refs: list[tuple[str, str, str]] = []
+    """Emit Figma strokes array from IR normalized strokes.
 
-    for i, stroke in enumerate(strokes):
-        if stroke.get("type") != "solid":
-            continue
-        color_val = stroke.get("color", "")
-        resolved, token_name = resolve_style_value(color_val, tokens)
-        if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-            rgb = hex_to_figma_rgba(resolved)
-            paints.append(f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}')
-        if token_name:
-            refs.append((eid, f"stroke.{i}.color", token_name))
+    Handles SOLID, GRADIENT_*, and IMAGE types via the shared
+    ``_format_paint_array`` helper, then emits ``strokeWeight`` (which
+    is a stroke-only property — fills don't have it).
+
+    Pre-fix this function only handled SOLID and silently dropped
+    gradient and image strokes — a three-layer drop alongside
+    ``dd/normalize.py:normalize_stroke`` and ``dd/ir.py:normalize_strokes``.
+    Surfaced as the screen-68 missing_asset DRIFT.
+    """
+    paint_strs, refs = _format_paint_array(strokes, eid, tokens, "stroke")
 
     lines: list[str] = []
-    if paints:
-        lines.append(f'{var}.strokes = [{", ".join(paints)}];')
+    if paint_strs:
+        lines.append(f'{var}.strokes = [{", ".join(paint_strs)}];')
     width = strokes[0].get("width") if strokes else None
     if width is not None:
         lines.append(f"{var}.strokeWeight = {width};")
@@ -2503,7 +2531,15 @@ def _emit_strokes(
 def _emit_effects(
     var: str, eid: str, effects: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma effects array from IR normalized effects."""
+    """Emit Figma effects array from IR normalized effects.
+
+    Token-binding refs are emitted for the color *and* every sub-property
+    token in ``effect["_token_refs"]`` (set by ``dd/ir.py:normalize_effects``).
+    Pre-fix only the color ref was emitted, silently dropping spread / blur
+    radius / offsetX / offsetY token bindings — making cluster-validator
+    axis coverage misleading and breaking shadow.lg.spread / shadow.lg.radius
+    style propagation.
+    """
     effect_objs: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
@@ -2533,6 +2569,17 @@ def _emit_effects(
             radius = effect.get("radius", 0)
             figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
             effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
+
+        # Propagate sub-property token refs (spread / radius / offsetX /
+        # offsetY) collected by normalize_effects. Applies to every effect
+        # type that supports them (DROP_SHADOW + INNER_SHADOW today; the
+        # blur effects only carry radius). Done outside the type branch
+        # so future effect types pick this up automatically.
+        sub_refs = effect.get("_token_refs", {})
+        if isinstance(sub_refs, dict):
+            for sub_prop, sub_token in sub_refs.items():
+                if sub_token:
+                    refs.append((eid, f"effect.{i}.{sub_prop}", sub_token))
 
     lines: list[str] = []
     if effect_objs:

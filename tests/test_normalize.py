@@ -208,6 +208,65 @@ class TestNormalizeStroke:
         assert result[1]["property"] == "stroke.1.color"
         assert result[2]["property"] == "stroke.2.color"
 
+    def test_gradient_stroke_emits_stop_bindings(self):
+        """Gradient stroke: emits gradient marker + per-stop color bindings.
+
+        Mirrors normalize_fill's gradient handling. Pre-fix this would
+        silently drop the stroke ("# Skip gradients/images" at line 110).
+        Concrete failure case: screen 68 Ellipse 58 in the Nouns sweep.
+        """
+        strokes = [
+            {
+                "type": "GRADIENT_ANGULAR",
+                "gradientStops": [
+                    {"position": 0, "color": {"r": 0, "g": 0, "b": 0, "a": 1}},
+                    {"position": 1, "color": {"r": 1, "g": 1, "b": 1, "a": 1}},
+                ],
+            }
+        ]
+        result = normalize_stroke(strokes)
+        assert len(result) == 3
+        assert result[0]["property"] == "stroke.0.gradient"
+        assert result[0]["resolved_value"] == "gradient"
+        assert result[1]["property"] == "stroke.0.gradient.stop.0.color"
+        assert result[1]["resolved_value"] == "#000000"
+        assert result[2]["property"] == "stroke.0.gradient.stop.1.color"
+        assert result[2]["resolved_value"] == "#FFFFFF"
+
+    def test_gradient_stroke_all_four_types(self):
+        """All four gradient types are recognized (not just LINEAR)."""
+        for gradient_type in (
+            "GRADIENT_LINEAR", "GRADIENT_RADIAL",
+            "GRADIENT_ANGULAR", "GRADIENT_DIAMOND",
+        ):
+            strokes = [{
+                "type": gradient_type,
+                "gradientStops": [
+                    {"position": 0.5, "color": {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1}},
+                ],
+            }]
+            result = normalize_stroke(strokes)
+            assert len(result) == 2, f"{gradient_type} should produce 2 bindings"
+            assert result[0]["property"] == "stroke.0.gradient"
+
+    def test_image_stroke_emits_binding(self):
+        """Image stroke: emits image marker binding.
+
+        Mirrors normalize_fill's IMAGE handling. Image strokes are
+        rare but legal in Figma.
+        """
+        strokes = [
+            {
+                "type": "IMAGE",
+                "imageRef": "abc123",
+                "scaleMode": "FILL",
+            }
+        ]
+        result = normalize_stroke(strokes)
+        assert len(result) == 1
+        assert result[0]["property"] == "stroke.0.image"
+        assert result[0]["resolved_value"] == "image"
+
 
 class TestNormalizeEffect:
     """Test normalize_effect function."""

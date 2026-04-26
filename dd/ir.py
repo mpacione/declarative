@@ -125,7 +125,22 @@ def normalize_fills(
 def normalize_strokes(
     raw_json: str | None, bindings: list[dict[str, Any]], node: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Normalize Figma strokes JSON to IR stroke array."""
+    """Normalize Figma strokes JSON to IR stroke array.
+
+    Handles SOLID, GRADIENT_*, and IMAGE types. Pre-fix only SOLID was
+    handled — surfaced as the screen-68 missing_asset DRIFT (Ellipse 58
+    with GRADIENT_ANGULAR stroke rendered as empty 0x0 vector). Mirrors
+    normalize_fills for gradient stops and image asset hash, with
+    width + align added (stroke-specific).
+
+    NOTE: gradient strokes need `gradientTransform` from supplement
+    extraction (Plugin API only — REST handlePositions can't be
+    converted reliably). Until the supplement extractor is extended
+    to enrich strokes (mirroring fills), gradient stroke entries
+    carry stops + type but no transform; the renderer skips the
+    gradient body and emits strokeWeight only as a degraded
+    intermediate.
+    """
     if not raw_json or raw_json == "[]":
         return []
 
@@ -136,23 +151,75 @@ def normalize_strokes(
 
     binding_map = {b["property"]: b.get("token_name") for b in bindings if b.get("token_name")}
     result = []
+    width = int(node.get("stroke_weight") or 1)
+    align = node.get("stroke_align")
 
     for i, stroke in enumerate(strokes):
         if stroke.get("visible") is False:
             continue
-        if stroke.get("type") != "SOLID":
+
+        stroke_type = stroke.get("type", "")
+        paint_opacity = stroke.get("opacity", 1.0)
+
+        entry: dict[str, Any] | None = None
+
+        if stroke_type == "SOLID":
+            color = stroke.get("color", {})
+            hex_val = _figma_color_to_hex(color, 1.0)
+            token = binding_map.get(f"stroke.{i}.color")
+            entry = {
+                "type": "solid",
+                "color": f"{{{token}}}" if token else hex_val,
+            }
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+
+        elif stroke_type in _GRADIENT_TYPE_MAP:
+            stops = []
+            for j, stop in enumerate(stroke.get("gradientStops", [])):
+                stop_color = stop.get("color", {})
+                stop_hex = _figma_color_to_hex(stop_color, 1.0)
+                stop_token = binding_map.get(
+                    f"stroke.{i}.gradient.stop.{j}.color"
+                )
+                stops.append({
+                    "color": f"{{{stop_token}}}" if stop_token else stop_hex,
+                    "position": stop.get("position", 0.0),
+                })
+            entry = {
+                "type": _GRADIENT_TYPE_MAP[stroke_type],
+                "stops": stops,
+            }
+            handle_positions = stroke.get("gradientHandlePositions")
+            if handle_positions:
+                entry["handlePositions"] = handle_positions
+            # gradientTransform is Plugin-API-only (supplement extraction).
+            # Until the stroke-side supplement is implemented, this will
+            # usually be absent and the renderer must degrade gracefully.
+            gradient_transform = stroke.get("gradientTransform")
+            if gradient_transform:
+                entry["gradientTransform"] = gradient_transform
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+
+        elif stroke_type == "IMAGE":
+            image_hash = stroke.get("imageHash") or stroke.get("imageRef")
+            if image_hash:
+                entry = {
+                    "type": "image",
+                    "asset_hash": image_hash,
+                    "scaleMode": (stroke.get("scaleMode") or "FILL").lower(),
+                }
+                image_transform = stroke.get("imageTransform")
+                if image_transform:
+                    entry["imageTransform"] = image_transform
+                if paint_opacity < 1.0:
+                    entry["opacity"] = paint_opacity
+
+        if entry is None:
             continue
 
-        color = stroke.get("color", {})
-        hex_val = _figma_color_to_hex(color, 1.0)
-        token = binding_map.get(f"stroke.{i}.color")
-
-        entry: dict[str, Any] = {
-            "type": "solid",
-            "color": f"{{{token}}}" if token else hex_val,
-            "width": int(node.get("stroke_weight") or 1),
-        }
-        align = node.get("stroke_align")
+        entry["width"] = width
         if align:
             entry["align"] = align.lower()
         result.append(entry)
