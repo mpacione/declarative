@@ -361,10 +361,26 @@ def _emit_override_op(
         return ""
 
     if prop_name == "characters":
+        # F11.1: wrap the load+write pair in try/catch — when the
+        # current font is unavailable in this Figma session (e.g. paid
+        # commercial font like Akkurat-Bold the user hasn't licensed),
+        # loadFontAsync REJECTS and the next-line write throws. Without
+        # the catch, the throw propagates past the outer findOne block's
+        # try/finally (finally doesn't catch) and aborts the rest of
+        # Phase 1 — observed Phase D 2026-04-25 sweep: 17 of 44 HGB
+        # screens halted at the first instance whose master used
+        # Akkurat, so only 1 of N IR elements rendered. Guard mirrors
+        # the same shape applied to other text-prop writes in F11.
         return (
             f'if ({target_var}.type === "TEXT") {{ '
+            f'try {{ '
             f'await figma.loadFontAsync({target_var}.fontName); '
-            f'{target_var}.characters = "{_escape_js(value)}"; }}'
+            f'{target_var}.characters = "{_escape_js(value)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"characters", '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }}'
         )
     if prop_name == "instance_swap":
         comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')

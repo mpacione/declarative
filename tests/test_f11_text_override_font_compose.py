@@ -422,9 +422,9 @@ class TestF11CatchShapesAttributeFailures:
 
 
 class TestF11RegressionCharactersBranchUnchanged:
-    """The pre-existing `characters` branch must keep its semantics —
-    F11 only added composition + guard; the characters write was
-    already correctly handling the font load."""
+    """The pre-existing `characters` branch must keep its load
+    semantics — F11.1 added the same try/catch wrap that F11 added
+    to other text-prop writes, but the load+write pair is unchanged."""
 
     def test_characters_override_still_loads_current_font(self):
         node = {
@@ -444,3 +444,78 @@ class TestF11RegressionCharactersBranchUnchanged:
         # loadFontAsync(_c.fontName) call.
         assert "loadFontAsync(_c.fontName)" in joined
         assert '_c.characters = "Hello"' in joined
+
+
+class TestF111CharactersBranchCatch:
+    """F11.1 — add the per-op try/catch around the characters
+    branch's load+write pair. Without it, an unloadable font (paid
+    commercial font like Akkurat-Bold the user hasn't licensed)
+    rejects loadFontAsync, the write throws, and the surrounding
+    findOne block's try/finally doesn't catch — kills Phase 1.
+
+    Observed Phase D 2026-04-25 sweep on HGB: 17 of 44 screens
+    aborted at the first instance whose master used Akkurat, so only
+    1 of N IR elements rendered. Akkurat is genuinely unavailable
+    via Plugin API (only Akkurat-Mono of 9777 fonts is loadable on
+    this Figma session); the script needed to record-and-continue.
+    """
+
+    def test_characters_branch_wraps_load_and_write_in_try_catch(self):
+        """The load+write pair must be try/catch wrapped so a font
+        that can't be loaded (paid font, library-only) doesn't kill
+        Phase 1. Mirrors the same shape applied to other text props
+        in F11."""
+        node = {
+            "target": ":self",
+            "children": [
+                {
+                    "target": ";text-1",
+                    "properties": [
+                        {"property": "characters", "value": "Reject"},
+                    ],
+                },
+            ],
+        }
+        lines, _ = _emit(node)
+        joined = "\n".join(lines)
+        # try/catch must wrap the load+write — finding the catch
+        # near the loadFontAsync.
+        assert "try {" in joined and "catch" in joined, (
+            "characters branch must be try/catch wrapped — without it "
+            "an unloadable font's loadFontAsync rejection aborts Phase 1"
+        )
+        assert "text_set_failed" in joined, (
+            "catch must push a structured __errors entry"
+        )
+        assert 'property:"characters"' in joined, (
+            "catch attribution must include the property name so "
+            "operators can tell which write failed"
+        )
+
+    def test_characters_load_inside_inner_try(self):
+        """The loadFontAsync MUST be inside the inner try/catch.
+        If it's outside, the rejection still propagates. Codex review
+        of F11 (round 2) flagged this exact pattern."""
+        node = {
+            "target": ":self",
+            "children": [
+                {
+                    "target": ";text-1",
+                    "properties": [
+                        {"property": "characters", "value": "Hi"},
+                    ],
+                },
+            ],
+        }
+        lines, _ = _emit(node)
+        joined = "\n".join(lines)
+        # Find the try { ... } catch ordering — load must be after
+        # the try { and before the catch.
+        try_idx = joined.find("try {")
+        load_idx = joined.find("loadFontAsync")
+        catch_idx = joined.find("catch")
+        assert 0 <= try_idx < load_idx < catch_idx, (
+            "loadFontAsync must be inside the try block (otherwise the "
+            "rejection isn't caught); got "
+            f"try@{try_idx}, load@{load_idx}, catch@{catch_idx}"
+        )

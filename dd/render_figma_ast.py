@@ -1113,19 +1113,38 @@ def _emit_mode1_create(
     if text_override:
         text_target = props.get("text_target")
         find_expr = _build_text_finder(var, text_target)
+        # F11.1: try/catch around the load+write pair (see
+        # dd/renderers/figma.py characters branch for context). When the
+        # text node's current fontName is unavailable in this Figma
+        # session (paid commercial font, library-imported font), the
+        # load rejects and the next-line write throws — without the
+        # catch the throw aborts Phase 1.
         lines.append(
             f'{{ const _t = {find_expr}; '
-            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
-            f'_t.characters = "{_escape_js(text_override)}"; }} }}'
+            f'if (_t) {{ try {{ '
+            f'await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(text_override)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"text", '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }} }}'
         )
 
     subtitle_override = props.get("subtitle", "")
     if subtitle_override:
         sub_find = _build_text_finder(var, None, subtitle=True)
+        # F11.1: same guard for the subtitle override.
         lines.append(
             f'{{ const _t = {sub_find}; '
-            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
-            f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
+            f'if (_t) {{ try {{ '
+            f'await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(subtitle_override)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"subtitle", '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }} }}'
         )
 
     # PR-1: the legacy `hidden_children` name-based emitter was
