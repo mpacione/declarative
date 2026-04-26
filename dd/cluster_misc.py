@@ -371,7 +371,19 @@ def group_effects_by_composite(conn: sqlite3.Connection, file_id: int) -> list[d
             field = parts[2]
             effects_by_node[node_id][effect_idx][field] = value
 
-    # Group identical composites
+    # Group identical composites.
+    # P5b (Phase E Pattern 3 fix) — also carry the (node_id, effect_idx)
+    # *occurrence* tuple so the binding-UPDATE step can target the exact
+    # `effect.{idx}.{field}` rows. Pre-P5b the composite carried only
+    # `node_ids`, so multi-shadow nodes (e.g. one shadow at effect.0 and
+    # another at effect.1) had every `effect.*.color` binding rewritten
+    # to the LAST-processed composite's color, regardless of which
+    # effect_idx originally generated it. Manifests on Nouns as the
+    # `shadow.lg.radius` warning where bindings 8872/8886 (effect.1.radius)
+    # carry value 8.0 while the token writes 1.0 (the effect.0 group).
+    # Codex Phase E review (2026-04-25, gpt-5.5): "Use eid+effect_idx
+    # as the primary key. Carry occurrences as effect_refs:
+    # [(node_id, effect_idx)]."
     composite_map = {}
     for node_id, effects in effects_by_node.items():
         for effect_idx, fields in effects.items():
@@ -392,11 +404,20 @@ def group_effects_by_composite(conn: sqlite3.Connection, file_id: int) -> list[d
                     'offsetY': fields.get('offsetY', '0'),
                     'spread': fields.get('spread', '0'),
                     'usage_count': 0,
-                    'node_ids': []
+                    'node_ids': [],
+                    # P5b: explicit list of (node_id, effect_idx) pairs
+                    # backing this composite. Used by cluster_effects's
+                    # binding UPDATE step to target the exact
+                    # `effect.{idx}.{field}` rows. node_ids stays around
+                    # for backwards compat with any external callers,
+                    # but the canonical key for binding identity is
+                    # the (node_id, effect_idx) pair.
+                    'effect_refs': [],
                 }
 
             composite_map[key]['usage_count'] += 1
             composite_map[key]['node_ids'].append(node_id)
+            composite_map[key]['effect_refs'].append((node_id, effect_idx))
 
     # Convert to list and sort by radius (smaller shadows first)
     composites = list(composite_map.values())
@@ -428,9 +449,24 @@ def group_effects_by_composite(conn: sqlite3.Connection, file_id: int) -> list[d
                         # Merge into existing
                         existing['usage_count'] += comp['usage_count']
                         existing['node_ids'].extend(comp['node_ids'])
-                        # Mark nodes as merged for confidence calculation
-                        existing['merged_node_ids'] = existing.get('merged_node_ids', [])
-                        existing['merged_node_ids'].extend(comp['node_ids'])
+                        # P5b: also merge the (node_id, effect_idx)
+                        # occurrences so the binding-UPDATE step can
+                        # still reach every binding the merged
+                        # composite represents.
+                        existing.setdefault('effect_refs', []).extend(
+                            comp.get('effect_refs', [])
+                        )
+                        # Mark nodes as merged for confidence calculation.
+                        # P5b/Codex review: composite is a dict, not an
+                        # object — `hasattr(composite, 'merged_node_ids')`
+                        # below was always False, so the entire
+                        # similarity-confidence branch was dead.
+                        # Standardize on dict-key access via
+                        # `composite.get('merged_node_ids')` so the
+                        # reduced-confidence path actually fires.
+                        existing.setdefault('merged_node_ids', []).extend(
+                            comp['node_ids']
+                        )
                         merged = True
                         break
                 except Exception:
@@ -582,53 +618,68 @@ def cluster_effects(conn: sqlite3.Connection, file_id: int, collection_id: int, 
 
             field_tokens[field_name] = (token_id, value)
 
-        # Update bindings for this composite
-        for node_id in composite['node_ids']:
-            # Query all effect bindings for this node
-            cursor = conn.execute(
-                """SELECT id, property, resolved_value
-                   FROM node_token_bindings
-                   WHERE node_id = ? AND property LIKE 'effect%'
-                     AND binding_status = 'unbound'""",
-                (node_id,)
-            )
+        # P5b (Phase E Pattern 3 fix) — update bindings keyed on the
+        # exact (node_id, effect_idx, field) occurrence. Pre-P5b the
+        # loop iterated `composite['node_ids']` and queried by
+        # `property LIKE 'effect%'`, so when a node had two shadows
+        # (effect.0 + effect.1), the loop would attribute every
+        # `effect.*.{field}` binding to the LAST-processed composite's
+        # tokens — even bindings backing a different effect_idx. The
+        # fix uses `effect_refs` (added in P5b to
+        # group_effects_by_composite) to target exact rows.
+        # Codex Phase E review (2026-04-25, gpt-5.5): "Use eid+effect_idx
+        # as the primary key, with value checks as a guard."
+        merged_pairs = set(
+            (n, idx)
+            for (n, idx) in composite.get('effect_refs', [])
+            if n in composite.get('merged_node_ids', [])
+        )
+        for node_id, effect_idx in composite.get('effect_refs', []):
+            for field, (token_id, expected_value) in field_tokens.items():
+                # Build the exact property name for this occurrence.
+                property_name = f"effect.{effect_idx}.{field}"
+                cursor = conn.execute(
+                    """SELECT id, resolved_value
+                       FROM node_token_bindings
+                       WHERE node_id = ? AND property = ?
+                         AND binding_status = 'unbound'""",
+                    (node_id, property_name),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    continue
 
-            for binding in cursor:
-                # Parse property to get field
-                parts = binding['property'].split('.')
-                if len(parts) >= 3:
-                    field = parts[2]
+                # Calculate confidence — same semantics as pre-P5b but
+                # the dead `hasattr(composite, ...)` branch is fixed
+                # (composite is a dict, not an object). Use dict-key
+                # access via merged_pairs so the reduced-confidence
+                # path for color-merged composites actually fires.
+                confidence = 1.0
+                if field == 'color':
+                    if (node_id, effect_idx) in merged_pairs:
+                        # This occurrence was merged due to similar color
+                        try:
+                            color1 = hex_to_oklch(row['resolved_value'])
+                            color2 = hex_to_oklch(expected_value)
+                            delta = oklch_delta_e(color1, color2)
+                            confidence = max(0.8, min(0.99, 1.0 - delta / 10.0))
+                        except Exception:
+                            confidence = 0.9
+                    elif row['resolved_value'] != expected_value:
+                        # Defensive: shouldn't happen for non-merged
+                        # composites (the composite key itself was the
+                        # full field tuple), but keep the lower
+                        # confidence as evidence.
+                        confidence = 0.9
 
-                    if field in field_tokens:
-                        token_id, expected_value = field_tokens[field]
-
-                        # Calculate confidence based on value match
-                        confidence = 1.0
-                        if field == 'color':
-                            # Check if this node was merged (similar color)
-                            if hasattr(composite, 'merged_node_ids') and node_id in composite.get('merged_node_ids', []):
-                                # This node was merged due to similar color
-                                try:
-                                    color1 = hex_to_oklch(binding['resolved_value'])
-                                    color2 = hex_to_oklch(expected_value)
-                                    delta = oklch_delta_e(color1, color2)
-                                    # Set confidence based on delta
-                                    confidence = max(0.8, min(0.99, 1.0 - delta / 10.0))
-                                except:
-                                    # If color conversion fails, use 0.9
-                                    confidence = 0.9
-                            elif binding['resolved_value'] != expected_value:
-                                # Should not happen unless something is wrong
-                                confidence = 0.9
-
-                        # Update binding
-                        conn.execute(
-                            """UPDATE node_token_bindings
-                               SET token_id = ?, binding_status = 'proposed', confidence = ?
-                               WHERE id = ?""",
-                            (token_id, confidence, binding['id'])
-                        )
-                        bindings_updated += 1
+                conn.execute(
+                    """UPDATE node_token_bindings
+                       SET token_id = ?, binding_status = 'proposed',
+                           confidence = ?
+                       WHERE id = ?""",
+                    (token_id, confidence, row['id']),
+                )
+                bindings_updated += 1
 
     conn.commit()
     return {
