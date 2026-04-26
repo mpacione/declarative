@@ -2,7 +2,22 @@
 // Execute a generated Figma script, then walk the rendered subtree by eid
 // and write a rendered-ref JSON payload for `dd verify --rendered-ref`.
 //
-// Usage: node walk_ref.js <script.js> <output.json> [port=9228]
+// Usage: node walk_ref.js <script.js> <output.json> [port=9228] [--keep-existing] [--grid-pos=row,col]
+//
+// --keep-existing: do NOT clear the Generated Test page before rendering.
+//   Default behavior is to clear (one render at a time, preserves single-
+//   screen probe semantics). Pass --keep-existing for sweep-mode runs
+//   where you want all rendered screens to persist on the page so the
+//   user can review them visually. Walk anchoring still works because
+//   the eid_map walk starts from M['screen-1'] (the just-rendered root),
+//   which the user code populates explicitly — not from `__page.children[0]`.
+//
+// --grid-pos=row,col: with --keep-existing, place the rendered root at
+//   (col * GRID_DX, row * GRID_DY) instead of overlapping at 0,0.
+//   Caller passes the per-screen grid index. Cell size is fixed (1700 x
+//   1300) — generous enough to hold any iPhone/iPad/desktop screen with
+//   margin. The grid is purely visual (eid_map walk and verifier are
+//   unaffected by node x/y on the page).
 //
 // The output has shape:
 //   {
@@ -37,11 +52,25 @@ const WebSocket = require('ws');
 const fs = require('fs');
 
 async function run() {
-  const scriptPath = process.argv[2];
-  const outPath = process.argv[3];
-  const port = parseInt(process.argv[4] || '9228', 10);
+  // Parse args. Positional: scriptPath, outPath, port. Flags:
+  //   --keep-existing
+  //   --grid-pos=ROW,COL  (with --keep-existing, place root at grid cell)
+  const positional = [];
+  let keepExisting = false;
+  let gridRow = null, gridCol = null;
+  for (const a of process.argv.slice(2)) {
+    if (a === '--keep-existing') keepExisting = true;
+    else if (a.startsWith('--grid-pos=')) {
+      const v = a.slice('--grid-pos='.length);
+      const m = v.match(/^(\d+),(\d+)$/);
+      if (m) { gridRow = parseInt(m[1], 10); gridCol = parseInt(m[2], 10); }
+    } else positional.push(a);
+  }
+  const scriptPath = positional[0];
+  const outPath = positional[1];
+  const port = parseInt(positional[2] || '9228', 10);
   if (!scriptPath || !outPath) {
-    console.error('Usage: node walk_ref.js <script.js> <output.json> [port=9228]');
+    console.error('Usage: node walk_ref.js <script.js> <output.json> [port=9228] [--keep-existing] [--grid-pos=row,col]');
     process.exit(1);
   }
 
@@ -49,6 +78,28 @@ async function run() {
   // Strip the trailing `return M;` — we'll insert our own return that
   // wraps M in a structured payload with the walk result.
   const body = userCode.replace(/return M;\s*$/, '');
+
+  // F12d: when --keep-existing is set, don't clear the page. Sweep mode
+  // wants every rendered screen to persist for visual review. The walk
+  // anchors on M['screen-1'] (populated by user code) so existing
+  // children don't interfere with the eid_map walk.
+  const clearPageStmt = keepExisting
+    ? '// (--keep-existing: not clearing page; existing children preserved)'
+    : 'for (const c of [...__page.children]) c.remove();';
+
+  // F12d: optional post-render grid placement. Cell size is generous
+  // enough to hold any common screen size (1440 desktop + iPad 1024 +
+  // iPhone 430 all fit) with a 200px gutter for visual clarity.
+  const GRID_DX = 1700;
+  const GRID_DY = 1300;
+  const gridPlacementStmt = (keepExisting && gridRow !== null && gridCol !== null)
+    ? `// F12d grid placement: tile rendered root at (${gridRow}, ${gridCol})
+const __gridRoot = M['screen-1'] ? await figma.getNodeByIdAsync(M['screen-1']) : null;
+if (__gridRoot && typeof __gridRoot.x === 'number') {
+  __gridRoot.x = ${gridCol * GRID_DX};
+  __gridRoot.y = ${gridRow * GRID_DY};
+}`
+    : '// (no grid placement)';
 
   const wrapped = `
 // Safeguard: resolve __page by NAME (never trust figma.currentPage —
@@ -63,9 +114,11 @@ await figma.setCurrentPageAsync(__page);
 if (__page.name !== __OUTPUT_PAGE) {
   throw new Error('refusing to clear: resolved page is not ' + __OUTPUT_PAGE);
 }
-for (const c of [...__page.children]) c.remove();
+${clearPageStmt}
 
 ${body}
+
+${gridPlacementStmt}
 
 // Invert M so we can walk the rendered subtree keyed by eid.
 const idToEid = {};

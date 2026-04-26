@@ -1,12 +1,19 @@
 {
   "total": 44,
   "is_parity_true": 44,
+  "is_parity_true_clean": 11,
   "is_parity_false": 0,
   "generate_failed": 0,
   "walk_failed": 0,
   "retried": 0,
   "retried_recovered": 0,
   "error_kinds": {},
+  "screens_with_runtime_errors": 33,
+  "total_runtime_errors": 588,
+  "runtime_error_kinds": {
+    "text_set_failed": 528,
+    "font_load_failed": 60
+  },
   "per_screen": [
     {
       "screen_id": 1,
@@ -21,6 +28,8 @@
       "error_count": 0,
       "ir_node_count": 40,
       "rendered_node_count": 40,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -37,6 +46,8 @@
       "error_count": 0,
       "ir_node_count": 36,
       "rendered_node_count": 36,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -53,6 +64,8 @@
       "error_count": 0,
       "ir_node_count": 80,
       "rendered_node_count": 80,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -69,6 +82,8 @@
       "error_count": 0,
       "ir_node_count": 91,
       "rendered_node_count": 91,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -85,6 +100,8 @@
       "error_count": 0,
       "ir_node_count": 94,
       "rendered_node_count": 94,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -101,6 +118,11 @@
       "error_count": 0,
       "ir_node_count": 93,
       "rendered_node_count": 93,
+      "runtime_error_count": 2,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 1
+      },
       "failure": null,
       "attempt": 1
     },
@@ -117,6 +139,8 @@
       "error_count": 0,
       "ir_node_count": 94,
       "rendered_node_count": 94,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -133,6 +157,8 @@
       "error_count": 0,
       "ir_node_count": 93,
       "rendered_node_count": 93,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -149,6 +175,8 @@
       "error_count": 0,
       "ir_node_count": 92,
       "rendered_node_count": 92,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -165,6 +193,11 @@
       "error_count": 0,
       "ir_node_count": 51,
       "rendered_node_count": 51,
+      "runtime_error_count": 13,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 11
+      },
       "failure": null,
       "attempt": 1
     },
@@ -181,6 +214,11 @@
       "error_count": 0,
       "ir_node_count": 76,
       "rendered_node_count": 76,
+      "runtime_error_count": 32,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 30
+      },
       "failure": null,
       "attempt": 1
     },
@@ -197,6 +235,11 @@
       "error_count": 0,
       "ir_node_count": 51,
       "rendered_node_count": 51,
+      "runtime_error_count": 19,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 17
+      },
       "failure": null,
       "attempt": 1
     },
@@ -213,6 +256,11 @@
       "error_count": 0,
       "ir_node_count": 51,
       "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
       "failure": null,
       "attempt": 1
     },
@@ -229,6 +277,11 @@
       "error_count": 0,
       "ir_node_count": 41,
       "rendered_node_count": 41,
+      "runtime_error_count": 11,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 9
+      },
       "failure": null,
       "attempt": 1
     },
@@ -245,6 +298,11 @@
       "error_count": 0,
       "ir_node_count": 42,
       "rendered_node_count": 42,
+      "runtime_error_count": 15,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 13
+      },
       "failure": null,
       "attempt": 1
     },
@@ -261,6 +319,11 @@
       "error_count": 0,
       "ir_node_count": 41,
       "rendered_node_count": 41,
+      "runtime_error_count": 11,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 9
+      },
       "failure": null,
       "attempt": 1
     },
@@ -277,6 +340,11 @@
       "error_count": 0,
       "ir_node_count": 28,
       "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
       "failure": null,
       "attempt": 1
     },
@@ -293,6 +361,11 @@
       "error_count": 0,
       "ir_node_count": 51,
       "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
       "failure": null,
       "attempt": 1
     },
@@ -309,6 +382,11 @@
       "error_count": 0,
       "ir_node_count": 51,
       "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
       "failure": null,
       "attempt": 1
     },
@@ -325,6 +403,11 @@
       "error_count": 0,
       "ir_node_count": 28,
       "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
       "failure": null,
       "attempt": 1
     },
@@ -341,6 +424,11 @@
       "error_count": 0,
       "ir_node_count": 28,
       "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
       "failure": null,
       "attempt": 1
     },
@@ -357,6 +445,11 @@
       "error_count": 0,
       "ir_node_count": 12,
       "rendered_node_count": 12,
+      "runtime_error_count": 2,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 1
+      },
       "failure": null,
       "attempt": 1
     },
@@ -373,6 +466,11 @@
       "error_count": 0,
       "ir_node_count": 18,
       "rendered_node_count": 18,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 4
+      },
       "failure": null,
       "attempt": 1
     },
@@ -389,6 +487,11 @@
       "error_count": 0,
       "ir_node_count": 18,
       "rendered_node_count": 18,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 4
+      },
       "failure": null,
       "attempt": 1
     },
@@ -405,6 +508,11 @@
       "error_count": 0,
       "ir_node_count": 19,
       "rendered_node_count": 19,
+      "runtime_error_count": 6,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 5
+      },
       "failure": null,
       "attempt": 1
     },
@@ -421,6 +529,11 @@
       "error_count": 0,
       "ir_node_count": 59,
       "rendered_node_count": 59,
+      "runtime_error_count": 15,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 13
+      },
       "failure": null,
       "attempt": 1
     },
@@ -437,6 +550,11 @@
       "error_count": 0,
       "ir_node_count": 79,
       "rendered_node_count": 79,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
       "failure": null,
       "attempt": 1
     },
@@ -453,6 +571,11 @@
       "error_count": 0,
       "ir_node_count": 58,
       "rendered_node_count": 58,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
       "failure": null,
       "attempt": 1
     },
@@ -469,6 +592,11 @@
       "error_count": 0,
       "ir_node_count": 57,
       "rendered_node_count": 57,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
       "failure": null,
       "attempt": 1
     },
@@ -485,6 +613,11 @@
       "error_count": 0,
       "ir_node_count": 81,
       "rendered_node_count": 81,
+      "runtime_error_count": 42,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 40
+      },
       "failure": null,
       "attempt": 1
     },
@@ -501,6 +634,11 @@
       "error_count": 0,
       "ir_node_count": 57,
       "rendered_node_count": 57,
+      "runtime_error_count": 10,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 8
+      },
       "failure": null,
       "attempt": 1
     },
@@ -517,6 +655,11 @@
       "error_count": 0,
       "ir_node_count": 60,
       "rendered_node_count": 60,
+      "runtime_error_count": 10,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 8
+      },
       "failure": null,
       "attempt": 1
     },
@@ -533,6 +676,8 @@
       "error_count": 0,
       "ir_node_count": 40,
       "rendered_node_count": 40,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -549,6 +694,8 @@
       "error_count": 0,
       "ir_node_count": 36,
       "rendered_node_count": 36,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -565,6 +712,8 @@
       "error_count": 0,
       "ir_node_count": 93,
       "rendered_node_count": 93,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
       "failure": null,
       "attempt": 1
     },
@@ -581,6 +730,11 @@
       "error_count": 0,
       "ir_node_count": 90,
       "rendered_node_count": 90,
+      "runtime_error_count": 51,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 49
+      },
       "failure": null,
       "attempt": 1
     },
@@ -597,6 +751,11 @@
       "error_count": 0,
       "ir_node_count": 90,
       "rendered_node_count": 90,
+      "runtime_error_count": 51,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 49
+      },
       "failure": null,
       "attempt": 1
     },
@@ -613,6 +772,11 @@
       "error_count": 0,
       "ir_node_count": 90,
       "rendered_node_count": 90,
+      "runtime_error_count": 52,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 50
+      },
       "failure": null,
       "attempt": 1
     },
@@ -629,6 +793,11 @@
       "error_count": 0,
       "ir_node_count": 112,
       "rendered_node_count": 112,
+      "runtime_error_count": 77,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 75
+      },
       "failure": null,
       "attempt": 1
     },
@@ -645,6 +814,10 @@
       "error_count": 0,
       "ir_node_count": 16,
       "rendered_node_count": 16,
+      "runtime_error_count": 1,
+      "runtime_error_kinds": {
+        "font_load_failed": 1
+      },
       "failure": null,
       "attempt": 1
     },
@@ -661,6 +834,11 @@
       "error_count": 0,
       "ir_node_count": 34,
       "rendered_node_count": 34,
+      "runtime_error_count": 8,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 6
+      },
       "failure": null,
       "attempt": 1
     },
@@ -677,6 +855,11 @@
       "error_count": 0,
       "ir_node_count": 48,
       "rendered_node_count": 48,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
       "failure": null,
       "attempt": 1
     },
@@ -693,6 +876,11 @@
       "error_count": 0,
       "ir_node_count": 58,
       "rendered_node_count": 58,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
       "failure": null,
       "attempt": 1
     },
@@ -709,10 +897,15 @@
       "error_count": 0,
       "ir_node_count": 60,
       "rendered_node_count": 60,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
       "failure": null,
       "attempt": 1
     }
   ],
-  "elapsed_s": 72.6,
+  "elapsed_s": 90.4,
   "db_path": "/Users/mattpacione/declarative-build/audit/20260425-1725-phaseD-fullsweep/audit-fresh.declarative.db"
 }

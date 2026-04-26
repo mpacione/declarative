@@ -67,7 +67,17 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
 
 def process_screen(
     sid: int, name: str, skip_existing: bool, port: str, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
 ) -> dict:
+    """Render + walk + verify one screen.
+
+    `grid`: optional (row, col) tuple to lay the rendered root at a
+    fixed grid cell on the Generated Test page. Pairs with
+    `--keep-existing` so multiple sweep runs can share the page
+    without overlapping. None means single-screen mode (clears the
+    page on each render — the legacy default).
+    """
     # Post-M6 canonical path: Option B markup-native renderer.
     if db_path is None:
         db_path = DB_PATH
@@ -129,11 +139,21 @@ def process_screen(
     if skip_existing and walk_p.exists() and walk_p.stat().st_size > 0:
         row["walk_ok"] = True
     else:
+        # F12d: when grid is set, ask walk_ref.js to keep existing
+        # children on the Generated Test page and tile this render
+        # into the requested cell. Otherwise default behavior (clear
+        # then render) — single-screen probe / non-sweep callers.
+        walk_cmd = [
+            "node", str(WALK_WRAPPER),
+            str(script_p), str(walk_p), port,
+        ]
+        if grid is not None:
+            walk_cmd.extend([
+                "--keep-existing",
+                f"--grid-pos={grid[0]},{grid[1]}",
+            ])
         code, out, err = run_step(
-            [
-                "node", str(WALK_WRAPPER),
-                str(script_p), str(walk_p), port,
-            ],
+            walk_cmd,
             WALK_TIMEOUT,
             "walk",
         )
@@ -186,6 +206,8 @@ def process_screen(
 def process_screen_with_retry(
     sid: int, name: str, skip_existing: bool, port: str,
     max_retries: int = 2, retry_backoff: float = 1.0, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
 ) -> dict:
     """Wrap ``process_screen`` with per-screen retry on transient failures.
 
@@ -212,7 +234,7 @@ def process_screen_with_retry(
             time.sleep(sleep_s)
         # Don't reuse failed artefacts on retry — regenerate everything.
         skip = skip_existing if attempt == 0 else False
-        row = process_screen(sid, name, skip, port, db_path=db_path)
+        row = process_screen(sid, name, skip, port, db_path=db_path, grid=grid)
         row["attempt"] = attempt + 1
         last_row = row
         if row.get("is_parity") is True:
@@ -301,6 +323,15 @@ def main() -> int:
     ap.add_argument("--out-dir", default=None,
                     help=f"Output dir for scripts/walks/reports/summary.json. "
                     f"Default: {ROOT}")
+    ap.add_argument("--grid", action="store_true",
+                    help="F12d sweep mode: lay rendered screens out in a "
+                    "grid on the Generated Test page (don't clear between "
+                    "renders). Each screen goes to a fixed cell so multiple "
+                    "screens persist for visual review. Width determined "
+                    "by --grid-cols.")
+    ap.add_argument("--grid-cols", type=int, default=6,
+                    help="Number of columns in --grid mode. Default 6 "
+                    "(comfortable for 1440-wide desktop screens).")
     args = ap.parse_args()
 
     # Resolve db_path with default fallback (backward compatible)
@@ -334,20 +365,33 @@ def main() -> int:
     if args.limit:
         screens = screens[: args.limit]
 
+    grid_msg = (
+        f", grid={args.grid_cols}-cols (renders persist for visual review)"
+        if args.grid else ""
+    )
     print(
         f"Sweeping {len(screens)} app_screens from {db_path.name} "
-        f"(skip_existing={args.skip_existing}, port={args.port}, out={out_root})",
+        f"(skip_existing={args.skip_existing}, port={args.port}, "
+        f"out={out_root}{grid_msg})",
         flush=True,
     )
     rows: list[dict] = []
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
+        # F12d: compute (row, col) for this screen if --grid is set.
+        # Sweep order is the iteration index (i-1), so grid layout
+        # mirrors the screen-id order: row = i // cols, col = i % cols.
+        grid: tuple[int, int] | None = None
+        if args.grid:
+            grid_idx = i - 1
+            grid = (grid_idx // args.grid_cols, grid_idx % args.grid_cols)
         row = process_screen_with_retry(
             sid, name, args.skip_existing, args.port,
             max_retries=args.max_retries,
             retry_backoff=args.retry_backoff,
             db_path=db_path,
+            grid=grid,
         )
         elapsed = time.time() - t1
         # F12a: PARITY+ marker means structural parity but with

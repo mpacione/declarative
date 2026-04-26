@@ -6,29 +6,57 @@
 **Method:** Same 9-section harness as Phase B, plus a full 44-screen render-and-verify sweep ("Demo-Plus") for visual review of every rendered screen
 **Reviewers:** Codex `gpt-5.5` reviewed F11 design + implementation (caught two real defects)
 
-## Headline (revised after Codex synthesis review)
+## Headline (revised after Codex synthesis + visual-diff investigation)
 
-**44/44 app screens render to STRUCTURAL parity** (every IR element appears
-in the rendered tree, layout matches). **33 of 44 screens have visual font
-fidelity degraded** because the user's Figma session can't license Akkurat
-(Lineto commercial font); the renderer logs 528 `text_set_failed` +
-60 `font_load_failed` entries in `__errors` and continues, which is F11.1's
-designed behavior — but a real visual gap that the structural verifier's
-parity number doesn't surface.
+**44/44 app screens render to structural parity in 72.6s.** Within that
+total: **11 are fully clean** (no runtime errors, full visual fidelity),
+**33 are structurally clean but visually degraded** because the user's
+Figma session can't license Akkurat (Lineto commercial font). On those
+33, F11.1's catch-and-continue logs 528 `text_set_failed` +
+60 `font_load_failed` entries to `__errors` and keeps rendering — every
+IR element ends up in the tree, but Akkurat-using text falls back to a
+system font instead of the intended typography.
 
 **8 of 9 sections WORKS-CLEAN structurally; 1 intentionally WORKS-DEGRADED
-(§9). §7 is WORKS-CLEAN structurally / WORKS-DEGRADED visually.** Two new
-renderer fixes shipped this phase (F11 + F11.1); both surfaced from real
-probe failures, both Codex-reviewed before commit.
+(§9). §7 is WORKS-CLEAN structurally / WORKS-DEGRADED visually for
+33 of 44 screens.** Five renderer/sweep fixes shipped this phase:
+F10 (sweep flags), F11 + F11.1 (font composition + load guards),
+F12 + F12a (per-eid attribution + walk-error surfacing in verifier
+output), F12d (sweep mode lays N renders out in a grid for visual
+review). All Codex-reviewed before commit.
 
-**Codex synthesis review caught the original headline's overclaim.** I had
-written "44/44 PARITY, 0 errors" based on `summary.json`; Codex queried the
-walk JSONs directly, found 588 runtime errors recorded in `__errors`, and
-flagged that the verifier ignores them in its parity summary. This is the
-fourth time across the audit cycle (Section 2 + 4 + 8 in original audit;
-Section 8 + now Section 7 in re-audits) that the second-opinion gate
-caught a verdict drift the orchestrator made. The discipline is doing
-real work.
+**Codex synthesis review caught the original headline's overclaim**:
+I had written "44/44 PARITY, 0 errors" based on `summary.json`; Codex
+queried the walk JSONs directly, found 588 runtime errors in `__errors`,
+and flagged that the verifier dropped them. F12a closes the gap by
+plumbing those counts into the verifier's report and the sweep summary.
+The new sweep summary headline now reads literally:
+
+```
+total:                                         44
+is_parity=True:                                44
+  ├─ clean (no runtime errs):                  11
+  └─ structurally OK / visually degraded:      33
+runtime_errors:   588 across 33 screens
+  text_set_failed   528
+  font_load_failed   60
+```
+
+That is the fourth verdict-drift the second-opinion gate caught across
+the audit cycle (Section 2 + 4 + 8 in original audit; Section 8 + now
+Section 7 in re-audits). The discipline is doing real work.
+
+**A separate visual-diff investigation** on screen 44 ("HGB - Travel
+Request - Multiple Options") initially hypothesized a NEW bug class
+(top-nav `componentProperties` overrides slipping through silently).
+Direct bridge query disproved that — the breadcrumb's wrong second
+crumb is the SAME Akkurat-Bold load failure as every other text gap
+on the screen. Artefacts at
+`audit/.../visual-diff/HGB - Travel Request - Multiple Options/`
+preserve the source-vs-rendered screenshots and the bridge-truth
+analysis as a record of how the second-opinion gate works in
+practice (visual screenshots → metric-shaped claim → bridge query
+→ disproven).
 
 ## Verdict comparison: Phase B → Phase D
 
@@ -144,11 +172,12 @@ rendered screens are persisted there.
 
 ## Final tally
 
-- **3 fixes shipped this phase**: F10, F11, F11.1 — all on `fix/20260425-1215`
+- **5 fixes shipped this phase**: F10, F11, F11.1, F12 + F12a, F12d — all on `fix/20260425-1215`
 - **7 sections WORKS-CLEAN** (1, 2, 3a, 4, 5, 6, 8)
-- **1 section WORKS-CLEAN structurally / WORKS-DEGRADED visually** (7 — 44/44 structural parity, 33/44 visual fidelity gap from unlicensed Akkurat font)
+- **1 section WORKS-CLEAN structurally / WORKS-DEGRADED visually** (7 — 44/44 structural parity, 11/44 fully clean, 33/44 visual fidelity gap from unlicensed Akkurat font)
 - **1 section intentionally WORKS-DEGRADED** (9 — variant induction; v0.1-shell scope)
 - **0 regressions** across the 9 sections
-- **44/44 app_screens render to STRUCTURAL parity** in the corpus-wide sweep; **11/44 with full visual fidelity** (the rest have Akkurat-fallback text)
-- **~50 minutes Phase D wall time, ~$0.75 API costs**
-- **Process discipline (NEVER BLINDLY TRUST + Codex second opinion) prevented 3 verdict drifts** during this phase: F11 design (would have shipped wrong fix shape), F11 implementation (would have shipped without per-op catch), and the §7 synthesis headline (would have shipped "44/44 PARITY, 0 errors" without the visual-fidelity caveat)
+- **44/44 app_screens render to STRUCTURAL parity** in the corpus-wide sweep; **11/44 with full visual fidelity, 33/44 with Akkurat-fallback text**
+- **All 44 rendered screens persist** on the Generated Test page in a 6-column grid (F12d) for visual review
+- **~75 minutes Phase D wall time, ~$0.75 API costs**
+- **Process discipline (NEVER BLINDLY TRUST + Codex second opinion) prevented 4 verdict drifts** during this phase: F11 design (would have shipped wrong fix shape), F11 implementation (would have shipped without per-op catch), §7 synthesis headline (would have shipped "44/44 PARITY, 0 errors" without the visual-fidelity caveat), AND the visual-diff "new bug class" hypothesis (would have shipped F12b for a non-existent componentProperties bug; bridge truth showed it was the SAME Akkurat-Bold load failure)
