@@ -462,27 +462,52 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_visual(node: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build visual section — normalized fills/strokes/effects for verification.
+    """Build visual section — registry-driven for full verifier coverage.
 
     The verifier compares IR visual properties against rendered ones
-    per-eid. Only populates when the node has visible visual properties;
-    empty visual dicts are omitted to keep the IR compact.
+    per-eid. P1 (forensic-audit-2 findings 8-12): pre-fix this function
+    was hardcoded to fills/strokes/effects only, while the
+    renderer-side ``dd/visual.py:build_visual_from_db`` iterates the
+    registry and emits five additional visual props (opacity,
+    blendMode, rotation, isMask, cornerRadius). The verifier was blind
+    to drift on those five — exactly what bit us on the post-rextract
+    sweep when Mode-1 finally fired and surfaced 17 DRIFT screens.
+
+    Now we delegate to ``build_visual_from_db`` for registry-driven
+    coverage, then filter to keep only visual-category props (the
+    verifier-side IR has separate slots for layout / style /
+    constraints / props, populated elsewhere).
     """
-    visual: dict[str, Any] = {}
+    # Imported here (not at module top) to avoid a circular import:
+    # dd.visual imports the normalize_* helpers from this module.
+    from dd.property_registry import PROPERTIES
+    from dd.visual import build_visual_from_db
 
-    fills = normalize_fills(node.get("fills"), bindings)
-    if fills:
-        visual["fills"] = fills
+    # build_visual_from_db expects bindings inside node_visual under
+    # the 'bindings' key. The caller passes them separately, so splice.
+    node_visual = dict(node)
+    node_visual["bindings"] = bindings
 
-    strokes = normalize_strokes(node.get("strokes"), bindings, node)
-    if strokes:
-        visual["strokes"] = strokes
+    full_visual = build_visual_from_db(node_visual)
 
-    effects = normalize_effects(node.get("effects"), bindings)
-    if effects:
-        visual["effects"] = effects
+    # build_visual_from_db is renderer-agnostic and dumps every
+    # registry property (visual + layout + size + ...) into the
+    # output. The verifier-side IR has separate slots for layout /
+    # style / constraints / props, so keep only category=='visual'
+    # props plus the special complex-normalized entries
+    # (fills/strokes/effects/cornerRadius). This mirrors what the
+    # verifier (`dd/verify_figma.py`) actually consumes.
+    visual_keys = {
+        prop.figma_name
+        for prop in PROPERTIES
+        if prop.category == "visual"
+    }
+    # The complex-normalized keys come from custom code in
+    # build_visual_from_db, not the registry loop — preserve them.
+    complex_keys = {"fills", "strokes", "effects", "cornerRadius"}
+    keep_keys = visual_keys | complex_keys
 
-    return visual
+    return {k: v for k, v in full_visual.items() if k in keep_keys}
 
 
 def _build_layout(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any]:

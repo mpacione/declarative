@@ -460,6 +460,109 @@ class TestMapNodeToElement:
         ]
 
 
+class TestVerifierVisualCoverage:
+    """P1 (forensic-audit-2 findings 8-12): the verifier-side IR builder
+    `_build_visual` must carry every visual property the renderer emits
+    so the verifier can detect IR-vs-rendered drift.
+
+    Pre-P1: `_build_visual` only carried fills/strokes/effects. The
+    renderer-side `dd/visual.py:build_visual_from_db` emits opacity,
+    blendMode, rotation, isMask, cornerRadius via the registry, but
+    the verifier had no way to compare them. Drift on those 5 prop
+    classes was invisible — surfaced by the post-rextract sweep when
+    Mode-1 dispatch finally fired correctly and exposed 17 DRIFT
+    screens that had been silently broken.
+    """
+
+    def test_opacity_carried_in_verifier_ir(self):
+        """Opacity below 1.0 surfaces as visual.opacity for verification."""
+        node = _make_node(opacity=0.5)
+        element = map_node_to_element(node)
+        assert element["visual"].get("opacity") == 0.5, (
+            "P1: opacity must be in verifier-side IR visual dict"
+        )
+
+    def test_opacity_omitted_when_default(self):
+        """Default opacity (1.0) is correctly skip-emitted to keep IR compact."""
+        node = _make_node(opacity=1.0)
+        element = map_node_to_element(node)
+        assert "opacity" not in (element.get("visual") or {})
+
+    def test_blend_mode_carried_in_verifier_ir(self):
+        """Non-default blendMode surfaces as visual.blendMode."""
+        node = _make_node(opacity=0.5)
+        node["blend_mode"] = "MULTIPLY"
+        element = map_node_to_element(node)
+        assert element["visual"].get("blendMode") == "MULTIPLY", (
+            "P1: blendMode must be in verifier-side IR visual dict"
+        )
+
+    def test_blend_mode_omitted_when_default(self):
+        """The registry pins the default blendMode (PASS_THROUGH for
+        FRAME); when the value matches, skip-emit-if-default fires."""
+        from dd.property_registry import by_figma_name
+        bm_default = by_figma_name("blendMode").default_value
+        node = _make_node()
+        node["blend_mode"] = bm_default
+        element = map_node_to_element(node)
+        assert "blendMode" not in (element.get("visual") or {})
+
+    def test_rotation_carried_in_verifier_ir(self):
+        """Non-zero rotation (in radians) surfaces as visual.rotation."""
+        node = _make_node()
+        node["rotation"] = 1.5707963267948966  # 90 degrees in radians
+        element = map_node_to_element(node)
+        assert element["visual"].get("rotation") == 1.5707963267948966, (
+            "P1: rotation must be in verifier-side IR visual dict"
+        )
+
+    def test_rotation_omitted_when_zero(self):
+        """Zero rotation is skip-emitted."""
+        node = _make_node()
+        node["rotation"] = 0.0
+        element = map_node_to_element(node)
+        assert "rotation" not in (element.get("visual") or {})
+
+    def test_is_mask_carried_in_verifier_ir(self):
+        """Mask flag surfaces as visual.isMask."""
+        node = _make_node()
+        node["is_mask"] = True
+        element = map_node_to_element(node)
+        assert element["visual"].get("isMask") is True, (
+            "P1: isMask must be in verifier-side IR visual dict"
+        )
+
+    def test_is_mask_omitted_when_false(self):
+        """Default False isMask is skip-emitted (most nodes are not masks)."""
+        node = _make_node()
+        node["is_mask"] = False
+        element = map_node_to_element(node)
+        assert "isMask" not in (element.get("visual") or {})
+
+    def test_corner_radius_carried_in_verifier_ir(self):
+        """cornerRadius surfaces as visual.cornerRadius (separate from
+        the existing complex-normalize path)."""
+        node = _make_node(corner_radius="8")
+        element = map_node_to_element(node)
+        cr = element["visual"].get("cornerRadius")
+        assert cr in (8, 8.0, "8"), (
+            f"P1: cornerRadius must be in verifier-side IR visual dict; "
+            f"got: {cr!r}"
+        )
+
+    def test_existing_fills_strokes_effects_unchanged(self):
+        """Regression guard: the new visual props don't break the
+        existing fills/strokes/effects path."""
+        fills_json = json.dumps([{
+            "type": "SOLID", "visible": True,
+            "color": {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1.0},
+        }])
+        node = _make_node(fills=fills_json)
+        element = map_node_to_element(node)
+        assert element["visual"]["fills"][0]["type"] == "solid"
+        assert element["visual"]["fills"][0]["color"].startswith("#")
+
+
 # ---------------------------------------------------------------------------
 # Steps 2+3: Query layer + composition assembly tests
 # ---------------------------------------------------------------------------
