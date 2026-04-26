@@ -589,8 +589,15 @@ anchors plus 1–2 lines each.
   `leaf_type_append_skipped` soft diagnostic when a leaf-typed parent
   would crash on `appendChild`. The type/role split reduced these
   emissions from 22/corpus → 0 on round-trip.
-- **`dd/render_protocol.py`** — `RenderProtocol` ABC. Cross-backend
-  contract scaffold for future HTML / Swift / Jetpack renderers.
+- **`dd/render_protocol.py`** — REMOVED in P7 (Phase E Pattern 1
+  fix, 2026-04-25). The `RenderProtocol` ABC was a cross-backend
+  scaffold (FigmaRenderer, Renderer, WalkResult) that never went
+  into production — only dd/cli.py's `_run_verify` and
+  dd/apply_render.py call the renderer directly. The unified
+  verification channel that ADR-007 introduced is still live in
+  dd/boundary.py + dd/verify_figma.py + the renderer guards;
+  multi-backend fidelity scoring is deferred to v0.4 and will use
+  a TypedDict/Protocol when a second backend exists.
 
 ### Classification (M7.0.a, 4-source pipeline)
 
@@ -660,11 +667,15 @@ anchors plus 1–2 lines each.
   `rebuild_maps_after_edits` refreshes the compressor's `id(Node)`-keyed
   side-car maps after `_splice_node`; `walk_rendered_via_bridge` wraps
   the walk harness for programmatic round-trips.
-- **`dd/repair_agent.py`** — M7.5 verifier-as-agent loop. Consumes
-  `StructuredError.hint` and proposes edit-grammar operations
-  (`delete` / swap / type override) to recover from verifier errors.
-- **`dd/repair_figma.py`** — Figma-specific verifier adapter feeding
-  the repair loop.
+- **`dd/repair_agent.py`** — REMOVED in P7 (Phase E Pattern 1 fix,
+  2026-04-25). M7.5 verifier-as-agent loop. The repair loop was
+  test-only — `run_repair_loop` was never wired into a production
+  CLI command; only `tests/test_repair_agent.py` and
+  `scripts/repair_demo.py` consumed it. The `StructuredError.hint`
+  channel that the loop read is still live; the loop itself is
+  deferred to v0.4 if a real production use case appears.
+- **`dd/repair_figma.py`** — REMOVED in P7. Was the Figma-specific
+  verifier adapter feeding the repair loop.
 
 ### Scoring (Tier C / D)
 

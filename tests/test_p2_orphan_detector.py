@@ -107,23 +107,46 @@ class TestC2OrphansResolvedByP3b:
         assert "dd.cluster_misc.ensure_stroke_weight_collection" not in orphans
 
 
-class TestADR007StackAllowlisted:
-    """The ADR-007 RenderProtocol+Repair stack is ~526 LOC of
-    test-only architecture (Sonnet's Pattern 1 finding,
-    Codex-verified). Slated for removal in P7. Until then the
-    allowlist suppresses it from the orphan report so the noise
-    doesn't drown out new orphan detections.
+class TestADR007StackRemovedByP7:
+    """P7 (Phase E Pattern 1 fix) deleted the ADR-007 RenderProtocol+
+    Repair stack: dd/render_protocol.py, dd/repair_figma.py,
+    dd/repair_agent.py, scripts/repair_demo.py + the 3 test files.
 
-    When P7 ships and the stack is deleted, these allowlist entries
-    become unreachable (the symbols won't exist anymore) and these
-    tests will fail with "symbol not found in either orphans or
-    allowlisted." That's the right signal — the allowlist entries
-    should also be deleted in P7.
+    Pre-P7 these symbols lived in the orphan-detector ALLOWLIST as
+    "P7-pending: ADR-007 retire". P7 deletes both the source files
+    AND the allowlist entries. These tests assert the post-P7 state:
+    the symbols MUST NOT appear in orphans (they don't exist) and
+    MUST NOT appear in allowlisted (no need anymore).
+
+    The unified verification channel that ADR-007 introduced is
+    STILL LIVE in dd/boundary.py + dd/verify_figma.py + the renderer
+    guards — only the unused multi-backend wrapper + the test-only
+    repair loop were removed. Codex Phase E review (2026-04-25)
+    explicitly cautioned: "Do not mark all ADR-007 docs superseded:
+    the unified verification channel is still live in dd/boundary.py,
+    dd/verify_figma.py, and renderer guards. Only the
+    RenderProtocol+Repair stack is superseded."
     """
 
-    def test_adr007_symbols_in_allowlist_not_orphans(self):
+    def test_adr007_symbols_no_longer_in_orphans(self):
         payload = _run_detector_json()
         orphans = set(payload["orphans"])
+        adr007_symbols = [
+            "dd.render_protocol.FigmaRenderer",
+            "dd.render_protocol.Renderer",
+            "dd.render_protocol.WalkResult",
+            "dd.repair_figma.FigmaRepairVerifier",
+            "dd.repair_agent.run_repair_loop",
+        ]
+        for sym in adr007_symbols:
+            assert sym not in orphans, (
+                f"P7: {sym} should not be in orphans — the module "
+                f"was deleted in P7. Either the deletion was reverted "
+                f"or the detector is finding it via a stale path."
+            )
+
+    def test_adr007_symbols_no_longer_in_allowlist(self):
+        payload = _run_detector_json()
         allowlisted = set(payload["allowlisted"])
         adr007_symbols = [
             "dd.render_protocol.FigmaRenderer",
@@ -133,14 +156,9 @@ class TestADR007StackAllowlisted:
             "dd.repair_agent.run_repair_loop",
         ]
         for sym in adr007_symbols:
-            assert sym in allowlisted, (
-                f"{sym} should be allowlisted (P7-pending). "
-                f"If this fails, either the symbol was deleted (P7 "
-                f"shipped) or the allowlist drifted."
-            )
-            assert sym not in orphans, (
-                f"{sym} is allowlisted but ALSO showed up in orphans — "
-                "allowlist filter is broken."
+            assert sym not in allowlisted, (
+                f"P7: {sym} should NOT be allowlisted — the module "
+                f"was deleted in P7. Allowlist entry is stale."
             )
 
 

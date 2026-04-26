@@ -846,34 +846,6 @@ def score_fidelity(
     )
 
 
-def score_render_result(
-    ir_elements: dict[str, Any],
-    walk_result,
-    *,
-    root_eid: str | None = None,
-    vlm_score: Optional[DimensionScore] = None,
-    coverage_threshold: float = 0.8,
-) -> FidelityReport:
-    """Adapter: takes a :class:`dd.render_protocol.WalkResult`
-    (multi-backend) and scores it. Makes the scorer↔protocol
-    contract intentional rather than incidental.
-
-    Backend independence: the scorer doesn't care which backend
-    produced the WalkResult — it only reads ``eid_map`` +
-    ``errors``. If a second backend normalises those fields to
-    the same shape (per the protocol contract), the scorer works
-    for it too.
-    """
-    return score_fidelity(
-        ir_elements=ir_elements,
-        walk_eid_map=walk_result.eid_map,
-        walk_errors=walk_result.errors,
-        root_eid=root_eid,
-        vlm_score=vlm_score,
-        coverage_threshold=coverage_threshold,
-    )
-
-
 # ---------------------------------------------------------------
 # Optional VLM dimension — deliberately thin
 # ---------------------------------------------------------------

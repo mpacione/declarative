@@ -25,7 +25,6 @@ from dd.fidelity_score import (
     score_fidelity,
     score_font_readiness,
     score_leaf_type_structural,
-    score_render_result,
     score_rootedness,
     vlm_score_via_gemini,
 )
@@ -726,61 +725,14 @@ class TestScoreRootedness:
         assert root_dim2.passed is False
 
 
-class TestScoreRenderResult:
-    """Adapter: scorer ingests a WalkResult directly (multi-backend
-    contract)."""
-
-    def test_adapts_walk_result_to_fidelity_report(self) -> None:
-        from dd.render_protocol import WalkResult
-        # Realistic walk: nodes with visible content + dimensions so
-        # canvas_coverage and content_richness both pass.
-        walk = WalkResult(
-            ok=True,
-            eid_map={
-                "s": {
-                    "type": "FRAME", "width": 400, "height": 800,
-                    "fills": [{"type": "solid"}],
-                },
-                "b": {
-                    "type": "FRAME", "width": 400, "height": 800,
-                    "fills": [{"type": "solid"}],
-                    "characters": "body",
-                },
-                "ic-1": {"type": "INSTANCE"},
-            },
-            errors=[],
-            raw={},
-        )
-        ir = {
-            "s": {"type": "screen", "children": ["b", "ic-1"]},
-            "b": {"type": "card"},
-            "ic-1": {"type": "icon"},
-        }
-        report = score_render_result(ir, walk)
-        assert isinstance(report, FidelityReport)
-        assert report.all_passed is True
-
-    def test_adapts_walk_result_with_errors(self) -> None:
-        from dd.render_protocol import WalkResult
-        walk = WalkResult(
-            ok=True,
-            eid_map={"s": {"type": "FRAME"}},
-            errors=[{
-                "kind": "render_thrown",
-                "error": (
-                    "in appendChild: Cannot move node. "
-                    "New parent is an instance or is inside of an instance"
-                ),
-            }],
-            raw={},
-        )
-        ir = {"s": {"type": "screen"}}
-        report = score_render_result(ir, walk)
-        # F2 fires → component_child_consistency fails
-        assert any(
-            not d.passed and d.name == "component_child_consistency"
-            for d in report.dimensions
-        )
+# P7: TestScoreRenderResult removed — score_render_result was an
+# adapter to dd.render_protocol.WalkResult (ADR-007 stack). The
+# stack was test-only and was retired in P7. The fidelity scorer's
+# canonical entry point is score_fidelity(ir_elements, walk_eid_map,
+# walk_errors, ...) — the kwargs the F-series and Phase E flow use
+# via dd/cli.py and render_batch/sweep.py. Multi-backend fidelity
+# scoring is deferred to v0.4 and will use a TypedDict/Protocol when
+# a second backend exists, not preserve an unused ADR-007 wrapper.
 
 
 class TestVLMScorer:

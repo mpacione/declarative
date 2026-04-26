@@ -70,23 +70,15 @@ SCRIPTS_DIR = REPO / "scripts"
 # Allowlist: symbols intentionally test-only. Each entry is a
 # `dd.module.symbol` qualified name. Keep this list short and
 # DOCUMENTED — every entry is a code-smell that explains itself.
+#
+# The ADR-007 RenderProtocol+Repair stack (FigmaRenderer, Renderer,
+# WalkResult, FigmaRepairVerifier, run_repair_loop, etc.) used to
+# live here as 13 P7-pending entries. The stack was retired in P7
+# (Phase E Pattern 1 fix); the unified verification channel that
+# ADR-007 introduced is still live in dd/boundary.py + dd/verify_figma.py
+# + the renderer guards — only the unused multi-backend wrapper +
+# the test-only repair loop were removed.
 ALLOWLIST: dict[str, str] = {
-    # ADR-007 stack (the M7.5 verifier-as-agent shipping that wasn't
-    # production-wired). Will be removed in P7. Allow until then so
-    # the detector doesn't spam during P2-P6.
-    "dd.render_protocol.FigmaRenderer": "P7-pending: ADR-007 retire",
-    "dd.render_protocol.Renderer": "P7-pending: ADR-007 retire",
-    "dd.render_protocol.RenderArtifact": "P7-pending: ADR-007 retire",
-    "dd.render_protocol.WalkResult": "P7-pending: ADR-007 retire",
-    "dd.render_protocol.RenderResult": "P7-pending: ADR-007 retire",
-    "dd.repair_figma.FigmaRepairVerifier": "P7-pending: ADR-007 retire",
-    "dd.repair_figma.build_figma_repair_verifier": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.run_repair_loop": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.build_llm_proposer": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.Verifier": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.LLMProposer": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.RepairReport": "P7-pending: ADR-007 retire",
-    "dd.repair_agent.RepairOutcome": "P7-pending: ADR-007 retire",
 }
 
 
