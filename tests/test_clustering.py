@@ -929,3 +929,187 @@ def test_orchestrator_summary(db):
     )
     actual_binding_count = cursor.fetchone()['count']
     assert summary['total_bindings_updated'] == actual_binding_count
+
+
+# ============================================================================
+# F6.1: typography line-height consolidation
+# ============================================================================
+
+
+def _f61_seed_typography_db(specs: list[dict]) -> sqlite3.Connection:
+    """Seed an in-memory DB with typography nodes + bindings.
+
+    Each spec is {family, weight, size, line_height_value or None, count}.
+    Inserts ``count`` TEXT nodes per spec plus fontSize/fontFamily/
+    fontWeight/lineHeight bindings on each node.
+    """
+    import json
+    db = init_db(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'f', 'f.fig')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'S', 100, 100)"
+    )
+    nid = 1
+    bid = 1
+    for spec in specs:
+        family = spec['family']
+        weight = spec['weight']
+        size = spec['size']
+        lh_value = spec.get('line_height_value')
+        for _ in range(spec['count']):
+            line_height_json = (
+                json.dumps({"value": lh_value, "unit": "PIXELS"})
+                if lh_value is not None
+                else json.dumps({"unit": "AUTO"})
+            )
+            db.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order, "
+                "font_family, font_weight, font_size, line_height) "
+                "VALUES (?, 1, ?, ?, 'TEXT', 0, ?, ?, ?, ?, ?)",
+                (nid, f"t{nid}", f"T{nid}", nid, family, weight, size, line_height_json),
+            )
+            for prop, raw in [
+                ("fontSize", str(size)),
+                ("fontFamily", family),
+                ("fontWeight", str(weight)),
+                ("lineHeight", line_height_json),
+            ]:
+                db.execute(
+                    "INSERT INTO node_token_bindings "
+                    "(id, node_id, property, raw_value, resolved_value, binding_status) "
+                    "VALUES (?, ?, ?, ?, ?, 'unbound')",
+                    (bid, nid, prop, raw, raw if prop != 'lineHeight' else (
+                        str(lh_value) if lh_value is not None else 'AUTO'
+                    )),
+                )
+                bid += 1
+            nid += 1
+    db.commit()
+    return db
+
+
+def test_f61_typography_lineheight_split_same_tier():
+    """F6.1 test 5: same family/weight/size with two PIXELS lineHeights.
+
+    A single tier emits TWO lineHeight tokens — bare for highest-usage,
+    .2 for secondary. fontSize/fontFamily/fontWeight stay singletons.
+    """
+    from dd.cluster_typography import (
+        cluster_typography,
+        ensure_typography_collection,
+    )
+
+    db = _f61_seed_typography_db([
+        {'family': 'Inter', 'weight': 400, 'size': 16, 'line_height_value': 32.0, 'count': 50},
+        {'family': 'Inter', 'weight': 400, 'size': 16, 'line_height_value': 95.13, 'count': 5},
+    ])
+    coll, mode = ensure_typography_collection(db, 1)
+    cluster_typography(db, 1, coll, mode)
+
+    by_name = {row['name']: row['resolved_value'] for row in db.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id WHERE t.collection_id = ?",
+        (coll,),
+    ).fetchall()}
+
+    # One consolidated tier, so suffix is 'md' (single item -> ['md']).
+    assert by_name.get("type.body.md.fontSize") == "16.0"
+    assert by_name.get("type.body.md.fontFamily") == "Inter"
+    assert by_name.get("type.body.md.fontWeight") == "400"
+
+    # Two lineHeight tokens: 32.0 (high usage) bare, 95.13 (low) .2.
+    assert by_name.get("type.body.md.lineHeight") == "32.0"
+    assert by_name.get("type.body.md.lineHeight.2") == "95.13"
+
+
+def test_f61_typography_auto_lineheight_not_tokenized():
+    """F6.1 test 6: AUTO lineHeight (NULL) is not tokenized — left for
+    mark_default_bindings to mark intentionally_unbound.
+    """
+    from dd.cluster_typography import (
+        cluster_typography,
+        ensure_typography_collection,
+    )
+
+    db = _f61_seed_typography_db([
+        {'family': 'Inter', 'weight': 400, 'size': 16, 'line_height_value': None, 'count': 100},
+        {'family': 'Inter', 'weight': 400, 'size': 16, 'line_height_value': 32.0, 'count': 10},
+    ])
+    coll, mode = ensure_typography_collection(db, 1)
+    cluster_typography(db, 1, coll, mode)
+
+    lh_tokens = [row['name'] for row in db.execute(
+        "SELECT name FROM tokens WHERE collection_id = ? AND name LIKE '%.lineHeight%'",
+        (coll,),
+    ).fetchall()]
+
+    # Only one lineHeight token (32.0); AUTO not tokenized.
+    assert lh_tokens == ["type.body.md.lineHeight"]
+
+    # Confirm AUTO bindings remain unbound after clustering. They will
+    # later be promoted to intentionally_unbound by mark_default_bindings,
+    # which is a separate stage outside cluster_typography's scope.
+    auto_count = db.execute(
+        "SELECT COUNT(*) FROM node_token_bindings "
+        "WHERE property = 'lineHeight' AND resolved_value = 'AUTO' "
+        "AND binding_status = 'unbound'"
+    ).fetchone()[0]
+    assert auto_count == 100
+
+
+def test_f61_color_near_colors_share_token():
+    """F6.1 test 7 (regression): near-colors still cluster into one token,
+    and all bindings carry the representative resolved_value (F6 fix).
+    """
+    from dd.cluster_colors import cluster_colors, ensure_collection_and_mode
+
+    db = init_db(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'f', 'f.fig')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'S', 100, 100)"
+    )
+    # Two near-identical greys: high-usage representative #EEF5F7 (10 nodes),
+    # low-usage near-clone #EEF5F8 (1 node). ΔE < 2 → same group.
+    nid = 1
+    bid = 1
+    for color, count in [("#EEF5F7", 10), ("#EEF5F8", 1)]:
+        for _ in range(count):
+            db.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+                "VALUES (?, 1, ?, ?, 'RECTANGLE', 0, ?)",
+                (nid, f"r{nid}", f"R{nid}", nid),
+            )
+            db.execute(
+                "INSERT INTO node_token_bindings "
+                "(id, node_id, property, raw_value, resolved_value, binding_status) "
+                "VALUES (?, ?, 'fill.0.color', ?, ?, 'unbound')",
+                (bid, nid, color, color),
+            )
+            bid += 1
+            nid += 1
+    db.commit()
+
+    coll, mode = ensure_collection_and_mode(db, 1)
+    cluster_colors(db, 1, coll, mode)
+
+    color_tokens = list(db.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id WHERE t.collection_id = ?",
+        (coll,),
+    ).fetchall())
+    assert len(color_tokens) == 1
+    representative = color_tokens[0]['resolved_value']
+    assert representative == "#EEF5F7"  # higher-usage was first
+
+    # Every binding's resolved_value snapped to the representative.
+    rows = db.execute(
+        "SELECT resolved_value, COUNT(*) AS c FROM node_token_bindings "
+        "WHERE property = 'fill.0.color' GROUP BY resolved_value"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]['resolved_value'] == "#EEF5F7"
+    assert rows[0]['c'] == 11

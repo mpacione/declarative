@@ -66,9 +66,21 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
 
 
 def process_screen(
-    sid: int, name: str, skip_existing: bool, port: str,
+    sid: int, name: str, skip_existing: bool, port: str, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
 ) -> dict:
+    """Render + walk + verify one screen.
+
+    `grid`: optional (row, col) tuple to lay the rendered root at a
+    fixed grid cell on the Generated Test page. Pairs with
+    `--keep-existing` so multiple sweep runs can share the page
+    without overlapping. None means single-screen mode (clears the
+    page on each render — the legacy default).
+    """
     # Post-M6 canonical path: Option B markup-native renderer.
+    if db_path is None:
+        db_path = DB_PATH
     scripts_dir = SCRIPTS
     walks_dir = WALKS
     reports_dir = REPORTS
@@ -89,6 +101,16 @@ def process_screen(
         "error_count": 0,
         "ir_node_count": None,
         "rendered_node_count": None,
+        # F12a: walk-side runtime errors recorded by the render
+        # script's per-op try/catch handlers (text_set_failed,
+        # font_load_failed, component_missing, etc.). The structural
+        # verifier's `error_count` only sees missing_child / extra_child
+        # / shape drift — runtime visual-fidelity failures live here.
+        # Kept separate so callers can distinguish "structurally clean
+        # render" (error_count=0 + runtime_error_count=0) from "renders
+        # but with visual gaps" (error_count=0 + runtime_error_count>0).
+        "runtime_error_count": 0,
+        "runtime_error_kinds": {},
         "failure": None,
     }
 
@@ -98,7 +120,7 @@ def process_screen(
     else:
         gen_cmd = [
             "python3", "-m", "dd", "generate",
-            "--db", str(DB_PATH), "--screen", str(sid),
+            "--db", str(db_path), "--screen", str(sid),
         ]
         code, out, err = run_step(
             gen_cmd,
@@ -117,11 +139,21 @@ def process_screen(
     if skip_existing and walk_p.exists() and walk_p.stat().st_size > 0:
         row["walk_ok"] = True
     else:
+        # F12d: when grid is set, ask walk_ref.js to keep existing
+        # children on the Generated Test page and tile this render
+        # into the requested cell. Otherwise default behavior (clear
+        # then render) — single-screen probe / non-sweep callers.
+        walk_cmd = [
+            "node", str(WALK_WRAPPER),
+            str(script_p), str(walk_p), port,
+        ]
+        if grid is not None:
+            walk_cmd.extend([
+                "--keep-existing",
+                f"--grid-pos={grid[0]},{grid[1]}",
+            ])
         code, out, err = run_step(
-            [
-                "node", str(WALK_WRAPPER),
-                str(script_p), str(walk_p), port,
-            ],
+            walk_cmd,
             WALK_TIMEOUT,
             "walk",
         )
@@ -136,7 +168,7 @@ def process_screen(
     code, out, err = run_step(
         [
             "python3", "-m", "dd", "verify",
-            "--db", str(DB_PATH), "--screen", str(sid),
+            "--db", str(db_path), "--screen", str(sid),
             "--rendered-ref", str(walk_p), "--json",
         ],
         VERIFY_TIMEOUT,
@@ -162,12 +194,20 @@ def process_screen(
     row["rendered_node_count"] = report["rendered_node_count"]
     row["error_kinds"] = [e["kind"] for e in report["errors"]]
     row["error_count"] = len(report["errors"])
+    # F12a: pull walk-side runtime error counts that the verifier now
+    # surfaces in its --json payload. Older verifier versions lacked
+    # these keys; default to 0/{} when absent so existing artefact
+    # readers don't break.
+    row["runtime_error_count"] = report.get("runtime_error_count", 0)
+    row["runtime_error_kinds"] = report.get("runtime_error_kinds", {})
     return row
 
 
 def process_screen_with_retry(
     sid: int, name: str, skip_existing: bool, port: str,
-    max_retries: int = 2, retry_backoff: float = 1.0,
+    max_retries: int = 2, retry_backoff: float = 1.0, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
 ) -> dict:
     """Wrap ``process_screen`` with per-screen retry on transient failures.
 
@@ -194,7 +234,7 @@ def process_screen_with_retry(
             time.sleep(sleep_s)
         # Don't reuse failed artefacts on retry — regenerate everything.
         skip = skip_existing if attempt == 0 else False
-        row = process_screen(sid, name, skip, port)
+        row = process_screen(sid, name, skip, port, db_path=db_path, grid=grid)
         row["attempt"] = attempt + 1
         last_row = row
         if row.get("is_parity") is True:
@@ -210,8 +250,29 @@ def summarize(rows: list[dict]) -> dict:
     for r in rows:
         kinds.update(r.get("error_kinds") or [])
 
+    # F12a: aggregate walk-side runtime errors across screens. These are
+    # visual-fidelity failures (text_set_failed, font_load_failed,
+    # component_missing, etc.) that the structural verifier doesn't see.
+    # The "screens with runtime errors" count is the load-bearing visual-
+    # fidelity headline — if it's >0 you have visual gaps even when
+    # is_parity_true == total.
+    runtime_kinds = Counter()
+    screens_with_runtime_errors = 0
+    total_runtime_errors = 0
+    for r in rows:
+        rk = r.get("runtime_error_kinds") or {}
+        if rk:
+            screens_with_runtime_errors += 1
+        for k, v in rk.items():
+            runtime_kinds[k] += v
+        total_runtime_errors += r.get("runtime_error_count", 0)
+
     total = len(rows)
     parity_true = sum(1 for r in rows if r.get("is_parity") is True)
+    parity_true_clean = sum(
+        1 for r in rows
+        if r.get("is_parity") is True and not (r.get("runtime_error_kinds") or {})
+    )
     walk_failed = sum(1 for r in rows if r.get("walk_ok") is False and r.get("generate_ok"))
     generate_failed = sum(1 for r in rows if r.get("generate_ok") is False)
 
@@ -224,12 +285,19 @@ def summarize(rows: list[dict]) -> dict:
     return {
         "total": total,
         "is_parity_true": parity_true,
+        # F12a: subset of is_parity_true with zero runtime errors —
+        # the "no visual fidelity gap detected" count.
+        "is_parity_true_clean": parity_true_clean,
         "is_parity_false": total - parity_true - walk_failed - generate_failed,
         "generate_failed": generate_failed,
         "walk_failed": walk_failed,
         "retried": retried,
         "retried_recovered": retried_recovered,
         "error_kinds": dict(kinds.most_common()),
+        # F12a: walk-side runtime errors, aggregated across screens.
+        "screens_with_runtime_errors": screens_with_runtime_errors,
+        "total_runtime_errors": total_runtime_errors,
+        "runtime_error_kinds": dict(runtime_kinds.most_common()),
         "per_screen": rows,
     }
 
@@ -250,46 +318,101 @@ def main() -> int:
     ap.add_argument("--retry-backoff", type=float, default=1.0,
                     help="Initial backoff seconds before retry "
                     "(doubles each attempt, capped at 10s).")
+    ap.add_argument("--db", default=None,
+                    help=f"Path to SQLite database. Default: {DB_PATH}")
+    ap.add_argument("--out-dir", default=None,
+                    help=f"Output dir for scripts/walks/reports/summary.json. "
+                    f"Default: {ROOT}")
+    ap.add_argument("--grid", action="store_true",
+                    help="F12d sweep mode: lay rendered screens out in a "
+                    "grid on the Generated Test page (don't clear between "
+                    "renders). Each screen goes to a fixed cell so multiple "
+                    "screens persist for visual review. Width determined "
+                    "by --grid-cols.")
+    ap.add_argument("--grid-cols", type=int, default=6,
+                    help="Number of columns in --grid mode. Default 6 "
+                    "(comfortable for 1440-wide desktop screens).")
     args = ap.parse_args()
+
+    # Resolve db_path with default fallback (backward compatible)
+    db_path = Path(args.db).resolve() if args.db else DB_PATH
+    if not db_path.exists():
+        print(f"Error: DB not found at {db_path}", file=sys.stderr)
+        return 1
+
+    # Resolve output dir; allows running multiple sweeps against different DBs
+    # without overwriting artefacts. Defaults preserve existing behavior.
+    out_root = Path(args.out_dir).resolve() if args.out_dir else ROOT
+    scripts_dir = out_root / "scripts"
+    walks_dir = out_root / "walks"
+    reports_dir = out_root / "reports"
+
+    # Override module-level constants for this run so process_screen uses them.
+    # (process_screen reads SCRIPTS/WALKS/REPORTS by module reference; this
+    # is the smallest backwards-compatible way to redirect output.)
+    global SCRIPTS, WALKS, REPORTS
+    SCRIPTS = scripts_dir
+    WALKS = walks_dir
+    REPORTS = reports_dir
 
     # Post-M6: single render path; single artefact layout.
     for p in (SCRIPTS, WALKS, REPORTS):
         p.mkdir(parents=True, exist_ok=True)
 
-    screens = list_app_screens(DB_PATH)
+    screens = list_app_screens(db_path)
     if args.since:
         screens = [(sid, n) for sid, n in screens if sid >= args.since]
     if args.limit:
         screens = screens[: args.limit]
 
+    grid_msg = (
+        f", grid={args.grid_cols}-cols (renders persist for visual review)"
+        if args.grid else ""
+    )
     print(
-        f"Sweeping {len(screens)} app_screens "
-        f"(skip_existing={args.skip_existing}, port={args.port})",
+        f"Sweeping {len(screens)} app_screens from {db_path.name} "
+        f"(skip_existing={args.skip_existing}, port={args.port}, "
+        f"out={out_root}{grid_msg})",
         flush=True,
     )
     rows: list[dict] = []
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
+        # F12d: compute (row, col) for this screen if --grid is set.
+        # Sweep order is the iteration index (i-1), so grid layout
+        # mirrors the screen-id order: row = i // cols, col = i % cols.
+        grid: tuple[int, int] | None = None
+        if args.grid:
+            grid_idx = i - 1
+            grid = (grid_idx // args.grid_cols, grid_idx % args.grid_cols)
         row = process_screen_with_retry(
             sid, name, args.skip_existing, args.port,
             max_retries=args.max_retries,
             retry_backoff=args.retry_backoff,
+            db_path=db_path,
+            grid=grid,
         )
         elapsed = time.time() - t1
-        status = (
-            "PARITY" if row["is_parity"] is True
-            else "FAIL" if row.get("failure")
-            else "DRIFT"
-        )
+        # F12a: PARITY+ marker means structural parity but with
+        # walk-side runtime errors (visual fidelity gap). Distinguishes
+        # "clean" from "structurally clean / visually degraded".
+        if row["is_parity"] is True:
+            status = "PARITY+" if row.get("runtime_error_count", 0) > 0 else "PARITY"
+        elif row.get("failure"):
+            status = "FAIL"
+        else:
+            status = "DRIFT"
         attempt_marker = (
             f" (try {row.get('attempt', 1)})" if row.get("attempt", 1) > 1 else ""
         )
+        rt_count = row.get("runtime_error_count", 0)
+        rt_part = f" rt={rt_count}" if rt_count else ""
         print(
-            f"[{i}/{len(screens)}] screen={sid:3d} {status:6s}{attempt_marker} "
+            f"[{i}/{len(screens)}] screen={sid:3d} {status:7s}{attempt_marker} "
             f"t={elapsed:5.1f}s "
             f"parity={row.get('parity_ratio')} "
-            f"errs={row.get('error_count')} "
+            f"errs={row.get('error_count')}{rt_part} "
             f"{'kinds=' + ','.join(row['error_kinds'][:3]) if row['error_kinds'] else ''} "
             f"{('FAIL=' + row['failure'][:120]) if row.get('failure') else ''}",
             flush=True,
@@ -298,11 +421,21 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2))
+    summary["db_path"] = str(db_path)
+    (out_root / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
     print(f"total:            {summary['total']}")
     print(f"is_parity=True:   {summary['is_parity_true']}")
+    # F12a: surface "structurally clean / visually degraded" so the
+    # headline parity number isn't misread.
+    print(
+        f"  ├─ clean (no runtime errs):   {summary.get('is_parity_true_clean', summary['is_parity_true'])}"
+    )
+    print(
+        f"  └─ structurally OK / visually degraded: "
+        f"{summary['is_parity_true'] - summary.get('is_parity_true_clean', summary['is_parity_true'])}"
+    )
     print(f"is_parity=False:  {summary['is_parity_false']}")
     print(f"generate_failed:  {summary['generate_failed']}")
     print(f"walk_failed:      {summary['walk_failed']}")
@@ -311,9 +444,24 @@ def main() -> int:
         f"(recovered to PARITY: {summary['retried_recovered']})"
     )
     print(f"elapsed:          {summary['elapsed_s']}s")
-    print("\nerror_kinds:")
-    for kind, ct in summary["error_kinds"].items():
-        print(f"  {kind:30s}  {ct}")
+    print("\nerror_kinds (structural — verifier-reported):")
+    if summary["error_kinds"]:
+        for kind, ct in summary["error_kinds"].items():
+            print(f"  {kind:30s}  {ct}")
+    else:
+        print("  (none)")
+    # F12a: walk-side runtime errors aggregated. "0 in N screens" means
+    # the renderer never had to record-and-continue; that's the cleanest
+    # visual-fidelity headline.
+    print(
+        f"\nruntime_errors:   {summary.get('total_runtime_errors', 0)} "
+        f"across {summary.get('screens_with_runtime_errors', 0)} screens "
+        f"(visual-fidelity channel — F11.1 catch-and-continue)"
+    )
+    rt_kinds = summary.get("runtime_error_kinds") or {}
+    if rt_kinds:
+        for kind, ct in rt_kinds.items():
+            print(f"  {kind:30s}  {ct}")
     return 0
 
 

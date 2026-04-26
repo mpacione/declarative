@@ -9,8 +9,67 @@ This module implements Phase 5 radius and effect clustering:
 
 import sqlite3
 from collections import defaultdict
+from collections.abc import Callable, Hashable
+from typing import Any
 
 from dd.color import hex_to_oklch, oklch_delta_e
+
+
+def assign_bucketed_rank_names(
+    items: list[dict],
+    bucket_key: Callable[[dict], Hashable],
+    bucket_sort_key: Callable[[Hashable], Any],
+    base_name_for_bucket_index: Callable[[int, int], str],
+    value_sort_key: Callable[[dict], Any],
+) -> list[tuple[dict, str]]:
+    """Assign stable bucketed-rank names with a usage-count tiebreaker.
+
+    Token IDENTITY is exact value (each item is its own token); base NAME
+    is a coarser bucket. Within a bucket, the item with the highest
+    `usage_count` keeps the bare name (e.g. ``radius.xs``); subsequent
+    items get ``.2``, ``.3`` suffixes. This decouples value-splitting
+    (F6) from name-shuffling (F6.1).
+
+    Args:
+        items: list of dicts with at least ``usage_count``.
+        bucket_key: callable returning a hashable bucket key per item.
+        bucket_sort_key: callable returning the sort key for buckets
+            (applied to the bucket key, not items). Buckets are sorted
+            ascending by this key.
+        base_name_for_bucket_index: callable ``(bucket_idx, n_buckets)
+            -> str`` returning the bare name for a bucket.
+        value_sort_key: callable returning the within-bucket sort key
+            (applied to items). Used as the secondary tiebreaker after
+            usage_count.
+
+    Returns:
+        List of ``(item, name)`` tuples, in iteration order grouped by
+        bucket then within-bucket rank. Determinism: same inputs (and
+        hashable keys with stable orderings) produce identical names.
+    """
+    if not items:
+        return []
+
+    buckets: dict[Hashable, list[dict]] = {}
+    for item in items:
+        key = bucket_key(item)
+        buckets.setdefault(key, []).append(item)
+
+    sorted_bucket_keys = sorted(buckets.keys(), key=bucket_sort_key)
+
+    assignments: list[tuple[dict, str]] = []
+    for bucket_idx, b_key in enumerate(sorted_bucket_keys):
+        bucket_items = buckets[b_key]
+        # Stable sort: usage_count DESC primary; value_sort_key ASC tiebreaker.
+        bucket_items.sort(
+            key=lambda it: (-int(it.get('usage_count', 0)), value_sort_key(it))
+        )
+        base_name = base_name_for_bucket_index(bucket_idx, len(sorted_bucket_keys))
+        for rank, item in enumerate(bucket_items):
+            name = base_name if rank == 0 else f"{base_name}.{rank + 1}"
+            assignments.append((item, name))
+
+    return assignments
 
 
 def query_radius_census(conn: sqlite3.Connection, file_id: int) -> list[dict]:
@@ -84,8 +143,46 @@ def propose_radius_name(value: float, index: int, total: int, has_full: bool = F
         return f"radius.{index + 1}"
 
 
+_FULL_RADIUS_BUCKET = 99999
+
+
+def _radius_bucket_key(item: dict) -> int:
+    """Bucket key for radius items: rounded value (sub-pixel collapses).
+
+    0 and 9999+ collapse to ``_FULL_RADIUS_BUCKET`` (semantically "full").
+    All other values round to nearest integer for the NAME bucket; the
+    item's exact value still becomes its own token (identity preserved).
+    """
+    val = float(item['resolved_value'])
+    if val == 0 or val >= 9999:
+        return _FULL_RADIUS_BUCKET
+    return round(val)
+
+
+def _radius_bucket_sort_key(bucket_key: int) -> tuple[int, int]:
+    """Sort buckets numerically; full radius pinned to end."""
+    if bucket_key == _FULL_RADIUS_BUCKET:
+        return (1, 0)
+    return (0, bucket_key)
+
+
+def _radius_value_sort_key(item: dict) -> float:
+    """Within-bucket tiebreaker after usage_count: numeric value asc."""
+    return float(item['resolved_value'])
+
+
 def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int) -> dict:
     """Cluster radius values and create tokens.
+
+    F6 (commit 29faf24): groups by EXACT value so semantically distinct
+    radii (e.g. 0.75 vs 1.0) never collapse into one token.
+
+    F6.1: bucketed naming with usage-rank tiebreaker. The bucket
+    (rounded value) determines the bare base name (``radius.xs``,
+    ``radius.sm``, …). Within a bucket, the highest-usage exact value
+    keeps the bare name; secondary values get ``.2``, ``.3`` suffixes.
+    This stabilizes name → value mapping across runs that previously
+    reshuffled when a low-usage variant entered the corpus.
 
     Args:
         conn: Database connection
@@ -96,53 +193,62 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
     Returns:
         Dict with tokens_created and bindings_updated counts
     """
-    # Query radius census
     census = query_radius_census(conn, file_id)
-
     if not census:
         return {"tokens_created": 0, "bindings_updated": 0}
 
-    # Deduplicate and group values
-    unique_values = {}
+    # Pre-aggregate the FULL bucket: 0 and 9999+ are semantically the
+    # same radius (fully circular), so they collapse into ONE token.
+    # All other values keep their own token (F6 identity preservation).
+    items: list[dict] = []
+    full_originals: list[str] = []
+    full_usage = 0
     for row in census:
         val = float(row['resolved_value'])
-
-        # Group 0 and 9999+ as "full" radius
         if val == 0 or val >= 9999:
-            key = 99999  # Use a special key for full radius
+            full_originals.append(row['resolved_value'])
+            full_usage += int(row['usage_count'])
         else:
-            key = round(val)  # Round to nearest int for grouping
+            items.append(dict(row))
 
-        if key not in unique_values:
-            unique_values[key] = []
-        unique_values[key].append(row['resolved_value'])
+    if full_originals:
+        items.append({
+            'resolved_value': str(_FULL_RADIUS_BUCKET),
+            'usage_count': full_usage,
+            '_full_originals': full_originals,
+        })
 
-    # Sort by value, but keep 99999 (full radius) at the end
-    sorted_values = sorted([k for k in unique_values if k != 99999])
-    if 99999 in unique_values:
-        sorted_values.append(99999)
+    bucket_keys = {_radius_bucket_key(it) for it in items}
+    has_full = _FULL_RADIUS_BUCKET in bucket_keys
+
+    def base_name_for_bucket(bucket_idx: int, n_buckets: int) -> str:
+        # bucket_idx is the position in sort_key order (full last when present).
+        # propose_radius_name expects (value, index, total, has_full); we pass a
+        # sentinel value derived from has_full + bucket position so the
+        # existing t-shirt mapping continues to work unchanged.
+        sorted_keys = sorted(bucket_keys, key=_radius_bucket_sort_key)
+        b_key = sorted_keys[bucket_idx]
+        sentinel_value = float(_FULL_RADIUS_BUCKET) if b_key == _FULL_RADIUS_BUCKET else float(b_key)
+        return propose_radius_name(sentinel_value, bucket_idx, n_buckets, has_full)
+
+    assignments = assign_bucketed_rank_names(
+        items=items,
+        bucket_key=_radius_bucket_key,
+        bucket_sort_key=_radius_bucket_sort_key,
+        base_name_for_bucket_index=base_name_for_bucket,
+        value_sort_key=_radius_value_sort_key,
+    )
 
     tokens_created = 0
     bindings_updated = 0
-    existing_tokens = set()
 
-    # Check if we have a full radius value
-    has_full = 99999 in unique_values
+    for item, name in assignments:
+        # FULL bucket items carry _full_originals (list of source values)
+        # and a synthetic representative value; non-full items carry the
+        # exact resolved value.
+        full_originals_for_item = item.get('_full_originals')
+        original_value = item['resolved_value']
 
-    # Create tokens for each unique value
-    for idx, value in enumerate(sorted_values):
-        # Propose a name
-        name = propose_radius_name(value, idx, len(sorted_values), has_full)
-
-        # Ensure unique name
-        if name in existing_tokens:
-            suffix = 2
-            while f"{name}.{suffix}" in existing_tokens:
-                suffix += 1
-            name = f"{name}.{suffix}"
-        existing_tokens.add(name)
-
-        # Check if token already exists
         cursor = conn.execute(
             """SELECT id FROM tokens WHERE collection_id = ? AND name = ?""",
             (collection_id, name)
@@ -152,7 +258,6 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
         if existing_token:
             token_id = existing_token['id']
         else:
-            # Insert token
             cursor = conn.execute(
                 """INSERT INTO tokens (collection_id, name, type, tier)
                    VALUES (?, ?, 'dimension', 'extracted')""",
@@ -161,15 +266,16 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
             token_id = cursor.lastrowid
             tokens_created += 1
 
-        # Insert or update token value
         conn.execute(
             """INSERT OR REPLACE INTO token_values (token_id, mode_id, raw_value, resolved_value)
                VALUES (?, ?, ?, ?)""",
-            (token_id, mode_id, str(value), str(value))
+            (token_id, mode_id, str(original_value), str(original_value))
         )
 
-        # Update all matching bindings
-        for original_value in unique_values[value]:
+        # Bind every original value mapped to this token (one per
+        # non-full item; many for the full bucket).
+        binding_values = full_originals_for_item or [original_value]
+        for raw_value in binding_values:
             cursor = conn.execute(
                 """UPDATE node_token_bindings
                    SET token_id = ?, binding_status = 'proposed', confidence = 1.0
@@ -186,7 +292,7 @@ def cluster_radius(conn: sqlite3.Connection, file_id: int, collection_id: int, m
                          JOIN screens s ON n.screen_id = s.id
                          WHERE s.file_id = ?
                      )""",
-                (token_id, original_value, file_id)
+                (token_id, raw_value, file_id),
             )
             bindings_updated += cursor.rowcount
 
@@ -364,11 +470,51 @@ def propose_effect_name(index: int, total: int) -> str:
         return f"shadow.{index + 1}"
 
 
+def _effect_bucket_key(comp: dict) -> tuple[int, int, int, int]:
+    """Bucket key for an effect composite: rounded shadow geometry.
+
+    Color is intentionally excluded — colors with the same geometry but
+    different alphas/hues should still share the size bucket so users
+    see ``shadow.sm`` + ``shadow.sm.2`` rather than two unrelated names.
+    """
+    return (
+        round(float(comp.get('radius', 0) or 0)),
+        round(float(comp.get('offsetX', 0) or 0)),
+        round(float(comp.get('offsetY', 0) or 0)),
+        round(float(comp.get('spread', 0) or 0)),
+    )
+
+
+def _effect_bucket_sort_key(b_key: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Sort buckets by rounded radius (size), then offsetY, offsetX, spread."""
+    radius, offset_x, offset_y, spread = b_key
+    return (radius, offset_y, offset_x, spread)
+
+
+def _effect_value_sort_key(comp: dict) -> tuple[float, float, float, float, str]:
+    """Within-bucket tiebreaker after usage_count: numeric value asc."""
+    return (
+        float(comp.get('radius', 0) or 0),
+        float(comp.get('offsetY', 0) or 0),
+        float(comp.get('offsetX', 0) or 0),
+        float(comp.get('spread', 0) or 0),
+        str(comp.get('color', '')),
+    )
+
+
 def cluster_effects(conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int) -> dict:
     """Cluster effect values and create atomic tokens.
 
     Creates individual tokens for each effect field (color, radius, offsetX, offsetY, spread)
     following the design that composite tokens are stored as atomic tokens in the DB.
+
+    F6.1: bucketed naming with usage-rank tiebreaker. The bucket
+    (rounded radius/offsetX/offsetY/spread) determines the bare base
+    name (``shadow.sm``, ``shadow.md``, …). Within a bucket, the
+    highest-usage composite keeps the bare name; secondary composites
+    get ``.2``, ``.3`` suffixes. Geometry-different shadows continue
+    to land in different buckets — only near-identical composites
+    (e.g. radius 23.9 vs 24.0) trigger the in-bucket tiebreaker.
 
     Args:
         conn: Database connection
@@ -388,11 +534,23 @@ def cluster_effects(conn: sqlite3.Connection, file_id: int, collection_id: int, 
     tokens_created = 0
     bindings_updated = 0
 
-    # Create tokens for each composite shadow
-    for idx, composite in enumerate(composites):
-        # Propose base name for this shadow
-        base_name = propose_effect_name(idx, len(composites))
+    # Compute bucketed assignments. Each composite carries usage_count
+    # and node_ids already from group_effects_by_composite.
+    bucket_keys = {_effect_bucket_key(c) for c in composites}
+    n_buckets = len(bucket_keys)
 
+    def base_name_for_bucket(bucket_idx: int, _n: int) -> str:
+        return propose_effect_name(bucket_idx, n_buckets)
+
+    assignments = assign_bucketed_rank_names(
+        items=composites,
+        bucket_key=_effect_bucket_key,
+        bucket_sort_key=_effect_bucket_sort_key,
+        base_name_for_bucket_index=base_name_for_bucket,
+        value_sort_key=_effect_value_sort_key,
+    )
+
+    for composite, base_name in assignments:
         # Create individual atomic tokens for each field
         fields = [
             ('color', composite['color'], 'color'),

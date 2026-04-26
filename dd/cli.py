@@ -1133,6 +1133,23 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
 
     report = FigmaRenderVerifier().verify(spec, rendered_ref)
 
+    # F12a: surface the walk's runtime `__errors` (recorded by the
+    # render script's per-op try/catch handlers — F11.1 et al.) into
+    # the verifier's report payload. The structural verifier counts
+    # missing children only; runtime failures (text_set_failed,
+    # font_load_failed, component_missing, etc.) live on the walk
+    # side and previously vanished from the verifier output. With
+    # this surfaced, callers can distinguish "is_parity=True with N
+    # runtime errors" (visual-fidelity gap) from "is_parity=True
+    # with 0 runtime errors" (clean render).
+    walk_errors = rendered_ref.get("errors", []) if isinstance(rendered_ref, dict) else []
+    runtime_error_count = len(walk_errors)
+    runtime_error_kinds: dict[str, int] = {}
+    for e in walk_errors:
+        if isinstance(e, dict):
+            kind = str(e.get("kind", "?"))
+            runtime_error_kinds[kind] = runtime_error_kinds.get(kind, 0) + 1
+
     if args.json:
         payload = {
             "backend": report.backend,
@@ -1141,6 +1158,9 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
             "is_parity": report.is_parity,
             "parity_ratio": report.parity_ratio(),
             "errors": [asdict(e) for e in report.errors],
+            "runtime_errors": walk_errors,
+            "runtime_error_count": runtime_error_count,
+            "runtime_error_kinds": runtime_error_kinds,
         }
         print(json.dumps(payload, indent=2))
     else:
@@ -1154,6 +1174,14 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
             print(f"    kind={err.kind} id={err.id}  {(err.error or '')[:80]}")
         if len(report.errors) > 20:
             print(f"    ... ({len(report.errors) - 20} more)")
+        # F12a: also surface walk-side runtime errors in the human
+        # output. These are visual-fidelity signals, not structural.
+        if runtime_error_count:
+            print(f"  runtime_errors:      {runtime_error_count}")
+            for kind, count in sorted(
+                runtime_error_kinds.items(), key=lambda kv: -kv[1]
+            ):
+                print(f"    {count:4d}  {kind}")
 
     if not report.is_parity:
         sys.exit(1)
@@ -1273,17 +1301,26 @@ def _parse_figma_input(raw: str) -> str:
 
 
 def _run_induce_variants(db_path: str, args: argparse.Namespace) -> None:
-    """Induce variant_token_binding rows for the user's corpus (ADR-008).
+    """Induce placeholder variant_token_binding rows (ADR-008 Stream B v0.1 shell).
 
-    Opt-in Stream-B inducer: clusters classified instances per catalog
-    type, calls Gemini 3.1 Pro to label each cluster with a variant
-    name from a closed vocabulary, and persists one row per
-    (catalog_type, variant, slot) to ``variant_token_binding``.
-    ``ProjectCKRProvider`` queries these rows at Mode-3 resolution
-    time to attach project-native presentation values.
+    Current behaviour (v0.1 shell, see dd/cluster_variants.py:85):
+    treats every catalog type as a single cluster and calls the
+    injected vlm_call with an empty image list. Because the CLI's
+    ``vlm_call`` adapter returns ``{verdict: "unknown", confidence: 0}``
+    on empty image lists, every cluster is labelled ``custom_1`` with
+    confidence=0 and NULL token/literal values. **Gemini is never
+    actually called** — the 100-200ms runtime is too short for a
+    network round-trip.
+
+    The schema-level contract is real: rows persist to
+    ``variant_token_binding`` and ``ProjectCKRProvider`` can query
+    them at Mode-3 resolution time. What's missing is the cluster
+    analysis (per-feature k-means + silhouette) and the real VLM
+    labelling — both are flagged "when real corpus coverage is wired
+    up" in cluster_variants.py.
 
     Usage: ``dd induce-variants [--db PATH]``. Idempotent — re-running
-    updates existing rows (UPSERT on the unique key).
+    UPSERTs existing placeholder rows.
     """
     from dd.cluster_variants import induce_variants
     from dd.visual_inspect import _default_gemini_call, VLM_PROMPT
@@ -1466,14 +1503,19 @@ def main(argv: list | None = None) -> None:
     classify_parser.add_argument(
         "--three-source", action="store_true",
         help=(
-            "Run the three-source cascade (M7.0.a): formal/heuristic/"
-            "LLM produce the primary verdict, then vision per-screen "
-            "(PS) and vision cross-screen (CS) run on the same LLM "
-            "candidate set, then consensus rule v1 votes. All three "
-            "verdicts are persisted; canonical_type becomes the "
-            "computed consensus. Implies --llm + --vision (both are "
-            "required to produce the three sources). Budget: ~$35 "
-            "on the full 204-screen Dank corpus."
+            "Run the three-source cascade (M7.0.a): formal rules and "
+            "the heuristic classifier run first; only nodes that BOTH "
+            "skip (no sci row written) fall through to LLM + vision-"
+            "per-screen (PS) + vision-cross-screen (CS). On each "
+            "cascaded node, consensus rule v1 votes across the three "
+            "verdicts; canonical_type becomes the computed consensus. "
+            "Typical behaviour on a real corpus: 80-95%% of nodes are "
+            "classified by formal+heuristic (fast/free); 5-20%% reach "
+            "the LLM/Vision tier (paid). Cost scales with the size of "
+            "the unclassified remainder, not the total node count. "
+            "Implies --llm + --vision. Budget: ~$3-15 on a 200-screen "
+            "corpus; the previous Dank-EXP-02 estimate of ~$35 was "
+            "for a worst case where heuristics caught fewer nodes."
         ),
     )
     classify_parser.add_argument(
@@ -1653,7 +1695,38 @@ def main(argv: list | None = None) -> None:
 
     induce_parser = subparsers.add_parser(
         "induce-variants",
-        help="Induce variant_token_binding rows for Mode 3 (ADR-008 Stream B)",
+        help=(
+            "Induce placeholder variant_token_binding rows for each "
+            "catalog type. v0.1 shell — writes one custom_1 placeholder "
+            "per (catalog_type, slot) with confidence=0 and no actual "
+            "variant labels. The VLM-based variant labeling described "
+            "in ADR-008 Stream B is not yet implemented; calling this "
+            "command does NOT call Gemini and does NOT produce real "
+            "variant labels. ProjectCKRProvider can query these rows "
+            "at Mode-3 resolution time as a placeholder until the real "
+            "implementation lands."
+        ),
+        description=(
+            "Induce placeholder variant_token_binding rows for each "
+            "catalog type (ADR-008 Stream B v0.1 shell).\n\n"
+            "Current behaviour: every catalog type is treated as a "
+            "single cluster and the injected vlm_call is invoked with "
+            "an EMPTY image list — no rendered thumbnails are plumbed "
+            "in v0.1. The CLI's vlm_call adapter returns "
+            "{verdict: 'unknown', confidence: 0} on empty image lists, "
+            "so each cluster is persisted as 'custom_1' with "
+            "confidence=0 and NULL token/literal values. Gemini 3.1 "
+            "Pro is NOT actually called; the typical 100-200ms runtime "
+            "is too short for a network round-trip. The schema-level "
+            "contract is real: rows persist to variant_token_binding "
+            "and ProjectCKRProvider can query them at Mode-3 "
+            "resolution time. The cluster analysis (per-feature "
+            "k-means + silhouette) and the real VLM labelling are "
+            "NOT YET IMPLEMENTED — both are flagged 'when real corpus "
+            "coverage is wired up' in dd/cluster_variants.py:90.\n\n"
+            "Idempotent — re-running UPSERTs existing placeholder "
+            "rows on the unique (catalog_type, variant, slot) key."
+        ),
     )
     induce_parser.add_argument("--db", help="Database path")
 

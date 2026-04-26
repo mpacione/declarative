@@ -335,12 +335,19 @@ def render_figma(
         }
 
     node_id_vars = _prefetch_var_map(db_visuals)
+    # F13c: deferred_groups is populated by Phase 1 (every GROUP
+    # encountered registers here, skipping Phase 1 emission).
+    # Phase 2 reads it to emit `figma.group(...)` bottom-up after
+    # all descendants are created. Phase 3 reads it to emit
+    # group position-only ops (no resize / no layoutSizing).
+    deferred_groups: dict[int, dict[str, Any]] = {}
     phase1, uses_placeholder, phase1_refs, override_deferred = _emit_phase1(
         walk, var_map, spec_key_map, original_name_map,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements, spec_tokens=spec_tokens,
         node_id_vars=node_id_vars,
         descendant_visibility_resolver=descendant_visibility_resolver,
+        deferred_groups=deferred_groups,
     )
     preamble = render_figma_preamble(
         doc, conn, nid_map,
@@ -353,12 +360,14 @@ def render_figma(
         canvas_position=canvas_position,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
+        deferred_groups=deferred_groups,
     )
     phase3 = _emit_phase3(
         walk, var_map, spec_key_map,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
         override_deferred=override_deferred,
+        deferred_groups=deferred_groups,
     )
 
     end = _emit_end_wrapper()
@@ -639,6 +648,7 @@ def _emit_phase1(
     descendant_visibility_resolver: Optional[
         dict[str, dict[str, str]]
     ] = None,
+    deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
 ) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str]]:
     """Phase 1 — materialize nodes + set intrinsic properties.
 
@@ -655,10 +665,27 @@ def _emit_phase1(
       must execute after `appendChild` (e.g. ``layoutSizing`` on swap
       targets; see `_emit_override_op` for the list). Forwarded into
       Phase 3 by the caller.
+
+    F13c: `deferred_groups` (caller-supplied dict) is populated with
+    {id(group_node): {"spec_key", "element", "var"}} for every GROUP
+    node encountered. Phase 1 skips creation/prop emission for these;
+    Phase 2 calls `figma.group([direct_children_vars], grandparent_var)`
+    bottom-up; Phase 3 sets position. The deferral exists because
+    Figma's Plugin API has no `createGroup()` — groups can only be
+    constructed by wrapping existing nodes via `figma.group()`, which
+    requires the children to exist FIRST. Without this path, the
+    AST renderer silently coerced GROUP→FRAME via _TYPE_TO_CREATE_CALL
+    fallback, and the children's stored x/y (in group-PARENT space per
+    Plugin API convention) got reinterpreted as group-local-space,
+    offsetting them by the group's own (x, y). User-visible: HGB
+    Customer Complete Info Tablet's logo (Group 4746) rendered with
+    its vector children at +19px outside the parent Top Nav frame.
     """
     spec_elements = spec_elements or {}
     spec_tokens = spec_tokens or {}
     node_id_vars = node_id_vars or {}
+    if deferred_groups is None:
+        deferred_groups = {}
     lines: list[str] = []
     lines.append(
         "// Phase 1: Materialize — create nodes, set intrinsic properties"
@@ -716,7 +743,9 @@ def _emit_phase1(
             )
         )
 
-        if use_mode1 and (component_figma_id or instance_figma_node_id):
+        if use_mode1 and (
+            component_figma_id or instance_figma_node_id or component_key
+        ):
             emitted, mode1_ok = _emit_mode1_create(
                 var, node, spec_key_map, original_name_map,
                 component_figma_id, instance_figma_node_id,
@@ -726,6 +755,7 @@ def _emit_phase1(
                 descendant_visibility_resolver=(
                     descendant_visibility_resolver
                 ),
+                component_key=component_key,
             )
             if mode1_ok:
                 # Guard Mode 1 post-create prop writes. The first
@@ -768,6 +798,27 @@ def _emit_phase1(
                 f'__errors.push({{eid:"{eid_lit}", '
                 f'kind:"degraded_to_mode2", reason:"{reason}"}});'
             )
+
+        # F13c: GROUP nodes are deferred. Skip Phase 1 entirely (no
+        # create call, no name, no visual, no layout, no M assign).
+        # Phase 2 calls `figma.group([direct_children_vars],
+        # grandparent_var)` AFTER all descendants are created, then
+        # emits name + M assign. Phase 3 sets x, y. The
+        # deferred_groups dict is the cross-phase carrier.
+        # Per Codex F13c spec: do NOT replicate the OLD path's
+        # "register descendant in EVERY ancestor's children_vars" —
+        # that's suspicious for nested groups. Use direct-AST-children
+        # only; bottom-up processing in Phase 2 ensures inner groups
+        # exist as vars by the time outer groups call figma.group().
+        if etype == "group":
+            deferred_groups[id(node)] = {
+                "spec_key": spec_key_map.get(id(node), eid),
+                "element": element,
+                "var": var,
+                "node": node,
+                "original_name": original_name_map.get(id(node)) or eid,
+            }
+            continue
 
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
@@ -975,6 +1026,7 @@ def _emit_mode1_create(
     descendant_visibility_resolver: Optional[
         dict[str, dict[str, str]]
     ] = None,
+    component_key: Optional[str] = None,
 ) -> tuple[list[str], bool]:
     """Emit the Mode 1 createInstance block for one node.
 
@@ -994,6 +1046,23 @@ def _emit_mode1_create(
     `deferred_lines` accumulates override-tree ops that need to run
     after Phase 2 appendChild (e.g. ``layoutSizing`` on swap targets).
     Caller threads these into Phase 3.
+
+    Resolution precedence — preserves the existing fallback chain
+    (which the renderer's gate already mirrors) and adds the
+    component-key path that was previously missing:
+
+      1. ``component_figma_id`` → ``getNodeByIdAsync`` → ``createInstance``
+      2. ``instance_figma_node_id`` → ``getNodeByIdAsync`` →
+         ``getMainComponentAsync`` → ``createInstance`` (handles
+         unpublished/local components and INSTANCE rows whose master
+         id we don't have cached)
+      3. ``component_key`` (F1) → ``importComponentByKeyAsync`` →
+         ``createInstance``. Required for Mode-3 prompt composition
+         where ``build_template_visuals`` resolves a real component_key
+         from ``component_templates`` but ``component_key_registry``
+         hasn't yet been populated with figma_node_ids (fresh DBs).
+         Without this branch, every Mode-3 element with a key but
+         no resolved figma_id silently fell through to ``createFrame``.
     """
     lines: list[str] = []
     eid = node.head.eid
@@ -1055,6 +1124,32 @@ def _emit_mode1_create(
             f'return {fallback_js}; }} '
             f'}})();'
         )
+    elif component_key:
+        # F1: component-key-only path. Used by Mode-3 prompt
+        # composition when build_template_visuals resolves a real
+        # component_key from component_templates but the CKR row's
+        # figma_node_id is empty (fresh DBs). Same null-safety
+        # contract as the other branches: a missing key surfaces in
+        # __errors and degrades to the wireframe placeholder instead
+        # of throwing or silently rendering as a generic frame.
+        # `_emit_composition_children` already uses this exact API
+        # (`importComponentByKeyAsync`) for keyed children — adding it
+        # here makes the main element emission consistent.
+        id_lit = _escape_js(component_key)
+        lines.append(
+            f'const {var} = await (async () => {{ '
+            f'try {{ '
+            f'const __master = await figma.importComponentByKeyAsync("{id_lit}"); '
+            f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", '
+            f'kind:"missing_component_key", id:"{id_lit}"}}); '
+            f'return {fallback_js}; }} '
+            f'return __master.createInstance(); '
+            f'}} catch (__e) {{ __errors.push({{eid:"{eid_lit}", '
+            f'kind:"import_component_failed", id:"{id_lit}", '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'return {fallback_js}; }} '
+            f'}})();'
+        )
     else:
         return [], False
 
@@ -1066,19 +1161,42 @@ def _emit_mode1_create(
     if text_override:
         text_target = props.get("text_target")
         find_expr = _build_text_finder(var, text_target)
+        # F11.1: try/catch around the load+write pair (see
+        # dd/renderers/figma.py characters branch for context). When the
+        # text node's current fontName is unavailable in this Figma
+        # session (paid commercial font, library-imported font), the
+        # load rejects and the next-line write throws — without the
+        # catch the throw aborts Phase 1.
+        # F12: include node_id + name on the catch so per-eid
+        # attribution survives.
         lines.append(
             f'{{ const _t = {find_expr}; '
-            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
-            f'_t.characters = "{_escape_js(text_override)}"; }} }}'
+            f'if (_t) {{ try {{ '
+            f'await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(text_override)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"text", '
+            f'node_id:_t.id, name:_t.name, '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }} }}'
         )
 
     subtitle_override = props.get("subtitle", "")
     if subtitle_override:
         sub_find = _build_text_finder(var, None, subtitle=True)
+        # F11.1 + F12: same guard + per-eid attribution for subtitle.
         lines.append(
             f'{{ const _t = {sub_find}; '
-            f'if (_t) {{ await figma.loadFontAsync(_t.fontName); '
-            f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
+            f'if (_t) {{ try {{ '
+            f'await figma.loadFontAsync(_t.fontName); '
+            f'_t.characters = "{_escape_js(subtitle_override)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"subtitle", '
+            f'node_id:_t.id, name:_t.name, '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }} }}'
         )
 
     # PR-1: the legacy `hidden_children` name-based emitter was
@@ -1286,6 +1404,7 @@ def _emit_phase2(
     nid_map: Optional[dict[int, int]] = None,
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
+    deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
 ) -> list[str]:
     """Phase 2 — wire tree via appendChild; emit text characters +
     per-node layoutSizing when parent is auto-layout.
@@ -1295,14 +1414,52 @@ def _emit_phase2(
     etc.) cannot accept children; emitting `parent.appendChild(...)`
     then throws at runtime and orphans the subtree. Skip silently
     and push a structured diagnostic.
+
+    F13c: when `deferred_groups` is provided (every entry keyed on
+    id(group_node)), Phase 2:
+    - Skips groups in the appendChild loop (they don't exist yet).
+    - For non-group children whose parent is in `deferred_groups`,
+      walks UP the deferral chain to the nearest non-deferred
+      ancestor and appends THERE temporarily. Records the child's
+      var in the immediate-parent group's `direct_children`.
+    - After the appendChild loop, walks deferred groups bottom-up
+      by AST depth (innermost first) and emits
+      `figma.group([direct_children_vars], grandparent_var)` for
+      each, then `name + M[spec_key]` assigns. Outer groups'
+      direct_children includes inner groups' vars (registered
+      during the appendChild loop walk-up).
     """
     nid_map = nid_map or {}
     spec_elements = spec_elements or {}
+    if deferred_groups is None:
+        deferred_groups = {}
     lines: list[str] = []
     lines.append("")
     lines.append("// Phase 2: Compose — wire tree, set layoutSizing")
     lines.append("await new Promise(r => setTimeout(r, 0));")
     lines.append("")
+
+    # F13c: build a parent map + direct-children registry for groups.
+    parent_by_node_id: dict[int, Optional[Node]] = {
+        id(n): p for n, p in walk
+    }
+    # Per-group direct_children — populated as we walk children below.
+    # `direct_children` preserves insertion order = AST walk order.
+    for ginfo in deferred_groups.values():
+        ginfo.setdefault("direct_children", [])
+
+    def _resolve_nondeferred_ancestor(start_parent: Optional[Node]) -> Optional[Node]:
+        """Walk up the parent chain until we find a non-deferred
+        ancestor (or None at the top). Used to redirect appendChild
+        when the immediate parent is a deferred group (which doesn't
+        exist as a Figma node yet)."""
+        cur = start_parent
+        while cur is not None and id(cur) in deferred_groups:
+            cur = parent_by_node_id.get(id(cur))
+        return cur
+
+    def _is_group(node: Optional[Node]) -> bool:
+        return node is not None and id(node) in deferred_groups
 
     for node, parent in walk:
         if parent is None:
@@ -1331,8 +1488,45 @@ def _emit_phase2(
                 f'child_eid:"{_escape_js(eid)}"}});'
             )
             continue
+        # F13c: skip GROUP nodes here — they don't exist as Figma
+        # nodes yet. The post-loop bottom-up block creates them via
+        # `figma.group(direct_children, grandparent)` AFTER all
+        # descendants are wired into the temporary grandparent.
+        if _is_group(node):
+            # Still register this group as a direct child of any
+            # outer deferred group, so the outer group's
+            # direct_children list contains this group's var
+            # (the var name is reserved in var_map; figma.group()
+            # will produce the actual node, and we'll bind the
+            # var to it via `const <var> = figma.group(...)`
+            # in the bottom-up block below).
+            if parent is not None and _is_group(parent):
+                deferred_groups[id(parent)]["direct_children"].append(
+                    var_map[id(node)]
+                )
+            continue
         child_var = var_map[id(node)]
-        parent_var = var_map[id(parent)]
+        # F13c: when the immediate parent is a deferred group, the
+        # group doesn't exist yet — append to the nearest non-
+        # deferred ancestor (typically the group's grandparent) so
+        # the descendant has a real parent to live on temporarily.
+        # `figma.group()` later will move it into the new group as
+        # a side effect of being passed in the children-array. Also
+        # record this child's var in the immediate-parent group's
+        # direct_children so the bottom-up block knows what to wrap.
+        effective_parent = parent
+        if _is_group(parent):
+            deferred_groups[id(parent)]["direct_children"].append(child_var)
+            resolved_anc = _resolve_nondeferred_ancestor(parent)
+            if resolved_anc is not None and id(resolved_anc) in var_map:
+                effective_parent = resolved_anc
+            else:
+                # No non-deferred ancestor found — child still gets
+                # default-parented to currentPage by createFrame/etc.
+                # The bottom-up block will pick it up via
+                # direct_children. Skip the appendChild.
+                continue
+        parent_var = var_map[id(effective_parent)]
         # Per-op guard (Tier E follow-up to F3): without this, a
         # single throw here aborts the rest of Phase 2 AND the
         # final _rootPage.appendChild — orphaning the entire
@@ -1406,6 +1600,133 @@ def _emit_phase2(
                     f'kind:"layout_sizing_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+            # F13b: for text in autolayout parents, lock textAutoResize
+            # AFTER layoutSizing has resolved the width. Mirrors the
+            # OLD path's `text_autoresize_deferred` intent
+            # (dd/renderers/figma.py:1855). Codex F13b spec: only emit
+            # when NOT WIDTH_AND_HEIGHT — that mode is the default and
+            # re-emitting it after layoutSizing re-enables natural-
+            # width behavior, undoing the lock. Same authority as
+            # `text_auto_resize` already read at line 1453.
+            if is_text and text_auto_resize and text_auto_resize != "WIDTH_AND_HEIGHT":
+                lines.append(
+                    f'try {{ {child_var}.textAutoResize = "{text_auto_resize}"; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{err_eid_layout}", '
+                    f'kind:"text_auto_resize_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+
+    # F13c: bottom-up creation of deferred GROUPs. Innermost first
+    # so each outer group's `direct_children` already contains its
+    # inner-group vars (Plugin API requires children to exist before
+    # `figma.group()` can wrap them).
+    #
+    # AST depth approximates DOM depth: a group's depth is the
+    # length of its parent chain. Sort descending = deepest first.
+    if deferred_groups:
+        # Compute depth per group node by walking up parent_by_node_id.
+        def _depth(n: Node) -> int:
+            d = 0
+            cur = parent_by_node_id.get(id(n))
+            while cur is not None:
+                d += 1
+                cur = parent_by_node_id.get(id(cur))
+            return d
+
+        groups_by_depth = sorted(
+            deferred_groups.items(),
+            key=lambda kv: -_depth(kv[1]["node"]),
+        )
+
+        for group_node_id, ginfo in groups_by_depth:
+            gvar = ginfo["var"]
+            spec_key = ginfo["spec_key"]
+            err_g = _escape_js(spec_key)
+            original_name = ginfo["original_name"]
+            name_js = _escape_js(original_name)
+            direct_children = ginfo["direct_children"]
+            # Find grandparent (nearest non-deferred ancestor of the
+            # group itself). For top-level groups, this is the doc
+            # root or the screen frame.
+            group_node = ginfo["node"]
+            grandparent_node = _resolve_nondeferred_ancestor(
+                parent_by_node_id.get(id(group_node))
+            )
+            if grandparent_node is None:
+                grandparent_var = "_rootPage"
+            elif id(grandparent_node) not in var_map:
+                grandparent_var = "_rootPage"
+            else:
+                grandparent_var = var_map[id(grandparent_node)]
+
+            if not direct_children:
+                # Empty group — Figma's Plugin API rejects empty
+                # `figma.group([], ...)`. Substitute a frame
+                # placeholder so var_map / M[...] mapping survives.
+                # This shouldn't normally happen (groups in source
+                # always have at least one child), but defensive.
+                lines.append(
+                    f'// F13c: group {spec_key!r} had no direct '
+                    f'children — creating empty FRAME placeholder.'
+                )
+                lines.append(
+                    f'const {gvar} = figma.createFrame();'
+                )
+                lines.append(
+                    f'try {{ {grandparent_var}.appendChild({gvar}); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{err_g}", '
+                    f'kind:"group_empty_append_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+            else:
+                children_array = ", ".join(direct_children)
+                lines.append(
+                    f'const {gvar} = (function() {{ '
+                    f'try {{ '
+                    f'return figma.group([{children_array}], '
+                    f'{grandparent_var}); '
+                    f'}} catch (__e) {{ '
+                    f'__errors.push({{eid:"{err_g}", '
+                    f'kind:"group_create_failed", '
+                    f'error: String(__e && __e.message || __e)}}); '
+                    f'return figma.createFrame(); '
+                    f'}} '
+                    f'}})();'
+                )
+            lines.append(
+                f'try {{ {gvar}.name = "{name_js}"; }} catch (__e) {{ '
+                f'__errors.push({{eid:"{err_g}", '
+                f'kind:"group_name_failed", '
+                f'error: String(__e && __e.message || __e)}}); }}'
+            )
+            lines.append(f'M["{_escape_js(spec_key)}"] = {gvar}.id;')
+            # Z-order: figma.group() always appends the new group at
+            # the END of grandparent's children. For groups that
+            # aren't the last sibling in source order, this puts them
+            # on top of subsequent siblings. Use insertChild at the
+            # correct sort_order to fix.
+            #
+            # Compute target_idx from the AST: count non-skipped
+            # siblings that precede this group in walk order.
+            if grandparent_node is not None:
+                gp_children_in_walk = [
+                    c for c, p in walk
+                    if p is grandparent_node
+                ]
+                # Index this group within its grandparent's effective
+                # child list. Other deferred groups + leaves all
+                # appear here in walk order.
+                try:
+                    target_idx = gp_children_in_walk.index(group_node)
+                except ValueError:
+                    target_idx = -1
+                if target_idx >= 0:
+                    lines.append(
+                        f'try {{ {grandparent_var}.insertChild({target_idx}, {gvar}); }} '
+                        f'catch (__e) {{ __errors.push({{eid:"{err_g}", '
+                        f'kind:"group_insert_failed", '
+                        f'error: String(__e && __e.message || __e)}}); }}'
+                    )
 
     lines.append('__mark("phase2_done");')
 
@@ -1477,19 +1798,39 @@ def _emit_phase3(
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     override_deferred: Optional[list[str]] = None,
+    deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
 ) -> list[str]:
     """Phase 3 — resize (for non-auto-layout children), position,
     constraints, and override-tree-deferred ops. Baseline emits the
     Phase 3 comment only when there are hydrate_ops; preserving that
     behaviour keeps non-positioned screens free of a stray Phase 3
     header.
+
+    F13c: GROUP nodes (in `deferred_groups`) get position-only
+    treatment. Figma `GroupNode` has no fills/strokes/cornerRadius
+    and no autolayout; emitting those would throw "object is not
+    extensible". Position (`x`, `y`) is moved AFTER `figma.group()`
+    runs in Phase 2 — the group's auto-fit bbox at creation time
+    matches the union of children's positions, so setting `g.x`
+    here re-anchors the whole subtree at the source's intended
+    position.
     """
     spec_elements = spec_elements or {}
     override_deferred = override_deferred or []
+    deferred_groups = deferred_groups or {}
     ops: list[str] = list(override_deferred)
     parent_by_node_id: dict[int, Optional[Node]] = {
         id(n): p for n, p in walk
     }
+
+    # F13b: lazy import — resolve_element merges AST head + spec
+    # element + db_visuals into the canonical element shape. Phase 3
+    # was reading spec_elements directly, which misses both the AST
+    # head's overrides AND the F13a deep-merge resolution. Reading
+    # the resolved shape here aligns Phase 3 with Phase 1's locus
+    # (line 694) and is what makes the text resize / textAutoResize
+    # block work for non-autolayout-parent text nodes (Bug B).
+    from dd.ast_to_element import resolve_element
 
     for node, _parent in walk:
         eid = node.head.eid
@@ -1498,25 +1839,95 @@ def _emit_phase3(
         var = var_map[id(node)]
         spec_key = spec_key_map.get(id(node), eid)
         err_eid = _escape_js(spec_key)
-        element = spec_elements.get(spec_key, {})
+
+        # F13c: GROUPs get position-only treatment. Figma `GroupNode`
+        # has no fills/strokes/cornerRadius/autolayout — emitting any
+        # of those throws "object is not extensible". The figma.group()
+        # call in Phase 2 already auto-fits the group's bbox to its
+        # children's union; setting g.x / g.y here re-anchors the
+        # whole subtree at the source's intended position (children's
+        # local coords inside the group recompute automatically per
+        # Plugin API). Skip the rest of the per-node Phase 3 block
+        # (resize / textAutoResize / constraints) for groups.
+        if id(node) in deferred_groups:
+            ginfo = deferred_groups[id(node)]
+            position = (
+                ginfo.get("element", {}).get("layout", {}).get("position")
+            )
+            if position:
+                x_val = position.get("x", 0)
+                y_val = position.get("y", 0)
+                ops.append(
+                    f'try {{ {var}.x = {x_val}; }} catch (__e) {{ '
+                    f'__errors.push({{eid:"{err_eid}", '
+                    f'kind:"position_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+                ops.append(
+                    f'try {{ {var}.y = {y_val}; }} catch (__e) {{ '
+                    f'__errors.push({{eid:"{err_eid}", '
+                    f'kind:"position_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+            # Visibility — the AST may have `visible=false` on a
+            # group head; preserve it. Figma GroupNode has .visible.
+            if _ast_prop_is_false(node, "visible"):
+                ops.append(
+                    f'try {{ {var}.visible = false; }} catch (__e) {{ '
+                    f'__errors.push({{eid:"{err_eid}", '
+                    f'kind:"visibility_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
+            continue
+
+        # F13b: read the RESOLVED element (AST head + spec + db_visuals
+        # merged) so Phase 3 sees the same shape Phase 1 emits against.
+        # Without this, Phase 3 missed both the AST head's overrides
+        # and the AST-supplied widthPixels/heightPixels for nodes whose
+        # IR `width`/`height` were already literal numerics. Codex spec
+        # 2026-04-25.
+        nid = nid_map.get(id(node))
+        element = resolve_element(
+            node=node,
+            spec_elements=spec_elements,
+            spec_key=spec_key,
+            db_visuals=db_visuals or {},
+            nid=nid,
+            nid_map=nid_map,
+        )
         parent_node = parent_by_node_id.get(id(node))
         parent_element = {}
         if parent_node is not None:
             parent_spec_key = spec_key_map.get(
                 id(parent_node), parent_node.head.eid,
             )
-            parent_element = spec_elements.get(parent_spec_key, {})
+            # Parent layout decision is also a layout decision — read
+            # the resolved parent shape too, not the bare spec dict.
+            parent_element = resolve_element(
+                node=parent_node,
+                spec_elements=spec_elements,
+                spec_key=parent_spec_key,
+                db_visuals=db_visuals or {},
+                nid=nid_map.get(id(parent_node)),
+                nid_map=nid_map,
+            )
         parent_direction = (
             parent_element.get("layout", {}).get("direction", "")
         )
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
 
-        nid = nid_map.get(id(node))
         visual = (
             db_visuals.get(nid, {}) or {}
             if db_visuals is not None and nid is not None
             else {}
         )
+
+        # Determine if this node is a text type — text needs the
+        # textAutoResize lock after resize per Codex F13b spec.
+        etype = (
+            node.head.type_or_path if node.head.head_kind == "type" else ""
+        )
+        is_text = etype in _TEXT_TYPES
 
         rotation_deg = _ast_prop_py(node, "rotation")
         mirror_axis = _ast_prop_py(node, "mirror")
@@ -1526,8 +1937,18 @@ def _emit_phase3(
 
         if not parent_is_autolayout and element:
             elem_sizing = element.get("layout", {}).get("sizing", {})
+            # F13b: support both spellings — IR-direct elements use
+            # numeric `width`/`height`; AST-merged elements use
+            # `widthPixels`/`heightPixels`. Mirrors `_emit_layout`'s
+            # tolerant lookup at dd/renderers/figma.py:2255-2262.
+            # `width`/`height` only count when numeric (string
+            # values like "hug" are semantic, not pixel dims).
             pw = elem_sizing.get("widthPixels")
+            if pw is None and isinstance(elem_sizing.get("width"), (int, float)):
+                pw = elem_sizing.get("width")
             ph = elem_sizing.get("heightPixels")
+            if ph is None and isinstance(elem_sizing.get("height"), (int, float)):
+                ph = elem_sizing.get("height")
             if pw is not None and ph is not None:
                 ops.append(
                     f'try {{ {var}.resize({round(pw, 2)}, {round(ph, 2)}); }} '
@@ -1535,6 +1956,25 @@ def _emit_phase3(
                     f'kind:"resize_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+                # F13b: for text, lock textAutoResize AFTER resize so
+                # the explicit dimensions stick. Source from DB
+                # (`text_auto_resize` on the node row, same authority
+                # Phase 2's autolayout block reads at line 1453).
+                # Order is critical per `feedback_text_layout_invariants
+                # .md`: characters → resize → textAutoResize. Codex
+                # F13b spec: only emit when NOT WIDTH_AND_HEIGHT —
+                # WIDTH_AND_HEIGHT is the default and re-emitting it
+                # after resize re-enables natural-width behavior,
+                # undoing the lock.
+                if is_text:
+                    text_mode = visual.get("text_auto_resize")
+                    if text_mode and text_mode != "WIDTH_AND_HEIGHT":
+                        ops.append(
+                            f'try {{ {var}.textAutoResize = "{text_mode}"; }} '
+                            f'catch (__e) {{ __errors.push({{eid:"{err_eid}", '
+                            f'kind:"text_auto_resize_failed", '
+                            f'error: String(__e && __e.message || __e)}}); }}'
+                        )
             position = element.get("layout", {}).get("position")
             if position and not has_transform:
                 x_val = position.get("x", 0)

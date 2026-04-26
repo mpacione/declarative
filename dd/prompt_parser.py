@@ -109,7 +109,12 @@ def build_project_vocabulary(
         lines.append("")
         lines.append(
             "When outputting components, include a \"variant\" field with the "
-            "exact variant name from above when a specific variant applies."
+            "exact variant name from above when a specific variant applies. "
+            "PREFER project-native variant names from this list OVER the "
+            "generic semantic variants (primary/secondary/destructive/ghost) "
+            "— the project's own variants always beat the catalog defaults. "
+            "Use the generic semantic variants only when the project has no "
+            "matching named variant for the type."
         )
 
     # ── Section 2: CKR component_keys (ADR-008 Tier 2) ──────────────

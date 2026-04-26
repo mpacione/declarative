@@ -922,14 +922,45 @@ class _Cursor:
         return self.advance()
 
 
+def _is_unsigned_integer_number(value: str) -> bool:
+    """Return True iff `value` is the lexer's NUMBER form for an
+    unsigned positive integer (no sign, no decimal, no exponent).
+
+    Used by the dotted-path parsers to recognise numeric path segments
+    in token-refs (e.g. `{color.surface.21}` — real Figma Variables in
+    the Dank corpus use Material-3-style numeric tier names). Decimal
+    (`1.5`), exponent (`1e2`), and signed (`-1`) NUMBER tokens are NOT
+    valid path segments — those are real number literals and treating
+    them as path segments would create grammar ambiguity. The check is
+    conservative: digit-only.
+    """
+    return bool(value) and all(ch.isdigit() for ch in value)
+
+
 def _parse_dotted_path(c: _Cursor) -> str:
-    """Parse an IDENT ('.' IDENT)* path — for namespace, tokens keys."""
+    """Parse an IDENT ('.' IDENT|DIGITS)* path — for namespace, tokens keys.
+
+    Path segments after the leading IDENT may be unsigned-integer NUMBER
+    tokens (Material-3-style numeric tier names like `color.surface.21`).
+    See `_is_unsigned_integer_number` for the discipline.
+    """
     first = c.expect("IDENT", kind="KIND_BAD_PATH")
     parts = [first.value]
     while c.peek().type == "DOT":
         c.advance()
-        seg = c.expect("IDENT", kind="KIND_BAD_PATH")
-        parts.append(seg.value)
+        nxt = c.peek()
+        if nxt.type == "IDENT":
+            seg = c.advance()
+            parts.append(seg.value)
+        elif nxt.type == "NUMBER" and _is_unsigned_integer_number(nxt.value):
+            seg = c.advance()
+            parts.append(seg.value)
+        else:
+            raise DDMarkupParseError(
+                f"expected IDENT, got {nxt.type} `{nxt.value}`",
+                kind="KIND_BAD_PATH",
+                line=nxt.line, col=nxt.col,
+            )
     return ".".join(parts)
 
 
@@ -1064,12 +1095,26 @@ def _parse_brace_value(c: _Cursor) -> Value:
     # followed by `=` means PropGroup.
     first = c.expect("IDENT", kind="KIND_BAD_SYNTAX")
     if c.peek().type == "DOT" or c.peek().type == "RBRACE":
-        # TokenRef
+        # TokenRef. Path segments after the leading IDENT may be
+        # unsigned-integer NUMBER tokens (Material-3-style numeric tier
+        # names — real Figma Variables in the Dank corpus use these).
+        # See `_is_unsigned_integer_number` for the discipline.
         parts = [first.value]
         while c.peek().type == "DOT":
             c.advance()
-            seg = c.expect("IDENT", kind="KIND_BAD_PATH")
-            parts.append(seg.value)
+            nxt = c.peek()
+            if nxt.type == "IDENT":
+                seg = c.advance()
+                parts.append(seg.value)
+            elif nxt.type == "NUMBER" and _is_unsigned_integer_number(nxt.value):
+                seg = c.advance()
+                parts.append(seg.value)
+            else:
+                raise DDMarkupParseError(
+                    f"expected IDENT, got {nxt.type} `{nxt.value}`",
+                    kind="KIND_BAD_PATH",
+                    line=nxt.line, col=nxt.col,
+                )
         c.expect("RBRACE", kind="KIND_BAD_SYNTAX")
         return TokenRef(path=".".join(parts))
     if c.peek().type == "EQ":
@@ -3532,7 +3577,21 @@ class _Emitter:
         if lit.lit_kind == "string":
             # Use the raw form if it round-trips cleanly; otherwise escape
             # from the py value.
-            return lit.raw if lit.raw.startswith('"') else _quote_string(lit.py)
+            #
+            # `raw` is "round-trip clean" when it parses back to the same
+            # `py`. Construction-site code (compress_l3, edit-application)
+            # builds `raw` as `f'"{py}"'`, which produces malformed markup
+            # when `py` contains characters the single-line string form
+            # forbids (literal newline, unescaped backslash, embedded `"`).
+            # In that case the lexer rejects the emitted output with
+            # DDMarkupLexError on re-parse, breaking the round-trip
+            # contract. Fall through to `_quote_string(lit.py)` so the
+            # emitter is the single point of truth for string escaping.
+            if lit.raw.startswith('"""'):
+                return lit.raw
+            if lit.raw.startswith('"') and _is_well_formed_singleline_string(lit.raw):
+                return lit.raw
+            return _quote_string(lit.py)
         if lit.lit_kind == "number":
             # Emit canonical form derived from `py`. This normalizes
             # `1e2` → `100` and `-0` → `0` at emit time. The parse-side
@@ -3594,6 +3653,40 @@ class _Emitter:
             f"{k}={self.emit_value(v)}" for k, v in t.attrs
         )
         return f"#[{t.kind}" + (f" {inner}" if inner else "") + "]"
+
+
+def _is_well_formed_singleline_string(raw: str) -> bool:
+    """Return True iff `raw` is a syntactically valid single-line string
+    literal — i.e. starts and ends with `"`, contains no unescaped
+    newline, no unescaped inner `"`, and no trailing backslash before the
+    close quote.
+
+    Used by `_Emitter._emit_literal` as a guard before passing `raw`
+    through verbatim. Construction-site code that builds `raw` from a
+    `py` string via simple `f'"{py}"'` interpolation will produce
+    malformed raw whenever `py` contains a literal newline, an embedded
+    `"`, or an unescaped backslash. This helper detects those cases so
+    the emitter can fall back to `_quote_string(py)`.
+    """
+    if len(raw) < 2 or raw[0] != '"' or raw[-1] != '"':
+        return False
+    body = raw[1:-1]
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch == "\n":
+            return False
+        if ch == '"':
+            return False
+        if ch == "\\":
+            if i + 1 >= n:
+                # Trailing backslash — would consume the close quote.
+                return False
+            i += 2
+            continue
+        i += 1
+    return True
 
 
 def _quote_string(s: object) -> str:

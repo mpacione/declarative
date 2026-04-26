@@ -33,23 +33,61 @@ def group_type_scale(census: list[dict]) -> list[dict]:
     """
     Group typography census entries into semantic scale tiers.
 
+    F6.1 (line-height consolidation): every census row sharing the same
+    ``(category, font_family, font_weight, font_size)`` tuple folds
+    into ONE tier — line-height variants no longer compete for size
+    suffixes (they generated noise like ``type.body.10/.15/.16`` for
+    one effective body tier). The tier carries ``usage_count`` summed
+    across line-height variants plus a ``line_heights`` list with
+    each variant's value + count + raw_count_includes_null flag.
+
     Args:
         census: List of census entries with font properties
 
     Returns:
-        List of dicts with category, size_suffix, font properties, and usage_count
+        List of dicts with: category, size_suffix, font_family,
+        font_weight, font_size, usage_count (sum across line_heights),
+        line_heights (list of {value, usage_count} for non-NULL LH
+        rows; NULL LH = AUTO, deferred to mark_default_bindings).
+        ``line_height`` (singular) is also kept set to the highest-
+        usage non-NULL line-height value for backward-compat with
+        callers that still read it.
     """
+    # Consolidate: one entry per (font_family, font_weight, font_size).
+    # Collect line-height variants in a list under the consolidated entry.
+    consolidated: dict[tuple[str, int | float | str, float], dict] = {}
+    for entry in census:
+        key = (
+            entry['font_family'],
+            entry['font_weight'],
+            entry['font_size'],
+        )
+        slot = consolidated.setdefault(key, {
+            'font_family': entry['font_family'],
+            'font_weight': entry['font_weight'],
+            'font_size': entry['font_size'],
+            'usage_count': 0,
+            'line_heights': [],
+        })
+        slot['usage_count'] += entry['usage_count']
+        lh_value = entry.get('line_height_value')
+        if lh_value is not None:
+            slot['line_heights'].append({
+                'value': lh_value,
+                'usage_count': entry['usage_count'],
+            })
+
     # Group by category based on font_size
-    categories = {
+    categories: dict[str, list[dict]] = {
         'display': [],
         'heading': [],
         'body': [],
         'label': [],
-        'caption': []
+        'caption': [],
     }
 
-    for entry in census:
-        font_size = entry['font_size']
+    for slot in consolidated.values():
+        font_size = slot['font_size']
 
         if font_size >= 32:
             category = 'display'
@@ -62,17 +100,23 @@ def group_type_scale(census: list[dict]) -> list[dict]:
         else:
             category = 'caption'
 
-        categories[category].append(entry)
+        categories[category].append(slot)
 
-    # Process each category to assign suffixes
-    result = []
+    result: list[dict] = []
 
     for category, items in categories.items():
         if not items:
             continue
 
-        # Sort by font_size descending within category
-        items.sort(key=lambda x: (-x['font_size'], -x['usage_count']))
+        # Sort by font_size descending within category, then by total
+        # consolidated usage descending (ties broken by family then weight
+        # for full determinism across reruns).
+        items.sort(key=lambda x: (
+            -x['font_size'],
+            -x['usage_count'],
+            x['font_family'],
+            x['font_weight'],
+        ))
 
         # Assign size suffixes based on count
         if len(items) == 1:
@@ -91,16 +135,25 @@ def group_type_scale(census: list[dict]) -> list[dict]:
             for i in range(5, len(items)):
                 suffixes.append(f'{i-3}')
 
-        # Build result entries
-        for i, (item, suffix) in enumerate(zip(items, suffixes)):
+        # Build result entries; back-compat single ``line_height`` field
+        # = highest-usage non-NULL line-height value (deterministic tie:
+        # numeric value asc).
+        for item, suffix in zip(items, suffixes):
+            line_heights = sorted(
+                item['line_heights'],
+                key=lambda lh: (-lh['usage_count'], lh['value']),
+            )
+            primary_lh = line_heights[0]['value'] if line_heights else None
+
             result.append({
                 'category': category,
                 'size_suffix': suffix,
                 'font_family': item['font_family'],
                 'font_weight': item['font_weight'],
                 'font_size': item['font_size'],
-                'line_height': item['line_height_value'],
-                'usage_count': item['usage_count']
+                'line_height': primary_lh,
+                'line_heights': line_heights,
+                'usage_count': item['usage_count'],
             })
 
     return result
@@ -333,11 +386,20 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
             """, (font_weight_token_id, file_id, tier['font_size'], tier['font_family'], tier['font_weight']))
             bindings_updated += cursor.rowcount
 
-        # 4. lineHeight token (if not None and if bindings exist)
-        if tier['line_height'] is not None:
-            # Check if there are any lineHeight bindings for this tier
+        # 4. lineHeight tokens — one per non-NULL line-height variant
+        # within this consolidated tier. Highest-usage variant keeps the
+        # bare ``type.<tier_name>.lineHeight``; secondaries get ``.2``,
+        # ``.3`` suffixes (F6.1 stable naming). NULL (= AUTO) variants
+        # are not in ``tier['line_heights']``; they flow through to
+        # mark_default_bindings as ``intentionally_unbound``.
+        line_height_variants = tier.get('line_heights') or []
+        for rank, lh_entry in enumerate(line_height_variants):
+            lh_value = lh_entry['value']
+
+            # Confirm bindings exist before emitting (defensive: census
+            # comes from v_type_census on n.font_size+family+weight+LH).
             cursor = conn.execute("""
-                SELECT COUNT(*) as count
+                SELECT COUNT(*) AS count
                 FROM node_token_bindings ntb
                 JOIN nodes n ON ntb.node_id = n.id
                 JOIN screens s ON n.screen_id = s.id
@@ -347,44 +409,51 @@ def cluster_typography(conn: sqlite3.Connection, file_id: int, collection_id: in
                     AND n.font_size = ?
                     AND n.font_family = ?
                     AND n.font_weight = ?
-            """, (file_id, tier['font_size'], tier['font_family'], tier['font_weight']))
+                    AND json_extract(n.line_height, '$.value') = ?
+            """, (file_id, tier['font_size'], tier['font_family'], tier['font_weight'], lh_value))
 
-            has_bindings = cursor.fetchone()['count'] > 0
+            if cursor.fetchone()['count'] == 0:
+                continue
 
-            if has_bindings:
-                line_height_name = f"type.{tier_name}.lineHeight"
-                if line_height_name not in existing_names:
-                    cursor = conn.execute("""
-                        INSERT INTO tokens (collection_id, name, type, tier)
-                        VALUES (?, ?, 'dimension', 'extracted')
-                    """, (collection_id, line_height_name))
-                    line_height_token_id = cursor.lastrowid
+            base_lh_name = f"type.{tier_name}.lineHeight"
+            line_height_name = base_lh_name if rank == 0 else f"{base_lh_name}.{rank + 1}"
+            if line_height_name in existing_names:
+                continue
 
-                    # Insert token value
-                    conn.execute("""
-                        INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
-                        VALUES (?, ?, ?, ?)
-                    """, (line_height_token_id, mode_id, str(tier['line_height']), str(tier['line_height'])))
+            cursor = conn.execute("""
+                INSERT INTO tokens (collection_id, name, type, tier)
+                VALUES (?, ?, 'dimension', 'extracted')
+            """, (collection_id, line_height_name))
+            line_height_token_id = cursor.lastrowid
 
-                    tokens_created += 1
-                    existing_names.add(line_height_name)
+            conn.execute("""
+                INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
+                VALUES (?, ?, ?, ?)
+            """, (line_height_token_id, mode_id, str(lh_value), str(lh_value)))
 
-                    # Update lineHeight bindings
-                    cursor = conn.execute("""
-                        UPDATE node_token_bindings
-                        SET token_id = ?, binding_status = 'proposed', confidence = 1.0
-                        WHERE property = 'lineHeight'
-                            AND binding_status = 'unbound'
-                            AND node_id IN (
-                                SELECT n.id FROM nodes n
-                                JOIN screens s ON n.screen_id = s.id
-                                WHERE s.file_id = ?
-                                    AND n.font_size = ?
-                                    AND n.font_family = ?
-                                    AND n.font_weight = ?
-                            )
-                    """, (line_height_token_id, file_id, tier['font_size'], tier['font_family'], tier['font_weight']))
-                    bindings_updated += cursor.rowcount
+            tokens_created += 1
+            existing_names.add(line_height_name)
+
+            # Update lineHeight bindings — restricted to nodes whose
+            # actual lineHeight JSON value matches this variant (so
+            # AUTO / other PIXELS variants stay unbound and flow to
+            # mark_default_bindings or other lineHeight tokens).
+            cursor = conn.execute("""
+                UPDATE node_token_bindings
+                SET token_id = ?, binding_status = 'proposed', confidence = 1.0
+                WHERE property = 'lineHeight'
+                    AND binding_status = 'unbound'
+                    AND node_id IN (
+                        SELECT n.id FROM nodes n
+                        JOIN screens s ON n.screen_id = s.id
+                        WHERE s.file_id = ?
+                            AND n.font_size = ?
+                            AND n.font_family = ?
+                            AND n.font_weight = ?
+                            AND json_extract(n.line_height, '$.value') = ?
+                    )
+            """, (line_height_token_id, file_id, tier['font_size'], tier['font_family'], tier['font_weight'], lh_value))
+            bindings_updated += cursor.rowcount
 
     conn.commit()
 

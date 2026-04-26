@@ -173,6 +173,7 @@ from dd.markup_l3 import (
     PropAssign,
     PropGroup,
     SizingValue,
+    TokenAssign,
     TokenRef,
     Value,
     Warning,
@@ -245,6 +246,14 @@ def _fill_to_value(fill: dict) -> Optional[Value]:
     typ = fill.get("type", "").lower()
     if typ == "solid":
         color = fill.get("color")
+        # Brace-wrapped strings like `"{color.surface.6}"` are real
+        # Figma Variable refs in the IR (see `dd/ir.py:normalize_fills`
+        # line 68 — token bindings overlay as `"{token.name}"`). Emit
+        # them as `TokenRef` so the markup renders as
+        # `fill={color.surface.6}` and parses back losslessly.
+        # Mirrors `_effects_to_shadow` color discipline (F3 fix).
+        if isinstance(color, str) and color.startswith("{") and color.endswith("}"):
+            return TokenRef(path=color[1:-1])
         if isinstance(color, str) and color.startswith("#"):
             # Validate hex color shape (6 or 8 digits)
             rest = color[1:]
@@ -548,23 +557,51 @@ def _effects_to_shadow(effects: list) -> Optional[Value]:
         dy = eff.get("offset", {}).get("y") if isinstance(eff.get("offset"), dict) else eff.get("offsetY", 0)
         blur = eff.get("radius", 0)
         color = eff.get("color")
+        # Color discipline mirrors `_fill_to_value` (lines 240-253):
+        # only construct a `Literal_(hex-color, ...)` when the source
+        # actually looks like a hex literal. Brace-wrapped strings like
+        # `"{color.surface.21}"` (real Figma Variable refs in the IR;
+        # see `dd/ir.py:normalize_effects`) become `TokenRef` values so
+        # the emitted markup parses back correctly. Anything else falls
+        # back to the safe default. F3 fix.
+        color_value: Value
         if isinstance(color, dict):          # normalized DB form
             color_hex = _color_dict_to_hex(color)
-        elif isinstance(color, str):
-            color_hex = color
+            color_value = Literal_(
+                lit_kind="hex-color", raw=color_hex, py=color_hex,
+            )
+        elif isinstance(color, str) and color.startswith("{") and color.endswith("}"):
+            color_value = TokenRef(path=color[1:-1])
+        elif isinstance(color, str) and _is_well_formed_hex_color(color):
+            color_value = Literal_(lit_kind="hex-color", raw=color, py=color)
         else:
             color_hex = "#00000040"          # sensible default
+            color_value = Literal_(
+                lit_kind="hex-color", raw=color_hex, py=color_hex,
+            )
         args = [
             FuncArg(name="x", value=_num_literal(dx or 0)),
             FuncArg(name="y", value=_num_literal(dy or 0)),
             FuncArg(name="blur", value=_num_literal(blur or 0)),
-            FuncArg(
-                name="color",
-                value=Literal_(lit_kind="hex-color", raw=color_hex, py=color_hex),
-            ),
+            FuncArg(name="color", value=color_value),
         ]
         return FunctionCall(name="shadow", args=tuple(args))
     return None
+
+
+def _is_well_formed_hex_color(s: str) -> bool:
+    """Return True iff `s` is a syntactically valid hex color literal —
+    `#` followed by exactly 6 or 8 hex digits.
+
+    Mirrors the discipline applied at `_fill_to_value` (line 248-251)
+    so that all color-emit sites share one validity check.
+    """
+    if not (isinstance(s, str) and s.startswith("#")):
+        return False
+    rest = s[1:]
+    return len(rest) in (6, 8) and all(
+        c in "0123456789abcdefABCDEF" for c in rest
+    )
 
 
 def _normalize_raw_paint(raw: dict) -> Optional[dict]:
@@ -2281,10 +2318,21 @@ def _compress_to_l3_impl(
         )
         root_node = Node(head=new_head, block=root_node.block)
 
+    # Token preamble — collect every TokenRef path emitted into the
+    # tree, look each up in the corpus DB, and emit a `TokenAssign`
+    # per ref so the document is self-contained per grammar §4.2
+    # (token resolution scope chain, step 2: local `tokens { }` block).
+    # Without this, every Figma-Variable token-ref (e.g.
+    # `{color.surface.21}`) would fail the parser's
+    # `_check_unresolved_refs` semantic pass at round-trip time.
+    # F3 fix.
+    referenced_paths = _collect_token_ref_paths(root_node)
+    tokens_tuple = _build_tokens_preamble(referenced_paths, conn)
+
     doc = L3Document(
         namespace=None,
         uses=(),
-        tokens=(),
+        tokens=tokens_tuple,
         top_level=(root_node,),
         warnings=tuple(swap_warnings),
         source_path=None,
@@ -2311,3 +2359,132 @@ def _compress_to_l3_impl(
         doc, eid_to_nid, node_nid, node_spec_key, node_original_name,
         _resolver_out,
     )
+
+
+# ---------------------------------------------------------------------------
+# Token-preamble emission — F3 fix
+# ---------------------------------------------------------------------------
+#
+# `_check_unresolved_refs` (parser-side semantic pass at
+# `dd/markup_l3.py:_check_unresolved_refs`) requires every TokenRef to
+# resolve through one of: enclosing scalar-param scope, the document's
+# `tokens { }` preamble, a `use` alias, or the universal catalog. The
+# universal catalog (`dd.compose._UNIVERSAL_MODE3_TOKENS`) carries 124
+# IDENT-only paths; real Figma Variables in the Dank corpus have 117
+# numeric-segment paths which never appear there. Without a preamble,
+# every Figma-Variable token-ref would fail the round-trip semantic
+# check.
+#
+# Helpers below collect emitted TokenRef paths from the compressed
+# Node tree, look each one up in the corpus DB, and emit a
+# `TokenAssign` so the document is self-contained.
+
+
+def _collect_token_ref_paths(root: Node) -> set[str]:
+    """Walk an emitted Node tree and collect every TokenRef path.
+
+    Returns same-doc (non-aliased) paths only — cross-alias refs are
+    deferred to the resolver phase per grammar §4.2.
+    """
+    seen: set[str] = set()
+
+    def visit_value(v: object) -> None:
+        if isinstance(v, TokenRef) and v.scope_alias is None:
+            seen.add(v.path)
+        elif isinstance(v, FunctionCall):
+            for a in v.args:
+                visit_value(a.value)
+        elif isinstance(v, PropGroup):
+            for e in v.entries:
+                visit_value(e.value)
+        elif isinstance(v, Node):
+            visit_node(v)
+
+    def visit_node(n: Node) -> None:
+        for prop in n.head.properties:
+            visit_value(prop.value)
+        for arg in n.head.override_args:
+            visit_value(arg.value)
+        if n.head.trailer is not None:
+            for _, val in n.head.trailer.attrs:
+                visit_value(val)
+        if n.block is None:
+            return
+        for stmt in n.block.statements:
+            if isinstance(stmt, PropAssign):
+                visit_value(stmt.value)
+            elif isinstance(stmt, Node):
+                visit_node(stmt)
+
+    visit_node(root)
+    return seen
+
+
+def _build_tokens_preamble(
+    paths: set[str], conn: Optional[sqlite3.Connection],
+) -> tuple[TokenAssign, ...]:
+    """Build a `tokens { ... }` preamble from a set of referenced paths.
+
+    Looks each path up in the corpus DB's `tokens` + `token_values`
+    tables. Emits a `TokenAssign` per path that has a usable value;
+    silently skips paths that don't resolve (the parser's
+    `_check_unresolved_refs` will then flag the genuinely-orphaned
+    references — keeping that pass meaningful for misspellings).
+    Lex-sorted for round-trip stability per grammar §7.5.
+    """
+    if not paths or conn is None:
+        return ()
+    assignments: list[TokenAssign] = []
+    for path in sorted(paths):
+        value = _lookup_token_value(path, conn)
+        if value is not None:
+            assignments.append(TokenAssign(path=path, value=value))
+    return tuple(assignments)
+
+
+def _lookup_token_value(
+    path: str, conn: sqlite3.Connection,
+) -> Optional[Value]:
+    """Look up a token's first available value from the DB and convert
+    it to an L3 `Value` literal.
+
+    Returns None when the token isn't present, has no value row, or has
+    a value shape we don't yet model. Color tokens become hex literals;
+    numeric tokens become number literals; everything else becomes a
+    quoted string literal.
+    """
+    try:
+        cur = conn.execute(
+            "SELECT t.type, tv.raw_value FROM tokens t "
+            "LEFT JOIN token_values tv ON tv.token_id = t.id "
+            "WHERE t.name = ? LIMIT 1",
+            (path,),
+        )
+        row = cur.fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    token_type = row[0] if not hasattr(row, "keys") else row["type"]
+    raw = row[1] if not hasattr(row, "keys") else row["raw_value"]
+    if raw is None:
+        return None
+    raw = str(raw)
+    if token_type == "color":
+        if _is_well_formed_hex_color(raw):
+            return Literal_(lit_kind="hex-color", raw=raw, py=raw)
+        return None
+    if token_type in ("dimension", "number"):
+        try:
+            num: float | int = float(raw)
+            if num.is_integer():
+                num = int(num)
+        except (TypeError, ValueError):
+            return None
+        return _num_literal(num)
+    if token_type in ("fontFamily", "fontWeight"):
+        # Quote with double-quote-escaped form for round-trip safety.
+        escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
+        quoted = f'"{escaped}"'
+        return Literal_(lit_kind="string", raw=quoted, py=raw)
+    return None

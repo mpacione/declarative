@@ -264,7 +264,12 @@ def cluster_colors(conn: sqlite3.Connection, file_id: int, collection_id: int, m
                 (token_id, mode_id, hex_color, hex_color)
             )
 
-            # Update bindings for all colors in the group
+            # Update bindings for all colors in the group.
+            # Snap binding.resolved_value to the group's representative hex so
+            # the validator (binding_token_consistency) and downstream consumers
+            # see one canonical value per token. The original Figma hex remains
+            # preserved in raw_value, so re-extraction / drift detection still
+            # has access to it.
             representative_oklch = hex_to_oklch(hex_color)
 
             for color in group:
@@ -279,12 +284,14 @@ def cluster_colors(conn: sqlite3.Connection, file_id: int, collection_id: int, m
                     # Scale confidence: max(0.8, 1.0 - delta_e/10)
                     confidence = max(0.8, 1.0 - delta_e / 10.0)
 
-                # Update all bindings with this color
+                # Update all bindings with this color, snapping resolved_value
+                # to the representative so post-merge values are consistent.
                 cursor = conn.execute(
                     """UPDATE node_token_bindings
-                       SET token_id = ?, binding_status = 'proposed', confidence = ?
+                       SET token_id = ?, binding_status = 'proposed', confidence = ?,
+                           resolved_value = ?
                        WHERE resolved_value = ? AND binding_status = 'unbound'""",
-                    (token_id, confidence, color_hex)
+                    (token_id, confidence, hex_color, color_hex)
                 )
                 bindings_updated += cursor.rowcount
 

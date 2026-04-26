@@ -2958,8 +2958,19 @@ class TestUnpublishedComponentFallback:
         assert "importComponentByKeyAsync" not in script
         assert "123:456" in script
 
-    def test_fallback_creates_frame_when_no_ids(self):
-        """When both component_figma_id and figma_node_id are missing, fall back to createFrame."""
+    def test_uses_component_key_when_no_figma_ids(self):
+        """When component_key is set but both figma ids are NULL, fall through
+        to importComponentByKeyAsync.
+
+        F1: prior to this fix, the renderer's gate accepted ``component_key``
+        but the emission body had no matching branch, so the script silently
+        degraded to ``createFrame()`` for every Mode-3 element whose key
+        couldn't be resolved upstream to a figma_id (the common case on
+        fresh extracted DBs without a CKR build pass). The legacy
+        ``_emit_composition_children`` already used this exact API for keyed
+        children — adding it at the top-level keeps the two emission sites
+        consistent.
+        """
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["thing-1"]},
             "thing-1": {"type": "container"},
@@ -2969,6 +2980,33 @@ class TestUnpublishedComponentFallback:
             -1: {"bindings": []},
             -2: {
                 "component_key": "orphan_key",
+                "component_figma_id": None,
+                "figma_node_id": None,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'importComponentByKeyAsync("orphan_key")' in script
+        # Falls back to placeholder on any failure mode (missing key,
+        # network error, etc.) — same null-safety contract as the other
+        # Mode-1 branches.
+        assert "_missingComponentPlaceholder" in script
+        assert "missing_component_key" in script
+        assert "getMainComponentAsync" not in script
+
+    def test_fallback_creates_frame_when_no_keys_at_all(self):
+        """With no component_key, no component_figma_id, and no
+        figma_node_id, the renderer must fall through to createFrame().
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["thing-1"]},
+            "thing-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "thing-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": None,
                 "component_figma_id": None,
                 "figma_node_id": None,
                 "bindings": [],

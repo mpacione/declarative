@@ -393,3 +393,185 @@ def test_as_alias_at_call_site() -> None:
     """.strip()
     doc = parse_l3(source)
     assert doc is not None
+
+
+# ---------------------------------------------------------------------------
+# Multi-line string emission (F2 regression — 2026-04-25).
+#
+# Bug: construction-site code in `dd.compress_l3._compress_element` (and
+# `dd.markup_l3._apply_set_to_node`) builds string Literal_ nodes by
+# interpolating the python value directly into the `raw` field via
+# `f'"{txt}"'`. When `txt` contains a literal newline (email bodies,
+# paragraph copy), the constructed `raw` is malformed dd-markup — the
+# lexer correctly rejects it on re-parse with
+# `unterminated single-line string (newline not allowed; ...)`.
+#
+# Audit evidence: `audit/20260425-1042/sections/04-l3-markup-roundtrip/`
+# screens 35 + 41 fail the round-trip with this exact lex error.
+#
+# Fix: `_emit_literal` validates `lit.raw` is well-formed before passing
+# through; falls back to `_quote_string(lit.py)` otherwise. The emitter
+# is the single point of truth for string escaping.
+# ---------------------------------------------------------------------------
+
+
+def _build_text_node_with_content(text: str):
+    """Build a minimal L3Document containing a `text` node whose
+    positional content is `text`. Constructs the AST directly (does not
+    parse) so we exercise the emit path on construction-site values that
+    did not flow through the lexer.
+    """
+    from dd.markup_l3 import (
+        Block,
+        L3Document,
+        Literal_,
+        Node,
+        NodeHead,
+    )
+
+    text_lit = Literal_(lit_kind="string", raw=f'"{text}"', py=text)
+    text_node = Node(
+        head=NodeHead(
+            head_kind="type",
+            type_or_path="text",
+            scope_alias=None,
+            eid="msg",
+            alias=None,
+            override_args=(),
+            positional=text_lit,
+            properties=(),
+            trailer=None,
+        ),
+        block=None,
+    )
+    screen = Node(
+        head=NodeHead(
+            head_kind="type",
+            type_or_path="screen",
+            scope_alias=None,
+            eid="s",
+            alias=None,
+            override_args=(),
+            positional=None,
+            properties=(),
+            trailer=None,
+        ),
+        block=Block(statements=(text_node,)),
+    )
+    return L3Document(
+        namespace=None,
+        uses=(),
+        tokens=(),
+        top_level=(screen,),
+        warnings=(),
+        source_path=None,
+    )
+
+
+def test_emit_short_multiline_string_round_trips() -> None:
+    """A two-line text value emits as parseable markup and round-trips
+    byte-identically through emit→parse→emit."""
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    doc = _build_text_node_with_content("Line one\nLine two")
+    m1 = emit_l3(doc)
+
+    # Sanity: emitted output must be parseable (the regression we caught).
+    doc2 = parse_l3(m1)
+    m2 = emit_l3(doc2)
+
+    assert m1 == m2, (
+        f"short multi-line text not idempotent:\n--- m1 ---\n{m1}\n"
+        f"--- m2 ---\n{m2}\n"
+    )
+
+
+def test_emit_long_multiline_string_round_trips() -> None:
+    """A long multi-paragraph text value (the actual HGB screen-35 body)
+    emits parseably and round-trips byte-identically."""
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    body = (
+        "Subject: Live Request\n"
+        "\n"
+        "Hello, \n"
+        "\n"
+        "I have the below trip coming up later this year. "
+        "Ill be leaving from london, UK and ill need a return flight. "
+        "Can you arrange and include hotels near the addresses given?\n"
+        "\n"
+        "New York (Nov 10-12)\n"
+        "Hampton Inn Hotel  near Central Park South\n"
+        "\n"
+        "Los Angeles (Nov 12-15)\n"
+        "Office location: 1700 Ocean Ave, Santa Monica CA, 90401, USA\n"
+        "\n"
+        "Thanks"
+    )
+    doc = _build_text_node_with_content(body)
+    m1 = emit_l3(doc)
+
+    doc2 = parse_l3(m1)
+    m2 = emit_l3(doc2)
+
+    assert m1 == m2, (
+        f"long multi-line text not idempotent (bytes p1={len(m1)} p2={len(m2)})"
+    )
+
+    # The emitted form must NOT contain unescaped newlines inside a
+    # `"..."` (single-line) string. Either the body lives inside a
+    # `"""..."""` triple-quoted run, or every newline in `raw` was
+    # escaped to `\n`. We verify by walking single-line string regions
+    # and asserting no literal newline is present.
+    in_triple = False
+    in_single = False
+    i = 0
+    while i < len(m1):
+        if not in_single and i + 2 < len(m1) and m1[i:i + 3] == '"""':
+            in_triple = not in_triple
+            i += 3
+            continue
+        if not in_triple:
+            ch = m1[i]
+            if not in_single and ch == '"':
+                in_single = True
+                i += 1
+                continue
+            if in_single:
+                if ch == "\\" and i + 1 < len(m1):
+                    i += 2
+                    continue
+                assert ch != "\n", (
+                    f"emitted markup has literal newline inside `\"...\"` "
+                    f"around char {i}: {m1[max(0, i - 40):i + 40]!r}"
+                )
+                if ch == '"':
+                    in_single = False
+        i += 1
+
+
+def test_emit_string_with_embedded_quote_round_trips() -> None:
+    """A string containing an embedded `"` round-trips — same bug class
+    (construction-site builds malformed raw)."""
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    doc = _build_text_node_with_content('She said "hello" to me')
+    m1 = emit_l3(doc)
+    doc2 = parse_l3(m1)
+    m2 = emit_l3(doc2)
+    assert m1 == m2
+
+
+def test_emit_plain_string_unchanged() -> None:
+    """Strings without newlines or special chars must not change shape —
+    fix preserves byte-identical emission for the common case."""
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    doc = _build_text_node_with_content("Hello world")
+    m1 = emit_l3(doc)
+    # The raw form `"Hello world"` was passed straight through pre-fix;
+    # post-fix it should still pass straight through (no escape needed).
+    assert '"Hello world"' in m1
+    doc2 = parse_l3(m1)
+    m2 = emit_l3(doc2)
+    assert m1 == m2

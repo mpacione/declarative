@@ -361,10 +361,32 @@ def _emit_override_op(
         return ""
 
     if prop_name == "characters":
+        # F11.1: wrap the load+write pair in try/catch — when the
+        # current font is unavailable in this Figma session (e.g. paid
+        # commercial font like Akkurat-Bold the user hasn't licensed),
+        # loadFontAsync REJECTS and the next-line write throws. Without
+        # the catch, the throw propagates past the outer findOne block's
+        # try/finally (finally doesn't catch) and aborts the rest of
+        # Phase 1 — observed Phase D 2026-04-25 sweep: 17 of 44 HGB
+        # screens halted at the first instance whose master used
+        # Akkurat, so only 1 of N IR elements rendered. Guard mirrors
+        # the same shape applied to other text-prop writes in F11.
+        # F12: emit the rendered node's id as `node_id` so per-eid
+        # attribution survives the catch (Phase D visual-diff showed
+        # text_set_failed without node attribution makes it hard to
+        # map a "Rooms" instead of "Travel Request" symptom back to
+        # the offending DB override row).
         return (
             f'if ({target_var}.type === "TEXT") {{ '
+            f'try {{ '
             f'await figma.loadFontAsync({target_var}.fontName); '
-            f'{target_var}.characters = "{_escape_js(value)}"; }}'
+            f'{target_var}.characters = "{_escape_js(value)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"characters", '
+            f'node_id:{target_var}.id, name:{target_var}.name, '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }}'
         )
     if prop_name == "instance_swap":
         comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')
@@ -407,8 +429,59 @@ def _emit_override_op(
     from dd.property_registry import by_figma_name
     prop = by_figma_name(prop_name)
     if prop:
+        # Font-identity members (fontFamily/fontWeight/fontStyle) are
+        # virtual: TEXT nodes have no .fontFamily / .fontWeight setter,
+        # only a composed .fontName = {family, style}. Setting any of
+        # them directly throws "object is not extensible". The composed
+        # write is emitted upstream in `_emit_override_tree` via
+        # `_compose_font_identity_op`; if a stray font-identity prop
+        # reaches this path it means composition was skipped, so emit
+        # nothing (the no-op is safer than a guaranteed throw).
+        if prop_name in _FONT_IDENTITY_PROPS:
+            return ""
         formatted = format_js_value(value, prop.value_type)
         op = f"{target_var}.{prop.figma_name} = {formatted};"
+        # F11: text-property writes (letterSpacing, fontSize, etc.) on
+        # TEXT nodes require the node's CURRENT fontName to be loaded —
+        # not the family in the preamble's preload list, which only
+        # covers fonts the spec walks (Mode-2 elements). Mode-1 instance
+        # children inherit fonts from the master component (often a
+        # team-library import), and those fonts aren't in the preload
+        # list. Without this guard, the first override write throws
+        # "Cannot write to node with unloaded font 'X'".
+        # `figma.mixed` skip handles runs of mixed fonts in a TEXT node
+        # (Plugin API returns the sentinel; loadFontAsync rejects it).
+        if prop.category == "text":
+            # Codex F11 review: wrap the inner load+assign in try/catch
+            # too. loadFontAsync can reject (font genuinely unavailable
+            # in this Figma session — happens when a master uses a paid
+            # commercial font the user hasn't licensed). Without the
+            # catch, the throw would propagate up past the outer block's
+            # try/finally and abort the rest of the override stream for
+            # this instance. Mode-2's analogous path uses `_guarded_op`
+            # at figma.py:2558 — same shape, just per-op rather than
+            # per-block. `figma.mixed` skip avoids passing the sentinel
+            # to loadFontAsync (which rejects it).
+            esc_prop = _escape_js(prop_name)
+            # F12: include node_id + name so per-eid attribution
+            # survives the catch (Phase D Codex review found the
+            # F11.1 catches dropped attribution).
+            op = (
+                f'if ({target_var}.type === "TEXT") {{ '
+                f'try {{ '
+                f'if ({target_var}.fontName !== figma.mixed) {{ '
+                f'await figma.loadFontAsync({target_var}.fontName); }} '
+                f'{op} '
+                f'}} catch (__e) {{ '
+                f'__errors.push({{kind:"text_set_failed", '
+                f'property:"{esc_prop}", '
+                f'node_id:{target_var}.id, name:{target_var}.name, '
+                f'error: String(__e && __e.message || __e)}}); '
+                f'}} }}'
+            )
+            # _gate_if_not_placeholder for self-target writes still
+            # applies — wrap the whole guarded block.
+            return _gate_if_not_placeholder(op, target_var) if is_self else op
         # Gate self-target writes on runtime placeholder check. When the
         # instance fell back to our wireframe placeholder (missing source
         # component), these DB-sourced visual properties would otherwise
@@ -416,6 +489,96 @@ def _emit_override_op(
         # turns the placeholder into a giant black box).
         return _gate_if_not_placeholder(op, target_var) if is_self else op
     return ""
+
+
+# F11: virtual font-identity properties on TEXT nodes. These don't map
+# to direct setters; they compose into `.fontName = {family, style}`.
+# `_compose_font_identity_op` extracts them from a properties list and
+# emits a single composed write (with the new font preloaded).
+_FONT_IDENTITY_PROPS = frozenset({"fontFamily", "fontStyle", "fontWeight"})
+
+
+def _compose_font_identity_op(
+    properties: list[dict[str, Any]],
+    target_var: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Pull fontFamily/fontStyle/fontWeight from properties, emit a
+    composed fontName write, and return (op, remaining_properties).
+
+    Returns ("", properties_unchanged) if none of the three are present.
+
+    The composed write reads the current `_c.fontName` for any half not
+    overridden so the result is a complete {family, style} pair. This
+    matches the Mode-2 emission contract (`_emit_text_props`) which
+    always writes a complete fontName, and avoids the bug where the
+    Mode-1 override emitter passed `_c.fontFamily = "DM Sans"` (no such
+    setter on TEXT nodes — throws "object is not extensible").
+
+    `figma.mixed` is handled inline: when the node has a mixed font
+    run, fall back to {Inter, Regular} as the structural anchor and
+    let the override family/style fill in.
+    """
+    family_prop: dict[str, Any] | None = None
+    style_prop: dict[str, Any] | None = None
+    weight_prop: dict[str, Any] | None = None
+    remaining: list[dict[str, Any]] = []
+    for ov in properties:
+        name = ov.get("property")
+        if name == "fontFamily":
+            family_prop = ov
+        elif name == "fontStyle":
+            style_prop = ov
+        elif name == "fontWeight":
+            weight_prop = ov
+        else:
+            remaining.append(ov)
+    if family_prop is None and style_prop is None and weight_prop is None:
+        return "", properties
+
+    family_js = (
+        f'"{_escape_js(str(family_prop["value"]))}"' if family_prop else "__cur.family"
+    )
+    if style_prop is not None:
+        style_js = f'"{_escape_js(str(style_prop["value"]))}"'
+    elif weight_prop is not None:
+        # Convert numeric weight → Figma style name (e.g. 700 → "Bold").
+        # Use the supplied family for normalization when available
+        # (Inter "Semi Bold" vs SF Pro "Semibold"). When family is also
+        # an override, normalize against the override family; otherwise
+        # against the current family — but we don't know the current
+        # family at compile time, so fall back to the unnormalized
+        # weight→style. Most weights (Regular/Bold/Medium) are stable
+        # across families anyway; Semi Bold is the documented edge case.
+        family_for_norm = (
+            str(family_prop["value"]) if family_prop else "Inter"
+        )
+        derived_style = normalize_font_style(
+            family_for_norm,
+            font_weight_to_style(weight_prop["value"]),
+        )
+        style_js = f'"{_escape_js(derived_style)}"'
+    else:
+        style_js = "__cur.style"
+
+    # Emit the composed write. Self-gating (placeholder check) is
+    # handled by the caller (`_emit_override_tree`); this function
+    # produces the bare op.
+    # F12: include node_id + name in the catch so per-eid attribution
+    # survives.
+    op = (
+        f'if ({target_var}.type === "TEXT") {{ '
+        f'const __cur = ({target_var}.fontName !== figma.mixed) '
+        f'? {target_var}.fontName : {{family: "Inter", style: "Regular"}}; '
+        f'const __new = {{family: {family_js}, style: {style_js}}}; '
+        f'try {{ await figma.loadFontAsync(__new); '
+        f'{target_var}.fontName = __new; }} '
+        f'catch (__e) {{ __errors.push({{kind:"text_set_failed", '
+        f'family: __new.family, style: __new.style, '
+        f'node_id:{target_var}.id, name:{target_var}.name, '
+        f'error: String(__e && __e.message || __e)}}); }} '
+        f'}}'
+    )
+    return op, remaining
 
 
 def _gate_if_not_placeholder(op: str, var: str) -> str:
@@ -469,8 +632,20 @@ def _emit_override_tree(
             op = _emit_override_op(ov, instance_var, node_id_vars, instance_var, deferred_lines)
             if op:
                 lines.append(op)
+        # F11: compose virtual font-identity overrides (fontFamily /
+        # fontStyle / fontWeight) into a single fontName write before
+        # iterating per-prop. INSTANCE root nodes are non-text so the
+        # composer is a no-op here, but apply the same shape for symmetry
+        # — keeps the compose path unconditional.
+        font_op, properties_remain = _compose_font_identity_op(
+            properties, instance_var,
+        )
+        if font_op:
+            lines.append(
+                _gate_if_not_placeholder(font_op, instance_var)
+            )
         # Self property overrides — apply directly to instance variable
-        for prop in properties:
+        for prop in properties_remain:
             op = _emit_override_op(prop, instance_var, node_id_vars, instance_var, deferred_lines)
             if op:
                 lines.append(op)
@@ -486,7 +661,16 @@ def _emit_override_tree(
             op = _emit_override_op(ov, "_c", node_id_vars, instance_var, deferred_lines)
             if op:
                 ops.append(op)
-        for prop in properties:
+        # F11: compose font identity overrides into a single fontName
+        # write so we don't emit `_c.fontFamily = "X"` (no such setter
+        # on TEXT nodes — throws "object is not extensible") and so the
+        # NEW font is loaded before the write.
+        font_op, properties_remain = _compose_font_identity_op(
+            properties, "_c",
+        )
+        if font_op:
+            ops.append(font_op)
+        for prop in properties_remain:
             op = _emit_override_op(prop, "_c", node_id_vars, instance_var, deferred_lines)
             if op:
                 ops.append(op)
@@ -1147,7 +1331,10 @@ def generate_figma_script(
         #   2. instance figma_node_id (from DB, INSTANCE node) → getMainComponentAsync → createInstance
         #      (handles unpublished/local components that importComponentByKeyAsync rejects;
         #       also covers fresh DBs where CKR hasn't been built yet)
-        #   3. Fall through to Mode 2 (createFrame) if no usable ID
+        #   3. component_key (Mode-3 prompt path) → importComponentByKeyAsync → createInstance
+        #      (used when component_templates resolves a key but CKR.figma_node_id is null;
+        #       e.g. fresh extracted DBs without a CKR build pass — F1)
+        #   4. Fall through to Mode 2 (createFrame) if no usable ID
         #
         # ADR-007 Session A: the gate now also reaches path 2 when only
         # `instance_figma_node_id` + `node_type='INSTANCE'` are populated.
@@ -1205,6 +1392,25 @@ def generate_figma_script(
                     f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"no_main_component", id:"{id_lit}"}}); return {fallback_js}; }} '
                     f'try {{ return __master.createInstance(); }} '
                     f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
+                    f'}})();'
+                )
+            elif component_key:
+                # F1: component-key-only Mode-1 path. Twin of the
+                # AST-renderer branch in dd/render_figma_ast.py — needed
+                # because Mode-3 composition resolves a key from
+                # component_templates without an upstream
+                # component_key_registry pass having populated figma_ids.
+                # `_emit_composition_children` already uses this exact API
+                # (`importComponentByKeyAsync`) for keyed children — adding
+                # it at the top-level keeps the two emission sites
+                # consistent.
+                id_lit = _escape_js(component_key)
+                phase1_lines.append(
+                    f'const {var} = await (async () => {{ '
+                    f'try {{ const __master = await figma.importComponentByKeyAsync("{id_lit}"); '
+                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_key", id:"{id_lit}"}}); return {fallback_js}; }} '
+                    f'return __master.createInstance(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"import_component_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
                     f'}})();'
                 )
             else:
