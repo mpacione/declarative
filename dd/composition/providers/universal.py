@@ -47,6 +47,26 @@ _BACKBONE: frozenset[str] = frozenset({
 })
 
 
+# Phase E #7 fix (2026-04-26): public-API export of the types the
+# universal catalog provider supports. Pre-fix `dd/compose.py`
+# warned "no template — will render as empty frame" for any type
+# missing from the project-specific `component_templates` table,
+# even though the universal provider would render those types
+# correctly via `_BUILDERS` (image, card, button, dialog, etc).
+# Codex 2026-04-26 (gpt-5.5 high reasoning): "Export an intentional
+# constant/API from the universal provider module, then use that
+# in compose.py... avoids having compose.py import a private
+# implementation detail. Makes the contract explicit: 'these types
+# are universally renderable.'"
+#
+# Consumers (e.g. `dd.compose.validate_components`) should treat
+# membership in this set as "renderable via universal fallback —
+# no project-specific template needed." This is the public name;
+# `_BACKBONE` remains the internal marker the provider's
+# `supports()` method consults.
+UNIVERSAL_COMPONENT_TYPES: frozenset[str] = _BACKBONE
+
+
 def _button_template(variant: str | None) -> PresentationTemplate:
     """Frame+text button with variant-dependent fill and text color."""
     tone = (variant or "default").lower()

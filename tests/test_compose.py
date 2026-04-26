@@ -1167,8 +1167,18 @@ class TestValidateComponentsWithAliases:
         assert not any("no template" in w.lower() for w in toggle_warnings)
 
     def test_truly_unsupported_type_still_warns(self):
+        # Phase E #7 fix (2026-04-26): `slider` was the test fixture
+        # but it's now in UNIVERSAL_COMPONENT_TYPES (the universal
+        # provider has a hand-authored slider template). Use a name
+        # that's NOT in _BACKBONE / _BUILDERS so the warning still
+        # fires for genuinely unsupported types. `pickle_jar` is
+        # intentionally fictional.
         templates = {"button": [{"variant": "default"}]}
         components, warnings = validate_components(
-            [{"type": "slider"}], templates,
+            [{"type": "pickle_jar"}], templates,
         )
-        assert any("slider" in w for w in warnings)
+        assert any("pickle_jar" in w for w in warnings), (
+            "Truly-unsupported types (not in templates AND not in "
+            "UNIVERSAL_COMPONENT_TYPES) should still produce a "
+            "no-template warning."
+        )

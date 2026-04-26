@@ -18,6 +18,7 @@ import re
 import sqlite3
 from typing import Any
 
+from dd.composition.providers.universal import UNIVERSAL_COMPONENT_TYPES
 from dd.compress_l3 import compress_to_l3_with_maps
 from dd.render_figma_ast import render_figma
 from dd.renderers.figma import collect_fonts
@@ -1575,7 +1576,23 @@ def validate_components(
     # a component_templates row; warning about them as "missing template"
     # was misleading. Same for `frame`, which is the documented
     # universal structural primitive (per SYSTEM_PROMPT in prompt_parser).
-    _UNIVERSAL_TYPES = frozenset({"text", "heading", "link", "frame"})
+    #
+    # Phase E #7 fix (2026-04-26): also union in
+    # UNIVERSAL_COMPONENT_TYPES — the 28 types the universal catalog
+    # provider renders via _BUILDERS (image, card, button, dialog,
+    # tooltip, popover, etc.). Pre-fix the warning fired for these
+    # whenever the project DB hadn't accumulated component_templates
+    # rows for them, even though they render correctly via the
+    # universal provider's hand-authored templates. Audit's #5 finding
+    # ("templateless types → defaults") was a noisy signal not a real
+    # render failure. Codex 2026-04-26 (gpt-5.5): "the warning's
+    # predicate is answering the wrong question. It currently means
+    # 'not in project DB templates,' but the message claims 'will
+    # render empty/badly.' For _BACKBONE types, that claim is false."
+    _UNIVERSAL_TYPES = (
+        frozenset({"text", "heading", "link", "frame"})
+        | UNIVERSAL_COMPONENT_TYPES
+    )
     warnings: list[str] = []
 
     def _check(comp: dict[str, Any]) -> None:
