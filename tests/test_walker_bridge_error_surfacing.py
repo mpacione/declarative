@@ -81,3 +81,55 @@ class TestWalkerErrorSurfacing:
             "case where envelope.success is true but no payload "
             "exists. Drop only the swallowed-error path."
         )
+
+
+class TestWalkerVisualPropCapture:
+    """P1b (forensic-audit-2 findings 8-12): the walker must capture
+    every visual property the verifier compares. Pre-fix only rotation
+    was captured among the 5 audit-flagged props; opacity/blendMode/
+    isMask/cornerRadius drift was invisible because the walker simply
+    didn't measure them on the rendered side.
+
+    These tests pin the source pattern; direct JS execution requires
+    a live bridge.
+    """
+
+    def test_walker_captures_opacity(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.opacity = n.opacity" in src, (
+            "P1b: walker must capture node.opacity for verifier comparison"
+        )
+
+    def test_walker_captures_blend_mode(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.blendMode = n.blendMode" in src, (
+            "P1b: walker must capture node.blendMode"
+        )
+
+    def test_walker_captures_is_mask(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.isMask = n.isMask" in src, (
+            "P1b: walker must capture node.isMask"
+        )
+
+    def test_walker_captures_corner_radius_uniform(self):
+        """Uniform cornerRadius is a number; capture as entry.cornerRadius."""
+        src = WALK_REF_JS.read_text()
+        assert "entry.cornerRadius = n.cornerRadius" in src, (
+            "P1b: walker must capture uniform numeric cornerRadius"
+        )
+
+    def test_walker_captures_corner_radius_mixed(self):
+        """When cornerRadius is figma.Mixed (per-corner radii),
+        capture each side as topLeftRadius / topRightRadius / etc.
+        and flag cornerRadiusMixed=true so the verifier can compare
+        per-corner instead of uniform-vs-uniform."""
+        src = WALK_REF_JS.read_text()
+        assert "cornerRadiusMixed" in src, (
+            "P1b: walker must flag the mixed-radius case"
+        )
+        for corner in ("topLeftRadius", "topRightRadius",
+                       "bottomRightRadius", "bottomLeftRadius"):
+            assert corner in src, (
+                f"P1b: walker must capture per-corner radius {corner}"
+            )

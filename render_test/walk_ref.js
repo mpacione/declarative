@@ -236,6 +236,36 @@ if (rootNode) {
       } catch (_) {
         entry.rotation = 0;
       }
+      // P1b (forensic-audit-2 findings 8-12): capture the visual props
+      // the renderer emits via the registry-driven path so the verifier
+      // can compare them against IR. Pre-fix the walker only captured
+      // rotation; opacity/blendMode/isMask/cornerRadius drift was
+      // invisible.
+      try {
+        if (typeof n.opacity === 'number') entry.opacity = n.opacity;
+      } catch (_) {}
+      try {
+        if (typeof n.blendMode === 'string') entry.blendMode = n.blendMode;
+      } catch (_) {}
+      try {
+        if (typeof n.isMask === 'boolean') entry.isMask = n.isMask;
+      } catch (_) {}
+      // cornerRadius is uniform on rectangles/frames, mixed (per-corner)
+      // on those that use the figma.Mixed sentinel. Per-corner values
+      // surface as topLeftRadius etc; we capture both shapes so the
+      // verifier can compare uniform-vs-uniform or mixed-vs-mixed.
+      try {
+        if (typeof n.cornerRadius === 'number') {
+          entry.cornerRadius = n.cornerRadius;
+        } else if (n.cornerRadius && typeof n.cornerRadius === 'symbol') {
+          // figma.Mixed — the node has per-corner radii.
+          entry.cornerRadiusMixed = true;
+          if (typeof n.topLeftRadius === 'number') entry.topLeftRadius = n.topLeftRadius;
+          if (typeof n.topRightRadius === 'number') entry.topRightRadius = n.topRightRadius;
+          if (typeof n.bottomRightRadius === 'number') entry.bottomRightRadius = n.bottomRightRadius;
+          if (typeof n.bottomLeftRadius === 'number') entry.bottomLeftRadius = n.bottomLeftRadius;
+        }
+      } catch (_) {}
       if (n.type === 'TEXT') {
         entry.characters = n.characters || '';
         entry.textAutoResize = n.textAutoResize;
