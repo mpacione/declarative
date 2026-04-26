@@ -66,9 +66,11 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
 
 
 def process_screen(
-    sid: int, name: str, skip_existing: bool, port: str,
+    sid: int, name: str, skip_existing: bool, port: str, db_path: Path = None,
 ) -> dict:
     # Post-M6 canonical path: Option B markup-native renderer.
+    if db_path is None:
+        db_path = DB_PATH
     scripts_dir = SCRIPTS
     walks_dir = WALKS
     reports_dir = REPORTS
@@ -98,7 +100,7 @@ def process_screen(
     else:
         gen_cmd = [
             "python3", "-m", "dd", "generate",
-            "--db", str(DB_PATH), "--screen", str(sid),
+            "--db", str(db_path), "--screen", str(sid),
         ]
         code, out, err = run_step(
             gen_cmd,
@@ -136,7 +138,7 @@ def process_screen(
     code, out, err = run_step(
         [
             "python3", "-m", "dd", "verify",
-            "--db", str(DB_PATH), "--screen", str(sid),
+            "--db", str(db_path), "--screen", str(sid),
             "--rendered-ref", str(walk_p), "--json",
         ],
         VERIFY_TIMEOUT,
@@ -167,7 +169,7 @@ def process_screen(
 
 def process_screen_with_retry(
     sid: int, name: str, skip_existing: bool, port: str,
-    max_retries: int = 2, retry_backoff: float = 1.0,
+    max_retries: int = 2, retry_backoff: float = 1.0, db_path: Path = None,
 ) -> dict:
     """Wrap ``process_screen`` with per-screen retry on transient failures.
 
@@ -194,7 +196,7 @@ def process_screen_with_retry(
             time.sleep(sleep_s)
         # Don't reuse failed artefacts on retry — regenerate everything.
         skip = skip_existing if attempt == 0 else False
-        row = process_screen(sid, name, skip, port)
+        row = process_screen(sid, name, skip, port, db_path=db_path)
         row["attempt"] = attempt + 1
         last_row = row
         if row.get("is_parity") is True:
@@ -250,21 +252,47 @@ def main() -> int:
     ap.add_argument("--retry-backoff", type=float, default=1.0,
                     help="Initial backoff seconds before retry "
                     "(doubles each attempt, capped at 10s).")
+    ap.add_argument("--db", default=None,
+                    help=f"Path to SQLite database. Default: {DB_PATH}")
+    ap.add_argument("--out-dir", default=None,
+                    help=f"Output dir for scripts/walks/reports/summary.json. "
+                    f"Default: {ROOT}")
     args = ap.parse_args()
+
+    # Resolve db_path with default fallback (backward compatible)
+    db_path = Path(args.db).resolve() if args.db else DB_PATH
+    if not db_path.exists():
+        print(f"Error: DB not found at {db_path}", file=sys.stderr)
+        return 1
+
+    # Resolve output dir; allows running multiple sweeps against different DBs
+    # without overwriting artefacts. Defaults preserve existing behavior.
+    out_root = Path(args.out_dir).resolve() if args.out_dir else ROOT
+    scripts_dir = out_root / "scripts"
+    walks_dir = out_root / "walks"
+    reports_dir = out_root / "reports"
+
+    # Override module-level constants for this run so process_screen uses them.
+    # (process_screen reads SCRIPTS/WALKS/REPORTS by module reference; this
+    # is the smallest backwards-compatible way to redirect output.)
+    global SCRIPTS, WALKS, REPORTS
+    SCRIPTS = scripts_dir
+    WALKS = walks_dir
+    REPORTS = reports_dir
 
     # Post-M6: single render path; single artefact layout.
     for p in (SCRIPTS, WALKS, REPORTS):
         p.mkdir(parents=True, exist_ok=True)
 
-    screens = list_app_screens(DB_PATH)
+    screens = list_app_screens(db_path)
     if args.since:
         screens = [(sid, n) for sid, n in screens if sid >= args.since]
     if args.limit:
         screens = screens[: args.limit]
 
     print(
-        f"Sweeping {len(screens)} app_screens "
-        f"(skip_existing={args.skip_existing}, port={args.port})",
+        f"Sweeping {len(screens)} app_screens from {db_path.name} "
+        f"(skip_existing={args.skip_existing}, port={args.port}, out={out_root})",
         flush=True,
     )
     rows: list[dict] = []
@@ -275,6 +303,7 @@ def main() -> int:
             sid, name, args.skip_existing, args.port,
             max_retries=args.max_retries,
             retry_backoff=args.retry_backoff,
+            db_path=db_path,
         )
         elapsed = time.time() - t1
         status = (
@@ -298,7 +327,8 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2))
+    summary["db_path"] = str(db_path)
+    (out_root / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
     print(f"total:            {summary['total']}")
