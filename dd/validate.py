@@ -166,6 +166,84 @@ def check_binding_coverage(conn: sqlite3.Connection, file_id: int) -> list[dict[
     }]
 
 
+def check_ckr_figma_node_id_coverage(
+    conn: sqlite3.Connection, file_id: int,
+) -> list[dict[str, Any]]:
+    """Report CKR.figma_node_id population gap.
+
+    Phase E #5 (2026-04-26): the audit's "extraction-shape, currently
+    downstream-harmless" finding. CKR's `figma_node_id` is populated
+    in dd/templates.py:107-130 from `nodes WHERE node_type='COMPONENT'`
+    or `components` table. When local component masters don't end up
+    in either source (the common case for files where extraction
+    doesn't traverse the Components page), CKR rows are missing
+    figma_node_id.
+
+    Real consumers handle the None gracefully:
+    - dd/variants.py:_figma_id_for_ckr — returns None
+    - dd/sticker_sheet.py — increments unknown_component_keys
+
+    But under-population means variants + sticker-sheet quietly
+    can't find masters. Codex 2026-04-26 (gpt-5.5 high reasoning)
+    advised: "Defer fix; add a non-failing audit warning that
+    surfaces the gap without repairing it." This check is the
+    documented invariant — it threshold-warns when the gap
+    crosses a meaningful fraction so the issue is visible
+    in `dd validate` output without forcing a fix-cycle.
+
+    Threshold logic:
+      - 0 rows: skip (no CKR yet)
+      - >= 50% missing figma_node_id: WARNING (sticker-sheet /
+        variants will quietly under-populate)
+      - 1-49% missing: INFO (recordable; expected when extraction
+        captures most masters but not all)
+      - 0% missing: skip (clean state — nothing to report)
+    """
+    # File ID parameter kept for shape consistency; CKR is currently
+    # file-scoped via the 1:1 file → DB mapping in this codebase.
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='component_key_registry'"
+    )
+    if not cursor.fetchone():
+        return []
+
+    cursor = conn.execute(
+        "SELECT COUNT(*), COUNT(figma_node_id) "
+        "FROM component_key_registry"
+    )
+    total, populated = cursor.fetchone()
+
+    if total == 0:
+        return []  # no CKR; nothing to report
+
+    missing = total - populated
+    if missing == 0:
+        return []  # clean state
+
+    missing_pct = round(100.0 * missing / total, 1)
+
+    if missing_pct >= 50:
+        severity = Severity.WARNING.value
+    else:
+        severity = Severity.INFO.value
+
+    return [{
+        "check_name": "ckr_figma_node_id_coverage",
+        "severity": severity,
+        "message": (
+            f"CKR figma_node_id coverage: {populated}/{total} "
+            f"populated ({missing} missing, {missing_pct}%). "
+            f"Sticker-sheet tagging and variant derivation may "
+            f"quietly under-populate for the missing rows. "
+            f"Best-effort until Components-page extraction lands; "
+            f"see audit/20260425-1930-phaseE-nouns/REPORT.md item "
+            f"#6."
+        ),
+        "affected_ids": None,
+    }]
+
+
 def check_alias_targets_curated(conn: sqlite3.Connection, file_id: int) -> list[dict[str, Any]]:
     """Check that every alias points to a curated token (not extracted).
 
@@ -506,6 +584,7 @@ def run_validation(conn: sqlite3.Connection, file_id: int) -> dict[str, Any]:
     all_issues.extend(check_name_dtcg_compliant(conn, file_id))
     all_issues.extend(check_orphan_tokens(conn, file_id))
     all_issues.extend(check_binding_coverage(conn, file_id))
+    all_issues.extend(check_ckr_figma_node_id_coverage(conn, file_id))
     all_issues.extend(check_alias_targets_curated(conn, file_id))
     all_issues.extend(check_name_uniqueness(conn, file_id))
     all_issues.extend(check_value_format(conn, file_id))
