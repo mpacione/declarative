@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from typing import Any
 
@@ -67,6 +68,84 @@ def _ckr_is_built(conn: sqlite3.Connection) -> bool:
         "SELECT COUNT(*) FROM component_key_registry"
     ).fetchone()
     return bool(row and row[0] > 0)
+
+
+_COMPONENT_KEY_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _resolve_component_keys(
+    spec: dict[str, Any],
+    conn: sqlite3.Connection | None,
+    warnings: list[str],
+) -> None:
+    """Normalise IR ``component_key`` values to real CKR hex keys.
+
+    F9: the LLM is told (per ``dd/prompt_parser.py:65``) it may emit
+    ``"component_key": "<name>"`` using names from the
+    ``component_key_registry`` vocabulary block. The renderer's import
+    branch (``dd/render_figma_ast.py:1079``) calls
+    ``figma.importComponentByKeyAsync(<arg>)`` verbatim — Figma rejects
+    a name like ``"buttons/button with icon"`` and the script falls
+    through to ``_missingComponentPlaceholder()``.
+
+    This pre-pass walks ``spec["elements"]`` (after ``compose_screen``,
+    before ``build_template_visuals``) and rewrites every
+    ``component_key`` field so it is either:
+
+    1. A real CKR hex key (preserved from a Mode-1 instance template,
+       or substituted from a CKR name lookup);
+    2. Removed, with a warning added to the ``warnings`` list when
+       the value can't be resolved.
+
+    The lookup is DB-driven only: no hardcoded names. When ``conn`` is
+    ``None`` or the CKR table doesn't exist, the function is a no-op
+    (all values pass through untouched) — matches the
+    ``build_template_visuals`` no-conn fallback.
+    """
+    if conn is None:
+        return
+    try:
+        ckr_rows = conn.execute(
+            "SELECT component_key, name, figma_node_id "
+            "FROM component_key_registry"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return
+
+    valid_keys: set[str] = set()
+    key_by_name: dict[str, str] = {}
+    for row in ckr_rows:
+        component_key = row[0]
+        name = row[1]
+        if component_key:
+            valid_keys.add(component_key)
+        if name and component_key:
+            key_by_name[name] = component_key
+
+    elements = spec.get("elements", {})
+    for eid, element in elements.items():
+        if not isinstance(element, dict):
+            continue
+        value = element.get("component_key")
+        if value is None:
+            continue
+        if value in valid_keys:
+            continue
+        if value in key_by_name:
+            element["component_key"] = key_by_name[value]
+            continue
+        if _COMPONENT_KEY_RE.match(value):
+            element.pop("component_key", None)
+            warnings.append(
+                f"unknown component_key (looks like a hex key but not in CKR): "
+                f"{value!r} on element {eid!r}"
+            )
+            continue
+        element.pop("component_key", None)
+        warnings.append(
+            f"unresolved component_key (neither CKR name nor valid hex key): "
+            f"{value!r} on element {eid!r}"
+        )
 
 
 def _pick_best_template(
@@ -1082,15 +1161,26 @@ def build_template_visuals(
     but component_figma_id stays None, so Mode-1 falls through to
     a placeholder).
     """
-    ckr_by_name: dict[str, str] = {}
+    # F9: post-`_resolve_component_keys`, IR `component_key` values are
+    # always real CKR hex keys (or None). Look up `figma_node_id` by
+    # `component_key`, not by `name` (the original lookup was wrong
+    # against the F9-normalised IR — a hex key never matched a name).
+    # ``ckr_figma_id_by_key`` only contains rows where figma_node_id is
+    # populated, so on a fresh-extracted DB (figma_node_id all NULL)
+    # this stays empty and the renderer's component_key import branch
+    # carries the load.
+    ckr_figma_id_by_key: dict[str, str] = {}
     if conn is not None:
         try:
             ckr_rows = conn.execute(
-                "SELECT name, figma_node_id FROM component_key_registry"
+                "SELECT component_key, figma_node_id "
+                "FROM component_key_registry"
             ).fetchall()
-            ckr_by_name = {row[0]: row[1] for row in ckr_rows if row[0] and row[1]}
+            ckr_figma_id_by_key = {
+                row[0]: row[1] for row in ckr_rows if row[0] and row[1]
+            }
         except sqlite3.OperationalError:
-            ckr_by_name = {}
+            ckr_figma_id_by_key = {}
 
     node_id_map: dict[str, int] = {}
     visuals: dict[int, dict[str, Any]] = {}
@@ -1123,11 +1213,15 @@ def build_template_visuals(
 
         # Resolve Mode-1 identity with the IR element taking precedence
         # over the old component_templates row when both are present.
+        # F9 guarantees ir_component_key is either None or a real CKR
+        # hex key (any LLM-emitted CKR name was already substituted by
+        # _resolve_component_keys, and unresolved values were dropped
+        # with a warning).
         ir_component_key = element.get("component_key")
         resolved_component_key = ir_component_key or (tmpl.get("component_key") if tmpl else None)
         resolved_component_figma_id = tmpl.get("component_figma_id") if tmpl else None
-        if ir_component_key and ir_component_key in ckr_by_name:
-            resolved_component_figma_id = ckr_by_name[ir_component_key]
+        if ir_component_key and ir_component_key in ckr_figma_id_by_key:
+            resolved_component_figma_id = ckr_figma_id_by_key[ir_component_key]
 
         # v0.2 retrieval: when compose spliced a real DB subtree into
         # this element (via CorpusRetrievalProvider), element["visual"]
@@ -1537,6 +1631,16 @@ def generate_from_prompt(
     # remains flag-gated inside the provider itself.
     effective_registry = registry if registry is not None else _build_default_mode3_registry(conn)
     spec = compose_screen(components, templates=templates, registry=effective_registry)
+    # F9: normalise IR-level component_key values BEFORE any downstream
+    # consumer reads them. The LLM is intentionally told it may emit
+    # CKR *names* (e.g. "buttons/button with icon") in lieu of hex keys
+    # (per dd/prompt_parser.py:65,204). Without this pass, those names
+    # leak through compose → build_template_visuals → render and end up
+    # as the literal arg to ``figma.importComponentByKeyAsync(...)``,
+    # which Figma rejects → 100% of name-emitted instances degrade to
+    # _missingComponentPlaceholder. Lookup is DB-driven (no hardcoded
+    # names); see _resolve_component_keys for the four-rule contract.
+    _resolve_component_keys(spec, conn, warnings)
     # Pass conn through so build_template_visuals can resolve IR-level
     # component_key refs against component_key_registry (ADR-008 Mode-3).
     visuals = build_template_visuals(spec, templates, conn=conn)

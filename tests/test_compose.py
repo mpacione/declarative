@@ -564,6 +564,136 @@ class TestF1ImportComponentByKey:
         )
 
 
+class TestF9ComponentKeyNormalization:
+    """F9 regression: the LLM is intentionally told it may emit
+    ``"component_key": "<name>"`` (per ``dd/prompt_parser.py:65,204``)
+    using names from the project's CKR vocabulary block. Without
+    composer-side normalisation, those name-as-key values leak through
+    to ``figma.importComponentByKeyAsync(...)``, which Figma rejects —
+    100% of name-emitted instances degrade to wireframe placeholders.
+
+    Pre-fix evidence (audit/20260425-1626-validation/sections/
+    08-mode3-composition): 3 of 5 import args were CKR names
+    (``"cards/_default"``, ``"buttons/button with icon"``,
+    ``"icons/left chevron"``).
+
+    The fix adds a ``_resolve_component_keys`` pre-pass between
+    ``compose_screen`` and ``build_template_visuals`` that swaps each
+    CKR name for its real 40-char hex key, drops unknown values with
+    a warning, and is fully DB-driven (no hardcoded names).
+    """
+
+    _HEX_KEY_BUTTON = "a" * 40
+    _HEX_KEY_CARD = "b" * 40
+
+    @pytest.fixture
+    def db_with_ckr_names(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('card', 'cards/_default', ?, 100, 'VERTICAL', 320, 200)",
+            (self._HEX_KEY_CARD,),
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('button', 'buttons/button with icon', ?, 50, "
+            "'HORIZONTAL', 120, 40)",
+            (self._HEX_KEY_BUTTON,),
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, NULL, 'cards/_default', 100), "
+            "       (?, NULL, 'buttons/button with icon', 50)",
+            (self._HEX_KEY_CARD, self._HEX_KEY_BUTTON),
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_ckr_name_component_key_is_normalized_to_real_key(
+        self, db_with_ckr_names,
+    ):
+        """LLM emits ``component_key: "cards/_default"`` (a CKR name);
+        the generated script must call ``importComponentByKeyAsync``
+        with the real 40-char hex key, NOT with the name.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "card", "component_key": "cards/_default"}],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_CARD}")' in script
+        assert 'importComponentByKeyAsync("cards/_default")' not in script
+
+    def test_real_ckr_key_is_preserved(self, db_with_ckr_names):
+        """LLM emits a real 40-char CKR hex key directly — pre-pass
+        must not corrupt it.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "button", "component_key": self._HEX_KEY_BUTTON}],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_BUTTON}")' in script
+
+    def test_unknown_component_key_name_is_not_imported(
+        self, db_with_ckr_names,
+    ):
+        """LLM emits a name that doesn't exist in CKR — the field must
+        be dropped (no rejected import call) and a warning surfaced so
+        the LLM-loop / orchestrator can see what went unresolved.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "card", "component_key": "cards/missing"}],
+        )
+        script = result["structure_script"]
+        warnings = result["warnings"]
+        assert 'importComponentByKeyAsync("cards/missing")' not in script
+        assert any(
+            "unresolved component_key" in w and "cards/missing" in w
+            for w in warnings
+        ), f"missing unresolved-component_key warning in {warnings!r}"
+
+    def test_template_key_not_overridden_by_ckr_name(
+        self, db_with_ckr_names,
+    ):
+        """Belt-and-braces: when both ``variant`` AND ``component_key``
+        point at the same CKR name, the import arg must still be the
+        real hex key — not the name leaking through via either route.
+
+        Pre-fix this was the dominant failure mode in
+        ``dd/compose.py:1124`` where ``ir_component_key`` (a name)
+        unconditionally overrode ``tmpl.component_key`` (the real key)
+        on the way into ``visual_entry``.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{
+                "type": "card",
+                "variant": "cards/_default",
+                "component_key": "cards/_default",
+            }],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_CARD}")' in script
+        assert 'importComponentByKeyAsync("cards/_default")' not in script
+
+
 # ---------------------------------------------------------------------------
 # Variant-aware template selection tests
 # ---------------------------------------------------------------------------
