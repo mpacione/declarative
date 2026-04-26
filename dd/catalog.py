@@ -1808,7 +1808,49 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
     # — they're not candidates for per-variant token binding.
     {
         "canonical_name": "frame",
-        "aliases": ["container", "wrapper", "section", "group", "stack", "row"],
+        # Phase E #6 fix (2026-04-26): `container` removed from frame's
+        # aliases. The two are semantically distinct in the runtime:
+        #   `frame` = explicit structural primitive (the grammar
+        #     TypeKeyword the LLM uses for author-created layout)
+        #   `container` = classifier fallback for grouping nodes with
+        #     insufficient identity (heuristic + LLM emit it directly;
+        #     special-cased in compose, classify_v2, fidelity_score)
+        # Pre-fix container appeared as both an alias of frame AND a
+        # first-class canonical via _CATALOG_ENRICHMENTS["container"];
+        # the enrichment was DEAD because there was no canonical
+        # `container` entry to merge into. Codex 2026-04-26 review:
+        # "the codebase already treats container as a real semantic
+        # bucket, not merely an alias for frame... keeping container
+        # as an alias of frame is the actual inconsistency."
+        "aliases": ["wrapper", "section", "group", "stack", "row"],
+        "category": "structural",
+        "prop_definitions": {
+            "layout": "enum:vertical|horizontal|absolute",
+        },
+        "slot_definitions": {
+            "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"},
+        },
+    },
+    # Phase E #6 fix (2026-04-26): `container` is now a first-class
+    # CatalogEntry, not an alias of `frame`. The
+    # _CATALOG_ENRICHMENTS["container"] dict at line ~2184 (clay
+    # equivalent + disambiguation_notes) merges into this base entry
+    # via _enriched() — pre-fix that enrichment was dead because no
+    # canonical entry existed for it to merge into.
+    #
+    # Semantic distinction from `frame`: `container` is the
+    # *classifier-fallback* type — emitted by:
+    #   - dd/classify_rules.py:232 (heuristic generic-frame rule)
+    #   - dd/classify_llm.py + dd/classify_v2.py (sentinel for
+    #     "structural grouping, no specific identity")
+    #   - dd/compose.py:1448 (Mode-3 emits when no slot identity)
+    #   - dd/fidelity_score.py:566 (special-typed scoring bucket)
+    # The renderer maps container → FRAME (dd/renderers/figma.py:940)
+    # because container has no Figma-native primitive of its own;
+    # that's a render-time concern, not a taxonomy one.
+    {
+        "canonical_name": "container",
+        "aliases": [],
         "category": "structural",
         "prop_definitions": {
             "layout": "enum:vertical|horizontal|absolute",
