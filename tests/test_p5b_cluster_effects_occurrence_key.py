@@ -288,3 +288,97 @@ class TestEffectClusteringPreservesSemantics:
         )
         post = cursor.fetchone()[0]
         assert pre == post, f"effect-binding count drifted: pre={pre} post={post}"
+
+
+class TestColorMergedConfidenceBranchFires:
+    """P5b dead-branch fix: pre-fix `hasattr(composite, 'merged_node_ids')`
+    was always False (composite is a dict, not an object), so the
+    reduced-confidence binding path for color-merged composites
+    never ran. Codex Phase E review (2026-04-25) flagged it; the
+    fix uses dict-key access via a precomputed `merged_pairs` set.
+
+    This test pins the post-fix BEHAVIOR — without it, a future
+    refactor could re-deaden the branch (e.g. by removing the
+    merged_pairs precomputation) and the `multi_shadow_db` fixture's
+    far-apart colors (#000000 vs #FF0000) wouldn't catch it.
+
+    The fixture uses two near-identical near-blacks (#181818, #1A1A1A)
+    chosen empirically — OKLCH delta_E ≈ 0.875, well below the 2.0
+    threshold. (Pure-black #000000 vs #010101 has delta ≈ 6.7 in
+    OKLCH space because the lightness axis is super-steep near zero,
+    so they DON'T merge despite being adjacent in sRGB.)
+    Codex 2026-04-26: "ship the one test... main assertion:
+    affected binding confidence >= 0.8 and < 1.0."
+    """
+
+    def test_merged_color_binding_gets_reduced_confidence(self, temp_db):
+        conn = temp_db
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) VALUES (1, 'p5b_merge', 'p5b.fig')"
+        )
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen 1', 375, 812)"
+        )
+        for i in range(1, 4):
+            conn.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type) "
+                "VALUES (?, 1, ?, ?, 'FRAME')",
+                (i, f"100:{i+1}", f"Node{i}"),
+            )
+
+        # Two composites that differ ONLY by a near-identical color.
+        # OKLCH delta_E between #181818 and #1A1A1A is ≈ 0.875 → merge.
+        # Same geometry on both so the merge predicate at lines 433-436
+        # (radius/offsetX/offsetY/spread equality) succeeds.
+        _seed_node_with_effect(conn, 1, 0, "#181818", "4")
+        _seed_node_with_effect(conn, 2, 0, "#181818", "4")
+        # Node 3 has the slightly-different color; it'll merge into the
+        # #181818 composite.
+        _seed_node_with_effect(conn, 3, 0, "#1A1A1A", "4")
+        conn.commit()
+
+        collection_id, mode_id = ensure_effects_collection(conn, file_id=1)
+        cluster_effects(
+            conn, file_id=1, collection_id=collection_id, mode_id=mode_id,
+        )
+
+        # Node 3's color binding should have been merged into the
+        # #181818 composite (now bound to a color token whose
+        # resolved_value is #181818). The confidence of that merged
+        # binding should be in [0.8, 0.99] — proving the previously-
+        # dead `merged_pairs` branch actually fired.
+        cursor = conn.execute(
+            """SELECT ntb.confidence, ntb.resolved_value AS bind_val,
+                      tv.resolved_value AS token_val
+               FROM node_token_bindings ntb
+               JOIN tokens t ON ntb.token_id = t.id
+               JOIN token_values tv ON tv.token_id = t.id
+               WHERE ntb.node_id = 3
+                 AND ntb.property = 'effect.0.color'
+                 AND ntb.binding_status = 'proposed'"""
+        )
+        row = cursor.fetchone()
+        assert row is not None, (
+            "Node 3's effect.0.color should have been bound by "
+            "cluster_effects (the merge bumped it into the #181818 "
+            "composite)."
+        )
+        # The binding's resolved_value is the original #1A1A1A (the
+        # binding wasn't snapped — effects has snap_on_update=False).
+        # The token_val is the merged composite's representative color.
+        assert row["bind_val"] == "#1A1A1A"
+        # Confidence range proves the merged_pairs branch fired —
+        # pre-P5b dead branch left every binding at confidence=1.0.
+        # Codex review: "I would avoid asserting an exact confidence
+        # unless the algorithm already treats that value as a
+        # contract. The range assertion is enough to catch re-deadening."
+        assert 0.8 <= row["confidence"] < 1.0, (
+            f"P5b dead-branch fix: node 3's color binding was merged "
+            f"into the #000000 composite, so confidence should be in "
+            f"[0.8, 1.0). Got {row['confidence']}. If this is 1.0, "
+            f"the merged_pairs branch is dead again — check that "
+            f"cluster_misc.py:_cluster_effects builds merged_pairs "
+            f"and uses (node_id, effect_idx) membership, not the "
+            f"pre-fix `hasattr(composite, ...)` pattern."
+        )
