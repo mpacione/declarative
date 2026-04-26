@@ -508,6 +508,21 @@ class TestF1ImportComponentByKey:
         branch matched it. The instance subtree handles its own
         children — the LLM-supplied children are still spliced via the
         override tree path.
+
+        P3a-fix update (2026-04-26): the keyed CARD gets its own
+        importComponentByKeyAsync (the Mode-1 head); the BUTTON inside
+        the card MUST NOT get its own importComponentByKeyAsync,
+        because the card's instance subtree already includes a button
+        slot and re-instantiating it would double-render (the button's
+        Figma node would float outside the card subtree as a page
+        orphan). Pre-P3a-fix the test asserted `>= 2` which encoded
+        exactly that double-instantiation bug. Post-P3a-fix the
+        renderer correctly absorbs the button into the card's
+        instance subtree per Mode-1 semantics.
+        Codex 2026-04-26 (gpt-5.5): "Re-instantiating the keyed
+        button as a sibling/independent node would recreate the
+        pre-P3a double-instantiation bug and can float outside the
+        card subtree."
         """
         result = generate_from_prompt(
             db_with_keyed_button,
@@ -520,9 +535,27 @@ class TestF1ImportComponentByKey:
             }],
         )
         script = result["structure_script"]
-        assert "importComponentByKeyAsync" in script
-        # Both the card AND the button are keyed
-        assert script.count("importComponentByKeyAsync") >= 2
+        # The card's keyed import IS emitted.
+        assert 'importComponentByKeyAsync("real_card_key_xyz")' in script, (
+            "P3a-fix: the keyed card should still get its own "
+            "importComponentByKeyAsync (it's the Mode-1 head)."
+        )
+        # The button's keyed import MUST NOT be emitted — it's
+        # absorbed into the card's instance subtree.
+        assert (
+            'importComponentByKeyAsync("real_button_key_abc")'
+            not in script
+        ), (
+            "P3a-fix: the button is a child of the keyed card, so "
+            "the card's instance subtree already provides the button "
+            "slot. Re-instantiating it via importComponentByKeyAsync "
+            "would float the button outside the card subtree."
+        )
+        # Total count: exactly 1 (the card's import).
+        assert script.count("importComponentByKeyAsync") == 1, (
+            f"P3a-fix: exactly 1 importComponentByKeyAsync expected "
+            f"(the card). Got {script.count('importComponentByKeyAsync')}."
+        )
 
     def test_falls_back_to_frame_when_no_key_at_all(self, db_with_keyed_button):
         """A type with no template at all still falls through to a frame
