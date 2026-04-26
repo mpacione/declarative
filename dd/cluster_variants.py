@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional
 
 
 # Closed vocabulary from ADR-008. VLM labels not in this set persist as
@@ -48,7 +48,239 @@ STANDARD_VARIANTS = (
 # visual slots common to nearly every interactive type.
 CORE_SLOTS = ("bg", "fg", "border", "radius")
 
+# Confidence threshold for accepting a VLM verdict over the
+# cluster-only `custom_N` fallback. Anything lower keeps the
+# honest custom_N label per Phase E #4 "honest labels" contract.
+DEFAULT_VLM_CONFIDENCE_THRESHOLD = 0.75
+
+# VLM call signature: (prompt: str, images: list[bytes]) → verdict dict.
+# A verdict has shape:
+#   {
+#     "verdict": str — variant name in STANDARD_VARIANTS or "unknown"
+#     "confidence": float in [0, 1]
+#     "reason": str | None — human-readable rationale (logged for triage)
+#   }
 VlmCall = Callable[[str, list[bytes]], dict[str, Any]]
+
+# Image provider signature: takes a list of node_ids; returns parallel
+# list of PNG bytes (or None where rendering failed/unavailable).
+# A `null_image_provider` returns all-empty so the VLM relabel path
+# short-circuits (cluster-only behavior is preserved). Bridge-backed
+# image rendering is deferred to a Phase E #4-followon-on commit per
+# Codex review (the bridge integration is the riskiest part of the
+# pipeline; the VLM contract + relabel logic ships in this commit
+# without it).
+ImageProvider = Callable[[list[int]], list[Optional[bytes]]]
+
+
+def null_vlm_call(prompt: str, images: list[bytes]) -> dict[str, Any]:
+    """Default VLM call that returns 'unknown' — preserves the
+    cluster-only behavior when no real VLM is wired."""
+    return {"verdict": "unknown", "confidence": 0.0, "reason": "no VLM configured"}
+
+
+def null_image_provider(node_ids: list[int]) -> list[Optional[bytes]]:
+    """Default image provider that returns all-None — preserves the
+    cluster-only behavior. Bridge-backed PNG rendering is the
+    follow-on commit (Codex deferred it as the riskiest part of the
+    pipeline)."""
+    return [None] * len(node_ids)
+
+
+def build_variant_label_prompt(
+    catalog_type: str,
+    cluster_index: int,
+    n_clusters: int,
+    variants: tuple[str, ...] = STANDARD_VARIANTS,
+) -> str:
+    """Build the VLM prompt for a single cluster.
+
+    Asks the model to classify the cluster into one of the standard
+    variant names (or 'unknown') based on the visual evidence.
+    Returns a JSON-shaped verdict per the VlmCall contract.
+    """
+    variant_list = ", ".join(f'"{v}"' for v in variants)
+    return (
+        f"You are classifying visual variants of a UI {catalog_type} component. "
+        f"This is cluster {cluster_index + 1} of {n_clusters} clusters extracted "
+        f"from a design corpus. The images show representative instances of "
+        f"this cluster's visual style.\n\n"
+        f"Classify this cluster into ONE of the following variant names, "
+        f"or return 'unknown' if none fit:\n"
+        f"  Allowed variants: {variant_list}, \"unknown\"\n\n"
+        f"Naming guidance:\n"
+        f"  - 'primary': the dominant/main action style (often filled, "
+        f"high-contrast)\n"
+        f"  - 'secondary': supporting action style (often outlined or muted)\n"
+        f"  - 'destructive': red/warning style for delete/remove actions\n"
+        f"  - 'ghost': minimal style (often borderless, subtle background)\n"
+        f"  - 'link': text-only link-styled (often underlined or accent color)\n"
+        f"  - 'disabled': greyed-out / muted state\n"
+        f"  - 'unknown': none of the above clearly fits\n\n"
+        f"Respond ONLY with valid JSON of shape:\n"
+        f'  {{"verdict": "<one of the allowed names>", '
+        f'"confidence": <float 0..1>, "reason": "<short rationale>"}}'
+    )
+
+
+_GEMINI_VARIANT_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "properties": {
+        "verdict": {
+            "type": "STRING",
+            "enum": list(STANDARD_VARIANTS) + ["unknown"],
+        },
+        "confidence": {"type": "NUMBER"},
+        "reason": {"type": "STRING"},
+    },
+    "required": ["verdict", "confidence"],
+}
+
+
+def build_gemini_vlm_call(
+    api_key: str,
+    model: str = "gemini-2.5-flash",
+) -> VlmCall:
+    """Build a Gemini-backed VLM caller that satisfies the
+    `VlmCall` protocol.
+
+    Reuses dd.classify_vision_gemini._default_gemini_call (which
+    already supports multi-image content blocks and JSON response
+    schemas — the right plumbing per Codex's recommendation).
+
+    Returns a closure: (prompt, images) → verdict dict in the
+    standard shape. Empty images list → returns 'unknown' without
+    calling the API (avoids the previous v0.1 bug where the VLM
+    was invoked with no visual evidence).
+    """
+    from dd.classify_vision_gemini import _default_gemini_call
+
+    def _call(prompt: str, images: list[bytes]) -> dict[str, Any]:
+        if not images:
+            return {
+                "verdict": "unknown",
+                "confidence": 0.0,
+                "reason": "no images provided",
+            }
+        try:
+            raw = _default_gemini_call(
+                prompt=prompt,
+                images=images,
+                api_key=api_key,
+                model=model,
+                response_schema=_GEMINI_VARIANT_RESPONSE_SCHEMA,
+            )
+            text = (
+                raw.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text")
+            )
+            if not text:
+                return {
+                    "verdict": "unknown",
+                    "confidence": 0.0,
+                    "reason": "no text in response",
+                }
+            parsed = json.loads(text)
+            return {
+                "verdict": str(parsed.get("verdict", "unknown")).lower(),
+                "confidence": float(parsed.get("confidence", 0.0)),
+                "reason": parsed.get("reason"),
+            }
+        except Exception as e:
+            return {
+                "verdict": "unknown",
+                "confidence": 0.0,
+                "reason": f"gemini call failed: {e!r}",
+            }
+
+    return _call
+
+
+def _apply_vlm_labels(
+    clusters: list[dict[str, Any]],
+    catalog_type: str,
+    vlm_call: VlmCall,
+    image_provider: ImageProvider,
+    threshold: float = DEFAULT_VLM_CONFIDENCE_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """Relabel clusters from `custom_N` to standard variant names
+    using a VLM verdict.
+
+    Codex review (2026-04-26, gpt-5.5 high reasoning) shape:
+    - Only call VLM when image provider returns >= 1 PNG
+    - Only relabel if verdict in STANDARD_VARIANTS AND confidence >= threshold
+    - If verdict is 'unknown', invalid, duplicate, or low-confidence,
+      keep `custom_N` and source='cluster'
+    - On relabel: source='vlm'; representative_values from the medoid
+      stay unchanged (cluster-derived, not VLM-derived)
+
+    Per-cluster VLM call: each cluster gets its own call so the
+    model's verdict is cluster-scoped (not corpus-scoped).
+    """
+    if not clusters:
+        return clusters
+
+    n = len(clusters)
+    used_verdicts: set[str] = set()  # Avoid duplicate VLM-assigned variants
+    relabeled: list[dict[str, Any]] = []
+
+    for idx, cluster in enumerate(clusters):
+        member_ids = cluster.get("members", [])
+        if len(member_ids) < 2:
+            # Singleton clusters skip VLM (no visual evidence cluster
+            # to discriminate). Keep as-is.
+            relabeled.append(cluster)
+            continue
+
+        # Sample the medoid + a few neighbors for VLM input. The
+        # image_provider decides which subset; for now we send up
+        # to 4 (the medoid plus 3 nearby).
+        sample_ids = member_ids[:4]
+        images = image_provider(sample_ids)
+        # Drop None entries (image_provider failed for some); keep
+        # the bytes that came through.
+        valid_images = [img for img in images if img]
+        if not valid_images:
+            # No images → no VLM input → keep custom_N
+            relabeled.append(cluster)
+            continue
+
+        prompt = build_variant_label_prompt(
+            catalog_type, cluster_index=idx, n_clusters=n,
+        )
+        verdict = vlm_call(prompt, valid_images)
+
+        v_label = (verdict.get("verdict") or "unknown").lower()
+        v_conf = float(verdict.get("confidence", 0.0))
+
+        # Relabel guards (Codex spec):
+        # - verdict must be in STANDARD_VARIANTS
+        # - confidence must clear threshold
+        # - verdict must not be already used (duplicate prevention)
+        if (
+            v_label in STANDARD_VARIANTS
+            and v_conf >= threshold
+            and v_label not in used_verdicts
+        ):
+            new_cluster = dict(cluster)
+            new_cluster["variant"] = v_label
+            new_cluster["source"] = "vlm"
+            new_cluster["confidence"] = v_conf
+            new_cluster["vlm_reason"] = verdict.get("reason")
+            used_verdicts.add(v_label)
+            relabeled.append(new_cluster)
+        else:
+            # Keep cluster-only label; record VLM verdict for triage
+            # but don't change the source/variant.
+            new_cluster = dict(cluster)
+            new_cluster["vlm_verdict"] = v_label
+            new_cluster["vlm_confidence"] = v_conf
+            new_cluster["vlm_reason"] = verdict.get("reason")
+            relabeled.append(new_cluster)
+
+    return relabeled
 
 
 def _collect_instances(
@@ -532,6 +764,8 @@ def induce_variants(
     conn: sqlite3.Connection,
     vlm_call: VlmCall,
     catalog_types: list[str] | None = None,
+    *,
+    image_provider: ImageProvider | None = None,
 ) -> dict[str, int]:
     """Induce variant bindings for each catalog type and persist.
 
@@ -540,8 +774,23 @@ def induce_variants(
     short-circuited — if there is nothing to cluster, a single
     ``custom_1`` placeholder row is still written so providers have a
     fallback binding shape (keeps the LLM vocabulary complete).
+
+    Phase E #4 follow-on (2026-04-26): when ``vlm_call`` is non-null
+    AND ``image_provider`` returns real PNG bytes for cluster
+    members, _apply_vlm_labels relabels custom_N → standard variant
+    names (primary, secondary, destructive, etc.). When images are
+    unavailable (default ``null_image_provider``), the cluster-only
+    custom_N labels are preserved.
+
+    Codex 2026-04-26 (gpt-5.5 high reasoning) review: ship VLM
+    labeling contract + Gemini adapter NOW; thumbnail rendering via
+    bridge is a separate follow-on commit. Default behavior is
+    cluster-only (matches Phase E #4 shipped behavior); VLM
+    relabeling is opt-in via the image_provider parameter.
     """
     written: dict[str, int] = {}
+    if image_provider is None:
+        image_provider = null_image_provider
 
     if catalog_types is None:
         rows = conn.execute(
@@ -573,6 +822,15 @@ def induce_variants(
             ]
         else:
             clusters = _cluster_and_label(instances, vlm_call, catalog_type)
+
+        # Phase E #4 follow-on: apply VLM labels when wired.
+        # _apply_vlm_labels short-circuits each cluster individually
+        # if the image_provider returns no images for that cluster's
+        # members, so partial coverage degrades gracefully to
+        # cluster-only labels for the unimaged clusters.
+        clusters = _apply_vlm_labels(
+            clusters, catalog_type, vlm_call, image_provider,
+        )
 
         written[catalog_type] = _persist_bindings(conn, catalog_type, clusters)
 
