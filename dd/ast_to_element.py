@@ -285,17 +285,31 @@ def _deep_merge_element_keys(
     base: dict[str, Any],
     overlay: dict[str, Any],
 ) -> dict[str, Any]:
-    """Merge `overlay` onto `base` with nested-dict deep merge on the
-    keys the emitters consume (`layout`, `visual`). Other keys are
-    shallow-overwritten. Only keys PRESENT in `overlay` are touched —
-    absent keys on `overlay` do not clobber `base`.
+    """Merge `overlay` onto `base` recursively for nested dicts. Lists
+    (e.g. `fills`, `strokes`) are REPLACED whole, not merged.
 
-    Lists (e.g. `fills`, `strokes`) are REPLACED whole, not merged.
-    Figma fills/strokes are ordered stacks — merging them by index
-    would silently corrupt the stack. The caller (head / spec / db)
-    owns the full list when it mentions the key at all.
+    Contract: only keys PRESENT in `overlay` are touched — absent keys on
+    `overlay` do not clobber `base`. This holds at every nesting depth,
+    not just the top level.
+
+    Figma fills/strokes are ordered stacks — merging them by index would
+    silently corrupt the stack. The caller (head / spec / db) owns the
+    full list when it mentions the key at all.
 
     Does not mutate inputs.
+
+    F13a context (2026-04-25): the previous implementation only merged
+    one level deep — when `overlay["layout"]["sizing"]` was a dict and
+    `base["layout"]["sizing"]` was also a dict, the inner merge wrote
+    overlay's sizing-dict whole into the result, clobbering sibling
+    sizing keys (e.g. `widthPixels` from spec spec was lost when AST
+    head only carried `width=hug`). Bug surface: bordered table on HGB
+    Transactions Selected rendered 100×950 instead of 1400×950 because
+    `widthPixels: 1400` was dropped during the merge. Codex review
+    (2026-04-25): "Make `_deep_merge_element_keys` recursively
+    deep-merge dicts while continuing to replace lists whole. That
+    preserves `layout.sizing.widthPixels` without requiring AST head
+    emission to know about spec provenance."
     """
     result: dict[str, Any] = {k: v for k, v in base.items()}
     for key, value in overlay.items():
@@ -304,10 +318,9 @@ def _deep_merge_element_keys(
             and isinstance(result[key], dict)
             and isinstance(value, dict)
         ):
-            merged_sub: dict[str, Any] = dict(result[key])
-            for sub_key, sub_val in value.items():
-                merged_sub[sub_key] = sub_val
-            result[key] = merged_sub
+            # Recurse so absent inner keys on the overlay don't clobber
+            # the base's inner keys (the F13a fix).
+            result[key] = _deep_merge_element_keys(result[key], value)
         else:
             result[key] = value
     return result

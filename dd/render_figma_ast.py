@@ -1476,6 +1476,21 @@ def _emit_phase2(
                     f'kind:"layout_sizing_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+            # F13b: for text in autolayout parents, lock textAutoResize
+            # AFTER layoutSizing has resolved the width. Mirrors the
+            # OLD path's `text_autoresize_deferred` intent
+            # (dd/renderers/figma.py:1855). Codex F13b spec: only emit
+            # when NOT WIDTH_AND_HEIGHT — that mode is the default and
+            # re-emitting it after layoutSizing re-enables natural-
+            # width behavior, undoing the lock. Same authority as
+            # `text_auto_resize` already read at line 1453.
+            if is_text and text_auto_resize and text_auto_resize != "WIDTH_AND_HEIGHT":
+                lines.append(
+                    f'try {{ {child_var}.textAutoResize = "{text_auto_resize}"; }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{err_eid_layout}", '
+                    f'kind:"text_auto_resize_failed", '
+                    f'error: String(__e && __e.message || __e)}}); }}'
+                )
 
     lines.append('__mark("phase2_done");')
 
@@ -1561,6 +1576,15 @@ def _emit_phase3(
         id(n): p for n, p in walk
     }
 
+    # F13b: lazy import — resolve_element merges AST head + spec
+    # element + db_visuals into the canonical element shape. Phase 3
+    # was reading spec_elements directly, which misses both the AST
+    # head's overrides AND the F13a deep-merge resolution. Reading
+    # the resolved shape here aligns Phase 3 with Phase 1's locus
+    # (line 694) and is what makes the text resize / textAutoResize
+    # block work for non-autolayout-parent text nodes (Bug B).
+    from dd.ast_to_element import resolve_element
+
     for node, _parent in walk:
         eid = node.head.eid
         if id(node) not in var_map:
@@ -1568,25 +1592,54 @@ def _emit_phase3(
         var = var_map[id(node)]
         spec_key = spec_key_map.get(id(node), eid)
         err_eid = _escape_js(spec_key)
-        element = spec_elements.get(spec_key, {})
+        # F13b: read the RESOLVED element (AST head + spec + db_visuals
+        # merged) so Phase 3 sees the same shape Phase 1 emits against.
+        # Without this, Phase 3 missed both the AST head's overrides
+        # and the AST-supplied widthPixels/heightPixels for nodes whose
+        # IR `width`/`height` were already literal numerics. Codex spec
+        # 2026-04-25.
+        nid = nid_map.get(id(node))
+        element = resolve_element(
+            node=node,
+            spec_elements=spec_elements,
+            spec_key=spec_key,
+            db_visuals=db_visuals or {},
+            nid=nid,
+            nid_map=nid_map,
+        )
         parent_node = parent_by_node_id.get(id(node))
         parent_element = {}
         if parent_node is not None:
             parent_spec_key = spec_key_map.get(
                 id(parent_node), parent_node.head.eid,
             )
-            parent_element = spec_elements.get(parent_spec_key, {})
+            # Parent layout decision is also a layout decision — read
+            # the resolved parent shape too, not the bare spec dict.
+            parent_element = resolve_element(
+                node=parent_node,
+                spec_elements=spec_elements,
+                spec_key=parent_spec_key,
+                db_visuals=db_visuals or {},
+                nid=nid_map.get(id(parent_node)),
+                nid_map=nid_map,
+            )
         parent_direction = (
             parent_element.get("layout", {}).get("direction", "")
         )
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
 
-        nid = nid_map.get(id(node))
         visual = (
             db_visuals.get(nid, {}) or {}
             if db_visuals is not None and nid is not None
             else {}
         )
+
+        # Determine if this node is a text type — text needs the
+        # textAutoResize lock after resize per Codex F13b spec.
+        etype = (
+            node.head.type_or_path if node.head.head_kind == "type" else ""
+        )
+        is_text = etype in _TEXT_TYPES
 
         rotation_deg = _ast_prop_py(node, "rotation")
         mirror_axis = _ast_prop_py(node, "mirror")
@@ -1596,8 +1649,18 @@ def _emit_phase3(
 
         if not parent_is_autolayout and element:
             elem_sizing = element.get("layout", {}).get("sizing", {})
+            # F13b: support both spellings — IR-direct elements use
+            # numeric `width`/`height`; AST-merged elements use
+            # `widthPixels`/`heightPixels`. Mirrors `_emit_layout`'s
+            # tolerant lookup at dd/renderers/figma.py:2255-2262.
+            # `width`/`height` only count when numeric (string
+            # values like "hug" are semantic, not pixel dims).
             pw = elem_sizing.get("widthPixels")
+            if pw is None and isinstance(elem_sizing.get("width"), (int, float)):
+                pw = elem_sizing.get("width")
             ph = elem_sizing.get("heightPixels")
+            if ph is None and isinstance(elem_sizing.get("height"), (int, float)):
+                ph = elem_sizing.get("height")
             if pw is not None and ph is not None:
                 ops.append(
                     f'try {{ {var}.resize({round(pw, 2)}, {round(ph, 2)}); }} '
@@ -1605,6 +1668,25 @@ def _emit_phase3(
                     f'kind:"resize_failed", '
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
+                # F13b: for text, lock textAutoResize AFTER resize so
+                # the explicit dimensions stick. Source from DB
+                # (`text_auto_resize` on the node row, same authority
+                # Phase 2's autolayout block reads at line 1453).
+                # Order is critical per `feedback_text_layout_invariants
+                # .md`: characters → resize → textAutoResize. Codex
+                # F13b spec: only emit when NOT WIDTH_AND_HEIGHT —
+                # WIDTH_AND_HEIGHT is the default and re-emitting it
+                # after resize re-enables natural-width behavior,
+                # undoing the lock.
+                if is_text:
+                    text_mode = visual.get("text_auto_resize")
+                    if text_mode and text_mode != "WIDTH_AND_HEIGHT":
+                        ops.append(
+                            f'try {{ {var}.textAutoResize = "{text_mode}"; }} '
+                            f'catch (__e) {{ __errors.push({{eid:"{err_eid}", '
+                            f'kind:"text_auto_resize_failed", '
+                            f'error: String(__e && __e.message || __e)}}); }}'
+                        )
             position = element.get("layout", {}).get("position")
             if position and not has_transform:
                 x_val = position.get("x", 0)
