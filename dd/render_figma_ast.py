@@ -376,6 +376,7 @@ def render_figma(
         canvas_position=canvas_position,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
+        spec_tokens=spec_tokens,
         deferred_groups=deferred_groups,
         deferred_bool_ops=deferred_bool_ops,
         absorbed_node_ids=absorbed_node_ids,
@@ -1619,6 +1620,7 @@ def _emit_phase2(
     nid_map: Optional[dict[int, int]] = None,
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
+    spec_tokens: Optional[dict[str, Any]] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
     deferred_bool_ops: Optional[dict[int, dict[str, Any]]] = None,
     absorbed_node_ids: Optional[set[int]] = None,
@@ -1648,6 +1650,7 @@ def _emit_phase2(
     """
     nid_map = nid_map or {}
     spec_elements = spec_elements or {}
+    spec_tokens = spec_tokens or {}
     if deferred_groups is None:
         deferred_groups = {}
     if deferred_bool_ops is None:
@@ -2015,6 +2018,42 @@ def _emit_phase2(
                 f'error: String(__e && __e.message || __e)}}); }}'
             )
             lines.append(f'M["{_escape_js(spec_key)}"] = {dvar}.id;')
+
+            # P2 (forensic-audit-2 finding 2): bool-op visual replay.
+            # Pre-fix the deferred materialization only emitted name +
+            # M[] + z-order; visual props (fills, strokes, effects,
+            # opacity, rotation, etc.) were never replayed because the
+            # main loop's `if etype == "boolean_operation": continue`
+            # had skipped _emit_visual entirely. Result: bool_ops
+            # rendered as #D9D9D9 (Figma's default placeholder grey)
+            # where IR specified the actual color. Surfaced as 10
+            # DRIFT screens on the post-rextract Nouns sweep.
+            #
+            # Groups don't need this — their visual props are
+            # inherited from the wrapping behavior (figma.group does
+            # not set fills/strokes; the children carry them).
+            if kind == "bool_op":
+                bool_raw_visual = info.get("raw_visual")
+                if bool_raw_visual:
+                    bool_visual = build_visual_from_db(bool_raw_visual)
+                    if bool_visual:
+                        bool_visual_lines, _bool_visual_refs = _emit_visual(
+                            dvar, err_d, bool_visual, spec_tokens,
+                            node_type="BOOLEAN_OPERATION",
+                        )
+                        # Each visual line is `dvar.prop = ...;` —
+                        # guard with try/catch in case the
+                        # post-materialization bool node rejects a
+                        # specific prop write (matches the
+                        # phase1_mode2_prop_failed pattern used
+                        # elsewhere).
+                        for vl in bool_visual_lines:
+                            lines.append(
+                                f"try {{ {vl} }} catch (__e) {{ "
+                                f'__errors.push({{eid:"{err_d}", '
+                                f'kind:"phase1_mode2_prop_failed", '
+                                f"error: String(__e && __e.message || __e)}}); }}"
+                            )
 
             # Z-order: figma.group()/figma.<op>() always appends the
             # new node at the END of grandparent's children. For
