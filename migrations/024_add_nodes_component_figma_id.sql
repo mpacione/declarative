@@ -1,0 +1,30 @@
+-- Migration 024: add `component_figma_id` to nodes.
+--
+-- Phase E #2 fix (2026-04-26): the plugin extractor at
+-- dd/extract_screens.py:276 already captures `main.id` for every
+-- INSTANCE node (the figma node id of the master component), but the
+-- INSERT path's whitelist (parse_extraction_response + downstream)
+-- silently drops unknown columns per the
+-- `feedback_extract_whitelist_drift.md` failure mode. Adding the
+-- column lets that information land in the DB.
+--
+-- The downstream goal: `dd/templates.py::build_component_key_registry`
+-- builds CKR rows by joining instance names against
+-- `nodes WHERE node_type = 'COMPONENT'`, but Nouns has 0 COMPONENT
+-- nodes (the Components page isn't walked by `extract_top_level_frames`
+-- — pages[0] only). So 178/179 CKR rows have figma_node_id IS NULL,
+-- which under-populates `dd/variants.py::derive_variants_from_ckr`,
+-- `dd/sticker_sheet.py` M7.0.f tagging, and the new project-token
+-- alias overlay's canonical-type-aware ranking.
+--
+-- Codex 2026-04-26 (gpt-5.5 high reasoning) review picked Option E
+-- (backfill from instance-resolved master IDs at extract time) over
+-- B/D (walk the Components page) as the cheapest correct fix:
+-- "the current code already discovers the authoritative mapping at
+-- extraction time via getMainComponentAsync()'s main.id."
+--
+-- Schema change: nullable TEXT column on `nodes`. Idempotent —
+-- migration script tolerates re-runs (see dd/db.py migration runner).
+-- Existing INSTANCE rows have NULL until a re-extract populates them.
+
+ALTER TABLE nodes ADD COLUMN component_figma_id TEXT;

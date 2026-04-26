@@ -71,9 +71,26 @@ _MIN_CHILD_FREQUENCY = 0.1
 def build_component_key_registry(conn: sqlite3.Connection) -> int:
     """Build a unified component_key → figma_node_id registry from the nodes table.
 
-    For each unique component_key, finds the canonical instance name, then
-    resolves to a COMPONENT node's figma_node_id by matching names. Falls
-    back to the components table if no COMPONENT node found.
+    Phase E #2 fix (2026-04-26): primary lookup is now via
+    ``nodes.component_figma_id`` — every INSTANCE row already carries
+    its master's figma node id (captured by the plugin extractor's
+    ``getMainComponentAsync().id`` at extract_screens.py:276). This
+    avoids the previous name-based fallback that needed COMPONENT
+    nodes in `nodes` (Nouns has 0; the Components page isn't walked
+    by extract_top_level_frames).
+
+    Codex 2026-04-26 (gpt-5.5 high reasoning) review: "the current
+    code already discovers the authoritative mapping at extraction
+    time... use key lookup as fallback, not primary path."
+
+    Resolution order:
+    1. Most-frequent ``nodes.component_figma_id`` for this
+       component_key (the new primary path).
+    2. Name-based lookup against ``nodes WHERE node_type='COMPONENT'``
+       (legacy: works when the Components page IS extracted).
+    3. Name-based lookup against ``components`` table (legacy).
+    4. NULL — downstream consumers handle gracefully (sticker_sheet
+       and variants both check for None).
 
     Returns the number of registry entries created.
     """
@@ -86,10 +103,15 @@ def build_component_key_registry(conn: sqlite3.Connection) -> int:
     )
     conn.execute("DELETE FROM component_key_registry")
 
+    # Phase E #2: include component_figma_id in the per-key aggregate.
+    # Use MIN to pick a deterministic representative when an INSTANCE
+    # appears multiple times (all its rows agree by definition since
+    # they're the same component_key → same master).
     keys = conn.execute(
         "SELECT n.component_key, "
         "  MIN(TRIM(n.name)) AS inst_name, "
-        "  COUNT(*) AS cnt "
+        "  COUNT(*) AS cnt, "
+        "  MIN(n.component_figma_id) AS master_fid "
         "FROM nodes n "
         "WHERE n.component_key IS NOT NULL "
         "GROUP BY n.component_key"
@@ -100,20 +122,31 @@ def build_component_key_registry(conn: sqlite3.Connection) -> int:
         ck = row[0]
         inst_name = (row[1] or "").strip()
         inst_count = row[2]
+        master_fid = row[3]  # may be None on older DBs / pre-migration
 
         if not inst_name:
             continue
 
         figma_node_id = None
 
-        master = conn.execute(
-            "SELECT figma_node_id FROM nodes "
-            "WHERE node_type = 'COMPONENT' AND TRIM(name) = ? LIMIT 1",
-            (inst_name,),
-        ).fetchone()
-        if master:
-            figma_node_id = master[0]
+        # Phase E #2 primary path: instance-resolved master id.
+        if master_fid:
+            figma_node_id = master_fid
 
+        # Legacy fallback 1: name match against COMPONENT nodes (works
+        # when extraction does walk a Components page; today's
+        # extract_top_level_frames doesn't, but tests + future
+        # extension may populate).
+        if not figma_node_id:
+            master = conn.execute(
+                "SELECT figma_node_id FROM nodes "
+                "WHERE node_type = 'COMPONENT' AND TRIM(name) = ? LIMIT 1",
+                (inst_name,),
+            ).fetchone()
+            if master:
+                figma_node_id = master[0]
+
+        # Legacy fallback 2: name match against `components` table.
         if not figma_node_id:
             comp = conn.execute(
                 "SELECT figma_node_id FROM components WHERE TRIM(name) = ? LIMIT 1",

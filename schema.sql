@@ -457,6 +457,7 @@ CREATE TABLE nodes (
 
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync
+    component_figma_id TEXT,                     -- Figma node id of master component (Migration 024). For INSTANCE nodes, this is `getMainComponentAsync().id` — the master's local node id, distinct from `component_key` which is the published key. Used by `dd/templates.py::build_component_key_registry` to populate CKR.figma_node_id without needing to walk the Components page.
 
     -- Classifier-assigned semantic role. Denormalized mirror of
     -- screen_component_instances.canonical_type kept in sync at

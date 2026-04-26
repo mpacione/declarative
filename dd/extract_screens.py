@@ -50,6 +50,15 @@ _STRUCTURAL_INSERT_COLUMNS: tuple[str, ...] = (
     "stroke_top_weight", "stroke_right_weight",
     "stroke_bottom_weight", "stroke_left_weight",
     "component_key",
+    # Phase E #2 fix (2026-04-26): forward `component_figma_id` (the
+    # master node id captured from getMainComponentAsync().id at line
+    # ~276) so dd/templates.py::build_component_key_registry can
+    # populate CKR.figma_node_id without walking the Components page.
+    # Pre-fix the field reached parse_extraction_response (line 492-493)
+    # but the INSERT silently dropped it because it wasn't whitelisted
+    # here — the canonical instance of `feedback_extract_whitelist
+    # _drift.md` failure mode.
+    "component_figma_id",
 )
 
 # Every column insert_nodes forwards into the SQL INSERT statement. Tested
