@@ -83,6 +83,19 @@ RUNTIME_ERROR_KIND_TO_CATEGORY: dict[str, str] = {
     "missing_component_key": "component_resolution",
     "no_main_component": "component_resolution",
     "import_component_failed": "component_resolution",
+    # P5 (post-rextract audit #2 finding 1): when ``use_mode1=True``
+    # because ``head_kind=="comp-ref"`` but the inner gate at
+    # ``render_figma_ast.py:840`` fails because no component
+    # identifiers (component_figma_id / instance_figma_node_id /
+    # component_key) are available in raw_visual. Distinct from
+    # ``degraded_to_mode2`` (intentional fallback when is_db_instance
+    # but no IDs) — this is the precondition-failure variant where
+    # the comp-ref markup head expected Mode 1 but couldn't get
+    # there. Codex review (gpt-5.5 high reasoning, 2026-04-26):
+    # belongs in component_resolution because the failure mode is
+    # missing identity/resolution data, not a runtime materialization
+    # write rejection.
+    "mode1_dispatch_failed": "component_resolution",
 
     # instance_materialization
     # Sonnet's correction: phase1_mode*_prop_failed are INSTANCE-tree
@@ -94,6 +107,17 @@ RUNTIME_ERROR_KIND_TO_CATEGORY: dict[str, str] = {
     "create_instance_failed": "instance_materialization",
     "phase1_mode1_prop_failed": "instance_materialization",
     "phase1_mode2_prop_failed": "instance_materialization",
+    # P5 (post-rextract audit #2 finding 5): instance-tree
+    # PathOverride application either (a) found no resolver entry
+    # for the override's path at compile time, or (b) the runtime
+    # ``findAll`` lookup returned undefined for a fig_child_id the
+    # resolver claimed existed. Either way, an instance-tree
+    # ``.visible`` write was silently dropped. Codex review
+    # (gpt-5.5 high reasoning, 2026-04-26): same family as
+    # ``phase1_mode*_prop_failed`` (instance-tree property write
+    # didn't land), so reuse instance_materialization rather than
+    # adding a new override-only category.
+    "override_target_missing": "instance_materialization",
 
     # mode_fallback (control-flow signal, not a failure per se)
     "degraded_to_mode2": "mode_fallback",

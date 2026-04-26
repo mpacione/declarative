@@ -837,6 +837,44 @@ def _emit_phase1(
             )
         )
 
+        # P5 (forensic-audit-2 finding 1): when use_mode1 is True but
+        # the inner identifier gate fails, we silently fall through to
+        # createFrame. The is_db_instance branch below covers part of
+        # this case via degraded_to_mode2, but only when is_db_instance
+        # is True. The case where head_kind=="comp-ref" AND
+        # is_db_instance=False AND identifiers are missing was a fully
+        # silent fall-through pre-fix — no __errors push, no
+        # diagnostic, verifier blind.
+        #
+        # Codex 2026-04-26 (gpt-5.5 high reasoning): keep
+        # degraded_to_mode2 for intentional fallback (is_db_instance
+        # path); use mode1_dispatch_failed for the precondition-
+        # failure variant where comp-ref markup expected Mode 1 but
+        # couldn't get there because of missing identity data.
+        if (
+            use_mode1
+            and not (
+                component_figma_id or instance_figma_node_id or component_key
+            )
+            and not is_db_instance
+        ):
+            err_eid = spec_key_map.get(id(node), eid)
+            eid_lit = _escape_js(err_eid)
+            reason_parts = []
+            if head_kind == "comp-ref":
+                reason_parts.append("head=comp-ref")
+            if not component_key:
+                reason_parts.append("no component_key")
+            if not component_figma_id:
+                reason_parts.append("no component_figma_id")
+            if not instance_figma_node_id:
+                reason_parts.append("no instance_figma_node_id")
+            reason = _escape_js(", ".join(reason_parts) or "unknown")
+            lines.append(
+                f'__errors.push({{eid:"{eid_lit}", '
+                f'kind:"mode1_dispatch_failed", reason:"{reason}"}});'
+            )
+
         if use_mode1 and (
             component_figma_id or instance_figma_node_id or component_key
         ):
@@ -1459,7 +1497,8 @@ def _emit_visibility_path_overrides(
     # Collect all (fig_id, js_bool) pairs for this instance head.
     # Skip non-PathOverride props, non-`.visible` paths, missing
     # resolver entries, and non-bool values — same filter as before.
-    targets: list[tuple[str, str]] = []
+    targets: list[tuple[str, str, str]] = []  # (fig_id, js_bool, path)
+    head_eid = node.head.eid
     for prop in node.head.properties:
         if not isinstance(prop, PathOverride):
             continue
@@ -1467,12 +1506,27 @@ def _emit_visibility_path_overrides(
             continue
         fig_child_id = resolver_bucket.get(prop.path)
         if not fig_child_id:
+            # P5 (forensic-audit-2 finding 5): silent no-op pre-fix.
+            # The PathOverride exists but the resolver has no fig_id
+            # for the path — usually because the resolver was built
+            # from stale CKR data, the master's child names changed,
+            # or the override's path is malformed. Either way the
+            # override is silently dropped; surface it via __errors
+            # so the verifier can attribute the missing visibility.
+            eid_lit = _escape_js(head_eid)
+            path_lit = _escape_js(prop.path)
+            lines.append(
+                f'__errors.push({{eid:"{eid_lit}", '
+                f'kind:"override_target_missing", '
+                f'path:"{path_lit}", '
+                f'reason:"resolver has no entry"}});'
+            )
             continue
         bool_py = getattr(prop.value, "py", None)
         if not isinstance(bool_py, bool):
             continue
         js_bool = "true" if bool_py else "false"
-        targets.append((fig_child_id, js_bool))
+        targets.append((fig_child_id, js_bool, prop.path))
 
     # No `.visible` overrides for this head — emit nothing. The toggle
     # cost is non-trivial; skipping it when there's nothing to do
@@ -1484,8 +1538,10 @@ def _emit_visibility_path_overrides(
     # would be defensively idempotent on the JS side (Map.set last
     # wins), but the input shape rarely has them.
     js_id_literals = ", ".join(
-        f'"{_escape_js(fid)}"' for fid, _ in targets
+        f'"{_escape_js(fid)}"' for fid, _, _ in targets
     )
+
+    eid_lit = _escape_js(head_eid)
 
     # Single toggle window + single walk + K straight-line assigns.
     # The findAll callback splits on ";" and compares the LAST segment
@@ -1502,11 +1558,23 @@ def _emit_visibility_path_overrides(
     lines.append('    _targets.set(_n.id.split(";").pop(), _n);')
     lines.append("  }")
     lines.append("  let _t;")
-    for fid, js_bool in targets:
+    for fid, js_bool, path in targets:
         esc_fid = _escape_js(fid)
+        esc_path = _escape_js(path)
+        # P5 (forensic-audit-2 finding 5): runtime no-op site. Pre-fix
+        # `if (_t) _t.visible = X;` silently skipped when findAll
+        # didn't surface the cached id (resolver claimed the id
+        # existed at compile time, but the live tree disagrees —
+        # usually means the master's structure changed since the
+        # resolver was built). Push override_target_missing instead
+        # of failing silent.
         lines.append(
             f'  _t = _targets.get("{esc_fid}"); '
-            f"if (_t) _t.visible = {js_bool};"
+            f"if (_t) {{ _t.visible = {js_bool}; }} "
+            f'else {{ __errors.push({{eid:"{eid_lit}", '
+            f'kind:"override_target_missing", '
+            f'path:"{esc_path}", '
+            f'reason:"findAll did not surface fig_id"}}); }}'
         )
     lines.append("} finally {")
     lines.append("  figma.skipInvisibleInstanceChildren = true;")
