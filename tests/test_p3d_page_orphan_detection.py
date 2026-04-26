@@ -182,6 +182,18 @@ class TestPhase2OrphanContractDocumentation:
                 f"field {required!r}"
             )
 
+    def test_phase2_orphan_categorizes_as_escaped_artifact(self):
+        """P4 (Phase E Pattern 2 fix) categorization: the
+        ``phase2_orphan`` kind is bucketed under the
+        ``escaped_artifact`` category in
+        ``dd/runtime_errors.py``. Codex review (2026-04-25) called out
+        the cross-test pinning explicitly — if anyone renames the
+        category, both this test and the P4 convention test should
+        fail simultaneously, surfacing the rename intent."""
+        from dd.runtime_errors import categorize_runtime_error_kind
+        assert categorize_runtime_error_kind("phase2_orphan") == \
+            "escaped_artifact"
+
 
 class TestStructuralParityUnaffectedByOrphans:
     """Codex design-review nuance: page orphans are render-side runtime

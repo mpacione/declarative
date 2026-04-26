@@ -309,24 +309,27 @@ class RenderReport:
       property, family/style, node_id, name, error). One entry per
       failing operation.
 
-    Invariants:
+    Invariants (P1 + P4):
 
     - ``is_structural_parity ⇔ (errors == [] AND ir_node_count == rendered_node_count)``
-    - ``is_parity ⇔ is_structural_parity AND len(runtime_errors) == 0``
+    - ``is_runtime_clean ⇔ len(runtime_errors) == 0``
+    - ``is_parity ⇔ is_structural_parity AND is_runtime_clean``  (strict)
     - ``parity_ratio`` is structural only — monotone in ``len(errors)``,
       independent of ``runtime_errors``. **A report can have
       ``is_parity=False`` with ``parity_ratio=1.0``** (rendered tree
       matches IR shape exactly, but runtime errors were recorded).
       Use ``is_structural_parity`` when you want the historical
-      shape-only signal; ``is_parity`` for the strict definition.
+      shape-only signal; ``is_runtime_clean`` for runtime-only;
+      ``is_parity`` for the strict combined.
 
-    Phase E Pattern 2 fix (2026-04-25): Sonnet + Codex independently
-    found the verifier was reading ``rendered_ref["eid_map"]`` only
-    and ignoring ``rendered_ref["errors"]``, leaving 31 distinct
-    ``__errors`` kinds entirely invisible to the parity verdict. F12a
-    surfaced runtime_error_count in the CLI output but ``is_parity``
-    didn't consume it. Inhaling them here makes runtime cleanliness
-    part of the parity contract.
+    Phase E Pattern 2 fix:
+    - P1 (2026-04-25): inhale ``rendered_ref["errors"]`` into
+      ``runtime_errors`` (Codex Shape A); make ``is_parity`` strict.
+    - P4 (2026-04-25): explicit ``is_runtime_clean`` channel + group
+      raw kinds into diagnostic categories via
+      ``dd/runtime_errors.py``. Sweep summary surfaces the categories
+      so "1015 runtime errors" becomes "600 font_health / 268
+      escaped_artifact / 131 instance_materialization / ...".
     """
 
     backend: str
@@ -348,8 +351,21 @@ class RenderReport:
         )
 
     @property
+    def is_runtime_clean(self) -> bool:
+        """P4 channel: zero runtime errors, regardless of structure.
+
+        Codex Phase E review (2026-04-25, gpt-5.5): "Add it. Reduces
+        caller-specific spellings like ``runtime_error_count == 0``."
+
+        Use when the question is "did the renderer's per-op guards
+        all pass cleanly?", independent of whether the IR ↔ rendered
+        tree shapes match.
+        """
+        return len(self.runtime_errors) == 0
+
+    @property
     def is_parity(self) -> bool:
-        """Strict parity: structural OK AND zero runtime errors.
+        """Strict parity: structural OK AND runtime clean.
 
         Codex Phase E review (2026-04-25): "Catch-and-continue
         prevents abort cascades and preserves diagnostic evidence.
@@ -358,7 +374,7 @@ class RenderReport:
         invisible unless verifier scope expands." This expansion
         closes that gap.
         """
-        return self.is_structural_parity and len(self.runtime_errors) == 0
+        return self.is_structural_parity and self.is_runtime_clean
 
     @property
     def runtime_error_count(self) -> int:
@@ -373,6 +389,32 @@ class RenderReport:
             if isinstance(e, dict):
                 kind = str(e.get("kind", "?"))
                 out[kind] = out.get(kind, 0) + 1
+        return out
+
+    @property
+    def runtime_error_categories(self) -> dict[str, int]:
+        """P4 — Counter of runtime errors grouped by diagnostic
+        category. Categories are defined in ``dd/runtime_errors.py``
+        (single source of truth). Unknown kinds (older payloads or
+        kinds added without updating the map) bucket as
+        ``"uncategorized"`` — non-throwing in production; the
+        convention test in ``tests/test_p4_runtime_error_categorization.py``
+        fails CI when a repo-source literal is missing.
+
+        Codex review note: "keep ``runtime_error_kinds`` for the
+        sharp signal; categories are for sweep readability only."
+        Both are exposed so callers can pick the right grain.
+        """
+        # Local import to avoid circular dependency at module-init
+        # time (runtime_errors.py is a leaf module today, but if
+        # something there ever needs RenderReport, this guards it).
+        from dd.runtime_errors import categorize_runtime_error_kind
+        out: dict[str, int] = {}
+        for e in self.runtime_errors:
+            if isinstance(e, dict):
+                kind = str(e.get("kind", "?"))
+                cat = categorize_runtime_error_kind(kind)
+                out[cat] = out.get(cat, 0) + 1
         return out
 
     def parity_ratio(self) -> float:

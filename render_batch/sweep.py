@@ -111,6 +111,13 @@ def process_screen(
         # but with visual gaps" (error_count=0 + runtime_error_count>0).
         "runtime_error_count": 0,
         "runtime_error_kinds": {},
+        # P4 (Phase E Pattern 2 fix): diagnostic categorization of
+        # runtime errors. Same data as runtime_error_kinds, but
+        # grouped into ~10 categories for readability. The aggregate
+        # summary uses these to render "1015 runtime errors:
+        # 600 font_health / 268 escaped_artifact / ..." — a much
+        # more actionable shape than 31 raw kinds in a flat list.
+        "runtime_error_categories": {},
         "failure": None,
     }
 
@@ -209,6 +216,11 @@ def process_screen(
     # readers don't break.
     row["runtime_error_count"] = report.get("runtime_error_count", 0)
     row["runtime_error_kinds"] = report.get("runtime_error_kinds", {})
+    # P4: also pull categories. Older verifier versions don't emit
+    # this; default to {} for backwards compat with existing artefacts.
+    row["runtime_error_categories"] = report.get(
+        "runtime_error_categories", {},
+    )
     return row
 
 
@@ -266,6 +278,11 @@ def summarize(rows: list[dict]) -> dict:
     # fidelity headline — if it's >0 you have visual gaps even when
     # is_parity_true == total.
     runtime_kinds = Counter()
+    # P4: parallel category counter. Same data, different grain — when
+    # the headline says "1015 runtime errors", the categories tell you
+    # at a glance which axes to investigate (font_health vs
+    # instance_materialization vs escaped_artifact).
+    runtime_categories = Counter()
     screens_with_runtime_errors = 0
     total_runtime_errors = 0
     for r in rows:
@@ -275,6 +292,9 @@ def summarize(rows: list[dict]) -> dict:
         for k, v in rk.items():
             runtime_kinds[k] += v
         total_runtime_errors += r.get("runtime_error_count", 0)
+        rc = r.get("runtime_error_categories") or {}
+        for cat, count in rc.items():
+            runtime_categories[cat] += count
 
     total = len(rows)
     # P1: structural-parity count — tree shape matches IR, ignores
@@ -323,6 +343,12 @@ def summarize(rows: list[dict]) -> dict:
         "screens_with_runtime_errors": screens_with_runtime_errors,
         "total_runtime_errors": total_runtime_errors,
         "runtime_error_kinds": dict(runtime_kinds.most_common()),
+        # P4: same data grouped into ~10 diagnostic categories. The
+        # headline aggregate the user actually wants when scanning a
+        # 67-screen sweep summary — "60% of runtime errors are
+        # font_health → fix at the font layer" is a much more
+        # actionable read than scrolling 31 raw kinds.
+        "runtime_error_categories": dict(runtime_categories.most_common()),
         "per_screen": rows,
     }
 
@@ -489,10 +515,18 @@ def main() -> int:
         f"across {summary.get('screens_with_runtime_errors', 0)} screens "
         f"(visual-fidelity channel — F11.1 catch-and-continue)"
     )
+    # P4: categories first (the actionable axis), then raw kinds (the
+    # sharp signal for debugging a specific class).
+    rt_cats = summary.get("runtime_error_categories") or {}
+    if rt_cats:
+        print("  by category:")
+        for cat, ct in rt_cats.items():
+            print(f"    {cat:30s}  {ct}")
     rt_kinds = summary.get("runtime_error_kinds") or {}
     if rt_kinds:
+        print("  by raw kind:")
         for kind, ct in rt_kinds.items():
-            print(f"  {kind:30s}  {ct}")
+            print(f"    {kind:30s}  {ct}")
     return 0
 
 

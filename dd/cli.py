@@ -1150,11 +1150,18 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
             # can opt in. Also makes the structural-vs-runtime split
             # readable from the output.
             "is_structural_parity": report.is_structural_parity,
+            # P4: explicit runtime channel so callers don't write
+            # `runtime_error_count == 0` themselves.
+            "is_runtime_clean": report.is_runtime_clean,
             "parity_ratio": report.parity_ratio(),
             "errors": [asdict(e) for e in report.errors],
             "runtime_errors": report.runtime_errors,
             "runtime_error_count": report.runtime_error_count,
             "runtime_error_kinds": report.runtime_error_kinds,
+            # P4: diagnostic categorization. Sweep summary uses this
+            # to render "1015 runtime errors: 600 font_health, 268
+            # escaped_artifact, ..." instead of an opaque flat list.
+            "runtime_error_categories": report.runtime_error_categories,
         }
         print(json.dumps(payload, indent=2))
     else:
@@ -1178,10 +1185,23 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
             print(f"    ... ({len(report.errors) - 20} more)")
         if report.runtime_error_count:
             print(f"  runtime_errors:      {report.runtime_error_count}")
-            for kind, count in sorted(
+            # P4: top-3 categories first (Codex review: "show top 3
+            # categories first, then top 3 raw kinds"), then top-3
+            # raw kinds for the sharp signal.
+            top_cats = sorted(
+                report.runtime_error_categories.items(), key=lambda kv: -kv[1]
+            )[:3]
+            if top_cats:
+                print("  runtime_error_categories (top 3):")
+                for cat, count in top_cats:
+                    print(f"    {count:4d}  {cat}")
+            top_kinds = sorted(
                 report.runtime_error_kinds.items(), key=lambda kv: -kv[1]
-            ):
-                print(f"    {count:4d}  {kind}")
+            )[:3]
+            if top_kinds:
+                print("  runtime_error_kinds (top 3):")
+                for kind, count in top_kinds:
+                    print(f"    {count:4d}  {kind}")
 
     if not report.is_parity:
         sys.exit(1)
