@@ -38,8 +38,86 @@ GENERATE_TIMEOUT = 60
 # 2026-04-22 alongside walk_ref.js's 170 → 300 raise — the 170s
 # bridge timeout was OURS, not Figma's; Phase 1 perf + slot-inlined
 # renders on iPad-sized screens legitimately need more headroom.
-WALK_TIMEOUT = 320
+#
+# Phase E #5 follow-on (2026-04-26): bumped 320 → 600 for
+# cumulative-bridge-load resilience. Phase E sweep observed
+# screen 78 timing out at 905s — bridge was still running, our
+# subprocess killed it. Codex 2026-04-26 review: "ship timeout
+# hierarchy alignment + observability + bounded warmup."
+#
+# Timeout hierarchy (innermost → outermost) when WALK_TIMEOUT=600:
+#   bridge/proxy_execute: 580s (BRIDGE_TIMEOUT_MS env, set by
+#     sweep.py to WALK_TIMEOUT - 20)
+#   JS watchdog: 590s (BRIDGE_TIMEOUT_MS + 10s)
+#   Python subprocess: 600s
+# Bridge fires first, JS watchdog next, Python subprocess last —
+# so subprocess errors are clean rather than mid-flight kills.
+WALK_TIMEOUT = 600
+# Headroom between Python subprocess timeout and the bridge timeout.
+# Ensures the bridge has a chance to respond with a structured
+# failure before the subprocess is killed.
+WALK_BRIDGE_HEADROOM = 20
 VERIFY_TIMEOUT = 30
+
+
+def _bridge_warmup(port: str, timeout_s: float = 10.0) -> None:
+    """Phase E #5 follow-on: open a WebSocket to the bridge and send
+    a tiny no-op proxy_execute, absorbing first-call latency before
+    the sweep proper starts.
+
+    Strictly non-blocking — any error (no node, no ws, bridge not
+    running, tiny script fails) is logged and ignored. Worst case
+    the sweep starts as if we hadn't warmed up; the warmup never
+    fails the sweep.
+    """
+    import os
+    warmup_script = (
+        # A tiny eval that always succeeds — get the file name.
+        # Avoids any state mutation (no createX, no setCurrentPage).
+        # Wraps in a try because some bridge versions don't expose
+        # figma.root.name directly under proxy_execute.
+        "try { return { ok: true, name: figma.root.name || '' }; } "
+        "catch (e) { return { ok: true, err: String(e) }; }"
+    )
+    try:
+        import json as _json
+        # Reuse walk_ref.js's WebSocket client by calling it via
+        # node with a tiny ad-hoc script. Cheaper to use the same
+        # `ws` module than to launch a fresh JS file.
+        node_script = (
+            f"const WebSocket = require('ws');"
+            f"const ws = new WebSocket('ws://localhost:{port}');"
+            f"const id = 'warmup_' + Date.now();"
+            f"const code = {_json.dumps(warmup_script)};"
+            f"const t = setTimeout(() => {{ ws.close(); process.exit(2); }}, "
+            f"{int(timeout_s * 1000)});"
+            f"ws.on('open', () => ws.send("
+            f"JSON.stringify({{type:'PROXY_EXECUTE', id, code, "
+            f"timeout: {int((timeout_s - 1) * 1000)}}})));"
+            f"ws.on('message', (d) => {{"
+            f"const m = JSON.parse(d.toString());"
+            f"if (m.type === 'PROXY_EXECUTE_RESULT' && m.id === id) {{"
+            f"clearTimeout(t); ws.close(); process.exit(0); }} }});"
+            f"ws.on('error', (e) => {{ clearTimeout(t); process.exit(3); }});"
+        )
+        env = {**os.environ}
+        result = subprocess.run(
+            ["node", "-e", node_script],
+            timeout=timeout_s + 2,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if result.returncode == 0:
+            print(f"[warmup] bridge probe ok (port {port})", flush=True)
+        else:
+            print(
+                f"[warmup] bridge probe failed code={result.returncode} "
+                f"(non-blocking; sweep continues)",
+                flush=True,
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"[warmup] skipped: {e!r} (non-blocking)", flush=True)
 
 
 def list_app_screens(db: Path) -> list[tuple[int, str]]:
@@ -53,10 +131,24 @@ def list_app_screens(db: Path) -> list[tuple[int, str]]:
     return rows
 
 
-def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
+def run_step(
+    cmd: list[str],
+    timeout: int,
+    label: str,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    """Run a subprocess with timeout. ``env`` is merged into os.environ
+    (None = inherit unchanged). Phase E #5 follow-on adds env so the
+    walk path can inject BRIDGE_TIMEOUT_MS for the timeout hierarchy.
+    """
     try:
+        merged_env = None
+        if env is not None:
+            import os
+            merged_env = {**os.environ, **env}
         p = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            cmd, capture_output=True, text=True,
+            timeout=timeout, env=merged_env,
         )
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
@@ -118,6 +210,17 @@ def process_screen(
         # 600 font_health / 268 escaped_artifact / ..." — a much
         # more actionable shape than 31 raw kinds in a flat list.
         "runtime_error_categories": {},
+        # Phase E #5 follow-on (2026-04-26): per-screen timing
+        # metrics so future audits can distinguish bridge-load
+        # classes (genuine slow render vs transient close vs Python
+        # subprocess kill). elapsed_ms is the WALK-stage time only;
+        # walk_timed_out is True when the subprocess hit
+        # WALK_TIMEOUT (Python kill); walk_failure_class names the
+        # failure shape (e.g. "subprocess_timeout", "bridge_error",
+        # "exception").
+        "elapsed_ms": 0,
+        "walk_timed_out": False,
+        "walk_failure_class": None,
         "failure": None,
     }
 
@@ -159,11 +262,40 @@ def process_screen(
                 "--keep-existing",
                 f"--grid-pos={grid[0]},{grid[1]}",
             ])
+        # Phase E #5 follow-on: align timeout hierarchy. Bridge fires
+        # first (BRIDGE_TIMEOUT_MS), JS watchdog next (+10s),
+        # subprocess last (+ another headroom). This way subprocess
+        # kills are clean rather than mid-flight: bridge has a chance
+        # to respond with a structured failure before the subprocess
+        # is killed.
+        walk_env = {
+            "BRIDGE_TIMEOUT_MS": str(
+                (WALK_TIMEOUT - WALK_BRIDGE_HEADROOM) * 1000,
+            ),
+        }
+        walk_t0 = time.time()
         code, out, err = run_step(
             walk_cmd,
             WALK_TIMEOUT,
             "walk",
+            env=walk_env,
         )
+        row["elapsed_ms"] = int((time.time() - walk_t0) * 1000)
+        # Phase E #5 follow-on: classify the failure shape so future
+        # audits can distinguish bridge-load classes.
+        if code == 124:
+            row["walk_timed_out"] = True
+            row["walk_failure_class"] = "subprocess_timeout"
+        elif code != 0:
+            err_text = (err or out or "").lower()
+            if "timeout" in err_text or "watchdog" in err_text:
+                row["walk_failure_class"] = "bridge_timeout"
+            elif "websocket" in err_text or "ws" in err_text:
+                row["walk_failure_class"] = "websocket_error"
+            elif "bridge execution failed" in err_text:
+                row["walk_failure_class"] = "bridge_error"
+            else:
+                row["walk_failure_class"] = "other"
         if code != 0 or not walk_p.exists():
             (walks_dir / f"{sid}.err").write_text((err or out)[:4000])
             row["failure"] = f"walk exit={code}: {(err or out)[:300]}"
@@ -318,6 +450,33 @@ def summarize(rows: list[dict]) -> dict:
         if r.get("attempt", 1) > 1 and r.get("is_parity") is True
     )
 
+    # Phase E #5 follow-on: bridge-load metrics. Gives the next audit
+    # a quick distinction between "subprocess hit our timeout" and
+    # "bridge reported error."
+    walk_timed_out_count = sum(
+        1 for r in rows if r.get("walk_timed_out") is True
+    )
+    walk_failure_classes = Counter()
+    elapsed_ms_values: list[int] = []
+    for r in rows:
+        cls = r.get("walk_failure_class")
+        if cls:
+            walk_failure_classes[cls] += 1
+        em = r.get("elapsed_ms", 0)
+        if isinstance(em, int) and em > 0:
+            elapsed_ms_values.append(em)
+    elapsed_ms_p50 = (
+        sorted(elapsed_ms_values)[len(elapsed_ms_values) // 2]
+        if elapsed_ms_values
+        else 0
+    )
+    elapsed_ms_p95 = (
+        sorted(elapsed_ms_values)[int(len(elapsed_ms_values) * 0.95)]
+        if elapsed_ms_values
+        else 0
+    )
+    elapsed_ms_max = max(elapsed_ms_values) if elapsed_ms_values else 0
+
     return {
         "total": total,
         # P1: HEADLINE strict-parity number. Cuts visual-fidelity gaps
@@ -349,6 +508,18 @@ def summarize(rows: list[dict]) -> dict:
         # font_health → fix at the font layer" is a much more
         # actionable read than scrolling 31 raw kinds.
         "runtime_error_categories": dict(runtime_categories.most_common()),
+        # Phase E #5 follow-on: bridge-load metrics for cumulative
+        # diagnostics. p50/p95/max walk elapsed_ms and the failure-
+        # class distribution. The next audit can distinguish:
+        # subprocess_timeout (Python kill — we hit OUR limit),
+        # bridge_timeout (Figma side), websocket_error (transient
+        # close), bridge_error (proxy_execute returned failure),
+        # other.
+        "walk_timed_out_count": walk_timed_out_count,
+        "walk_failure_classes": dict(walk_failure_classes.most_common()),
+        "walk_elapsed_ms_p50": elapsed_ms_p50,
+        "walk_elapsed_ms_p95": elapsed_ms_p95,
+        "walk_elapsed_ms_max": elapsed_ms_max,
         "per_screen": rows,
     }
 
@@ -426,6 +597,15 @@ def main() -> int:
         f"out={out_root}{grid_msg})",
         flush=True,
     )
+    # Phase E #5 follow-on (2026-04-26): bounded bridge warmup. The
+    # first WebSocket connect to the Desktop Bridge after the sweep
+    # process starts can be 5-10s slower than steady-state (cold
+    # plugin, fresh handshake). Per Codex review, run a cheap probe
+    # at sweep start to absorb that latency before measuring per-
+    # screen times. Strictly non-blocking: any failure logs and
+    # moves on (warmup is an optimization, not a precondition).
+    _bridge_warmup(args.port)
+
     rows: list[dict] = []
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
