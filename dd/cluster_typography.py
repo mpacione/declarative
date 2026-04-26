@@ -497,17 +497,65 @@ def cluster_letter_spacing(conn: sqlite3.Connection, file_id: int, collection_id
     tokens_created = 0
     bindings_updated = 0
 
+    # P3c (Phase E C1 fix): bucket census rows by (rounded, unit) pair
+    # before assigning tokens. Pre-fix, each raw resolved_value got its
+    # own token even when float-noise siblings rounded to the same
+    # value (e.g., -0.5547 and -0.5495 both rounding to -0.55 →
+    # tracking.snug2 + tracking.snug3 with different ids but the
+    # same semantic value). And the `WHERE resolved_value = ?` UPDATE
+    # left bindings keyed on the raw JSON, so the validator's
+    # _normalize_numeric saw -0.5547 != -0.55 and produced 4 of 7
+    # binding_token_consistency warnings on Phase E Nouns.
+    #
+    # Codex P3c design (2026-04-25): bucket by (rounded, unit) pair,
+    # not just rounded. PIXELS and PERCENT letterSpacing are NOT
+    # interchangeable; treating them as the same bucket would silently
+    # cross-bind. Within each bucket: one token, one INSERT INTO
+    # token_values, then UPDATE all bindings whose resolved_value
+    # appears in the bucket's raw-value list, snapping their
+    # resolved_value to the canonical JSON for that (rounded, unit).
+    #
+    # Snap-on-UPDATE pattern ported from cluster_colors:289-295. The
+    # binding's resolved_value field gets canonical JSON
+    # `{"value": rounded, "unit": original_unit}` so post-merge values
+    # are consistent with the token. Validator's _normalize_numeric
+    # then sees rounded == rounded → no spurious binding_token_consistency
+    # warning. cluster_colors gets away with simpler (unitless) snap;
+    # letterSpacing must preserve unit semantics in binding shape.
+
+    # Bucket census rows by (rounded, unit) — float-noise siblings
+    # collapse here.
+    buckets: dict[tuple[float, str], list[str]] = {}
+    bucket_first_idx: dict[tuple[float, str], int] = {}
     for idx, row in enumerate(census):
         raw_json = row['resolved_value']
-        parsed = json.loads(raw_json)
+        try:
+            parsed = json.loads(raw_json)
+        except (ValueError, TypeError):
+            # Defensive: skip malformed rows rather than raise.
+            continue
+        if not isinstance(parsed, dict):
+            continue
         value = parsed.get('value', 0)
-
-        # Round to 2 decimal places for clean token name
-        rounded = round(value, 2)
+        if not isinstance(value, (int, float)):
+            continue
+        unit = parsed.get('unit', '')
+        rounded = round(float(value), 2)
         if rounded == 0:
             continue
+        key = (rounded, unit)
+        buckets.setdefault(key, []).append(raw_json)
+        # Preserve the FIRST appearance index in the census (which is
+        # ordered by usage_count DESC) so tokens get named in the
+        # same order users would see them by frequency.
+        bucket_first_idx.setdefault(key, idx)
 
-        # Name: type.tracking.tight, type.tracking.wide, etc. or by value
+    for key, raw_values in buckets.items():
+        rounded, unit = key
+        idx = bucket_first_idx[key]
+
+        # Name: same scheme as before; idx tracks census-order so the
+        # most-frequent bucket gets the unsuffixed name.
         if rounded < -0.3:
             label = f"tight{abs(idx) + 1}" if idx > 0 else "tight"
         elif rounded < 0:
@@ -517,7 +565,9 @@ def cluster_letter_spacing(conn: sqlite3.Connection, file_id: int, collection_id
 
         token_name = f"type.tracking.{label}"
 
-        # Avoid duplicate names
+        # Avoid duplicate names (across separate run_clustering runs
+        # OR across two buckets that happen to land on the same idx
+        # via the labelling logic above).
         existing = conn.execute(
             "SELECT id FROM tokens WHERE collection_id = ? AND name = ?",
             (collection_id, token_name)
@@ -534,24 +584,46 @@ def cluster_letter_spacing(conn: sqlite3.Connection, file_id: int, collection_id
             token_id = cursor.lastrowid
             tokens_created += 1
 
+            # Token's raw_value uses the FIRST raw_json in the bucket
+            # (they're functionally equivalent at the rounded-value
+            # level) — this is provenance, not the canonical value.
+            # token_values.resolved_value stays as str(rounded) for
+            # backwards compatibility with downstream readers
+            # (export-css, etc.) that expect dimension tokens to be
+            # plain numeric strings.
             conn.execute(
                 """INSERT INTO token_values (token_id, mode_id, raw_value, resolved_value)
                    VALUES (?, ?, ?, ?)""",
-                (token_id, mode_id, raw_json, str(rounded))
+                (token_id, mode_id, raw_values[0], str(rounded))
             )
 
+        # P3c: snap binding.resolved_value to canonical JSON
+        # `{"value": rounded, "unit": unit}` so the validator's
+        # _normalize_numeric comparison sees rounded == rounded and
+        # the original raw JSON's float noise is gone. UPDATE matches
+        # all raw values in the bucket via IN (...) so float-noise
+        # siblings all get assigned to the same token.
+        canonical_resolved = json.dumps({"value": rounded, "unit": unit})
+        # SQLite's parameter substitution doesn't expand a Python
+        # list directly into IN (...) — build placeholders explicitly.
+        placeholders = ",".join(["?"] * len(raw_values))
+        params = [
+            token_id, canonical_resolved,
+            *raw_values, file_id,
+        ]
         cursor = conn.execute(
-            """UPDATE node_token_bindings
-               SET token_id = ?, binding_status = 'proposed', confidence = 0.8
-               WHERE resolved_value = ?
-                 AND property = 'letterSpacing'
-                 AND binding_status = 'unbound'
-                 AND node_id IN (
-                     SELECT n.id FROM nodes n
-                     JOIN screens s ON n.screen_id = s.id
-                     WHERE s.file_id = ?
-                 )""",
-            (token_id, row['resolved_value'], file_id)
+            f"""UPDATE node_token_bindings
+                SET token_id = ?, binding_status = 'proposed',
+                    confidence = 0.8, resolved_value = ?
+                WHERE resolved_value IN ({placeholders})
+                  AND property = 'letterSpacing'
+                  AND binding_status = 'unbound'
+                  AND node_id IN (
+                      SELECT n.id FROM nodes n
+                      JOIN screens s ON n.screen_id = s.id
+                      WHERE s.file_id = ?
+                  )""",
+            params,
         )
         bindings_updated += cursor.rowcount
 
