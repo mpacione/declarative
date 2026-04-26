@@ -43,9 +43,16 @@ What it MISSES (intentionally — keep false-positive rate low):
 - Symbols only used WITHIN their own `dd/` file (not orphans by this
   rule — they're internal helpers)
 - Dynamically-imported symbols (`importlib`, `getattr(module, name)`)
-- Symbols imported by `scripts/` (treated as test-equivalent)
 - Symbols whose ONLY non-test caller is themselves (transitive
   orphans — rare)
+- Symbols used ONLY from `scripts/` (production-runtime callers; the
+  detector's contract is "tests keep alive, production doesn't" —
+  scripts ARE production callers and should NOT trigger orphan
+  status). 2026-04-26 fix: pre-fix the detector lumped scripts with
+  tests, producing ~150 false positives like
+  `dd.apply_render.walk_rendered_via_bridge` (used by 4 scripts).
+  Post-fix scripts/ are treated as production callers (same
+  exclusion class as `dd/`).
 
 If something is flagged here it's almost certainly real drift. If the
 detector misses something, it'll get caught by the next manual review
@@ -201,10 +208,12 @@ def main() -> int:
         ref.rsplit(".*", 1)[0] for ref in dd_refs if ref.endswith(".*")
     }
 
-    # Collect all dd.* refs from tests/ AND scripts/
+    # 2026-04-26 fix: collect tests/ and scripts/ SEPARATELY so we
+    # can treat scripts as production callers (not test-equivalent).
+    # Pre-fix the detector lumped them, producing ~150 false
+    # positives where scripts kept symbols alive but the detector
+    # only checked dd/ for "real" callers.
     test_files = _walk_python_files(TESTS_DIR)
-    if SCRIPTS_DIR.exists():
-        test_files += _walk_python_files(SCRIPTS_DIR)
     test_refs_with_source: dict[str, list[str]] = {}
     for f in test_files:
         for ref in _collect_imports_from_file(f):
@@ -212,18 +221,41 @@ def main() -> int:
                 str(f.relative_to(REPO))
             )
 
+    script_files = (
+        _walk_python_files(SCRIPTS_DIR) if SCRIPTS_DIR.exists() else []
+    )
+    script_refs_with_source: dict[str, list[str]] = {}
+    for f in script_files:
+        for ref in _collect_imports_from_file(f):
+            script_refs_with_source.setdefault(ref, []).append(
+                str(f.relative_to(REPO))
+            )
+
+    # Wildcard expansion for scripts too — if a script does
+    # `from dd.X import *` we can't tell which symbol they used.
+    wild_modules |= {
+        ref.rsplit(".*", 1)[0]
+        for ref in script_refs_with_source
+        if ref.endswith(".*")
+    }
+
     # An orphan is a symbol that:
     # (a) is defined in dd/
-    # (b) is referenced by tests/scripts
+    # (b) is referenced by tests/
     # (c) is NOT referenced by any other dd/ module
-    # (d) its module is not wildcard-imported by dd/
+    # (d) is NOT referenced by any script (scripts are production
+    #     callers — the user runs them; not test-equivalent)
+    # (e) its module is not wildcard-imported by dd/ or scripts/
     orphans: dict[str, list[str]] = {}
     for sym in all_definitions:
         if sym not in test_refs_with_source:
             continue  # not used by tests; not an orphan by this rule
         if sym in dd_refs:
             continue  # used by another dd/ module; not an orphan
+        if sym in script_refs_with_source:
+            continue  # used by a script; not an orphan
         # Check if the module is wildcard-imported anywhere in dd/
+        # or scripts/.
         sym_module = sym.rsplit(".", 1)[0]
         if sym_module in wild_modules:
             continue  # module wildcard-imported; can't tell
@@ -247,7 +279,10 @@ def main() -> int:
                 "allowlisted_count": len(allowlisted),
                 "dd_files_scanned": len(dd_files),
                 "test_files_scanned": len(test_files),
+                "script_files_scanned": len(script_files),
                 "definitions_in_dd": len(all_definitions),
+                "test_refs_count": len(test_refs_with_source),
+                "script_refs_count": len(script_refs_with_source),
             },
         }
         print(json.dumps(payload, indent=2))
@@ -255,8 +290,16 @@ def main() -> int:
 
     # Human output
     print(f"\nOrphan detector — Phase E P2")
-    print(f"  Scanned: {len(dd_files)} dd/ files, {len(test_files)} test/script files")
+    print(
+        f"  Scanned: {len(dd_files)} dd/ files, "
+        f"{len(test_files)} test files, "
+        f"{len(script_files)} script files"
+    )
     print(f"  dd/ definitions: {len(all_definitions)} public symbols")
+    print(
+        f"  refs from tests: {len(test_refs_with_source)}, "
+        f"from scripts: {len(script_refs_with_source)}"
+    )
     print(f"  Allowlisted (known OK): {len(allowlisted)}")
     print(f"  Flagged orphans: {len(flagged)}")
     print()

@@ -175,3 +175,51 @@ class TestDetectorScopesCorrectly:
         assert "dd.renderers.figma.generate_figma_script" not in orphans, (
             "actively-used renderer entry point should not be an orphan"
         )
+
+
+class TestScriptCallersExcluded:
+    """P10.1 fix (2026-04-26): scripts/ are production callers,
+    not test-equivalent. Symbols used ONLY by scripts/ (no dd/
+    caller, no tests/ caller) MUST NOT be flagged as orphans.
+
+    Codex review (gpt-5.5 high reasoning): "Scripts are runtime
+    callers. Conflating them with tests creates exactly the
+    false-positive class you're fixing."
+    """
+
+    def test_script_only_symbol_not_flagged_as_orphan(self):
+        """`dd.apply_render.walk_rendered_via_bridge` is used by
+        4 scripts (scripts/archive/tier_b_demo.py, swap_demo.py,
+        tier_d_eval.py, etc.) AND by tests. Pre-fix it was flagged
+        because the detector lumped scripts with tests. Post-fix
+        scripts count as production callers; symbol is NOT an orphan."""
+        payload = _run_detector_json()
+        orphans = set(payload["orphans"])
+        # walk_rendered_via_bridge is used by scripts/archive/tier_b_demo.py
+        # and other scripts. Should NOT be in orphans post-fix.
+        assert (
+            "dd.apply_render.walk_rendered_via_bridge"
+            not in orphans
+        ), (
+            "P10.1: walk_rendered_via_bridge is used by 4 scripts; "
+            "scripts are production callers, not test-equivalent. "
+            "Symbol should not be flagged as orphan."
+        )
+
+    def test_script_refs_count_in_summary(self):
+        """The detector should expose script_files_scanned and
+        script_refs_count separately from test counts so users can
+        verify the correct classification."""
+        payload = _run_detector_json()
+        summary = payload["summary"]
+        assert "script_files_scanned" in summary, (
+            "P10.1: summary should expose script_files_scanned "
+            "separately from test_files_scanned."
+        )
+        assert "script_refs_count" in summary, (
+            "P10.1: summary should expose script_refs_count "
+            "separately from test_refs_count."
+        )
+        assert summary["script_files_scanned"] > 0, (
+            "P10.1: scripts/ directory should have scanned files."
+        )
