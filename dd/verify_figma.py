@@ -332,7 +332,45 @@ class FigmaRenderVerifier:
                 ir_solids = [f for f in ir_fills if f.get("type") == "solid"]
                 rd_solids = [f for f in rendered_fills if f.get("type") == "solid"]
 
-                if len(ir_solids) != len(rd_solids):
+                # Phase E #2 fix (2026-04-26): Mode-1 INSTANCE heads
+                # delegate fill rendering to the master — the renderer
+                # never writes `n.fills` for instances. The IR's
+                # `visual.fills` for an instance is a SNAPSHOT of what
+                # extraction observed (which can be a token-bound
+                # gradient like {color.surface.14}), but the rendered
+                # tree shows whatever the master decides (which may be
+                # a flat solid). That divergence is NOT a renderer
+                # failure — it's the verifier comparing an extraction
+                # snapshot against a runtime master default.
+                # Codex 2026-04-26 (gpt-5.5): suppress fill_mismatch
+                # IFF rendered is INSTANCE AND IR has no solid fills
+                # AND all IR fills are token-referenced gradients.
+                # Cleared 3 chip-1 false positives on Phase E (screens
+                # 24, 25, 44 — same chip variant in different screens).
+                # Longer-term: tag extraction with override-vs-snapshot
+                # provenance so legitimate instance overrides still
+                # enforce.
+                is_instance_head = rendered.get("type") == "INSTANCE"
+                ir_all_token_gradients = bool(ir_fills) and all(
+                    isinstance(f.get("type"), str)
+                    and f.get("type", "").startswith("gradient-")
+                    and all(
+                        isinstance(stop.get("color"), str)
+                        and stop["color"].startswith("{")
+                        for stop in (f.get("stops") or [])
+                    )
+                    for f in ir_fills
+                )
+                if (
+                    is_instance_head
+                    and not ir_solids
+                    and ir_all_token_gradients
+                ):
+                    # Mode-1 master owns rendered fills; the IR's
+                    # token-bound gradient is a snapshot, not a
+                    # render-time directive. Skip the comparison.
+                    pass
+                elif len(ir_solids) != len(rd_solids):
                     errors.append(StructuredError(
                         kind=KIND_FILL_MISMATCH,
                         id=eid,
