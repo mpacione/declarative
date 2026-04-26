@@ -291,11 +291,120 @@ class TestPhase2SkipsAppendChildIntoInstance:
             "instance itself)"
         )
 
+    def test_mode1_head_phase2_appendchild_into_screen_emitted(self):
+        """Phase E re-run regression test (2026-04-26): the Mode-1
+        instance head MUST be appendChild'd into its own parent
+        (screen-1) in Phase 2. Pre-fix the Phase 2 guard checked
+        `id(node) in absorbed_node_ids`, which silently dropped the
+        head's appendChild because the head IS in `mode1_node_ids`
+        (added at Phase 1 line 836 after successful mode-1 emission).
+        The instance then floated as a page-level orphan; the verifier
+        reported `missing_child` for every top-level instance on
+        screen 1 of the post-fix sweep (parity_ratio collapsed from
+        1.0 to 0.5375). Codex 2026-04-26 confirmed: skip on
+        `id(parent) in absorbed_node_ids`, not `id(node)`."""
+        screen = _build_simple_screen()
+        db_visuals = {
+            100: {"node_type": "FRAME"},
+            101: {
+                "node_type": "INSTANCE",
+                "component_key": "f" * 40,
+                "figma_node_id": "999:1",
+                "component_figma_id": "999:1",
+            },
+            102: {"node_type": "FRAME"},
+            103: {"node_type": "TEXT"},
+            104: {"node_type": "TEXT"},
+        }
+        script = _render(screen, db_visuals)
+        # Slice to Phase 2 only — Phase 1 doesn't emit appendChild;
+        # any Phase-1 helper code (placeholder block) is above the
+        # Phase 2 marker.
+        p2_start = script.index("// Phase 2: Compose")
+        # Phase 3 may not exist if there are no Phase-3 props; find
+        # the next phase marker or the end of the script.
+        p3_idx = script.find("// Phase 3", p2_start)
+        end_idx = script.find("// END", p2_start)
+        next_marker = min(
+            x for x in (p3_idx, end_idx, len(script)) if x >= 0
+        ) if any(x >= 0 for x in (p3_idx, end_idx)) else len(script)
+        phase2_only = script[p2_start:next_marker]
+
+        # The instance head's appendChild must be present. The var
+        # name comes from var_map (e.g. n1.appendChild(n2) where n2
+        # is the instance). We assert by spec_key — the eid string
+        # must appear in an appendChild error-handler entry, which
+        # is what the renderer emits for guarded appendChild calls.
+        assert 'eid:"instance-1"' in phase2_only, (
+            "Phase E re-run regression: Phase 2 must emit an "
+            "appendChild for the Mode-1 head (instance-1) so it "
+            "lands inside the screen frame instead of floating as a "
+            "page-level orphan. Pre-fix this was silently dropped.\n"
+            f"Phase 2 body (first 1500 chars):\n{phase2_only[:1500]}"
+        )
+
+    def test_mode1_head_phase3_props_emitted(self):
+        """Phase E re-run regression test (2026-04-26): the Mode-1
+        instance head MUST get Phase 3 resize/position/constraints
+        applied. Top-level instances carry explicit IR layout
+        (x/y/width/height/constraints) that the verifier expects to
+        see on the rendered tree. Pre-fix the Phase 3 guard also
+        checked `id(node) in absorbed_node_ids` and dropped the head's
+        ops, leaving the instance at default size + position."""
+        screen = _build_simple_screen()
+        db_visuals = {
+            100: {"node_type": "FRAME"},
+            101: {
+                "node_type": "INSTANCE",
+                "component_key": "f" * 40,
+                "figma_node_id": "999:1",
+                "component_figma_id": "999:1",
+                # Phase 3 props that should land on the instance head
+                "x": 0.0, "y": 810.0,
+                "width": 390.0, "height": 34.0,
+            },
+            102: {"node_type": "FRAME"},
+            103: {"node_type": "TEXT"},
+            104: {"node_type": "TEXT"},
+        }
+        script = _render(screen, db_visuals)
+        # Phase 3 emits `n?.resize(...)`, `n?.x = ...`, `n?.y = ...`
+        # in guarded blocks with `eid:"instance-1"` for the
+        # instance head. Just check the eid appears in any kind of
+        # phase-3 op.
+        # Phase 3 starts after Phase 2; find the marker.
+        if "// Phase 3" in script:
+            p3_start = script.index("// Phase 3")
+            phase3 = script[p3_start:]
+            # Any of resize/position/constraint should mention
+            # eid:"instance-1" if the head's props were emitted.
+            assert (
+                'eid:"instance-1", kind:"resize_failed"' in phase3
+                or 'eid:"instance-1", kind:"position_failed"' in phase3
+            ), (
+                "Phase E re-run regression: Phase 3 must emit "
+                "resize/position for the Mode-1 head (instance-1) "
+                "so the rendered instance has the IR's explicit "
+                "layout. Pre-fix this was silently dropped.\n"
+                f"Phase 3 body (first 1500 chars):\n{phase3[:1500]}"
+            )
+
 
 class TestTransitiveSkipping:
     """Codex sharp-edge catch: direct-parent-only check would miss
-    grandchildren. Verify nested INSTANCE absorption works
-    transitively."""
+    grandchildren. The fix relies on Phase 1's transitive
+    `skipped_node_ids` population: when a node's parent is in
+    `mode1_node_ids` or `skipped_node_ids`, the node itself is
+    added to `skipped_node_ids`. By induction every descendant of a
+    Mode-1 head ends up in `skipped_node_ids`, so the parent-in-set
+    check at Phase 2/3 catches grandchildren correctly (their
+    parent IS in skipped_node_ids).
+
+    Pre-2026-04-26 the Phase 2/3 guards checked node-in-set, which
+    appeared more direct but silently dropped the Mode-1 head's
+    own ops. The 2026-04-26 fix moved both guards to parent-in-set;
+    transitive coverage still works because `skipped_node_ids`
+    is populated transitively in Phase 1."""
 
     def test_grandchild_of_instance_is_absorbed(self):
         """Build:
@@ -305,11 +414,13 @@ class TestTransitiveSkipping:
                 └── child-frame
                     └── grandchild-text  ← MUST be skipped
 
-        If the renderer only checked `id(parent) in mode1_node_ids`,
-        the grandchild would not be skipped (its parent is `child-frame`,
-        not the instance). The fix uses `id(node) in absorbed_node_ids`
-        where `absorbed = mode1 | skipped` and `skipped` is populated
-        transitively in Phase 1.
+        With parent-in-set: grandchild-text's parent is child-frame.
+        child-frame's parent is instance (in mode1_node_ids), so
+        Phase 1 puts child-frame in skipped_node_ids. Then
+        grandchild-text's parent (child-frame) IS in skipped_node_ids
+        → grandchild-text is also added to skipped_node_ids. Phase 2's
+        parent-in-set check on grandchild-text sees its parent
+        (child-frame) in absorbed_node_ids → skip. Correct.
         """
         screen = _build_simple_screen()
         db_visuals = {

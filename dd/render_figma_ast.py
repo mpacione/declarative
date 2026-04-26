@@ -671,14 +671,27 @@ def _emit_phase1(
       targets; see `_emit_override_op` for the list). Forwarded into
       Phase 3 by the caller.
     - `absorbed_node_ids` — P3a (N1 fix): `id(node)` for every node
-      that lives inside a Mode-1 instance subtree (the instance head
-      itself OR any of its descendants in the AST walk). Phase 2 +
-      Phase 3 must skip these — Figma's Plugin API rejects appendChild
-      and most property writes on nodes inside an INSTANCE subtree
-      ("Cannot move node into INSTANCE" / "object is not extensible").
-      The OLD path (dd/renderers/figma.py:1267) had this skip-set
-      contract; the AST renderer port lost it. Phase E §7 screen 24
-      surfaced 130+ append_child_failed errors as a result.
+      that lives inside a Mode-1 instance subtree, INCLUDING the
+      Mode-1 head itself. Phase 2 + Phase 3 must skip nodes whose
+      PARENT is in this set — i.e. descendants of Mode-1 heads.
+      Figma's Plugin API rejects appendChild and most property
+      writes on nodes inside an INSTANCE subtree ("Cannot move node
+      into INSTANCE" / "object is not extensible"). The Mode-1 head
+      ITSELF still needs Phase 2 appendChild (into its own parent —
+      the screen frame) and Phase 3 resize/position (top-level
+      instances carry explicit IR layout); Phase 1's `mode1_node_ids`
+      contains the head only so it acts as the absorption-root marker
+      for the parent-in-set check downstream. The OLD path
+      (dd/renderers/figma.py:1757) used parent-in-set with the same
+      semantics; Phase E §7 screen 24 surfaced 130+ append_child_failed
+      errors when the AST renderer port lost the skip-set entirely
+      (P3a addressed that), and the Phase E re-run regression
+      (2026-04-26) caught a follow-up where Phase 2/3 was checking
+      `id(node)` instead of `id(parent)`, dropping the head's own
+      ops. The contract is now: `mode1_node_ids` + `skipped_node_ids`
+      together identify every node inside an instance subtree; the
+      union is exposed as `absorbed_node_ids`; Phase 2/3 skip when
+      the PARENT is in that set.
 
     F13c: `deferred_groups` (caller-supplied dict) is populated with
     {id(group_node): {"spec_key", "element", "var"}} for every GROUP
@@ -1524,16 +1537,24 @@ def _emit_phase2(
     for node, parent in walk:
         if parent is None:
             continue
-        # P3a (N1 fix): skip nodes inside Mode-1 INSTANCE subtrees.
-        # Phase 1 already skipped their CREATION; here we skip
-        # appendChild + characters + layoutSizing emission. Without
-        # this, the appendChild call would throw "Cannot move node
-        # into INSTANCE" (Figma rejects mutations to instance trees).
-        # Codex spec: check id(node) in absorbed (catches transitive
-        # descendants — direct-parent-only check would miss
-        # grandchildren). Must run BEFORE leaf-type and group-deferral
-        # checks because Mode-1 absorption takes precedence over both.
-        if id(node) in absorbed_node_ids:
+        # P3a (N1 fix) — Phase E re-run regression fix (2026-04-26):
+        # skip Phase 2 appendChild ONLY when the node's PARENT is
+        # absorbed (Mode-1 head or descendant), not when the node
+        # itself is absorbed. The Mode-1 head NODE is in
+        # `mode1_node_ids` (Phase 1 line 836) but it still needs to
+        # be appended to its own parent (e.g. a top-level INSTANCE
+        # under screen-1). Pre-fix the original guard checked
+        # `id(node) in absorbed_node_ids` and the Mode-1 head
+        # silently lost its own appendChild, becoming a page-level
+        # orphan; the verifier reported `missing_child` for every
+        # top-level instance. Phase 1's `skipped_node_ids` is
+        # populated transitively via the parent-in-set check at
+        # lines 741-746, so parent-in-set here correctly catches
+        # both direct children of Mode-1 heads AND grandchildren
+        # (whose parent is in skipped_node_ids).
+        # Must run BEFORE leaf-type and group-deferral checks
+        # because Mode-1 absorption takes precedence over both.
+        if id(parent) in absorbed_node_ids:
             continue
         eid = node.head.eid
         if id(node) not in var_map:
@@ -1906,15 +1927,22 @@ def _emit_phase3(
     # block work for non-autolayout-parent text nodes (Bug B).
     from dd.ast_to_element import resolve_element
 
-    for node, _parent in walk:
-        # P3a (N1 fix): skip nodes inside Mode-1 INSTANCE subtrees.
-        # Phase 1 didn't create them; Phase 2 didn't appendChild
-        # them; Phase 3 must not write resize/position/visibility
-        # either (would throw "object is not extensible" against
-        # the INSTANCE subtree). Codex spec: check id(node), not
-        # id(parent) — direct-parent-only check would miss
-        # grandchildren inside nested INSTANCE subtrees.
-        if id(node) in absorbed_node_ids:
+    for node, parent in walk:
+        # P3a (N1 fix) — Phase E re-run regression fix (2026-04-26):
+        # skip Phase 3 props ONLY when the node's PARENT is absorbed
+        # (i.e. the node is inside a Mode-1 INSTANCE subtree, not the
+        # head itself). The Mode-1 head NODE is in absorbed_node_ids
+        # but it still needs its own resize/position/constraints
+        # applied (top-level instances carry explicit IR layout that
+        # the verifier expects to match). Pre-fix the original guard
+        # checked `id(node) in absorbed_node_ids`, which silently
+        # dropped the head's own Phase 3 ops and left the instance
+        # at default size/position; the verifier reported
+        # `bounds_mismatch` cascade on top of the missing_child from
+        # Phase 2. Phase 1's `skipped_node_ids` is populated
+        # transitively at lines 741-746, so parent-in-set catches
+        # both direct children of Mode-1 heads AND grandchildren.
+        if parent is not None and id(parent) in absorbed_node_ids:
             continue
         eid = node.head.eid
         if id(node) not in var_map:
