@@ -73,40 +73,38 @@ class TestDetectorRuns:
         assert isinstance(payload["allowlisted"], dict)
 
 
-class TestKnownC2OrphansFlaggedToday:
-    """C2 (Phase E): `cluster_stroke_weight` exists at
-    dd/cluster_misc.py:948 (commit 45f6b2d) but isn't wired to
-    dd/cluster.py's orchestrator. Same for `cluster_paragraph_spacing`.
+class TestC2OrphansResolvedByP3b:
+    """C2 (Phase E) was resolved by P3b. `cluster_stroke_weight` and
+    `cluster_paragraph_spacing` are now wired into dd/cluster.py's
+    orchestrator (commit after this one). The tests pin the post-P3b
+    state — these symbols MUST NOT appear as orphans anymore. If
+    they regress (e.g. someone removes the import), this test will
+    fail and surface the regression."""
 
-    These tests pin the present-day state. When C2 ships in P3b,
-    UPDATE this file: those entries should be REMOVED, and a new
-    test should assert they NO LONGER appear in the orphan list.
-    The flip from "flagged" to "not flagged" is the regression
-    signal for "did C2 actually land?"
-    """
-
-    def test_cluster_stroke_weight_flagged_pre_c2(self):
+    def test_cluster_stroke_weight_no_longer_orphan(self):
         payload = _run_detector_json()
         orphans = set(payload["orphans"])
-        # Until C2 lands, this should be in the orphan list. After
-        # C2 lands and dd/cluster.py imports it, the symbol moves
-        # to "referenced by another dd/ module" and drops out of
-        # the orphan list — this test will then start failing,
-        # which is the signal to rewrite it as a "should NOT be
-        # flagged" assertion.
-        assert "dd.cluster_misc.cluster_stroke_weight" in orphans, (
-            "C2 should still be a present-day orphan. If this test "
-            "fails, C2 has landed — update this test to assert the "
-            "symbol is NO LONGER an orphan."
+        assert "dd.cluster_misc.cluster_stroke_weight" not in orphans, (
+            "P3b wired cluster_stroke_weight into dd/cluster.py. "
+            "If this fails, the orchestrator import has been removed "
+            "or the function has been deleted/renamed."
         )
 
-    def test_cluster_paragraph_spacing_flagged_pre_c2(self):
+    def test_cluster_paragraph_spacing_no_longer_orphan(self):
         payload = _run_detector_json()
         orphans = set(payload["orphans"])
-        assert "dd.cluster_misc.cluster_paragraph_spacing" in orphans, (
-            "C2 sibling should still be a present-day orphan. "
-            "If this test fails, C2 has landed — flip the assertion."
+        assert "dd.cluster_misc.cluster_paragraph_spacing" not in orphans, (
+            "P3b wired cluster_paragraph_spacing into dd/cluster.py. "
+            "If this fails, the orchestrator import has been removed "
+            "or the function has been deleted/renamed."
         )
+
+    def test_ensure_stroke_weight_collection_referenced(self):
+        """The new helper introduced in P3b (cluster_misc.py:
+        ensure_stroke_weight_collection) must also be wired."""
+        payload = _run_detector_json()
+        orphans = set(payload["orphans"])
+        assert "dd.cluster_misc.ensure_stroke_weight_collection" not in orphans
 
 
 class TestADR007StackAllowlisted:

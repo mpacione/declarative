@@ -785,6 +785,62 @@ def ensure_opacity_collection(conn: sqlite3.Connection, file_id: int) -> tuple[i
     return (collection_id, mode_id)
 
 
+def ensure_stroke_weight_collection(
+    conn: sqlite3.Connection, file_id: int,
+) -> tuple[int, int]:
+    """Create or retrieve Stroke Weight collection and Default mode.
+
+    P3b (Phase E C2 fix): `cluster_stroke_weight` exists as a function
+    (line 948 below) but had no orchestrator wiring. Phase E §2 found
+    6093 unbound `strokeWeight=1.0` bindings (76% of all unbound)
+    because the orchestrator never invoked the clusterer for this
+    axis. This `ensure_*_collection` helper supplies the missing
+    `(collection_id, mode_id)` pair so the orchestrator can call
+    cluster_stroke_weight.
+
+    Mirrors `ensure_opacity_collection` / `ensure_radius_collection`.
+    Codex P3b design review (2026-04-25): "Give strokeWeight its own
+    'Stroke Weight' collection. Don't put it in 'Defaults'; even if
+    1.0 dominates, border width is a real reusable visual token."
+    """
+    conn.row_factory = sqlite3.Row
+
+    cursor = conn.execute(
+        "SELECT id FROM token_collections WHERE file_id = ? AND name = 'Stroke Weight'",
+        (file_id,),
+    )
+    row = cursor.fetchone()
+
+    if row:
+        collection_id = row["id"]
+    else:
+        cursor = conn.execute(
+            """INSERT INTO token_collections (file_id, name, created_at)
+               VALUES (?, 'Stroke Weight', datetime('now'))""",
+            (file_id,),
+        )
+        collection_id = cursor.lastrowid
+
+    cursor = conn.execute(
+        "SELECT id FROM token_modes WHERE collection_id = ? AND name = 'Default'",
+        (collection_id,),
+    )
+    row = cursor.fetchone()
+
+    if row:
+        mode_id = row["id"]
+    else:
+        cursor = conn.execute(
+            """INSERT INTO token_modes (collection_id, name, is_default)
+               VALUES (?, 'Default', 1)""",
+            (collection_id,),
+        )
+        mode_id = cursor.lastrowid
+
+    conn.commit()
+    return (collection_id, mode_id)
+
+
 def cluster_opacity(conn: sqlite3.Connection, file_id: int, collection_id: int, mode_id: int) -> dict:
     """Cluster opacity values into tokens.
 
