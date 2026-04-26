@@ -87,46 +87,411 @@ def _cluster_and_label(
     vlm_call: VlmCall,
     catalog_type: str,
 ) -> list[dict[str, Any]]:
-    """Return labelled clusters for a catalog type.
+    """Return clustered variants for a catalog type.
 
-    v0.1 shell: treats all instances as a single cluster and calls the
-    VLM once with an EMPTY images list (no real rendered thumbnails are
-    plumbed yet). The CLI-injected ``vlm_call`` returns early on empty
-    images, so the verdict is always ``unknown`` and the cluster is
-    persisted as ``custom_1`` with confidence=0 — pure schema padding
-    so ``ProjectCKRProvider`` can query the table without 404'ing.
-    Per-feature k-means + silhouette + real Gemini labelling lands
-    alongside when real corpus coverage is wired up.
+    Phase E #4 fix (2026-04-26): cluster-only induction (no VLM).
+    Pre-fix this was a v0.1 shell that treated every type as one
+    cluster, called the VLM with an empty images list, and persisted
+    a single ``custom_1`` row with all-NULL values — pure schema
+    padding. The injected ``vlm_call`` is now ignored entirely.
+
+    Codex 2026-04-26 (gpt-5.5 high reasoning) review:
+    "Mode-3 does not need human-perfect variant names to become
+    valuable; it needs real grouped instances and real representative
+    values. custom_1, custom_2, etc. are acceptable if they honestly
+    mean 'observed visual variant cluster.'"
+
+    Algorithm:
+    1. Build feature vectors per instance: OKLCH from primary fill,
+       normalized dims, radius. Missing fields → NaN-aware distances.
+    2. Pick K via silhouette over 2..min(8, n) with K=1 fallback for
+       tiny/cohesive sets.
+    3. K-means via simple iterative centroid assignment.
+    4. For each cluster, pick the medoid (instance closest to
+       centroid) as representative — produces real observed token
+       values, not averages.
+    5. Emit clusters with variant=custom_N, source="cluster",
+       confidence proportional to cluster cohesion.
+
+    The ``vlm_call`` parameter is retained for ABI stability but
+    unused. ADR-008 Stream B's VLM-driven labeling lands when
+    thumbnail rendering + Gemini integration get plumbed.
 
     Output shape per cluster dict:
-    ``{"variant": str, "members": list[int], "representative_values": dict}``
+      ``{"variant": str, "members": list[int], "representative_values": dict, ...}``
     """
     if not instances:
         return []
 
-    response = vlm_call(f"Label variant for {catalog_type}", [])
-    raw_verdict = (response.get("verdict") or "unknown").lower()
-    confidence = float(response.get("confidence", 0.5))
+    # Tiny inputs: stable single-cluster output.
+    if len(instances) < 2:
+        return _single_cluster(instances, variant_index=1)
 
-    if raw_verdict in STANDARD_VARIANTS:
-        variant = raw_verdict
+    # Build feature vectors. Each instance becomes a list of floats;
+    # NaN where a feature is missing (e.g. no fill).
+    features = [_feature_vector(inst) for inst in instances]
+
+    # Normalize feature dimensions so e.g. width (in 100s of pixels)
+    # doesn't dominate L* (in 0..1). Per-dimension z-score with
+    # NaN-aware mean/std.
+    normalized = _normalize_features(features)
+
+    # Pick K via silhouette over 2..min(8, n). Smaller K wins on tie.
+    k_candidates = list(range(2, min(8, len(instances)) + 1))
+    if not k_candidates:
+        return _single_cluster(instances, variant_index=1)
+
+    best_k = 1
+    best_score = -1.0
+    best_assignments: list[int] = [0] * len(instances)
+
+    for k in k_candidates:
+        assignments, _ = _kmeans(normalized, k)
+        score = _silhouette(normalized, assignments, k)
+        if score > best_score + 1e-6:
+            best_score = score
+            best_k = k
+            best_assignments = assignments
+
+    # If no K beat the K=1 baseline (silhouette < 0.1 typically means
+    # the data is barely clusterable), fall back to single cluster.
+    if best_score < 0.1:
+        return _single_cluster(instances, variant_index=1)
+
+    # Build clusters from assignments.
+    clusters: list[dict[str, Any]] = []
+    for cluster_idx in range(best_k):
+        member_indices = [
+            i for i, a in enumerate(best_assignments) if a == cluster_idx
+        ]
+        if not member_indices:
+            continue
+        members = [instances[i] for i in member_indices]
+        # Medoid: the member whose feature vector is closest to the
+        # cluster centroid. Real observed values, not averages.
+        cluster_features = [normalized[i] for i in member_indices]
+        centroid = _centroid(cluster_features)
+        distances = [
+            _euclidean(cluster_features[j], centroid)
+            for j in range(len(cluster_features))
+        ]
+        medoid_idx = distances.index(min(distances))
+        medoid_inst = members[medoid_idx]
+
+        # Confidence ~ cohesion (1.0 = single point, lower = looser).
+        # Use silhouette-derived score scaled to a confidence band.
+        cohesion = max(0.5, min(0.95, 0.6 + 0.4 * best_score))
+
+        clusters.append({
+            "variant": f"custom_{cluster_idx + 1}",
+            "confidence": cohesion,
+            "members": [m["node_id"] for m in members],
+            "source": "cluster",
+            "representative_values": _representative_values(medoid_inst),
+        })
+
+    return clusters or _single_cluster(instances, variant_index=1)
+
+
+def _single_cluster(
+    instances: list[dict[str, Any]],
+    variant_index: int,
+) -> list[dict[str, Any]]:
+    """Emit a single-cluster output (used for tiny/cohesive sets).
+
+    Picks the FIRST instance as medoid since there's no clustering
+    structure to optimize.
+    """
+    medoid_inst = instances[0] if instances else None
+    return [{
+        "variant": f"custom_{variant_index}",
+        "confidence": 0.5 if instances else 0.0,
+        "members": [inst["node_id"] for inst in instances],
+        "source": "cluster",
+        "representative_values": (
+            _representative_values(medoid_inst)
+            if medoid_inst is not None
+            else {"bg": None, "fg": None, "border": None, "radius": None}
+        ),
+    }]
+
+
+def _feature_vector(instance: dict[str, Any]) -> list[float]:
+    """Extract a numeric feature vector for K-means.
+
+    Features (in order):
+      0: L* (lightness from primary fill OKLCH; NaN when no fill)
+      1: C  (chroma from primary fill OKLCH)
+      2: h  (hue from primary fill OKLCH; mapped to 0..1)
+      3: corner_radius (px; NaN when None)
+      4: width (px; clipped at 1000 for cluster-balance)
+      5: height (px; clipped at 1000)
+
+    NaN values short-circuit distance contributions per dimension —
+    instances missing fills don't get punished for "having no color"
+    against instances with fills.
+    """
+    import math
+
+    fills = instance.get("fills")
+    primary_color = _primary_solid_hex(fills)
+    if primary_color:
+        from dd.color import hex_to_oklch
+        try:
+            L, C, h = hex_to_oklch(primary_color)
+        except Exception:
+            L, C, h = math.nan, math.nan, math.nan
     else:
-        variant = "custom_1"
+        L, C, h = math.nan, math.nan, math.nan
 
+    radius = instance.get("corner_radius")
+    radius_f = (
+        float(radius)
+        if isinstance(radius, (int, float))
+        else math.nan
+    )
+
+    width = float(instance.get("width") or 0.0)
+    height = float(instance.get("height") or 0.0)
+    width = min(width, 1000.0)
+    height = min(height, 1000.0)
+
+    h_norm = (h % 360) / 360.0 if not math.isnan(h) else math.nan
+
+    return [L, C, h_norm, radius_f, width, height]
+
+
+def _primary_solid_hex(fills_json: Any) -> str | None:
+    """Return the first SOLID fill's hex color from the JSON-encoded
+    fills array, or None.
+    """
+    if not fills_json:
+        return None
+    if isinstance(fills_json, str):
+        try:
+            fills = json.loads(fills_json)
+        except (ValueError, TypeError):
+            return None
+    elif isinstance(fills_json, list):
+        fills = fills_json
+    else:
+        return None
+    for f in fills:
+        if not isinstance(f, dict):
+            continue
+        if f.get("type") == "SOLID":
+            color = f.get("color")
+            if isinstance(color, dict):
+                # Figma plugin format: {r, g, b, a} in 0..1
+                r = int(round(color.get("r", 0) * 255))
+                g = int(round(color.get("g", 0) * 255))
+                b = int(round(color.get("b", 0) * 255))
+                return f"#{r:02X}{g:02X}{b:02X}"
+            if isinstance(color, str) and color.startswith("#"):
+                return color
+    return None
+
+
+def _normalize_features(
+    features: list[list[float]],
+) -> list[list[float]]:
+    """Per-dimension z-score normalization; NaN-aware (NaN stays NaN).
+
+    Z-score: (x - mean) / std. Computed per dimension across all
+    instances. Missing values (NaN) are excluded from mean/std and
+    remain NaN in the output (the distance function treats NaN as
+    "unknown — no contribution this dim").
+    """
+    import math
+    if not features:
+        return []
+    n_dims = len(features[0])
+    means: list[float] = []
+    stds: list[float] = []
+    for d in range(n_dims):
+        valid = [
+            row[d] for row in features
+            if not math.isnan(row[d])
+        ]
+        if not valid:
+            means.append(0.0)
+            stds.append(1.0)
+            continue
+        m = sum(valid) / len(valid)
+        var = sum((x - m) ** 2 for x in valid) / len(valid)
+        s = math.sqrt(var) if var > 1e-12 else 1.0
+        means.append(m)
+        stds.append(s)
     return [
-        {
-            "variant": variant,
-            "confidence": confidence,
-            "members": [inst["node_id"] for inst in instances],
-            "source": "vlm" if raw_verdict != "unknown" else "cluster",
-            "representative_values": {
-                "bg": None,
-                "fg": None,
-                "border": None,
-                "radius": None,
-            },
-        },
+        [
+            ((row[d] - means[d]) / stds[d])
+            if not math.isnan(row[d])
+            else math.nan
+            for d in range(n_dims)
+        ]
+        for row in features
     ]
+
+
+def _euclidean(a: list[float], b: list[float]) -> float:
+    """NaN-aware Euclidean distance: dimensions where either operand
+    is NaN are skipped. Average over the dims that DID compare so
+    distances are comparable across instances with different
+    coverage."""
+    import math
+    valid = [
+        (a[i] - b[i]) ** 2
+        for i in range(len(a))
+        if not math.isnan(a[i]) and not math.isnan(b[i])
+    ]
+    if not valid:
+        return 0.0
+    return math.sqrt(sum(valid) / len(valid))
+
+
+def _centroid(features: list[list[float]]) -> list[float]:
+    """Per-dimension mean; NaN-aware (NaN values excluded)."""
+    import math
+    if not features:
+        return []
+    n_dims = len(features[0])
+    out: list[float] = []
+    for d in range(n_dims):
+        valid = [
+            row[d] for row in features
+            if not math.isnan(row[d])
+        ]
+        out.append(
+            sum(valid) / len(valid) if valid else math.nan
+        )
+    return out
+
+
+def _kmeans(
+    features: list[list[float]],
+    k: int,
+    max_iter: int = 50,
+) -> tuple[list[int], list[list[float]]]:
+    """Simple K-means with deterministic seeding.
+
+    Seeds the first K points as initial centroids (deterministic for
+    reproducibility — no random module use). Returns (assignments,
+    final_centroids). For the small N (corpus instances per type
+    typically < 100) this is fine.
+    """
+    if not features or k < 1:
+        return [], []
+    if k >= len(features):
+        return list(range(len(features))), [list(f) for f in features]
+
+    # Deterministic seed: pick K points spread across the input by
+    # index step. (Simpler than k-means++ and adequate for small N.)
+    step = max(1, len(features) // k)
+    centroids = [list(features[i * step]) for i in range(k)]
+
+    assignments = [0] * len(features)
+    for _ in range(max_iter):
+        # Assign each point to nearest centroid.
+        new_assignments = []
+        for f in features:
+            distances = [_euclidean(f, c) for c in centroids]
+            new_assignments.append(distances.index(min(distances)))
+        if new_assignments == assignments:
+            break
+        assignments = new_assignments
+        # Recompute centroids.
+        for ci in range(k):
+            members = [
+                features[i] for i, a in enumerate(assignments) if a == ci
+            ]
+            if members:
+                centroids[ci] = _centroid(members)
+    return assignments, centroids
+
+
+def _silhouette(
+    features: list[list[float]],
+    assignments: list[int],
+    k: int,
+) -> float:
+    """Average silhouette score across all points.
+
+    s(i) = (b - a) / max(a, b) where:
+      a = mean intra-cluster distance for point i
+      b = mean nearest-other-cluster distance for point i
+    Output range [-1, 1]; higher = better separation.
+    """
+    if k <= 1 or not features:
+        return 0.0
+    n = len(features)
+    silhouettes: list[float] = []
+    for i in range(n):
+        cluster_i = assignments[i]
+        same_cluster = [
+            features[j] for j, a in enumerate(assignments)
+            if a == cluster_i and j != i
+        ]
+        if not same_cluster:
+            silhouettes.append(0.0)
+            continue
+        a_i = sum(
+            _euclidean(features[i], f) for f in same_cluster
+        ) / len(same_cluster)
+
+        # Mean distance to nearest OTHER cluster
+        b_i = float("inf")
+        for ck in range(k):
+            if ck == cluster_i:
+                continue
+            other_cluster = [
+                features[j] for j, a in enumerate(assignments)
+                if a == ck
+            ]
+            if not other_cluster:
+                continue
+            d = sum(
+                _euclidean(features[i], f) for f in other_cluster
+            ) / len(other_cluster)
+            if d < b_i:
+                b_i = d
+        if b_i == float("inf"):
+            silhouettes.append(0.0)
+            continue
+        denom = max(a_i, b_i)
+        silhouettes.append((b_i - a_i) / denom if denom > 0 else 0.0)
+    return sum(silhouettes) / len(silhouettes) if silhouettes else 0.0
+
+
+def _representative_values(instance: dict[str, Any]) -> dict[str, Any]:
+    """Extract observed slot values from a medoid instance.
+
+    Returns dict with keys: bg, fg, border, radius. Each is a real
+    observed value (hex color, integer radius, etc.) or None when
+    absent. The medoid is a real instance from the cluster — these
+    are observed values, not averages.
+    """
+    bg = _primary_solid_hex(instance.get("fills"))
+    border = _primary_solid_hex(instance.get("strokes"))
+    radius_raw = instance.get("corner_radius")
+    radius_val: Any
+    if isinstance(radius_raw, (int, float)):
+        radius_val = (
+            int(radius_raw)
+            if float(radius_raw).is_integer()
+            else float(radius_raw)
+        )
+    else:
+        radius_val = None
+    # `fg` is harder to infer without per-text-child analysis; the
+    # medoid's strokes are sometimes a proxy for fg-on-bg, but for
+    # v1 cluster-only we leave fg=None. Phase E #4 follow-on (VLM
+    # Stream B) can fill it.
+    return {
+        "bg": bg,
+        "fg": None,
+        "border": border,
+        "radius": radius_val,
+    }
 
 
 def _persist_bindings(
