@@ -111,6 +111,27 @@ KIND_STROKE_MISMATCH = "stroke_mismatch"
 # A node's IR declares effects (shadows, blurs) but the rendered node
 # has fewer effects. Catches dropped shadows, missing blurs, etc.
 KIND_EFFECT_MISSING = "effect_missing"
+# A node's IR opacity differs from the rendered opacity. Pre-P1
+# (forensic-audit-2) the verifier was blind to opacity drift even
+# though the renderer emits it via the registry-driven path. Drift
+# of >epsilon is a real visual difference (faded vs solid).
+KIND_OPACITY_MISMATCH = "opacity_mismatch"
+# A node's IR blendMode differs from the rendered blendMode. Drift
+# here changes how a node composites against its background — e.g.
+# MULTIPLY → NORMAL hides any darkening overlay.
+KIND_BLENDMODE_MISMATCH = "blendmode_mismatch"
+# A node's IR rotation differs from the rendered rotation (in radians,
+# tolerance ~1e-3). The walker captures rotation as part of SoM
+# overlay; pre-P1 the verifier never compared it.
+KIND_ROTATION_MISMATCH = "rotation_mismatch"
+# A node's IR isMask flag differs from the rendered isMask. A node
+# silently flipped from mask to non-mask leaks the masked content;
+# the inverse hides what should be visible.
+KIND_MASK_MISMATCH = "mask_mismatch"
+# A node's IR cornerRadius (uniform or per-corner) differs from the
+# rendered cornerRadius. Pre-P1 was the only "complex" registry visual
+# prop the verifier didn't compare despite being emitted.
+KIND_CORNERRADIUS_MISMATCH = "cornerradius_mismatch"
 # Gradient fill has no Plugin API gradientTransform — the REST API
 # handlePositions can't be reliably converted. Renderer skips the
 # gradient rather than emitting a wrong matrix.

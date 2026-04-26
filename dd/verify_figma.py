@@ -18,17 +18,28 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from dd.boundary import (
+    KIND_BLENDMODE_MISMATCH,
     KIND_BOUNDS_MISMATCH,
+    KIND_CORNERRADIUS_MISMATCH,
     KIND_EFFECT_MISSING,
     KIND_FILL_MISMATCH,
+    KIND_MASK_MISMATCH,
     KIND_MISSING_ASSET,
     KIND_MISSING_CHILD,
     KIND_MISSING_TEXT,
+    KIND_OPACITY_MISMATCH,
+    KIND_ROTATION_MISMATCH,
     KIND_STROKE_MISMATCH,
     KIND_TYPE_SUBSTITUTION,
     RenderReport,
     StructuredError,
 )
+
+# Tolerances for the new P1c numeric comparators. Float jitter from
+# the deg→rad walker conversion + IR build paths needs slack.
+_OPACITY_TOLERANCE = 1e-3      # 0.001 — well below visible difference
+_ROTATION_TOLERANCE = 1e-3     # ~0.06° — covers walker conversion error
+_CORNER_RADIUS_TOLERANCE = 1e-3  # sub-pixel
 
 
 # Text height tolerance before we flag a wrap.
@@ -465,6 +476,140 @@ class FigmaRenderVerifier:
                         context={
                             "ir_effect_count": ir_ec,
                             "rendered_effect_count": rendered_effect_count,
+                        },
+                    ))
+
+            # ============================================================
+            # P1c (forensic-audit-2): visual prop comparators that close
+            # the verifier blind spots. P1a populated the IR side; P1b
+            # populated the walker side. These compare them and emit a
+            # structured error per drift class.
+            # ============================================================
+            ir_visual = element.get("visual") or {}
+
+            # Opacity drift — numeric tolerance to absorb float jitter.
+            ir_opacity = ir_visual.get("opacity")
+            rd_opacity = rendered.get("opacity")
+            if (
+                isinstance(ir_opacity, (int, float))
+                and isinstance(rd_opacity, (int, float))
+            ):
+                if abs(ir_opacity - rd_opacity) > _OPACITY_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_OPACITY_MISMATCH,
+                        id=eid,
+                        error=f"opacity: IR={ir_opacity}, rendered={rd_opacity}",
+                        context={
+                            "ir_opacity": ir_opacity,
+                            "rendered_opacity": rd_opacity,
+                        },
+                    ))
+
+            # Blend mode drift — exact-string compare.
+            ir_blend = ir_visual.get("blendMode")
+            rd_blend = rendered.get("blendMode")
+            if (
+                isinstance(ir_blend, str)
+                and isinstance(rd_blend, str)
+                and ir_blend != rd_blend
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_BLENDMODE_MISMATCH,
+                    id=eid,
+                    error=f"blendMode: IR={ir_blend}, rendered={rd_blend}",
+                    context={
+                        "ir_blend_mode": ir_blend,
+                        "rendered_blend_mode": rd_blend,
+                    },
+                ))
+
+            # Rotation drift — radians, numeric tolerance.
+            ir_rotation = ir_visual.get("rotation")
+            rd_rotation = rendered.get("rotation")
+            if (
+                isinstance(ir_rotation, (int, float))
+                and isinstance(rd_rotation, (int, float))
+            ):
+                if abs(ir_rotation - rd_rotation) > _ROTATION_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_ROTATION_MISMATCH,
+                        id=eid,
+                        error=(
+                            f"rotation: IR={ir_rotation:.6f} rad, "
+                            f"rendered={rd_rotation:.6f} rad"
+                        ),
+                        context={
+                            "ir_rotation": ir_rotation,
+                            "rendered_rotation": rd_rotation,
+                        },
+                    ))
+
+            # isMask drift — boolean equality. Either direction is a
+            # real visual difference.
+            ir_mask = ir_visual.get("isMask")
+            rd_mask = rendered.get("isMask")
+            if (
+                isinstance(ir_mask, bool)
+                and isinstance(rd_mask, bool)
+                and ir_mask != rd_mask
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_MASK_MISMATCH,
+                    id=eid,
+                    error=f"isMask: IR={ir_mask}, rendered={rd_mask}",
+                    context={
+                        "ir_is_mask": ir_mask,
+                        "rendered_is_mask": rd_mask,
+                    },
+                ))
+
+            # Corner radius drift — uniform-vs-uniform with tolerance,
+            # plus mixed (per-corner) when the walker reports
+            # cornerRadiusMixed=true. Skip-emit if IR has no
+            # cornerRadius opinion.
+            ir_cr = ir_visual.get("cornerRadius")
+            rd_mixed = rendered.get("cornerRadiusMixed") is True
+            rd_cr = rendered.get("cornerRadius")
+            if isinstance(ir_cr, (int, float)):
+                if rd_mixed:
+                    # IR uniform vs rendered per-corner: compare
+                    # each side to the IR uniform value.
+                    sides = (
+                        rendered.get("topLeftRadius"),
+                        rendered.get("topRightRadius"),
+                        rendered.get("bottomRightRadius"),
+                        rendered.get("bottomLeftRadius"),
+                    )
+                    drifted_sides = [
+                        side for side in sides
+                        if isinstance(side, (int, float))
+                        and abs(side - ir_cr) > _CORNER_RADIUS_TOLERANCE
+                    ]
+                    if drifted_sides:
+                        errors.append(StructuredError(
+                            kind=KIND_CORNERRADIUS_MISMATCH,
+                            id=eid,
+                            error=(
+                                f"cornerRadius: IR uniform={ir_cr}, "
+                                f"rendered per-corner with "
+                                f"{len(drifted_sides)} side(s) drifted"
+                            ),
+                            context={
+                                "ir_corner_radius": ir_cr,
+                                "rendered_per_corner": list(sides),
+                            },
+                        ))
+                elif (
+                    isinstance(rd_cr, (int, float))
+                    and abs(ir_cr - rd_cr) > _CORNER_RADIUS_TOLERANCE
+                ):
+                    errors.append(StructuredError(
+                        kind=KIND_CORNERRADIUS_MISMATCH,
+                        id=eid,
+                        error=f"cornerRadius: IR={ir_cr}, rendered={rd_cr}",
+                        context={
+                            "ir_corner_radius": ir_cr,
+                            "rendered_corner_radius": rd_cr,
                         },
                     ))
 
