@@ -16,7 +16,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dd.plugin_render import (
+    _build_node_thumbnails_script,
     _build_render_script,
+    render_node_thumbnails,
     render_screen_with_visible_nodes,
 )
 
@@ -182,3 +184,124 @@ class TestRenderScreenWithVisibleNodes:
         assert out is None
         # No retry → sleep never called.
         sleep_mock.assert_not_called()
+
+
+class TestBuildNodeThumbnailsScript:
+    """The node-thumbnails primitive: per-node PNG export with
+    visibility toggle + finally-restore.
+
+    Used by the VLM image_provider in cluster_variants — the VLM
+    needs to see the visual evidence of cluster members, and the
+    bridge is the only path that can reliably render hidden /
+    nested-instance nodes.
+    """
+
+    def test_includes_all_target_node_ids(self):
+        js = _build_node_thumbnails_script(
+            ["1:101", "1:102", "1:103"], scale=2,
+        )
+        for nid in ("1:101", "1:102", "1:103"):
+            assert nid in js
+
+    def test_calls_export_async_for_each_node(self):
+        """Per-node export = one exportAsync per target."""
+        js = _build_node_thumbnails_script(["1:101", "1:102"], scale=2)
+        # Two distinct exportAsync invocations or a loop that runs
+        # exportAsync per id. Either way, exportAsync must appear.
+        assert "exportAsync" in js
+
+    def test_includes_visibility_toggle_with_finally(self):
+        """Hidden nodes must be toggled visible before export and
+        restored in finally. Mirrors render_screen_with_visible_nodes
+        safety contract."""
+        js = _build_node_thumbnails_script(["1:101"], scale=2)
+        assert "finally" in js
+        assert "visible" in js
+
+    def test_scale_parameter_respected(self):
+        js = _build_node_thumbnails_script(["1:101"], scale=4)
+        assert "SCALE" in js
+        assert "4" in js
+
+    def test_empty_id_list_still_valid(self):
+        """No targets → script returns empty result. Doesn't blow up."""
+        js = _build_node_thumbnails_script([], scale=2)
+        # Either includes an explicit guard or just produces an
+        # empty results object — both are valid; just check it parses
+        # as non-empty JS string.
+        assert len(js) > 0
+
+
+class TestRenderNodeThumbnails:
+    """End-to-end: parallel list of PNG bytes, None on failure,
+    same length/order as input."""
+
+    def test_returns_pngs_in_input_order(self):
+        png_a = b"\x89PNG\r\n\x1a\nA"
+        png_b = b"\x89PNG\r\n\x1a\nB"
+        b64_a = base64.b64encode(png_a).decode("ascii")
+        b64_b = base64.b64encode(png_b).decode("ascii")
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "type": "PROXY_EXECUTE_RESULT",
+            "result": {
+                "success": True,
+                "result": {
+                    "__ok": True,
+                    "thumbnails": {"1:101": b64_a, "1:102": b64_b},
+                },
+            },
+        })
+        mock_result.stderr = ""
+        with patch("dd.plugin_render.subprocess.run", return_value=mock_result):
+            out = render_node_thumbnails(
+                figma_node_ids=["1:101", "1:102"],
+            )
+        assert out == [png_a, png_b]
+
+    def test_returns_none_for_missing_nodes(self):
+        """Plugin returned only one of the requested ids → the
+        missing one must be None at the same index."""
+        png_a = b"\x89PNG\r\n\x1a\nA"
+        b64_a = base64.b64encode(png_a).decode("ascii")
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = json.dumps({
+            "type": "PROXY_EXECUTE_RESULT",
+            "result": {
+                "success": True,
+                "result": {
+                    "__ok": True,
+                    "thumbnails": {"1:101": b64_a},  # 1:102 missing
+                },
+            },
+        })
+        with patch("dd.plugin_render.subprocess.run", return_value=mock_result):
+            out = render_node_thumbnails(
+                figma_node_ids=["1:101", "1:102"],
+            )
+        assert out == [png_a, None]
+
+    def test_returns_all_none_on_subprocess_failure(self):
+        """Subprocess fails → all-None list of length matching input.
+        Caller can keep the per-id position; cluster_variants drops
+        the None entries."""
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "ECONNREFUSED"
+        with patch(
+            "dd.plugin_render.subprocess.run", return_value=mock_result,
+        ), patch("dd.plugin_render.time.sleep"):
+            out = render_node_thumbnails(
+                figma_node_ids=["1:101", "1:102", "1:103"],
+            )
+        assert out == [None, None, None]
+
+    def test_empty_input_returns_empty_list(self):
+        """No request → no work, no subprocess call."""
+        with patch("dd.plugin_render.subprocess.run") as run_mock:
+            out = render_node_thumbnails(figma_node_ids=[])
+        assert out == []
+        run_mock.assert_not_called()

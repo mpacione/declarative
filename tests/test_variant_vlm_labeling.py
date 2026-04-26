@@ -470,3 +470,243 @@ class TestEndToEndInduceVariantsWithVlm:
             f"Default induce_variants (no image_provider) should "
             f"produce cluster-only sources. Got: {sources}"
         )
+
+
+class TestBuildBridgeImageProvider:
+    """build_bridge_image_provider creates a closure that:
+      1. Looks up DB nodes.id → figma_node_id
+      2. Calls render_node_thumbnails for the batch
+      3. Returns the parallel PNG bytes list expected by ImageProvider
+      4. Caches per-node bytes within a single induce-variants run
+    """
+
+    def _make_db_with_nodes(self):
+        import sqlite3
+        from dd import db as dd_db
+        conn = dd_db.init_db(":memory:")
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) "
+            "VALUES (1, 'test', 'test.fig')"
+        )
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, "
+            "width, height) VALUES (1, 1, '1:1', 'Screen 1', 375, 812)"
+        )
+        # Insert nodes with ascending figma_node_ids
+        for i in (10, 20, 30):
+            conn.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, "
+                "node_type) VALUES (?, 1, ?, ?, 'INSTANCE')",
+                (i, f"1:{i}", f"node_{i}"),
+            )
+        conn.commit()
+        return conn
+
+    def test_returns_pngs_in_input_order(self):
+        from unittest.mock import patch
+        from dd.cluster_variants import build_bridge_image_provider
+
+        conn = self._make_db_with_nodes()
+        provider = build_bridge_image_provider(conn=conn, port=9225)
+
+        # Mock the bridge call to return per-fid PNGs
+        png_a = b"\x89PNG\r\n\x1a\nA"
+        png_b = b"\x89PNG\r\n\x1a\nB"
+
+        def fake_render(*, figma_node_ids, **kwargs):
+            assert figma_node_ids == ["1:10", "1:20"]
+            return [png_a, png_b]
+
+        with patch(
+            "dd.cluster_variants.render_node_thumbnails",
+            side_effect=fake_render,
+        ):
+            out = provider([10, 20])
+
+        assert out == [png_a, png_b]
+
+    def test_returns_none_for_unknown_node_ids(self):
+        """Node ids absent from the DB → None at that index, no
+        bridge call made for those ids."""
+        from unittest.mock import patch
+        from dd.cluster_variants import build_bridge_image_provider
+
+        conn = self._make_db_with_nodes()
+        provider = build_bridge_image_provider(conn=conn, port=9225)
+
+        png = b"\x89PNG\r\n\x1a\nX"
+
+        def fake_render(*, figma_node_ids, **kwargs):
+            # Only known ids should be requested
+            assert figma_node_ids == ["1:10"]
+            return [png]
+
+        with patch(
+            "dd.cluster_variants.render_node_thumbnails",
+            side_effect=fake_render,
+        ):
+            out = provider([10, 999])  # 999 doesn't exist in DB
+
+        # Length must equal input
+        assert len(out) == 2
+        # Position 0 is the resolved node, position 1 is None
+        assert out[0] == png
+        assert out[1] is None
+
+    def test_caches_within_provider_lifetime(self):
+        """Calling the provider twice with the same node id only
+        invokes the bridge once."""
+        from unittest.mock import patch
+        from dd.cluster_variants import build_bridge_image_provider
+
+        conn = self._make_db_with_nodes()
+        provider = build_bridge_image_provider(conn=conn, port=9225)
+
+        png = b"\x89PNG\r\n\x1a\nC"
+        call_log: list[list[str]] = []
+
+        def fake_render(*, figma_node_ids, **kwargs):
+            call_log.append(list(figma_node_ids))
+            return [png] * len(figma_node_ids)
+
+        with patch(
+            "dd.cluster_variants.render_node_thumbnails",
+            side_effect=fake_render,
+        ):
+            provider([10])
+            provider([10, 20])  # 10 cached, only 20 should hit bridge
+            provider([20])  # both cached, no bridge call
+
+        # First call: ["1:10"]; second call: ["1:20"] (10 cached);
+        # third call: empty (both cached) — implementation may skip
+        # the no-op call entirely.
+        assert call_log[0] == ["1:10"]
+        assert "1:20" in call_log[1]
+        assert "1:10" not in call_log[1]
+
+    def test_empty_input_returns_empty(self):
+        from dd.cluster_variants import build_bridge_image_provider
+
+        conn = self._make_db_with_nodes()
+        provider = build_bridge_image_provider(conn=conn, port=9225)
+        assert provider([]) == []
+
+    def test_bridge_failure_returns_none_per_node(self):
+        """Bridge fails entirely → all-None result, no exception."""
+        from unittest.mock import patch
+        from dd.cluster_variants import build_bridge_image_provider
+
+        conn = self._make_db_with_nodes()
+        provider = build_bridge_image_provider(conn=conn, port=9225)
+
+        with patch(
+            "dd.cluster_variants.render_node_thumbnails",
+            return_value=[None, None],
+        ):
+            out = provider([10, 20])
+
+        assert out == [None, None]
+
+
+class TestCliVlmFlag:
+    """The `dd induce-variants --vlm` flag wires the bridge
+    image_provider and Gemini vlm_call into induce_variants.
+
+    Without --vlm: existing cluster-only behavior (null defaults).
+    With --vlm but no GEMINI_API_KEY: warn + fall back to
+        cluster-only.
+    With --vlm + GEMINI_API_KEY: build_gemini_vlm_call +
+        build_bridge_image_provider plumbed through.
+    """
+
+    def test_argparse_accepts_vlm_flag(self):
+        """--vlm must parse without error on the induce-variants
+        subcommand."""
+        from dd.cli import build_arg_parser
+        parser = build_arg_parser()
+        args = parser.parse_args([
+            "induce-variants", "--db", "/tmp/x", "--vlm",
+        ])
+        assert getattr(args, "vlm", False) is True
+
+    def test_argparse_accepts_vlm_port(self):
+        """--vlm-port lets users pin the bridge port (matches
+        Nouns Experimental on 9225 in the Phase E sweep)."""
+        from dd.cli import build_arg_parser
+        parser = build_arg_parser()
+        args = parser.parse_args([
+            "induce-variants", "--db", "/tmp/x",
+            "--vlm", "--vlm-port", "9225",
+        ])
+        assert args.vlm_port == 9225
+
+    def test_default_no_vlm(self):
+        from dd.cli import build_arg_parser
+        parser = build_arg_parser()
+        args = parser.parse_args(["induce-variants", "--db", "/tmp/x"])
+        assert getattr(args, "vlm", False) is False
+
+    def test_run_induce_variants_with_vlm_no_key_falls_back(self, tmp_path, monkeypatch, capsys):
+        """--vlm flag without GEMINI_API_KEY → stderr warning + falls
+        back to cluster-only path. No exception."""
+        from unittest.mock import patch
+        from dd.cli import _run_induce_variants
+        from dd import db as dd_db
+
+        # Prepare a minimal DB
+        db_path = str(tmp_path / "test.db")
+        dd_db.init_db(db_path).close()
+
+        # Empty env — no GEMINI_API_KEY
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+        import argparse
+        args = argparse.Namespace(db=db_path, vlm=True, vlm_port=9227)
+
+        # Patch induce_variants to capture what was passed
+        captured: dict = {}
+
+        def fake_induce(conn, vlm_call, *cargs, **kwargs):
+            captured["image_provider"] = kwargs.get("image_provider")
+            captured["vlm_call"] = vlm_call
+            return {}
+
+        with patch("dd.cluster_variants.induce_variants", side_effect=fake_induce):
+            _run_induce_variants(db_path, args)
+
+        # No key → image_provider stays None (cluster-only path)
+        assert captured["image_provider"] is None
+        captured_err = capsys.readouterr().err
+        assert "GEMINI_API_KEY" in captured_err or "GOOGLE_API_KEY" in captured_err
+
+    def test_run_induce_variants_with_vlm_and_key_passes_provider(self, tmp_path, monkeypatch):
+        """--vlm + GEMINI_API_KEY → bridge image_provider + Gemini
+        vlm_call are plumbed into induce_variants."""
+        from unittest.mock import patch
+        from dd.cli import _run_induce_variants
+        from dd import db as dd_db
+
+        db_path = str(tmp_path / "test.db")
+        dd_db.init_db(db_path).close()
+
+        monkeypatch.setenv("GEMINI_API_KEY", "fake-test-key")
+
+        import argparse
+        args = argparse.Namespace(db=db_path, vlm=True, vlm_port=9225)
+
+        captured: dict = {}
+
+        def fake_induce(conn, vlm_call, *cargs, **kwargs):
+            captured["image_provider"] = kwargs.get("image_provider")
+            captured["vlm_call"] = vlm_call
+            return {}
+
+        with patch("dd.cluster_variants.induce_variants", side_effect=fake_induce):
+            _run_induce_variants(db_path, args)
+
+        # With key → image_provider is wired (a callable), not None
+        assert captured["image_provider"] is not None
+        assert callable(captured["image_provider"])
+        # vlm_call is the Gemini-backed adapter (callable)
+        assert callable(captured["vlm_call"])

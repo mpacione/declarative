@@ -87,6 +87,101 @@ def null_image_provider(node_ids: list[int]) -> list[Optional[bytes]]:
     return [None] * len(node_ids)
 
 
+# Imported lazily so tests that don't exercise the bridge path don't
+# pull in the plugin_render module's subprocess machinery.
+def _import_render_node_thumbnails():
+    from dd.plugin_render import render_node_thumbnails
+    return render_node_thumbnails
+
+
+# Sentinel re-export so tests can patch
+# `dd.cluster_variants.render_node_thumbnails`. Using ``__getattr__`` would
+# keep the import lazy but ``patch()`` can't reach it; this is the
+# pragmatic shape.
+from dd.plugin_render import render_node_thumbnails  # noqa: E402
+
+
+def build_bridge_image_provider(
+    *,
+    conn: "sqlite3.Connection",
+    port: int,
+    scale: int = 2,
+) -> ImageProvider:
+    """Build an ImageProvider closure that renders cluster-member
+    thumbnails via the Figma plugin bridge.
+
+    Translates the contract:
+      ImageProvider = Callable[[list[int]], list[Optional[bytes]]]
+    where input is DB ``nodes.id`` (int) and output is parallel
+    PNG bytes (or None on per-node failure).
+
+    Caches PNG bytes by ``nodes.id`` across calls within the
+    closure's lifetime — induce-variants typically samples members
+    from overlapping clusters; one bridge call per node is
+    sufficient.
+
+    Per Codex 2026-04-26 (gpt-5.5 high reasoning) review:
+      - Toggle path is reused via ``render_node_thumbnails`` (no
+        duplication of visibility-flip + finally-restore logic)
+      - Hidden / nested-instance nodes still render (the bridge
+        primitive walks the parent chain)
+      - Bridge failures degrade to per-node None, never raise
+      - Unknown DB ids degrade to None at that index
+
+    Network calls are NOT auto-enabled by env var. The caller
+    chooses to wire this provider; ``GEMINI_API_KEY`` detection
+    happens at the CLI layer with explicit ``--vlm`` opt-in.
+    """
+    cache: dict[int, Optional[bytes]] = {}
+
+    def _provider(node_ids: list[int]) -> list[Optional[bytes]]:
+        if not node_ids:
+            return []
+
+        # Identify which node ids haven't been resolved yet.
+        uncached_ids = [nid for nid in node_ids if nid not in cache]
+        if uncached_ids:
+            # Look up DB → figma_node_id for the uncached batch only.
+            rows = conn.execute(
+                f"SELECT id, figma_node_id FROM nodes WHERE id IN "
+                f"({','.join('?' * len(uncached_ids))})",
+                uncached_ids,
+            ).fetchall()
+            # Some ids may not exist in the DB at all.
+            id_to_fid: dict[int, str] = {}
+            for r in rows:
+                # Row may be sqlite3.Row or tuple; index-access works
+                # for both.
+                nid = r[0]
+                fid = r[1]
+                if fid:
+                    id_to_fid[nid] = fid
+
+            # Mark missing ids as None in the cache so we don't
+            # re-query them on subsequent calls.
+            for nid in uncached_ids:
+                if nid not in id_to_fid:
+                    cache[nid] = None
+
+            # Batch-render the resolvable ids via the bridge.
+            resolvable_ids = [nid for nid in uncached_ids if nid in id_to_fid]
+            if resolvable_ids:
+                fids = [id_to_fid[nid] for nid in resolvable_ids]
+                pngs = render_node_thumbnails(
+                    figma_node_ids=fids,
+                    port=port,
+                    scale=scale,
+                )
+                # render_node_thumbnails returns parallel-by-fid
+                for nid, png in zip(resolvable_ids, pngs):
+                    cache[nid] = png
+
+        # Build output preserving input order.
+        return [cache.get(nid) for nid in node_ids]
+
+    return _provider
+
+
 def build_variant_label_prompt(
     catalog_type: str,
     cluster_index: int,

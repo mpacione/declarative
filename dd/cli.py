@@ -1321,73 +1321,68 @@ def _parse_figma_input(raw: str) -> str:
 
 
 def _run_induce_variants(db_path: str, args: argparse.Namespace) -> None:
-    """Induce placeholder variant_token_binding rows (ADR-008 Stream B v0.1 shell).
+    """Induce variant_token_binding rows (ADR-008 Stream B + Phase E #4).
 
-    Current behaviour (v0.1 shell, see dd/cluster_variants.py:85):
-    treats every catalog type as a single cluster and calls the
-    injected vlm_call with an empty image list. Because the CLI's
-    ``vlm_call`` adapter returns ``{verdict: "unknown", confidence: 0}``
-    on empty image lists, every cluster is labelled ``custom_1`` with
-    confidence=0 and NULL token/literal values. **Gemini is never
-    actually called** — the 100-200ms runtime is too short for a
-    network round-trip.
+    Default behaviour (no flags): cluster-only induction. Each
+    classified catalog type's instances are clustered by visual
+    feature vector; one row per (catalog_type, variant=custom_N, slot)
+    is UPSERTed with cluster-medoid representative values. Idempotent.
 
-    The schema-level contract is real: rows persist to
-    ``variant_token_binding`` and ``ProjectCKRProvider`` can query
-    them at Mode-3 resolution time. What's missing is the cluster
-    analysis (per-feature k-means + silhouette) and the real VLM
-    labelling — both are flagged "when real corpus coverage is wired
-    up" in cluster_variants.py.
-
-    Usage: ``dd induce-variants [--db PATH]``. Idempotent — re-running
-    UPSERTs existing placeholder rows.
+    With ``--vlm``: enables VLM-driven relabeling. The cluster pipeline
+    runs as before, then ``_apply_vlm_labels`` calls Gemini per
+    cluster with rendered thumbnails of representative members. When
+    the verdict clears the confidence threshold, custom_N is replaced
+    with a STANDARD_VARIANTS label (primary/secondary/destructive/
+    ghost/link/disabled). Requires both GEMINI_API_KEY (or
+    GOOGLE_API_KEY) and a live Figma plugin bridge on ``--vlm-port``.
+    Without either, the run falls back to cluster-only with a stderr
+    warning — no exception, no retry.
     """
-    from dd.cluster_variants import induce_variants
-    from dd.visual_inspect import _default_gemini_call, VLM_PROMPT
+    from dd.cluster_variants import (
+        build_bridge_image_provider,
+        build_gemini_vlm_call,
+        induce_variants,
+        null_vlm_call,
+    )
 
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        print(
-            "Warning: GOOGLE_API_KEY not set — inducer will run with a stub "
-            "VLM that labels every cluster 'unknown' (rows persist as "
-            "custom_N). Set GOOGLE_API_KEY to get real variant labels.",
-            file=sys.stderr,
-        )
+    use_vlm = bool(getattr(args, "vlm", False))
+    vlm_port = int(getattr(args, "vlm_port", 9227))
 
-    def vlm_call(prompt: str, images: list) -> dict:
-        """Adapter from the inducer's simple call shape to Gemini 3.1 Pro.
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
-        v0.1: the inducer shell doesn't pass real rendered images yet
-        (cluster analysis is a shell). When images are present, route
-        through the existing Gemini call; otherwise return a conservative
-        'unknown' verdict so the row persists as custom_N.
-        """
-        if not images or not api_key:
-            return {"verdict": "unknown", "confidence": 0.0}
-        try:
-            import json as _json
-            import re as _re
-            raw = _default_gemini_call(prompt, images[0], api_key)
-            text = raw["candidates"][0]["content"]["parts"][0]["text"]
-            text = text.strip()
-            if text.startswith("```"):
-                text = _re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=_re.S)
-            data = _json.loads(text)
-            return {
-                "verdict": str(data.get("verdict", "unknown")).lower(),
-                "confidence": float(data.get("confidence", 0.5)),
-            }
-        except Exception as e:
-            print(f"  VLM call failed: {e}", file=sys.stderr)
-            return {"verdict": "unknown", "confidence": 0.0}
+    image_provider = None
+    if use_vlm:
+        if not api_key:
+            print(
+                "Warning: --vlm requires GEMINI_API_KEY (or GOOGLE_API_KEY) "
+                "in env. Falling back to cluster-only induction (no relabel).",
+                file=sys.stderr,
+            )
+            use_vlm = False
+        else:
+            print(
+                f"VLM relabeling enabled — bridge port {vlm_port}, "
+                f"Gemini adapter wired.",
+                file=sys.stderr,
+            )
 
     conn = get_connection(db_path)
     try:
-        written_per_type = induce_variants(conn, vlm_call)
+        if use_vlm:
+            vlm_call = build_gemini_vlm_call(api_key=api_key)
+            image_provider = build_bridge_image_provider(
+                conn=conn, port=vlm_port,
+            )
+        else:
+            vlm_call = null_vlm_call
+
+        written_per_type = induce_variants(
+            conn, vlm_call, image_provider=image_provider,
+        )
     finally:
         conn.close()
 
@@ -1450,7 +1445,10 @@ def _run_inspect_experiment(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def main(argv: list | None = None) -> None:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the top-level CLI parser. Extracted from `main()` so
+    individual subcommand argument shapes can be unit-tested without
+    invoking the dispatch logic."""
     parser = argparse.ArgumentParser(prog="dd", description="Declarative Design CLI")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -1749,6 +1747,28 @@ def main(argv: list | None = None) -> None:
         ),
     )
     induce_parser.add_argument("--db", help="Database path")
+    induce_parser.add_argument(
+        "--vlm",
+        action="store_true",
+        help=(
+            "Enable VLM-driven variant relabeling (Phase E #4 follow-on). "
+            "Requires GEMINI_API_KEY (or GOOGLE_API_KEY) in env AND a live "
+            "Figma plugin bridge on --vlm-port. With --vlm, cluster-only "
+            "custom_N labels get relabeled to STANDARD_VARIANTS "
+            "(primary/secondary/destructive/ghost/link/disabled) when the "
+            "VLM verdict clears the confidence threshold."
+        ),
+    )
+    induce_parser.add_argument(
+        "--vlm-port",
+        type=int,
+        default=9227,
+        help=(
+            "Bridge WebSocket port for thumbnail rendering when --vlm is "
+            "set. Default 9227. The Phase E sweep on Nouns Experimental "
+            "used 9225."
+        ),
+    )
 
     inspect_parser = subparsers.add_parser(
         "inspect-experiment",
@@ -1995,6 +2015,11 @@ def main(argv: list | None = None) -> None:
              "of the pretty-printed summary. Useful for `jq` piping.",
     )
 
+    return parser
+
+
+def main(argv: list | None = None) -> None:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:

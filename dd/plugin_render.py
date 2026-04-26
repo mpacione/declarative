@@ -57,6 +57,11 @@ _DEFAULT_PORT = 9227
 _DEFAULT_SCALE = 2
 _DEFAULT_TIMEOUT_S = 90
 
+# Per-node thumbnail batch defaults. Smaller scale than the screen-level
+# render because the VLM only needs ~256-512 px per cluster member.
+_THUMBNAIL_DEFAULT_SCALE = 2
+_THUMBNAIL_DEFAULT_TIMEOUT_S = 60
+
 
 def _build_render_script(
     screen_figma_id: str,
@@ -104,6 +109,64 @@ try {{
     height: screenNode.height,
     toggled: toRestore.length,
   }};
+}} finally {{
+  for (const node of toRestore) {{
+    try {{ node.visible = false; }} catch (e) {{ /* best-effort */ }}
+  }}
+}}
+""".strip()
+
+
+def _build_node_thumbnails_script(
+    figma_node_ids: list[str], scale: int,
+) -> str:
+    """Build the plugin-side JS that exports each requested node as a
+    PNG, with a visibility toggle on the ancestor chain so hidden
+    descendants of an instance subtree still render.
+
+    Returns a JS expression returning ``{__ok: true, thumbnails: {fid: b64}}``.
+    Missing nodes (resolution failed, export failed) are simply absent
+    from the thumbnails dict; the Python side fills None at those
+    positions.
+
+    Same restore-in-finally contract as ``_build_render_script`` —
+    every flipped visibility is restored even if export fails.
+    """
+    ids_json = json.dumps(figma_node_ids)
+    return f"""
+await figma.loadAllPagesAsync();
+const targetIds = {ids_json};
+const thumbnails = {{}};
+const toRestore = [];
+
+try {{
+  for (const tid of targetIds) {{
+    const target = await figma.getNodeByIdAsync(tid);
+    if (!target) continue;
+
+    // Walk up the parent chain making every hidden ancestor visible
+    // so the export shows the target node itself.
+    let cursor = target;
+    while (cursor && cursor.type !== 'PAGE' && cursor.type !== 'DOCUMENT') {{
+      if ('visible' in cursor && cursor.visible === false) {{
+        toRestore.push(cursor);
+        cursor.visible = true;
+      }}
+      cursor = cursor.parent;
+    }}
+
+    try {{
+      const bytes = await target.exportAsync({{
+        format: 'PNG',
+        constraint: {{ type: 'SCALE', value: {scale} }},
+      }});
+      thumbnails[tid] = figma.base64Encode(bytes);
+    }} catch (e) {{
+      // Per-node export failed (e.g. zero-size target). Skip
+      // it — the Python side will record None for this id.
+    }}
+  }}
+  return {{ __ok: true, thumbnails: thumbnails }};
 }} finally {{
   for (const node of toRestore) {{
     try {{ node.visible = false; }} catch (e) {{ /* best-effort */ }}
@@ -248,3 +311,95 @@ def render_screen_with_visible_nodes(
 # Exposed so callers can peek at the most recent failure reason
 # without having to thread it through the return type.
 render_screen_with_visible_nodes.last_error = None  # type: ignore[attr-defined]
+
+
+def render_node_thumbnails(
+    *,
+    figma_node_ids: list[str],
+    scale: int = _THUMBNAIL_DEFAULT_SCALE,
+    port: int = _DEFAULT_PORT,
+    timeout_s: int = _THUMBNAIL_DEFAULT_TIMEOUT_S,
+) -> list[Optional[bytes]]:
+    """Render PNG thumbnails for each requested node.
+
+    Used by the VLM image_provider in cluster_variants — the model
+    needs to see cluster members, and the bridge is the only path
+    that can render hidden / nested-instance nodes reliably.
+
+    Returns a list parallel to ``figma_node_ids``: PNG bytes per
+    node, or None where rendering failed (node missing, export
+    failed, subprocess error). Position is preserved so callers
+    can correlate with their original input order.
+
+    Empty input → empty output, no subprocess call.
+    Total subprocess failure → all-None list of length matching input.
+    Per-node failure → that index becomes None.
+    """
+    if not figma_node_ids:
+        return []
+
+    plugin_code = _build_node_thumbnails_script(figma_node_ids, scale)
+
+    def _once() -> tuple[Optional[dict], Optional[str]]:
+        try:
+            return _run_node_subprocess(
+                plugin_code, port=port, timeout_s=timeout_s,
+            ), None
+        except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired,
+                json.JSONDecodeError) as e:
+            return None, str(e)
+
+    msg, exc_err = _once()
+    bridge_err = (msg or {}).get("error") if isinstance(msg, dict) else None
+    retryable = _is_transient(exc_err) or _is_transient(bridge_err)
+    if msg is None and not retryable:
+        render_node_thumbnails.last_error = exc_err  # type: ignore[attr-defined]
+        return [None] * len(figma_node_ids)
+    if retryable:
+        time.sleep(3)
+        msg, exc_err = _once()
+        if msg is None:
+            render_node_thumbnails.last_error = exc_err  # type: ignore[attr-defined]
+            return [None] * len(figma_node_ids)
+
+    top_err = msg.get("error") if isinstance(msg, dict) else None
+    if top_err:
+        render_node_thumbnails.last_error = str(top_err)  # type: ignore[attr-defined]
+        return [None] * len(figma_node_ids)
+
+    inner = msg.get("result", {})
+    if isinstance(inner, dict) and inner.get("success") is False:
+        render_node_thumbnails.last_error = str(  # type: ignore[attr-defined]
+            inner.get("error") or "plugin execution failed"
+        )
+        return [None] * len(figma_node_ids)
+    result = inner.get("result", inner) if isinstance(inner, dict) else None
+    if not isinstance(result, dict) or not result.get("__ok"):
+        render_node_thumbnails.last_error = str(  # type: ignore[attr-defined]
+            (result or {}).get("reason")
+            or (result or {}).get("error")
+            or "plugin returned no ok payload"
+        )
+        return [None] * len(figma_node_ids)
+
+    thumbnails = result.get("thumbnails")
+    if not isinstance(thumbnails, dict):
+        render_node_thumbnails.last_error = "no thumbnails dict in result"  # type: ignore[attr-defined]
+        return [None] * len(figma_node_ids)
+
+    out: list[Optional[bytes]] = []
+    for fid in figma_node_ids:
+        b64 = thumbnails.get(fid)
+        if not isinstance(b64, str):
+            out.append(None)
+            continue
+        try:
+            out.append(base64.b64decode(b64))
+        except (ValueError, TypeError):
+            out.append(None)
+
+    render_node_thumbnails.last_error = None  # type: ignore[attr-defined]
+    return out
+
+
+render_node_thumbnails.last_error = None  # type: ignore[attr-defined]
