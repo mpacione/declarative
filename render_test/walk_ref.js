@@ -323,7 +323,23 @@ return {
         ws.close();
         if (msg.error) reject(new Error(msg.error));
         else {
-          const result = msg.result && msg.result.result;
+          // Phase E #5 fix (2026-04-26): surface bridge-side failures
+          // verbatim. Pre-fix when the bridge reported
+          // {success: false, error: "..."} the script tried to read
+          // msg.result.result (undefined) and rejected with the opaque
+          // "no result in {...}" envelope. Now we extract the real
+          // error from the envelope so Python sees the actual cause
+          // (e.g. plugin sandbox eval timeout, WebSocket closed,
+          // proxy_execute timeout from Figma's side).
+          // Codex 2026-04-26 (gpt-5.5 high reasoning): "low-risk,
+          // directly improves the next failure, and does not change
+          // timeout semantics or mask regressions."
+          const envelope = msg.result || {};
+          if (envelope.success === false || envelope.error) {
+            reject(new Error(envelope.error || 'bridge execution failed'));
+            return;
+          }
+          const result = envelope.result;
           if (!result) {
             reject(new Error('no result in ' + JSON.stringify(msg).slice(0, 500)));
             return;
