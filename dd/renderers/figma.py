@@ -371,6 +371,11 @@ def _emit_override_op(
         # screens halted at the first instance whose master used
         # Akkurat, so only 1 of N IR elements rendered. Guard mirrors
         # the same shape applied to other text-prop writes in F11.
+        # F12: emit the rendered node's id as `node_id` so per-eid
+        # attribution survives the catch (Phase D visual-diff showed
+        # text_set_failed without node attribution makes it hard to
+        # map a "Rooms" instead of "Travel Request" symptom back to
+        # the offending DB override row).
         return (
             f'if ({target_var}.type === "TEXT") {{ '
             f'try {{ '
@@ -379,6 +384,7 @@ def _emit_override_op(
             f'}} catch (__e) {{ '
             f'__errors.push({{kind:"text_set_failed", '
             f'property:"characters", '
+            f'node_id:{target_var}.id, name:{target_var}.name, '
             f'error: String(__e && __e.message || __e)}}); '
             f'}} }}'
         )
@@ -457,6 +463,9 @@ def _emit_override_op(
             # per-block. `figma.mixed` skip avoids passing the sentinel
             # to loadFontAsync (which rejects it).
             esc_prop = _escape_js(prop_name)
+            # F12: include node_id + name so per-eid attribution
+            # survives the catch (Phase D Codex review found the
+            # F11.1 catches dropped attribution).
             op = (
                 f'if ({target_var}.type === "TEXT") {{ '
                 f'try {{ '
@@ -466,6 +475,7 @@ def _emit_override_op(
                 f'}} catch (__e) {{ '
                 f'__errors.push({{kind:"text_set_failed", '
                 f'property:"{esc_prop}", '
+                f'node_id:{target_var}.id, name:{target_var}.name, '
                 f'error: String(__e && __e.message || __e)}}); '
                 f'}} }}'
             )
@@ -553,6 +563,8 @@ def _compose_font_identity_op(
     # Emit the composed write. Self-gating (placeholder check) is
     # handled by the caller (`_emit_override_tree`); this function
     # produces the bare op.
+    # F12: include node_id + name in the catch so per-eid attribution
+    # survives.
     op = (
         f'if ({target_var}.type === "TEXT") {{ '
         f'const __cur = ({target_var}.fontName !== figma.mixed) '
@@ -562,6 +574,7 @@ def _compose_font_identity_op(
         f'{target_var}.fontName = __new; }} '
         f'catch (__e) {{ __errors.push({{kind:"text_set_failed", '
         f'family: __new.family, style: __new.style, '
+        f'node_id:{target_var}.id, name:{target_var}.name, '
         f'error: String(__e && __e.message || __e)}}); }} '
         f'}}'
     )

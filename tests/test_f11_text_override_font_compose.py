@@ -446,6 +446,60 @@ class TestF11RegressionCharactersBranchUnchanged:
         assert '_c.characters = "Hello"' in joined
 
 
+class TestF12EidAttributionInCatches:
+    """F12 — Phase D visual diff exposed that F11.1's catch shapes
+    push `text_set_failed` with `property` but no node identity.
+    Looking at a 16-runtime-error walk for screen 44, several entries
+    say `kind: text_set_failed, property: characters` with no eid /
+    no node_id, making them unattributable.
+
+    F12 adds `node_id` + `name` to the catch payloads so callers can
+    map a "Rooms" instead of "Travel Request" symptom back to the
+    offending DB override row by figma_node_id."""
+
+    def test_characters_catch_includes_node_id(self):
+        node = {
+            "target": ":self",
+            "children": [
+                {
+                    "target": ";text-1",
+                    "properties": [
+                        {"property": "characters", "value": "Hello"},
+                    ],
+                },
+            ],
+        }
+        lines, _ = _emit(node)
+        joined = "\n".join(lines)
+        assert "node_id:" in joined and "name:" in joined, (
+            "F11.1 catch in characters branch must carry node_id + name "
+            "for per-eid attribution; otherwise the runtime-error channel "
+            "can't be cross-referenced to a specific override row"
+        )
+
+    def test_text_prop_catch_includes_node_id(self):
+        node = {
+            "target": ":self",
+            "children": [
+                {
+                    "target": ";text-1",
+                    "properties": [
+                        {"property": "letterSpacing",
+                         "value": {"value": 0, "unit": "PIXELS"}},
+                    ],
+                },
+            ],
+        }
+        lines, _ = _emit(node)
+        joined = "\n".join(lines)
+        assert "node_id:" in joined and "name:" in joined
+
+    def test_compose_op_catch_includes_node_id(self):
+        props = [{"property": "fontFamily", "value": "Akkurat-Bold"}]
+        op, _ = _compose_font_identity_op(props, "_c")
+        assert "node_id:" in op and "name:" in op
+
+
 class TestF111CharactersBranchCatch:
     """F11.1 — add the per-op try/catch around the characters
     branch's load+write pair. Without it, an unloadable font (paid

@@ -91,6 +91,16 @@ def process_screen(
         "error_count": 0,
         "ir_node_count": None,
         "rendered_node_count": None,
+        # F12a: walk-side runtime errors recorded by the render
+        # script's per-op try/catch handlers (text_set_failed,
+        # font_load_failed, component_missing, etc.). The structural
+        # verifier's `error_count` only sees missing_child / extra_child
+        # / shape drift — runtime visual-fidelity failures live here.
+        # Kept separate so callers can distinguish "structurally clean
+        # render" (error_count=0 + runtime_error_count=0) from "renders
+        # but with visual gaps" (error_count=0 + runtime_error_count>0).
+        "runtime_error_count": 0,
+        "runtime_error_kinds": {},
         "failure": None,
     }
 
@@ -164,6 +174,12 @@ def process_screen(
     row["rendered_node_count"] = report["rendered_node_count"]
     row["error_kinds"] = [e["kind"] for e in report["errors"]]
     row["error_count"] = len(report["errors"])
+    # F12a: pull walk-side runtime error counts that the verifier now
+    # surfaces in its --json payload. Older verifier versions lacked
+    # these keys; default to 0/{} when absent so existing artefact
+    # readers don't break.
+    row["runtime_error_count"] = report.get("runtime_error_count", 0)
+    row["runtime_error_kinds"] = report.get("runtime_error_kinds", {})
     return row
 
 
@@ -212,8 +228,29 @@ def summarize(rows: list[dict]) -> dict:
     for r in rows:
         kinds.update(r.get("error_kinds") or [])
 
+    # F12a: aggregate walk-side runtime errors across screens. These are
+    # visual-fidelity failures (text_set_failed, font_load_failed,
+    # component_missing, etc.) that the structural verifier doesn't see.
+    # The "screens with runtime errors" count is the load-bearing visual-
+    # fidelity headline — if it's >0 you have visual gaps even when
+    # is_parity_true == total.
+    runtime_kinds = Counter()
+    screens_with_runtime_errors = 0
+    total_runtime_errors = 0
+    for r in rows:
+        rk = r.get("runtime_error_kinds") or {}
+        if rk:
+            screens_with_runtime_errors += 1
+        for k, v in rk.items():
+            runtime_kinds[k] += v
+        total_runtime_errors += r.get("runtime_error_count", 0)
+
     total = len(rows)
     parity_true = sum(1 for r in rows if r.get("is_parity") is True)
+    parity_true_clean = sum(
+        1 for r in rows
+        if r.get("is_parity") is True and not (r.get("runtime_error_kinds") or {})
+    )
     walk_failed = sum(1 for r in rows if r.get("walk_ok") is False and r.get("generate_ok"))
     generate_failed = sum(1 for r in rows if r.get("generate_ok") is False)
 
@@ -226,12 +263,19 @@ def summarize(rows: list[dict]) -> dict:
     return {
         "total": total,
         "is_parity_true": parity_true,
+        # F12a: subset of is_parity_true with zero runtime errors —
+        # the "no visual fidelity gap detected" count.
+        "is_parity_true_clean": parity_true_clean,
         "is_parity_false": total - parity_true - walk_failed - generate_failed,
         "generate_failed": generate_failed,
         "walk_failed": walk_failed,
         "retried": retried,
         "retried_recovered": retried_recovered,
         "error_kinds": dict(kinds.most_common()),
+        # F12a: walk-side runtime errors, aggregated across screens.
+        "screens_with_runtime_errors": screens_with_runtime_errors,
+        "total_runtime_errors": total_runtime_errors,
+        "runtime_error_kinds": dict(runtime_kinds.most_common()),
         "per_screen": rows,
     }
 
@@ -306,19 +350,25 @@ def main() -> int:
             db_path=db_path,
         )
         elapsed = time.time() - t1
-        status = (
-            "PARITY" if row["is_parity"] is True
-            else "FAIL" if row.get("failure")
-            else "DRIFT"
-        )
+        # F12a: PARITY+ marker means structural parity but with
+        # walk-side runtime errors (visual fidelity gap). Distinguishes
+        # "clean" from "structurally clean / visually degraded".
+        if row["is_parity"] is True:
+            status = "PARITY+" if row.get("runtime_error_count", 0) > 0 else "PARITY"
+        elif row.get("failure"):
+            status = "FAIL"
+        else:
+            status = "DRIFT"
         attempt_marker = (
             f" (try {row.get('attempt', 1)})" if row.get("attempt", 1) > 1 else ""
         )
+        rt_count = row.get("runtime_error_count", 0)
+        rt_part = f" rt={rt_count}" if rt_count else ""
         print(
-            f"[{i}/{len(screens)}] screen={sid:3d} {status:6s}{attempt_marker} "
+            f"[{i}/{len(screens)}] screen={sid:3d} {status:7s}{attempt_marker} "
             f"t={elapsed:5.1f}s "
             f"parity={row.get('parity_ratio')} "
-            f"errs={row.get('error_count')} "
+            f"errs={row.get('error_count')}{rt_part} "
             f"{'kinds=' + ','.join(row['error_kinds'][:3]) if row['error_kinds'] else ''} "
             f"{('FAIL=' + row['failure'][:120]) if row.get('failure') else ''}",
             flush=True,
@@ -333,6 +383,15 @@ def main() -> int:
     print("\n=== SUMMARY ===")
     print(f"total:            {summary['total']}")
     print(f"is_parity=True:   {summary['is_parity_true']}")
+    # F12a: surface "structurally clean / visually degraded" so the
+    # headline parity number isn't misread.
+    print(
+        f"  ├─ clean (no runtime errs):   {summary.get('is_parity_true_clean', summary['is_parity_true'])}"
+    )
+    print(
+        f"  └─ structurally OK / visually degraded: "
+        f"{summary['is_parity_true'] - summary.get('is_parity_true_clean', summary['is_parity_true'])}"
+    )
     print(f"is_parity=False:  {summary['is_parity_false']}")
     print(f"generate_failed:  {summary['generate_failed']}")
     print(f"walk_failed:      {summary['walk_failed']}")
@@ -341,9 +400,24 @@ def main() -> int:
         f"(recovered to PARITY: {summary['retried_recovered']})"
     )
     print(f"elapsed:          {summary['elapsed_s']}s")
-    print("\nerror_kinds:")
-    for kind, ct in summary["error_kinds"].items():
-        print(f"  {kind:30s}  {ct}")
+    print("\nerror_kinds (structural — verifier-reported):")
+    if summary["error_kinds"]:
+        for kind, ct in summary["error_kinds"].items():
+            print(f"  {kind:30s}  {ct}")
+    else:
+        print("  (none)")
+    # F12a: walk-side runtime errors aggregated. "0 in N screens" means
+    # the renderer never had to record-and-continue; that's the cleanest
+    # visual-fidelity headline.
+    print(
+        f"\nruntime_errors:   {summary.get('total_runtime_errors', 0)} "
+        f"across {summary.get('screens_with_runtime_errors', 0)} screens "
+        f"(visual-fidelity channel — F11.1 catch-and-continue)"
+    )
+    rt_kinds = summary.get("runtime_error_kinds") or {}
+    if rt_kinds:
+        for kind, ct in rt_kinds.items():
+            print(f"  {kind:30s}  {ct}")
     return 0
 
 

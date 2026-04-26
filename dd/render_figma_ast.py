@@ -1119,6 +1119,8 @@ def _emit_mode1_create(
         # session (paid commercial font, library-imported font), the
         # load rejects and the next-line write throws — without the
         # catch the throw aborts Phase 1.
+        # F12: include node_id + name on the catch so per-eid
+        # attribution survives.
         lines.append(
             f'{{ const _t = {find_expr}; '
             f'if (_t) {{ try {{ '
@@ -1127,6 +1129,7 @@ def _emit_mode1_create(
             f'}} catch (__e) {{ '
             f'__errors.push({{kind:"text_set_failed", '
             f'property:"text", '
+            f'node_id:_t.id, name:_t.name, '
             f'error: String(__e && __e.message || __e)}}); '
             f'}} }} }}'
         )
@@ -1134,7 +1137,7 @@ def _emit_mode1_create(
     subtitle_override = props.get("subtitle", "")
     if subtitle_override:
         sub_find = _build_text_finder(var, None, subtitle=True)
-        # F11.1: same guard for the subtitle override.
+        # F11.1 + F12: same guard + per-eid attribution for subtitle.
         lines.append(
             f'{{ const _t = {sub_find}; '
             f'if (_t) {{ try {{ '
@@ -1143,6 +1146,7 @@ def _emit_mode1_create(
             f'}} catch (__e) {{ '
             f'__errors.push({{kind:"text_set_failed", '
             f'property:"subtitle", '
+            f'node_id:_t.id, name:_t.name, '
             f'error: String(__e && __e.message || __e)}}); '
             f'}} }} }}'
         )
