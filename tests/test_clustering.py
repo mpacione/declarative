@@ -550,12 +550,16 @@ def test_spacing_fractional_outlier_merges_with_nearest_integer(db):
     collection_id, mode_id = ensure_spacing_collection(db, 1)
     cluster_spacing(db, 1, collection_id, mode_id)
 
-    # Both 10.0 and 9.935 should bind to the same token
+    # Both 10.0 and 9.935 should bind to the same token. Query by
+    # node_id (stable) rather than resolved_value — P5a (Phase E
+    # Pattern 3 fix) snaps the binding's resolved_value to the
+    # canonical integer string ("10") on UPDATE, so the original
+    # "10.0"/"9.935..." strings no longer appear in the column.
     tokens = db.execute(
         """SELECT DISTINCT token_id FROM node_token_bindings
            WHERE property = 'itemSpacing'
              AND binding_status = 'proposed'
-             AND resolved_value IN ('10.0', '9.935135841369629')"""
+             AND node_id IN (1, 2, 3)"""
     ).fetchall()
 
     token_ids = [r[0] for r in tokens]
