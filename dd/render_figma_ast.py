@@ -905,6 +905,34 @@ def _emit_phase1(
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
 
+        # Phase E residual #1 follow-up (2026-04-26): empty
+        # ``figma.createBooleanOperation()`` returns a frozen node
+        # ("object is not extensible"). Setting ANY property on it
+        # throws — name, fills, strokeWeight, booleanOperation, etc.
+        # The Plugin API docs say boolean op nodes need to be
+        # constructed via ``figma.union/subtract/intersect/exclude``
+        # over PRE-EXISTING child geometry; the bare constructor
+        # creates a sealed empty node intended only as a marker.
+        # Codex 2026-04-26 (gpt-5.5 high reasoning) recommended
+        # surgical skip: emit the create call, register M[eid]=
+        # for the verifier walker, but skip every prop write that
+        # would throw. Visual fidelity is unchanged (the bool op
+        # was already an empty FRAME pre-fix); the difference is
+        # we no longer record 8 bogus error entries per node. A
+        # future cycle should construct via ``figma.union(...)``
+        # using child VECTOR geometry once 2-pass walk + path-data
+        # plumbing lands. Phase 3 also short-circuits at the
+        # symmetric site (resize/position/constraints).
+        if etype == "boolean_operation":
+            m_key = spec_key_map.get(id(node), eid)
+            lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')
+            lines.append("")
+            # P3a: keep `mode1_node_ids` / `skipped_node_ids`
+            # bookkeeping unchanged — boolean_operation nodes
+            # outside an instance subtree are NOT mode-1 absorbers
+            # (they're plain Mode-2 emissions).
+            continue
+
         # Mode 2 post-create prop-write boundary. Every naked
         # ``{var}.foo = ...`` assignment emitted below goes into
         # ``node_ops`` instead of ``lines``; at the end of the
@@ -2054,6 +2082,22 @@ def _emit_phase3(
         etype = (
             node.head.type_or_path if node.head.head_kind == "type" else ""
         )
+        # Phase E residual #1 fix (2026-04-26): same hyphen→underscore
+        # normalization as Phase 1 line 762 — Phase 3 was re-reading
+        # raw type_or_path. Without this, the boolean_operation
+        # short-circuit below misses and the node accumulates
+        # constraint_failed errors on the frozen empty bool node.
+        etype = etype.replace("-", "_") if isinstance(etype, str) else ""
+        # Phase E residual #1 follow-up (2026-04-26): boolean_operation
+        # nodes are emitted as empty `figma.createBooleanOperation()`
+        # in Phase 1 with NO prop writes (because the empty bool node
+        # is "object is not extensible"). Phase 3 must symmetrically
+        # skip resize/position/constraints — they'd all throw the
+        # same error. Codex 2026-04-26 (gpt-5.5): "Normalize etype
+        # there too. Right after etype is computed, do
+        # if etype == 'boolean_operation': continue."
+        if etype == "boolean_operation":
+            continue
         is_text = etype in _TEXT_TYPES
 
         rotation_deg = _ast_prop_py(node, "rotation")

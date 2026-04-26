@@ -231,3 +231,159 @@ class TestEndToEndBooleanOperationDispatch:
         assert phase1_only.count("figma.createBooleanOperation()") == 1, (
             "Phase 1 should have exactly 1 createBooleanOperation."
         )
+
+
+class TestBooleanOperationProvWriteSkip:
+    """Phase E residual #1 follow-up — empty createBooleanOperation()
+    returns a frozen node ("object is not extensible"). The renderer
+    must NOT emit prop writes (name/fills/booleanOperation/etc.)
+    for boolean_operation nodes — every write would throw.
+
+    Verified empirically against the live bridge: pre-fix the
+    boolean_operation node accumulated 8 errors per node (4 in
+    Phase 1, 4 in Phase 3). Post-fix: zero errors per node.
+    """
+
+    @staticmethod
+    def _build_doc_with_boolean_op():
+        bool_op = Node(
+            head=NodeHead(
+                head_kind="type",
+                type_or_path="boolean-operation",
+                eid="boolean_operation-1",
+                properties=(
+                    PropAssign(
+                        key="$ext.nid",
+                        value=Literal_(lit_kind="number", raw="2", py=2),
+                        trailer=None,
+                        kind="prop-assign",
+                    ),
+                ),
+            ),
+            block=None,
+        )
+        screen = Node(
+            head=NodeHead(
+                head_kind="type",
+                type_or_path="frame",
+                eid="screen-1",
+                properties=(
+                    PropAssign(
+                        key="$ext.nid",
+                        value=Literal_(lit_kind="number", raw="1", py=1),
+                        trailer=None,
+                        kind="prop-assign",
+                    ),
+                ),
+            ),
+            block=Block(statements=(bool_op,)),
+        )
+        doc = L3Document(top_level=(screen,))
+        nid_map = {id(screen): 1, id(bool_op): 2}
+        spec_key_map = {
+            id(screen): "screen-1",
+            id(bool_op): "boolean_operation-1",
+        }
+        original_name_map = {
+            id(screen): "Screen 1",
+            id(bool_op): "ducky body",
+        }
+        return doc, nid_map, spec_key_map, original_name_map
+
+    def _render(self):
+        doc, nid_map, spec_key_map, original_name_map = (
+            self._build_doc_with_boolean_op()
+        )
+        db_visuals = {
+            1: {"node_type": "FRAME"},
+            2: {
+                "node_type": "BOOLEAN_OPERATION",
+                "fills": [{"type": "SOLID", "color": "#FFD64B"}],
+                "strokeWeight": 1.0,
+                "booleanOperation": "UNION",
+            },
+        }
+        script, _ = render_figma(
+            doc, conn=None, nid_map=nid_map,
+            fonts=[("Inter", "Regular")],
+            spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=db_visuals,
+            ckr_built=True,
+        )
+        return script
+
+    def test_no_name_assignment_for_boolean_op(self):
+        """Pre-fix: `n284.name = "ducky body"` was emitted and threw.
+        Post-fix: no .name = ... line for the boolean_op."""
+        script = self._render()
+        # Find the boolean_op's var. Should be `const n? = figma.createBooleanOperation()`.
+        # Then there should NOT be a `.name = "ducky body"` line.
+        assert "ducky body" not in script, (
+            'Phase E residual #1 follow-up: boolean_op should not '
+            'have a `.name = "ducky body"` write — empty bool ops '
+            'are frozen ("object is not extensible"). Got "ducky '
+            'body" in script.'
+        )
+
+    def test_no_fills_assignment_for_boolean_op(self):
+        script = self._render()
+        # The screen frame may also do `.fills = []` (clear default).
+        # We're checking specifically that the boolean_op's var doesn't
+        # have a `.fills = ...` line. Easiest check: the test fixture
+        # has db_visuals[2].fills = SOLID #FFD64B; a hex of FFD64B
+        # would appear in script if it got emitted. Pre-fix it
+        # appeared as part of `n284.fills = [{type: "SOLID", color:
+        # {r:1.0,g:0.8431,b:0.2941}}]`.
+        assert "FFD64B" not in script.upper(), (
+            "Phase E residual #1 follow-up: boolean_op fills should "
+            "not be emitted (would throw on the empty bool node)."
+        )
+        # Defensive: also no SOLID color value derived from the hex
+        assert "0.8431" not in script, (
+            "Phase E residual #1 follow-up: boolean_op fills hex was "
+            "expanded to RGB color components — the prop write was "
+            "still emitted."
+        )
+
+    def test_no_boolean_operation_property_for_boolean_op(self):
+        script = self._render()
+        # `booleanOperation = "UNION"` is the property write that
+        # specifically motivated this fix. Must NOT appear.
+        assert 'booleanOperation = "UNION"' not in script, (
+            "Phase E residual #1 follow-up: the booleanOperation = "
+            "'UNION' write was the smoking-gun bug."
+        )
+
+    def test_m_eid_still_assigned_for_boolean_op(self):
+        """Critical: M["boolean_operation-1"] = var.id MUST still be
+        emitted so the verifier walker can find the node. Skip the
+        prop writes, NOT the M assignment."""
+        script = self._render()
+        assert 'M["boolean_operation-1"]' in script, (
+            "Phase E residual #1 follow-up: M[eid] must still be "
+            "assigned for boolean_op nodes — without it, the "
+            "verifier walker can't reach the node and reports it "
+            "as missing_child."
+        )
+
+    def test_phase_3_skip_no_resize_for_boolean_op(self):
+        """Symmetric Phase 3 short-circuit. The fixture has no IR
+        sizing on the bool_op, so no resize would be emitted anyway,
+        but the short-circuit also covers constraint emission. The
+        live-bridge run confirmed 0 constraint_failed errors."""
+        script = self._render()
+        # Phase 3 emits resize/x/y/constraints in guarded blocks
+        # with `eid:"boolean_operation-1"`. None of those should
+        # appear (the short-circuit at Phase 3 catches it before any
+        # op is emitted).
+        if "// Phase 3" in script:
+            p3_start = script.index("// Phase 3")
+            phase3 = script[p3_start:]
+            assert 'eid:"boolean_operation-1"' not in phase3, (
+                "Phase E residual #1 follow-up: Phase 3 must "
+                "short-circuit boolean_op nodes (no resize / "
+                "position / constraints / visibility emissions). "
+                "Found eid:\"boolean_operation-1\" reference in "
+                "Phase 3."
+            )
