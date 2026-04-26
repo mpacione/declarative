@@ -141,15 +141,20 @@ def _build_screen_with_union_bool_op() -> tuple[L3Document, dict, dict, dict]:
     return doc, nid_map, spec_key_map, original_name_map
 
 
-@pytest.mark.skip(
-    reason=(
-        "Phase E #3 deferred. Implementation requires F13c-extension "
-        "to BOOL_OP — touches child materialization + node mapping "
-        "semantics, not a property addition. See module docstring."
-    ),
-)
 class TestBoolOpUnionMaterialization:
-    """The contract a future implementer must satisfy."""
+    """Phase E #3 (2026-04-26): IMPLEMENTATION SHIPPED. These tests
+    were the contract anchor; they now PASS because the F13c-extension
+    landed.
+
+    Implementation summary (dd/render_figma_ast.py):
+    - Phase 1: bool_op detected → registered in deferred_bool_ops
+    - Phase 2: merged bottom-up pass over (groups + bool_ops) sorted
+      by depth; emits figma.<op>(children, parent) for bool_ops,
+      figma.group(children, parent) for groups; symmetric handling.
+    - Phase 3: short-circuit removed; bool_op flows through normal
+      resize/position/constraints (post-materialization the node
+      IS extensible — verified empirically).
+    """
 
     def test_emits_figma_union_call_not_create_boolean_operation(self):
         """The script must call figma.union([children], parent), NOT
@@ -244,33 +249,143 @@ class TestBoolOpUnionMaterialization:
         # createBooleanOperation() then M["boolean_operation-1"] = .)
 
 
-@pytest.mark.skip(
-    reason=(
-        "Phase E #3 nested case. Even harder: child bool-op must "
-        "materialize before parent UNION. Implementer should target "
-        "this case once flat case works."
-    ),
-)
 class TestNestedBoolOps:
-    """Nested case: BOOL_OP containing another BOOL_OP. The inner
-    must materialize first (bottom-up), then the outer can union
-    over the inner's result."""
+    """Phase E #3 (2026-04-26): nested case — bool_op containing
+    another bool_op. The merged depth-sorted bottom-up pass means
+    the inner bool_op materializes BEFORE the outer references it.
+    Codex review #1: the registry stores var names symbolically
+    (already true via var_map allocation in Phase 1) so deferred
+    children can be wrapped by deferred parents."""
+
+    @staticmethod
+    def _build_nested_bool_op_doc():
+        """Build:
+          screen-1
+          └── outer_bool_op (UNION)
+              ├── rect_a
+              └── inner_bool_op (SUBTRACT)
+                  ├── rect_b
+                  └── rect_c
+        """
+        rect_a = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="rectangle",
+                eid="rectangle-a",
+                properties=(_ext_nid(101),),
+            ),
+            block=None,
+        )
+        rect_b = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="rectangle",
+                eid="rectangle-b",
+                properties=(_ext_nid(103),),
+            ),
+            block=None,
+        )
+        rect_c = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="rectangle",
+                eid="rectangle-c",
+                properties=(_ext_nid(104),),
+            ),
+            block=None,
+        )
+        inner_bool = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="boolean-operation",
+                eid="boolean_operation-inner",
+                properties=(_ext_nid(102),),
+            ),
+            block=Block(statements=(rect_b, rect_c)),
+        )
+        outer_bool = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="boolean-operation",
+                eid="boolean_operation-outer",
+                properties=(_ext_nid(100),),
+            ),
+            block=Block(statements=(rect_a, inner_bool)),
+        )
+        screen = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="frame", eid="screen-1",
+                properties=(_ext_nid(1),),
+            ),
+            block=Block(statements=(outer_bool,)),
+        )
+        doc = L3Document(top_level=(screen,))
+        nid_map = {
+            id(screen): 1, id(outer_bool): 100, id(rect_a): 101,
+            id(inner_bool): 102, id(rect_b): 103, id(rect_c): 104,
+        }
+        spec_key_map = {
+            id(screen): "screen-1",
+            id(outer_bool): "boolean_operation-outer",
+            id(rect_a): "rectangle-a",
+            id(inner_bool): "boolean_operation-inner",
+            id(rect_b): "rectangle-b",
+            id(rect_c): "rectangle-c",
+        }
+        original_name_map = {
+            id(screen): "Screen 1",
+            id(outer_bool): "outer-bool",
+            id(rect_a): "ra",
+            id(inner_bool): "inner-bool",
+            id(rect_b): "rb",
+            id(rect_c): "rc",
+        }
+        return doc, nid_map, spec_key_map, original_name_map
 
     def test_nested_union_materializes_bottom_up(self):
-        # Synthetic: outer UNION(rect_a, inner SUBTRACT(rect_b, rect_c))
-        pytest.skip("contract-only; implementation pending Phase E #3")
+        doc, nid_map, spec_key_map, original_name_map = (
+            self._build_nested_bool_op_doc()
+        )
+        db_visuals = {
+            1: {"node_type": "FRAME"},
+            100: {"node_type": "BOOLEAN_OPERATION", "boolean_operation": "UNION"},
+            101: {"node_type": "RECTANGLE"},
+            102: {"node_type": "BOOLEAN_OPERATION", "boolean_operation": "SUBTRACT"},
+            103: {"node_type": "RECTANGLE"},
+            104: {"node_type": "RECTANGLE"},
+        }
+        script, _ = render_figma(
+            doc, conn=None, nid_map=nid_map,
+            fonts=[("Inter", "Regular")],
+            spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=db_visuals,
+            ckr_built=True,
+        )
+        # Both materialization calls present
+        assert "figma.subtract(" in script, "inner SUBTRACT must emit"
+        assert "figma.union(" in script, "outer UNION must emit"
+        # Both bool_op M[] entries present
+        assert 'M["boolean_operation-inner"]' in script
+        assert 'M["boolean_operation-outer"]' in script
+        # Critical: subtract appears BEFORE union (bottom-up depth sort)
+        sub_pos = script.index("figma.subtract(")
+        un_pos = script.index("figma.union(")
+        assert sub_pos < un_pos, (
+            "Phase E #3: bottom-up depth ordering — inner bool_op "
+            "(deeper, subtract) must emit BEFORE outer (union) so "
+            "the union call can reference the materialized inner "
+            "node. Got subtract at pos %d, union at pos %d." % (sub_pos, un_pos)
+        )
 
 
-class TestCurrentBehaviorIsTypedPlaceholder:
-    """Pin the CURRENT behavior so the debt is visible. These tests
-    PASS today; they're meant to fail when the implementation lands
-    (or to be inverted to expect the new behavior)."""
+class TestPhaseE3PostFixBehavior:
+    """Phase E #3 (2026-04-26): post-implementation behavior pins.
 
-    def test_current_emits_create_boolean_operation(self):
-        """As of Phase E residual fix: BOOL_OP eids dispatch to
-        figma.createBooleanOperation() (not figma.union()). When
-        Phase E #3 implementation lands, this test should fail and
-        be inverted to expect figma.union()."""
+    Earlier this class was named TestCurrentBehaviorIsTypedPlaceholder
+    and asserted the empty createBooleanOperation() + prop-write skip
+    state from Phase E residual. Phase E #3 reverses both: emission
+    is now figma.union(...) and prop writes ARE emitted
+    post-materialization."""
+
+    def test_no_create_boolean_operation_anywhere(self):
+        """Bare figma.createBooleanOperation() should never appear.
+        Phase E #3 always uses children-first materialization."""
         doc, nid_map, spec_key_map, original_name_map = (
             _build_screen_with_union_bool_op()
         )
@@ -291,18 +406,15 @@ class TestCurrentBehaviorIsTypedPlaceholder:
             db_visuals=db_visuals,
             ckr_built=True,
         )
-        # Today's state: createBooleanOperation() IS emitted.
-        assert "figma.createBooleanOperation()" in script, (
-            "When this test fails, the Phase E #3 implementation "
-            "has landed — invert the assertion to expect "
-            "figma.union(...) instead."
+        assert "figma.createBooleanOperation()" not in script, (
+            "Phase E #3: createBooleanOperation() returns a frozen "
+            "node and is never used in this codebase post-fix. "
+            "All bool_ops materialize via figma.union/subtract/etc."
         )
 
-    def test_current_skips_prop_writes_on_bool_op(self):
-        """Today's BOOL_OP path emits no name/fills/etc writes
-        (the frozen-node skip from Phase E residual). When #3
-        lands, the materialized bool op is extensible and prop
-        writes should fire."""
+    def test_name_emitted_post_materialization(self):
+        """Phase E #3: post-figma.union() the bool_op accepts .name
+        writes. Should appear in script."""
         doc, nid_map, spec_key_map, original_name_map = (
             _build_screen_with_union_bool_op()
         )
@@ -323,9 +435,7 @@ class TestCurrentBehaviorIsTypedPlaceholder:
             db_visuals=db_visuals,
             ckr_built=True,
         )
-        # Today: no .name = "ducky body" line for the bool_op.
-        assert '"ducky body"' not in script, (
-            "If this fails, the Phase E #3 implementation lands and "
-            "prop writes are emitted on the materialized bool op. "
-            "Update the test or invert the assertion."
+        assert '"ducky body"' in script, (
+            "Phase E #3: bool_op name should be emitted in Phase 2's "
+            "bottom-up materialization block, post-figma.union()."
         )

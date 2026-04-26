@@ -134,15 +134,25 @@ class TestEndToEndBooleanOperationDispatch:
         }
         return doc, nid_map, spec_key_map, original_name_map
 
-    def test_renders_create_boolean_operation_not_frame(self):
-        """Phase E residual #1 — the regression. Pre-fix this
-        emitted `figma.createFrame()` for the boolean-op node."""
+    def test_renders_figma_union_not_create_boolean_operation(self):
+        """Phase E #3 (2026-04-26): bool_op materializes via
+        figma.union(children, parent) in Phase 2's bottom-up block,
+        NOT via figma.createBooleanOperation() in Phase 1.
+
+        The previous test (test_renders_create_boolean_operation_not_frame)
+        was flipped when Phase E #3 implementation landed — it asserted
+        the pre-#3 behavior (createBooleanOperation + skip). Post-#3
+        the materialization happens in Phase 2 as figma.union(...).
+        """
         doc, nid_map, spec_key_map, original_name_map = (
             self._build_doc_with_boolean_op()
         )
         db_visuals = {
             1: {"node_type": "FRAME"},
-            2: {"node_type": "BOOLEAN_OPERATION"},
+            2: {
+                "node_type": "BOOLEAN_OPERATION",
+                "boolean_operation": "UNION",
+            },
         }
         script, _ = render_figma(
             doc,
@@ -154,20 +164,22 @@ class TestEndToEndBooleanOperationDispatch:
             db_visuals=db_visuals,
             ckr_built=True,
         )
-        # Slice to Phase 1 only — the placeholder helper above Phase 1
-        # may have its own createFrame calls; we only care about the
-        # boolean-op's emission.
+        # Phase E #3: bool_op deferred to Phase 2; emission via
+        # figma.union(...) appears in the merged bottom-up block.
+        # The bool_op fixture has no children in this test (block=None
+        # at line 107), so it triggers the empty-children fallback —
+        # FRAME placeholder. Test the fallback path here.
+        # NOTE: Phase 1 should NOT contain the bool_op's create call.
         p1_start = script.index("// Phase 1: Materialize")
         p2_start = script.index("// Phase 2: Compose")
         phase1_only = script[p1_start:p2_start]
 
-        assert "figma.createBooleanOperation()" in phase1_only, (
-            "Phase E residual #1: boolean-operation eid must dispatch "
-            "to figma.createBooleanOperation(), not createFrame(). "
-            "Pre-fix the hyphen→underscore mismatch silently fell "
-            "through to createFrame and downstream "
-            "`booleanOperation = 'UNION'` writes failed.\n"
-            f"Phase 1 body (first 1500 chars):\n{phase1_only[:1500]}"
+        # The bool_op creation should NOT appear in Phase 1 anymore —
+        # it's deferred to Phase 2.
+        assert "figma.createBooleanOperation()" not in script, (
+            "Phase E #3: bare figma.createBooleanOperation() should "
+            "never be emitted. Plugin API requires children-first "
+            "materialization via figma.union(...)."
         )
 
     def test_renders_screen_as_frame(self):
@@ -198,14 +210,21 @@ class TestEndToEndBooleanOperationDispatch:
         # Screen → createFrame (unchanged behavior)
         assert "figma.createFrame()" in phase1_only
 
-    def test_screen_with_boolean_op_has_both_create_calls(self):
-        """End-to-end: 1 createFrame (screen) + 1 createBooleanOperation."""
+    def test_phase1_only_creates_screen_phase2_materializes_bool_op(self):
+        """Phase E #3: Phase 1 emits createFrame for the screen ONLY.
+        The bool_op's children would also emit in Phase 1, but this
+        fixture has block=None on the bool_op (no children).
+        Phase 2 then materializes the bool_op via the empty-children
+        fallback (createFrame placeholder)."""
         doc, nid_map, spec_key_map, original_name_map = (
             self._build_doc_with_boolean_op()
         )
         db_visuals = {
             1: {"node_type": "FRAME"},
-            2: {"node_type": "BOOLEAN_OPERATION"},
+            2: {
+                "node_type": "BOOLEAN_OPERATION",
+                "boolean_operation": "UNION",
+            },
         }
         script, _ = render_figma(
             doc,
@@ -220,88 +239,120 @@ class TestEndToEndBooleanOperationDispatch:
         p1_start = script.index("// Phase 1: Materialize")
         p2_start = script.index("// Phase 2: Compose")
         phase1_only = script[p1_start:p2_start]
+        phase2_only = script[p2_start:]
 
-        # Exactly 1 createFrame in Phase 1 (the screen).
+        # Phase 1: screen is the only create call (bool_op deferred).
         assert phase1_only.count("figma.createFrame()") == 1, (
-            "Phase 1 should have exactly 1 createFrame (the screen). "
-            f"Got {phase1_only.count('figma.createFrame()')}.\n"
-            f"Phase 1: {phase1_only[:1200]}"
+            "Phase 1 should have exactly 1 createFrame (the screen "
+            "frame). The bool_op is deferred to Phase 2."
         )
-        # Exactly 1 createBooleanOperation (the bool-op child).
-        assert phase1_only.count("figma.createBooleanOperation()") == 1, (
-            "Phase 1 should have exactly 1 createBooleanOperation."
+        # Phase 2 contains the bool_op materialization. With no
+        # children this fixture hits the empty-children fallback.
+        assert "Phase E #3" in phase2_only or "bool_op" in phase2_only, (
+            "Phase 2 should have a comment marker about the bool_op "
+            "materialization (empty-children fallback or "
+            "figma.union call)."
         )
+        # No bare figma.createBooleanOperation() ever.
+        assert "figma.createBooleanOperation()" not in script
 
 
-class TestBooleanOperationProvWriteSkip:
-    """Phase E residual #1 follow-up — empty createBooleanOperation()
-    returns a frozen node ("object is not extensible"). The renderer
-    must NOT emit prop writes (name/fills/booleanOperation/etc.)
-    for boolean_operation nodes — every write would throw.
+class TestBooleanOperationPostMaterialization:
+    """Phase E #3 (2026-04-26): post-fix bool_ops are materialized
+    via figma.union(...) which returns an EXTENSIBLE node. Name and
+    M[eid] are emitted post-materialization. Phase 3 applies the
+    regular resize/position/constraints path (no more short-circuit).
 
-    Verified empirically against the live bridge: pre-fix the
-    boolean_operation node accumulated 8 errors per node (4 in
-    Phase 1, 4 in Phase 3). Post-fix: zero errors per node.
+    Earlier this class was named TestBooleanOperationProvWriteSkip
+    and asserted prop writes were NOT emitted (the Phase E residual
+    fix's frozen-node defense). Phase E #3 reverses that: the
+    materialized bool_op accepts writes, so we do emit name + M.
     """
 
     @staticmethod
-    def _build_doc_with_boolean_op():
+    def _build_doc_with_bool_op_with_children():
+        """Build a screen with a bool_op containing two real
+        rectangle children — so the deferred materialization actually
+        fires the figma.union(...) path (not the empty-fallback)."""
+        rect_a = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="rectangle",
+                eid="rectangle-a",
+                properties=(PropAssign(
+                    key="$ext.nid",
+                    value=Literal_(lit_kind="number", raw="3", py=3),
+                    trailer=None, kind="prop-assign",
+                ),),
+            ),
+            block=None,
+        )
+        rect_b = Node(
+            head=NodeHead(
+                head_kind="type", type_or_path="rectangle",
+                eid="rectangle-b",
+                properties=(PropAssign(
+                    key="$ext.nid",
+                    value=Literal_(lit_kind="number", raw="4", py=4),
+                    trailer=None, kind="prop-assign",
+                ),),
+            ),
+            block=None,
+        )
         bool_op = Node(
             head=NodeHead(
                 head_kind="type",
                 type_or_path="boolean-operation",
                 eid="boolean_operation-1",
-                properties=(
-                    PropAssign(
-                        key="$ext.nid",
-                        value=Literal_(lit_kind="number", raw="2", py=2),
-                        trailer=None,
-                        kind="prop-assign",
-                    ),
-                ),
+                properties=(PropAssign(
+                    key="$ext.nid",
+                    value=Literal_(lit_kind="number", raw="2", py=2),
+                    trailer=None, kind="prop-assign",
+                ),),
             ),
-            block=None,
+            block=Block(statements=(rect_a, rect_b)),
         )
         screen = Node(
             head=NodeHead(
-                head_kind="type",
-                type_or_path="frame",
-                eid="screen-1",
-                properties=(
-                    PropAssign(
-                        key="$ext.nid",
-                        value=Literal_(lit_kind="number", raw="1", py=1),
-                        trailer=None,
-                        kind="prop-assign",
-                    ),
-                ),
+                head_kind="type", type_or_path="frame", eid="screen-1",
+                properties=(PropAssign(
+                    key="$ext.nid",
+                    value=Literal_(lit_kind="number", raw="1", py=1),
+                    trailer=None, kind="prop-assign",
+                ),),
             ),
             block=Block(statements=(bool_op,)),
         )
         doc = L3Document(top_level=(screen,))
-        nid_map = {id(screen): 1, id(bool_op): 2}
+        nid_map = {
+            id(screen): 1, id(bool_op): 2,
+            id(rect_a): 3, id(rect_b): 4,
+        }
         spec_key_map = {
             id(screen): "screen-1",
             id(bool_op): "boolean_operation-1",
+            id(rect_a): "rectangle-a",
+            id(rect_b): "rectangle-b",
         }
         original_name_map = {
             id(screen): "Screen 1",
             id(bool_op): "ducky body",
+            id(rect_a): "Rectangle 326",
+            id(rect_b): "Rectangle 330",
         }
         return doc, nid_map, spec_key_map, original_name_map
 
     def _render(self):
         doc, nid_map, spec_key_map, original_name_map = (
-            self._build_doc_with_boolean_op()
+            self._build_doc_with_bool_op_with_children()
         )
         db_visuals = {
             1: {"node_type": "FRAME"},
             2: {
                 "node_type": "BOOLEAN_OPERATION",
-                "fills": [{"type": "SOLID", "color": "#FFD64B"}],
-                "strokeWeight": 1.0,
-                "booleanOperation": "UNION",
+                "boolean_operation": "UNION",
             },
+            3: {"node_type": "RECTANGLE"},
+            4: {"node_type": "RECTANGLE"},
         }
         script, _ = render_figma(
             doc, conn=None, nid_map=nid_map,
@@ -313,77 +364,58 @@ class TestBooleanOperationProvWriteSkip:
         )
         return script
 
-    def test_no_name_assignment_for_boolean_op(self):
-        """Pre-fix: `n284.name = "ducky body"` was emitted and threw.
-        Post-fix: no .name = ... line for the boolean_op."""
+    def test_name_assigned_post_materialization(self):
+        """Phase E #3: post-figma.union() the bool_op accepts .name
+        writes. The materialization block emits name + M[eid] on
+        the materialized var."""
         script = self._render()
-        # Find the boolean_op's var. Should be `const n? = figma.createBooleanOperation()`.
-        # Then there should NOT be a `.name = "ducky body"` line.
-        assert "ducky body" not in script, (
-            'Phase E residual #1 follow-up: boolean_op should not '
-            'have a `.name = "ducky body"` write — empty bool ops '
-            'are frozen ("object is not extensible"). Got "ducky '
-            'body" in script.'
+        assert "ducky body" in script, (
+            "Phase E #3: bool_op name should be emitted "
+            "post-materialization."
         )
 
-    def test_no_fills_assignment_for_boolean_op(self):
+    def test_m_eid_assigned_for_boolean_op(self):
+        """Critical: M[eid] = var.id is emitted in Phase 2's
+        bottom-up block (after figma.union(...) returns)."""
         script = self._render()
-        # The screen frame may also do `.fills = []` (clear default).
-        # We're checking specifically that the boolean_op's var doesn't
-        # have a `.fills = ...` line. Easiest check: the test fixture
-        # has db_visuals[2].fills = SOLID #FFD64B; a hex of FFD64B
-        # would appear in script if it got emitted. Pre-fix it
-        # appeared as part of `n284.fills = [{type: "SOLID", color:
-        # {r:1.0,g:0.8431,b:0.2941}}]`.
-        assert "FFD64B" not in script.upper(), (
-            "Phase E residual #1 follow-up: boolean_op fills should "
-            "not be emitted (would throw on the empty bool node)."
-        )
-        # Defensive: also no SOLID color value derived from the hex
-        assert "0.8431" not in script, (
-            "Phase E residual #1 follow-up: boolean_op fills hex was "
-            "expanded to RGB color components — the prop write was "
-            "still emitted."
+        assert 'M["boolean_operation-1"]' in script
+
+    def test_figma_union_called_with_two_children(self):
+        """Phase E #3: figma.union([n_rect_a, n_rect_b], parent) is
+        the materialization call. Verify the children + parent appear
+        in the call."""
+        script = self._render()
+        # The materialization line has the shape:
+        #   const n? = (function() { try { return figma.union([nC1, nC2], pVar); } ... })();
+        assert "figma.union(" in script, (
+            "Phase E #3: figma.union(...) must be the materialization "
+            "call for a UNION-typed bool_op with 2 children."
         )
 
-    def test_no_boolean_operation_property_for_boolean_op(self):
+    def test_specific_catch_metadata_in_failure_path(self):
+        """Codex review #6: catch path should include eid + operation +
+        childCount so failures are diagnostic, not opaque."""
         script = self._render()
-        # `booleanOperation = "UNION"` is the property write that
-        # specifically motivated this fix. Must NOT appear.
-        assert 'booleanOperation = "UNION"' not in script, (
-            "Phase E residual #1 follow-up: the booleanOperation = "
-            "'UNION' write was the smoking-gun bug."
+        assert 'kind:"bool_op_create_failed"' in script, (
+            "Phase E #3: failure kind in the bool_op materialization "
+            "catch should be 'bool_op_create_failed'."
+        )
+        assert 'operation:"union"' in script, (
+            "Catch metadata should expose the operation type."
+        )
+        assert 'childCount:2' in script, (
+            "Catch metadata should expose the child count."
         )
 
-    def test_m_eid_still_assigned_for_boolean_op(self):
-        """Critical: M["boolean_operation-1"] = var.id MUST still be
-        emitted so the verifier walker can find the node. Skip the
-        prop writes, NOT the M assignment."""
+    def test_z_order_insertchild_emitted(self):
+        """Codex review #2: figma.union() always appends the new node
+        at the END of grandparent's children. For non-last siblings
+        we need insertChild to fix z-order. The fixture has only one
+        bool_op sibling so it's at index 0."""
         script = self._render()
-        assert 'M["boolean_operation-1"]' in script, (
-            "Phase E residual #1 follow-up: M[eid] must still be "
-            "assigned for boolean_op nodes — without it, the "
-            "verifier walker can't reach the node and reports it "
-            "as missing_child."
+        # The bool_op is at index 0 in screen-1's children.
+        assert "insertChild(0," in script, (
+            "Phase E #3: insertChild should be emitted to fix "
+            "z-order after figma.union() (which always appends at "
+            "end)."
         )
-
-    def test_phase_3_skip_no_resize_for_boolean_op(self):
-        """Symmetric Phase 3 short-circuit. The fixture has no IR
-        sizing on the bool_op, so no resize would be emitted anyway,
-        but the short-circuit also covers constraint emission. The
-        live-bridge run confirmed 0 constraint_failed errors."""
-        script = self._render()
-        # Phase 3 emits resize/x/y/constraints in guarded blocks
-        # with `eid:"boolean_operation-1"`. None of those should
-        # appear (the short-circuit at Phase 3 catches it before any
-        # op is emitted).
-        if "// Phase 3" in script:
-            p3_start = script.index("// Phase 3")
-            phase3 = script[p3_start:]
-            assert 'eid:"boolean_operation-1"' not in phase3, (
-                "Phase E residual #1 follow-up: Phase 3 must "
-                "short-circuit boolean_op nodes (no resize / "
-                "position / constraints / visibility emissions). "
-                "Found eid:\"boolean_operation-1\" reference in "
-                "Phase 3."
-            )

@@ -341,6 +341,18 @@ def render_figma(
     # all descendants are created. Phase 3 reads it to emit
     # group position-only ops (no resize / no layoutSizing).
     deferred_groups: dict[int, dict[str, Any]] = {}
+    # Phase E #3 (2026-04-26): same pattern for BOOLEAN_OPERATION
+    # nodes. Plugin API requires children to exist before
+    # `figma.union/subtract/intersect/exclude([children], parent)`
+    # can wrap them. Phase 1 registers the bool_op + its operation
+    # type; Phase 2 walks bottom-up after the appendChild loop and
+    # emits the materialization call. Phase 3 then applies regular
+    # resize/position/constraints (post-materialization the bool
+    # node IS extensible — verified empirically against the live
+    # bridge: name/fills/strokes/x/y/rotation/opacity/visible all
+    # accept writes). See test_boolean_operation_fidelity_debt.py
+    # for the contract this implementation satisfies.
+    deferred_bool_ops: dict[int, dict[str, Any]] = {}
     (
         phase1, uses_placeholder, phase1_refs,
         override_deferred, absorbed_node_ids,
@@ -351,6 +363,7 @@ def render_figma(
         node_id_vars=node_id_vars,
         descendant_visibility_resolver=descendant_visibility_resolver,
         deferred_groups=deferred_groups,
+        deferred_bool_ops=deferred_bool_ops,
     )
     preamble = render_figma_preamble(
         doc, conn, nid_map,
@@ -364,6 +377,7 @@ def render_figma(
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
         deferred_groups=deferred_groups,
+        deferred_bool_ops=deferred_bool_ops,
         absorbed_node_ids=absorbed_node_ids,
     )
     phase3 = _emit_phase3(
@@ -654,6 +668,7 @@ def _emit_phase1(
         dict[str, dict[str, str]]
     ] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
+    deferred_bool_ops: Optional[dict[int, dict[str, Any]]] = None,
 ) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str], set[int]]:
     """Phase 1 — materialize nodes + set intrinsic properties.
 
@@ -713,6 +728,8 @@ def _emit_phase1(
     node_id_vars = node_id_vars or {}
     if deferred_groups is None:
         deferred_groups = {}
+    if deferred_bool_ops is None:
+        deferred_bool_ops = {}
     lines: list[str] = []
     lines.append(
         "// Phase 1: Materialize — create nodes, set intrinsic properties"
@@ -902,36 +919,52 @@ def _emit_phase1(
             }
             continue
 
+        # Phase E #3 (2026-04-26): BOOLEAN_OPERATION nodes use the
+        # F13c deferred pattern. Plugin API requires children to
+        # exist BEFORE figma.union/subtract/intersect/exclude can
+        # wrap them — so Phase 1 skips emission entirely (no create
+        # call, no name, no visual, no M assign). The bool_op's
+        # children still emit normally in Phase 1 as their own
+        # primitives. Phase 2 walks deferred_bool_ops bottom-up
+        # AFTER appendChild loop, calling figma.<op>(children, parent)
+        # which creates the bool node + auto-adopts the children.
+        # Phase 3 then applies regular resize/position/constraints
+        # (post-materialization the bool node IS extensible —
+        # verified empirically, see test_boolean_operation_dispatch.py).
+        # Codex 2026-04-26 (gpt-5.5 high reasoning) review: 9
+        # specific concerns addressed in this implementation —
+        # symbolic var names (already true), z-order preservation
+        # via insertChild (mirror F13c), whitelist operation mapping
+        # (no .lower()), consistent fallback metadata, etc.
+        if etype == "boolean_operation":
+            # Read the operation type from raw_visual (db_visuals).
+            # Whitelist mapping per Codex critique — silent fallback
+            # to .lower() makes corrupted IR hard to diagnose.
+            raw_op = raw_visual.get("boolean_operation") if raw_visual else None
+            op_map = {
+                "UNION": "union",
+                "SUBTRACT": "subtract",
+                "INTERSECT": "intersect",
+                "EXCLUDE": "exclude",
+            }
+            operation_js = op_map.get(raw_op, "union")
+            deferred_bool_ops[id(node)] = {
+                "spec_key": spec_key_map.get(id(node), eid),
+                "element": element,
+                "var": var,
+                "node": node,
+                "original_name": original_name_map.get(id(node)) or eid,
+                "operation_js": operation_js,
+                "raw_op": raw_op,
+                "raw_visual": raw_visual,
+            }
+            continue
+
+        # Non-deferred path: emit the create call and per-node
+        # prop writes. (Bool ops took the deferred path above and
+        # already `continue`d; groups did the same higher up.)
         create_call = _TYPE_TO_CREATE_CALL.get(etype, "figma.createFrame()")
         lines.append(f"const {var} = {create_call};")
-
-        # Phase E residual #1 follow-up (2026-04-26): empty
-        # ``figma.createBooleanOperation()`` returns a frozen node
-        # ("object is not extensible"). Setting ANY property on it
-        # throws — name, fills, strokeWeight, booleanOperation, etc.
-        # The Plugin API docs say boolean op nodes need to be
-        # constructed via ``figma.union/subtract/intersect/exclude``
-        # over PRE-EXISTING child geometry; the bare constructor
-        # creates a sealed empty node intended only as a marker.
-        # Codex 2026-04-26 (gpt-5.5 high reasoning) recommended
-        # surgical skip: emit the create call, register M[eid]=
-        # for the verifier walker, but skip every prop write that
-        # would throw. Visual fidelity is unchanged (the bool op
-        # was already an empty FRAME pre-fix); the difference is
-        # we no longer record 8 bogus error entries per node. A
-        # future cycle should construct via ``figma.union(...)``
-        # using child VECTOR geometry once 2-pass walk + path-data
-        # plumbing lands. Phase 3 also short-circuits at the
-        # symmetric site (resize/position/constraints).
-        if etype == "boolean_operation":
-            m_key = spec_key_map.get(id(node), eid)
-            lines.append(f'M["{_escape_js(m_key)}"] = {var}.id;')
-            lines.append("")
-            # P3a: keep `mode1_node_ids` / `skipped_node_ids`
-            # bookkeeping unchanged — boolean_operation nodes
-            # outside an instance subtree are NOT mode-1 absorbers
-            # (they're plain Mode-2 emissions).
-            continue
 
         # Mode 2 post-create prop-write boundary. Every naked
         # ``{var}.foo = ...`` assignment emitted below goes into
@@ -1519,6 +1552,7 @@ def _emit_phase2(
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
+    deferred_bool_ops: Optional[dict[int, dict[str, Any]]] = None,
     absorbed_node_ids: Optional[set[int]] = None,
 ) -> list[str]:
     """Phase 2 — wire tree via appendChild; emit text characters +
@@ -1548,6 +1582,8 @@ def _emit_phase2(
     spec_elements = spec_elements or {}
     if deferred_groups is None:
         deferred_groups = {}
+    if deferred_bool_ops is None:
+        deferred_bool_ops = {}
     if absorbed_node_ids is None:
         absorbed_node_ids = set()
     lines: list[str] = []
@@ -1564,19 +1600,30 @@ def _emit_phase2(
     # `direct_children` preserves insertion order = AST walk order.
     for ginfo in deferred_groups.values():
         ginfo.setdefault("direct_children", [])
+    # Phase E #3: same registry for bool_ops.
+    for binfo in deferred_bool_ops.values():
+        binfo.setdefault("direct_children", [])
 
     def _resolve_nondeferred_ancestor(start_parent: Optional[Node]) -> Optional[Node]:
         """Walk up the parent chain until we find a non-deferred
         ancestor (or None at the top). Used to redirect appendChild
-        when the immediate parent is a deferred group (which doesn't
-        exist as a Figma node yet)."""
+        when the immediate parent is a deferred group OR bool_op
+        (which don't exist as Figma nodes yet)."""
         cur = start_parent
-        while cur is not None and id(cur) in deferred_groups:
+        while cur is not None and (
+            id(cur) in deferred_groups or id(cur) in deferred_bool_ops
+        ):
             cur = parent_by_node_id.get(id(cur))
         return cur
 
     def _is_group(node: Optional[Node]) -> bool:
         return node is not None and id(node) in deferred_groups
+
+    def _is_bool_op(node: Optional[Node]) -> bool:
+        return node is not None and id(node) in deferred_bool_ops
+
+    def _is_deferred(node: Optional[Node]) -> bool:
+        return _is_group(node) or _is_bool_op(node)
 
     for node, parent in walk:
         if parent is None:
@@ -1624,35 +1671,43 @@ def _emit_phase2(
                 f'child_eid:"{_escape_js(eid)}"}});'
             )
             continue
-        # F13c: skip GROUP nodes here — they don't exist as Figma
-        # nodes yet. The post-loop bottom-up block creates them via
-        # `figma.group(direct_children, grandparent)` AFTER all
-        # descendants are wired into the temporary grandparent.
-        if _is_group(node):
-            # Still register this group as a direct child of any
-            # outer deferred group, so the outer group's
-            # direct_children list contains this group's var
-            # (the var name is reserved in var_map; figma.group()
-            # will produce the actual node, and we'll bind the
-            # var to it via `const <var> = figma.group(...)`
-            # in the bottom-up block below).
-            if parent is not None and _is_group(parent):
-                deferred_groups[id(parent)]["direct_children"].append(
-                    var_map[id(node)]
-                )
+        # F13c + Phase E #3: skip GROUP and BOOL_OP nodes here —
+        # they don't exist as Figma nodes yet. The post-loop
+        # bottom-up block creates them via figma.group(...) /
+        # figma.<op>(...) AFTER all descendants are wired into the
+        # temporary grandparent.
+        if _is_deferred(node):
+            # Register this deferred node's var in any outer
+            # deferred parent's direct_children so the outer's
+            # bottom-up block knows what to wrap. The var name is
+            # reserved in var_map; the materialization call (group
+            # or bool_op) will bind it via `const <var> = figma...`.
+            if parent is not None:
+                if _is_group(parent):
+                    deferred_groups[id(parent)]["direct_children"].append(
+                        var_map[id(node)]
+                    )
+                elif _is_bool_op(parent):
+                    deferred_bool_ops[id(parent)]["direct_children"].append(
+                        var_map[id(node)]
+                    )
             continue
         child_var = var_map[id(node)]
-        # F13c: when the immediate parent is a deferred group, the
-        # group doesn't exist yet — append to the nearest non-
-        # deferred ancestor (typically the group's grandparent) so
-        # the descendant has a real parent to live on temporarily.
-        # `figma.group()` later will move it into the new group as
-        # a side effect of being passed in the children-array. Also
-        # record this child's var in the immediate-parent group's
-        # direct_children so the bottom-up block knows what to wrap.
+        # F13c + Phase E #3: when the immediate parent is a
+        # deferred group OR bool_op, the parent doesn't exist yet —
+        # append to the nearest non-deferred ancestor (typically the
+        # grandparent) so the descendant has a real parent to live
+        # on temporarily. figma.group()/figma.<op>() later will move
+        # it into the new node as a side effect of being passed in
+        # the children-array. Also record this child's var in the
+        # immediate-parent's direct_children so the bottom-up block
+        # knows what to wrap.
         effective_parent = parent
-        if _is_group(parent):
-            deferred_groups[id(parent)]["direct_children"].append(child_var)
+        if _is_deferred(parent):
+            if _is_group(parent):
+                deferred_groups[id(parent)]["direct_children"].append(child_var)
+            else:  # _is_bool_op(parent)
+                deferred_bool_ops[id(parent)]["direct_children"].append(child_var)
             resolved_anc = _resolve_nondeferred_ancestor(parent)
             if resolved_anc is not None and id(resolved_anc) in var_map:
                 effective_parent = resolved_anc
@@ -1752,41 +1807,50 @@ def _emit_phase2(
                     f'error: String(__e && __e.message || __e)}}); }}'
                 )
 
-    # F13c: bottom-up creation of deferred GROUPs. Innermost first
-    # so each outer group's `direct_children` already contains its
-    # inner-group vars (Plugin API requires children to exist before
-    # `figma.group()` can wrap them).
+    # F13c + Phase E #3: bottom-up creation of deferred GROUPs and
+    # BOOL_OPs. Innermost first so each outer deferred-node's
+    # `direct_children` already contains its inner-deferred vars
+    # (Plugin API requires children to exist before figma.group() /
+    # figma.<op>() can wrap them). Groups and bool_ops are
+    # materialized in one merged pass sorted by depth so a
+    # bool_op-inside-group emits BEFORE the wrapping group, and
+    # vice-versa.
     #
-    # AST depth approximates DOM depth: a group's depth is the
+    # AST depth approximates DOM depth: a node's depth is the
     # length of its parent chain. Sort descending = deepest first.
-    if deferred_groups:
-        # Compute depth per group node by walking up parent_by_node_id.
-        def _depth(n: Node) -> int:
-            d = 0
-            cur = parent_by_node_id.get(id(n))
-            while cur is not None:
-                d += 1
-                cur = parent_by_node_id.get(id(cur))
-            return d
+    def _depth(n: Node) -> int:
+        d = 0
+        cur = parent_by_node_id.get(id(n))
+        while cur is not None:
+            d += 1
+            cur = parent_by_node_id.get(id(cur))
+        return d
 
-        groups_by_depth = sorted(
-            deferred_groups.items(),
-            key=lambda kv: -_depth(kv[1]["node"]),
-        )
+    # Merge groups + bool_ops into one bottom-up pass so a bool_op
+    # nested inside a group materializes BEFORE the group call
+    # references it (and vice-versa).
+    deferred_all: list[tuple[str, dict[str, Any]]] = []
+    for ginfo in deferred_groups.values():
+        deferred_all.append(("group", ginfo))
+    for binfo in deferred_bool_ops.values():
+        deferred_all.append(("bool_op", binfo))
 
-        for group_node_id, ginfo in groups_by_depth:
-            gvar = ginfo["var"]
-            spec_key = ginfo["spec_key"]
-            err_g = _escape_js(spec_key)
-            original_name = ginfo["original_name"]
+    if deferred_all:
+        deferred_all.sort(key=lambda item: -_depth(item[1]["node"]))
+
+        for kind, info in deferred_all:
+            dvar = info["var"]
+            spec_key = info["spec_key"]
+            err_d = _escape_js(spec_key)
+            original_name = info["original_name"]
             name_js = _escape_js(original_name)
-            direct_children = ginfo["direct_children"]
-            # Find grandparent (nearest non-deferred ancestor of the
-            # group itself). For top-level groups, this is the doc
-            # root or the screen frame.
-            group_node = ginfo["node"]
+            direct_children = info["direct_children"]
+            d_node = info["node"]
+            # Find grandparent (nearest non-deferred ancestor). For
+            # top-level deferred nodes this is the doc root or the
+            # screen frame.
             grandparent_node = _resolve_nondeferred_ancestor(
-                parent_by_node_id.get(id(group_node))
+                parent_by_node_id.get(id(d_node))
             )
             if grandparent_node is None:
                 grandparent_var = "_rootPage"
@@ -1795,72 +1859,114 @@ def _emit_phase2(
             else:
                 grandparent_var = var_map[id(grandparent_node)]
 
-            if not direct_children:
-                # Empty group — Figma's Plugin API rejects empty
-                # `figma.group([], ...)`. Substitute a frame
-                # placeholder so var_map / M[...] mapping survives.
-                # This shouldn't normally happen (groups in source
-                # always have at least one child), but defensive.
-                lines.append(
-                    f'// F13c: group {spec_key!r} had no direct '
-                    f'children — creating empty FRAME placeholder.'
-                )
-                lines.append(
-                    f'const {gvar} = figma.createFrame();'
-                )
-                lines.append(
-                    f'try {{ {grandparent_var}.appendChild({gvar}); }} '
-                    f'catch (__e) {{ __errors.push({{eid:"{err_g}", '
-                    f'kind:"group_empty_append_failed", '
-                    f'error: String(__e && __e.message || __e)}}); }}'
-                )
-            else:
-                children_array = ", ".join(direct_children)
-                lines.append(
-                    f'const {gvar} = (function() {{ '
-                    f'try {{ '
-                    f'return figma.group([{children_array}], '
-                    f'{grandparent_var}); '
-                    f'}} catch (__e) {{ '
-                    f'__errors.push({{eid:"{err_g}", '
-                    f'kind:"group_create_failed", '
-                    f'error: String(__e && __e.message || __e)}}); '
-                    f'return figma.createFrame(); '
-                    f'}} '
-                    f'}})();'
-                )
+            # Materialization shape varies by kind.
+            if kind == "group":
+                # F13c: figma.group(children, parent)
+                empty_kind = "group_empty_append_failed"
+                fail_kind = "group_create_failed"
+                name_fail_kind = "group_name_failed"
+                insert_fail_kind = "group_insert_failed"
+                if not direct_children:
+                    lines.append(
+                        f'// F13c: group {spec_key!r} had no direct '
+                        f'children — creating empty FRAME placeholder.'
+                    )
+                    lines.append(f'const {dvar} = figma.createFrame();')
+                    lines.append(
+                        f'try {{ {grandparent_var}.appendChild({dvar}); }} '
+                        f'catch (__e) {{ __errors.push({{eid:"{err_d}", '
+                        f'kind:"{empty_kind}", '
+                        f'error: String(__e && __e.message || __e)}}); }}'
+                    )
+                else:
+                    children_array = ", ".join(direct_children)
+                    lines.append(
+                        f'const {dvar} = (function() {{ '
+                        f'try {{ '
+                        f'return figma.group([{children_array}], '
+                        f'{grandparent_var}); '
+                        f'}} catch (__e) {{ '
+                        f'__errors.push({{eid:"{err_d}", '
+                        f'kind:"{fail_kind}", '
+                        f'error: String(__e && __e.message || __e)}}); '
+                        f'return figma.createFrame(); '
+                        f'}} '
+                        f'}})();'
+                    )
+            else:  # kind == "bool_op"
+                # Phase E #3: figma.<op>(children, parent)
+                operation_js = info["operation_js"]
+                empty_kind = "bool_op_empty_failed"
+                fail_kind = "bool_op_create_failed"
+                name_fail_kind = "bool_op_name_failed"
+                insert_fail_kind = "bool_op_insert_failed"
+                if not direct_children:
+                    # Empty bool_op — Plugin API rejects
+                    # figma.<op>([], ...). Substitute a frame
+                    # placeholder so var_map / M[...] mapping survives
+                    # and downstream prop writes have a real target.
+                    lines.append(
+                        f'// Phase E #3: bool_op {spec_key!r} had no '
+                        f'direct children (op={operation_js!r}) — '
+                        f'creating empty FRAME placeholder.'
+                    )
+                    lines.append(f'const {dvar} = figma.createFrame();')
+                    lines.append(
+                        f'try {{ {grandparent_var}.appendChild({dvar}); }} '
+                        f'catch (__e) {{ __errors.push({{eid:"{err_d}", '
+                        f'kind:"{empty_kind}", '
+                        f'error: String(__e && __e.message || __e)}}); }}'
+                    )
+                else:
+                    children_array = ", ".join(direct_children)
+                    # Specific catch metadata per Codex review #6:
+                    # eid + operation + childCount so failures are
+                    # diagnostic. Fallback to figma.createFrame()
+                    # so subsequent prop writes have a target.
+                    n_children = len(direct_children)
+                    lines.append(
+                        f'const {dvar} = (function() {{ '
+                        f'try {{ '
+                        f'return figma.{operation_js}([{children_array}], '
+                        f'{grandparent_var}); '
+                        f'}} catch (__e) {{ '
+                        f'__errors.push({{eid:"{err_d}", '
+                        f'kind:"{fail_kind}", '
+                        f'operation:"{operation_js}", '
+                        f'childCount:{n_children}, '
+                        f'error: String(__e && __e.message || __e)}}); '
+                        f'return figma.createFrame(); '
+                        f'}} '
+                        f'}})();'
+                    )
+
             lines.append(
-                f'try {{ {gvar}.name = "{name_js}"; }} catch (__e) {{ '
-                f'__errors.push({{eid:"{err_g}", '
-                f'kind:"group_name_failed", '
+                f'try {{ {dvar}.name = "{name_js}"; }} catch (__e) {{ '
+                f'__errors.push({{eid:"{err_d}", '
+                f'kind:"{name_fail_kind}", '
                 f'error: String(__e && __e.message || __e)}}); }}'
             )
-            lines.append(f'M["{_escape_js(spec_key)}"] = {gvar}.id;')
-            # Z-order: figma.group() always appends the new group at
-            # the END of grandparent's children. For groups that
-            # aren't the last sibling in source order, this puts them
-            # on top of subsequent siblings. Use insertChild at the
-            # correct sort_order to fix.
-            #
-            # Compute target_idx from the AST: count non-skipped
-            # siblings that precede this group in walk order.
+            lines.append(f'M["{_escape_js(spec_key)}"] = {dvar}.id;')
+
+            # Z-order: figma.group()/figma.<op>() always appends the
+            # new node at the END of grandparent's children. For
+            # nodes that aren't the last sibling in source order,
+            # this puts them on top of subsequent siblings. Use
+            # insertChild at the correct sort_order to fix.
             if grandparent_node is not None:
                 gp_children_in_walk = [
                     c for c, p in walk
                     if p is grandparent_node
                 ]
-                # Index this group within its grandparent's effective
-                # child list. Other deferred groups + leaves all
-                # appear here in walk order.
                 try:
-                    target_idx = gp_children_in_walk.index(group_node)
+                    target_idx = gp_children_in_walk.index(d_node)
                 except ValueError:
                     target_idx = -1
                 if target_idx >= 0:
                     lines.append(
-                        f'try {{ {grandparent_var}.insertChild({target_idx}, {gvar}); }} '
-                        f'catch (__e) {{ __errors.push({{eid:"{err_g}", '
-                        f'kind:"group_insert_failed", '
+                        f'try {{ {grandparent_var}.insertChild({target_idx}, {dvar}); }} '
+                        f'catch (__e) {{ __errors.push({{eid:"{err_d}", '
+                        f'kind:"{insert_fail_kind}", '
                         f'error: String(__e && __e.message || __e)}}); }}'
                     )
 
@@ -2083,21 +2189,19 @@ def _emit_phase3(
             node.head.type_or_path if node.head.head_kind == "type" else ""
         )
         # Phase E residual #1 fix (2026-04-26): same hyphen→underscore
-        # normalization as Phase 1 line 762 — Phase 3 was re-reading
-        # raw type_or_path. Without this, the boolean_operation
-        # short-circuit below misses and the node accumulates
-        # constraint_failed errors on the frozen empty bool node.
+        # normalization as Phase 1 — Phase 3 was re-reading raw
+        # type_or_path. Without this, downstream lookups against
+        # underscore-keyed dicts (e.g. _TEXT_TYPES, _LEAF_TYPES) miss.
         etype = etype.replace("-", "_") if isinstance(etype, str) else ""
-        # Phase E residual #1 follow-up (2026-04-26): boolean_operation
-        # nodes are emitted as empty `figma.createBooleanOperation()`
-        # in Phase 1 with NO prop writes (because the empty bool node
-        # is "object is not extensible"). Phase 3 must symmetrically
-        # skip resize/position/constraints — they'd all throw the
-        # same error. Codex 2026-04-26 (gpt-5.5): "Normalize etype
-        # there too. Right after etype is computed, do
-        # if etype == 'boolean_operation': continue."
-        if etype == "boolean_operation":
-            continue
+        # Phase E #3 (2026-04-26): the previous boolean_operation
+        # short-circuit at this site is REMOVED. Post-fix bool_ops
+        # are deferred in Phase 1 and materialized via figma.<op>(...)
+        # in Phase 2's bottom-up block. The result is a real
+        # extensible BoolNode that accepts resize/position/constraints
+        # like any other node — so the regular Phase 3 path applies
+        # without modification. The empty createBooleanOperation()
+        # frozen-node problem from the residual fix doesn't exist
+        # anymore because we never call the bare constructor.
         is_text = etype in _TEXT_TYPES
 
         rotation_deg = _ast_prop_py(node, "rotation")
@@ -2206,7 +2310,15 @@ def _emit_phase3(
 
         c_h = visual.get("constraint_h")
         c_v = visual.get("constraint_v")
-        if c_h or c_v:
+        # Phase E #3 (2026-04-26): BOOLEAN_OPERATION nodes accept
+        # resize/x/y/rotation/opacity/visible writes (verified on
+        # the live bridge), but NOT the `.constraints = {h, v}`
+        # property — that one specifically throws "object is not
+        # extensible" on a materialized BoolNode. Skip just this
+        # write for bool_ops; everything else flows through.
+        # Bridge probe in tests/test_boolean_operation_dispatch.py
+        # documents the exact API surface boundary.
+        if (c_h or c_v) and etype != "boolean_operation":
             parts = []
             if c_h:
                 mapped = _CONSTRAINT_MAP.get(c_h, c_h)
