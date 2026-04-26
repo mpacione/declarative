@@ -116,6 +116,24 @@ if (__page.name !== __OUTPUT_PAGE) {
 }
 ${clearPageStmt}
 
+// P3d (Phase E N2 fix) — page-orphan signal.
+// Snapshot top-level children BEFORE running user code. Any new
+// top-level child after render that isn't the rendered root is an
+// "escaped render artifact" — a node that the renderer created but
+// failed to place inside the IR tree (typically appendChild rejected
+// it, the F-series guards swallowed the throw, and the node landed
+// on the page root instead of inside the screen frame). Pre-P3d the
+// verifier had no signal for this class because the eid_map walk
+// only descended from rootNode and never inspected siblings.
+//
+// Codex's design review (2026-04-25): use "rooted-tree" as the
+// invariant — expected output = descendants of rootNode. M membership
+// classifies the artifact (was-it-supposed-to-be-an-IR-node?) but
+// does NOT excuse it (a new top-level page child outside rootNode is
+// always an orphan). Emit ONE summary entry per artifact, not one
+// per descendant — keeps verifier output proportional.
+const __pre_ids = new Set(__page.children.map(c => c.id));
+
 ${body}
 
 ${gridPlacementStmt}
@@ -131,6 +149,46 @@ for (const k of Object.keys(M)) {
 // first top-level child on the page.
 const rootId = M['screen-1'] || (__page.children[0] && __page.children[0].id);
 const rootNode = rootId ? await figma.getNodeByIdAsync(rootId) : null;
+
+// P3d: enumerate post-render top-level children, classify each new
+// one. The rendered root itself is expected (it WAS the new top-level
+// child the renderer created and populated). Anything else is escaped.
+if (!M['__errors']) M['__errors'] = [];
+for (const child of __page.children) {
+  if (__pre_ids.has(child.id)) continue;        // existed before render
+  if (rootNode && child.id === rootNode.id) continue;  // the rendered root
+  // Walk the artifact subtree once to summarize it: count children,
+  // sample any M-membership eids (so the verifier can credit-assign
+  // an escaped artifact back to the IR position whose appendChild
+  // failed). Bounded sample so a large orphan tree doesn't blow up
+  // the error payload.
+  let __child_count = 0;
+  let __contains_m_id = false;
+  const __m_eid_sample = [];
+  const __MAX_SAMPLE = 5;
+  try {
+    const __stk = [child];
+    while (__stk.length) {
+      const __n = __stk.pop();
+      __child_count += 1;
+      const __eid = idToEid[__n.id];
+      if (__eid) {
+        __contains_m_id = true;
+        if (__m_eid_sample.length < __MAX_SAMPLE) __m_eid_sample.push(__eid);
+      }
+      if ('children' in __n) for (const __c of __n.children) __stk.push(__c);
+    }
+  } catch (_) {}
+  M['__errors'].push({
+    kind: 'phase2_orphan',
+    node_id: child.id,
+    name: child.name || '',
+    type: child.type,
+    child_count: __child_count,
+    contains_m_id: __contains_m_id,
+    m_eid_sample: __m_eid_sample,
+  });
+}
 
 // Capture the root's absolute bounding box so per-node x/y can be
 // emitted relative to it. exportAsync renders a PNG whose origin is
