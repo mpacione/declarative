@@ -341,7 +341,10 @@ def render_figma(
     # all descendants are created. Phase 3 reads it to emit
     # group position-only ops (no resize / no layoutSizing).
     deferred_groups: dict[int, dict[str, Any]] = {}
-    phase1, uses_placeholder, phase1_refs, override_deferred = _emit_phase1(
+    (
+        phase1, uses_placeholder, phase1_refs,
+        override_deferred, absorbed_node_ids,
+    ) = _emit_phase1(
         walk, var_map, spec_key_map, original_name_map,
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements, spec_tokens=spec_tokens,
@@ -361,6 +364,7 @@ def render_figma(
         nid_map=nid_map, db_visuals=db_visuals,
         spec_elements=spec_elements,
         deferred_groups=deferred_groups,
+        absorbed_node_ids=absorbed_node_ids,
     )
     phase3 = _emit_phase3(
         walk, var_map, spec_key_map,
@@ -368,6 +372,7 @@ def render_figma(
         spec_elements=spec_elements,
         override_deferred=override_deferred,
         deferred_groups=deferred_groups,
+        absorbed_node_ids=absorbed_node_ids,
     )
 
     end = _emit_end_wrapper()
@@ -649,11 +654,11 @@ def _emit_phase1(
         dict[str, dict[str, str]]
     ] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
-) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str]]:
+) -> tuple[list[str], bool, list[tuple[str, str, str]], list[str], set[int]]:
     """Phase 1 — materialize nodes + set intrinsic properties.
 
-    Returns `(lines, uses_placeholder, token_refs, override_deferred)`
-    where:
+    Returns `(lines, uses_placeholder, token_refs, override_deferred,
+    absorbed_node_ids)` where:
 
     - `uses_placeholder` — at least one node emitted a Mode 1
       createInstance that may fall back to
@@ -665,6 +670,15 @@ def _emit_phase1(
       must execute after `appendChild` (e.g. ``layoutSizing`` on swap
       targets; see `_emit_override_op` for the list). Forwarded into
       Phase 3 by the caller.
+    - `absorbed_node_ids` — P3a (N1 fix): `id(node)` for every node
+      that lives inside a Mode-1 instance subtree (the instance head
+      itself OR any of its descendants in the AST walk). Phase 2 +
+      Phase 3 must skip these — Figma's Plugin API rejects appendChild
+      and most property writes on nodes inside an INSTANCE subtree
+      ("Cannot move node into INSTANCE" / "object is not extensible").
+      The OLD path (dd/renderers/figma.py:1267) had this skip-set
+      contract; the AST renderer port lost it. Phase E §7 screen 24
+      surfaced 130+ append_child_failed errors as a result.
 
     F13c: `deferred_groups` (caller-supplied dict) is populated with
     {id(group_node): {"spec_key", "element", "var"}} for every GROUP
@@ -693,9 +707,43 @@ def _emit_phase1(
     uses_placeholder = False
     token_refs: list[tuple[str, str, str]] = []
     override_deferred: list[str] = []
+    # P3a (N1 fix): Mode-1 instance descendants must be SKIPPED in
+    # Phase 1 (no createX) and Phase 2 (no appendChild — Figma's
+    # Plugin API rejects "Cannot move node into INSTANCE") and
+    # Phase 3 (no resize / no position). The OLD path
+    # (dd/renderers/figma.py:1267, 1306, 1479, 1757) had this
+    # contract — the AST renderer port lost it. Phase E §7 screen 24
+    # produced 130+ append_child_failed errors as a result.
+    #
+    # Codex (2026-04-25): key on `id(node)` per the AST renderer's
+    # identity contract. Two sets so we can distinguish "this IS a
+    # Mode-1 instance" (still emitted) from "this is absorbed by a
+    # Mode-1 ancestor" (skipped). Combined `absorbed_node_ids`
+    # threaded into Phase 2 + Phase 3 by the caller via the Phase 1
+    # return tuple.
+    #
+    # Caveat (Codex sharpest catch): `mode1_ok` from
+    # `_emit_mode1_create` means "Mode-1 IIFE was emitted" not
+    # "real createInstance succeeded." The IIFE may degrade to
+    # `_missingComponentPlaceholder()` at runtime if the source/master
+    # is unavailable. Skipping descendants matches OLD-path behavior:
+    # placeholder render gets no children. Alternative (conditionally
+    # append children at runtime when var is the placeholder) is a
+    # bigger design choice deferred to a future cycle.
+    mode1_node_ids: set[int] = set()
+    skipped_node_ids: set[int] = set()
 
-    for node, _parent in walk:
+    for node, parent in walk:
         eid = node.head.eid
+        # P3a: skip descendants of any node already absorbed by Mode-1.
+        # `parent` may be None for the root; parent's id-in-set is the
+        # transitive descend signal.
+        if parent is not None and (
+            id(parent) in mode1_node_ids
+            or id(parent) in skipped_node_ids
+        ):
+            skipped_node_ids.add(id(node))
+            continue
         var = var_map[id(node)]
         head_kind = node.head.head_kind
         etype = node.head.type_or_path if head_kind == "type" else ""
@@ -781,6 +829,11 @@ def _emit_phase1(
                     f'M["{_escape_js(m_key)}"] = {var}.id;'
                 )
                 lines.append("")
+                # P3a: mark this node as a Mode-1 absorber. Descendants
+                # encountered later in the walk will be skipped via
+                # the parent-check at the top of the loop. Phase 2
+                # appendChild and Phase 3 prop-writes also skip them.
+                mode1_node_ids.add(id(node))
                 continue
 
         if is_db_instance:
@@ -995,7 +1048,11 @@ def _emit_phase1(
     lines.append(f"__perf.phase1_node_count = {len(walk)};")
     lines.append('__mark("phase1_done");')
 
-    return lines, uses_placeholder, token_refs, override_deferred
+    # P3a: combined "this node is inside a Mode-1 subtree" set.
+    # Phase 2/3 use this to skip appendChild + property writes on
+    # nodes the instance subtree has absorbed.
+    absorbed_node_ids = mode1_node_ids | skipped_node_ids
+    return lines, uses_placeholder, token_refs, override_deferred, absorbed_node_ids
 
 
 _FIGMA_NODE_TYPE: dict[str, str] = {
@@ -1405,6 +1462,7 @@ def _emit_phase2(
     db_visuals: Optional[dict[int, dict[str, Any]]] = None,
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
+    absorbed_node_ids: Optional[set[int]] = None,
 ) -> list[str]:
     """Phase 2 — wire tree via appendChild; emit text characters +
     per-node layoutSizing when parent is auto-layout.
@@ -1433,6 +1491,8 @@ def _emit_phase2(
     spec_elements = spec_elements or {}
     if deferred_groups is None:
         deferred_groups = {}
+    if absorbed_node_ids is None:
+        absorbed_node_ids = set()
     lines: list[str] = []
     lines.append("")
     lines.append("// Phase 2: Compose — wire tree, set layoutSizing")
@@ -1463,6 +1523,17 @@ def _emit_phase2(
 
     for node, parent in walk:
         if parent is None:
+            continue
+        # P3a (N1 fix): skip nodes inside Mode-1 INSTANCE subtrees.
+        # Phase 1 already skipped their CREATION; here we skip
+        # appendChild + characters + layoutSizing emission. Without
+        # this, the appendChild call would throw "Cannot move node
+        # into INSTANCE" (Figma rejects mutations to instance trees).
+        # Codex spec: check id(node) in absorbed (catches transitive
+        # descendants — direct-parent-only check would miss
+        # grandchildren). Must run BEFORE leaf-type and group-deferral
+        # checks because Mode-1 absorption takes precedence over both.
+        if id(node) in absorbed_node_ids:
             continue
         eid = node.head.eid
         if id(node) not in var_map:
@@ -1799,6 +1870,7 @@ def _emit_phase3(
     spec_elements: Optional[dict[str, dict[str, Any]]] = None,
     override_deferred: Optional[list[str]] = None,
     deferred_groups: Optional[dict[int, dict[str, Any]]] = None,
+    absorbed_node_ids: Optional[set[int]] = None,
 ) -> list[str]:
     """Phase 3 — resize (for non-auto-layout children), position,
     constraints, and override-tree-deferred ops. Baseline emits the
@@ -1818,6 +1890,8 @@ def _emit_phase3(
     spec_elements = spec_elements or {}
     override_deferred = override_deferred or []
     deferred_groups = deferred_groups or {}
+    if absorbed_node_ids is None:
+        absorbed_node_ids = set()
     ops: list[str] = list(override_deferred)
     parent_by_node_id: dict[int, Optional[Node]] = {
         id(n): p for n, p in walk
@@ -1833,6 +1907,15 @@ def _emit_phase3(
     from dd.ast_to_element import resolve_element
 
     for node, _parent in walk:
+        # P3a (N1 fix): skip nodes inside Mode-1 INSTANCE subtrees.
+        # Phase 1 didn't create them; Phase 2 didn't appendChild
+        # them; Phase 3 must not write resize/position/visibility
+        # either (would throw "object is not extensible" against
+        # the INSTANCE subtree). Codex spec: check id(node), not
+        # id(parent) — direct-parent-only check would miss
+        # grandchildren inside nested INSTANCE subtrees.
+        if id(node) in absorbed_node_ids:
+            continue
         eid = node.head.eid
         if id(node) not in var_map:
             continue
