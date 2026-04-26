@@ -177,6 +177,7 @@ def compose_screen(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]] | None = None,
     registry: Any | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     """Build a CompositionSpec from a list of component descriptions.
 
@@ -491,10 +492,30 @@ def compose_screen(
 
     # ADR-008 Mode-3 v0.1: seed the spec tokens dict with shadcn-flavoured
     # literal fallbacks so token refs in PresentationTemplates resolve
-    # at emit time. A real project token cascade replaces this in v0.2.
+    # at emit time.
+    #
+    # Phase E #1 fix (2026-04-26): project-token overlay. Pre-fix every
+    # Mode-3 card got white-on-white (universal shadcn defaults) even
+    # when the project had clustered surface colors. Post-fix the
+    # project's most-bound surface/border/radius/spacing tokens win
+    # for the universal-template refs they map to (per
+    # dd/composition/project_tokens.py:_SELECTORS); shadcn defaults
+    # fill the gaps for any universal token the project doesn't have.
+    # Codex 2026-04-26 (gpt-5.5): "compose-time alias overlay; keep
+    # universal templates emitting stable refs. Do not touch
+    # resolve_style_value (intentionally exact flat lookup); do not
+    # make providers project-aware."
     seeded_tokens: dict[str, Any] = {}
     if not _mode3_disabled():
+        # Universal first (shadcn defaults — the safety net).
         seeded_tokens.update(_UNIVERSAL_MODE3_TOKENS)
+        # Project tokens win for any universal name they cover.
+        if conn is not None:
+            from dd.composition.project_tokens import (
+                build_project_token_overlay,
+            )
+            project_overlay = build_project_token_overlay(conn)
+            seeded_tokens.update(project_overlay)
 
     return {
         "version": "1.0",
@@ -1647,7 +1668,12 @@ def generate_from_prompt(
     # the same provider stack as prompt_to_figma. Corpus retrieval
     # remains flag-gated inside the provider itself.
     effective_registry = registry if registry is not None else _build_default_mode3_registry(conn)
-    spec = compose_screen(components, templates=templates, registry=effective_registry)
+    spec = compose_screen(
+        components,
+        templates=templates,
+        registry=effective_registry,
+        conn=conn,
+    )
     # F9: normalise IR-level component_key values BEFORE any downstream
     # consumer reads them. The LLM is intentionally told it may emit
     # CKR *names* (e.g. "buttons/button with icon") in lieu of hex keys
