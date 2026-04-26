@@ -45,7 +45,8 @@ class TestUnifiedScriptGenerator:
 
         expected_keys = [
             # supplement slice
-            "entry.lp", "entry.gr", "entry.gc", "entry.gt", "entry.ov",
+            "entry.lp", "entry.gr", "entry.gc", "entry.gt", "entry.sgt",
+            "entry.ov",
             # properties slice (gated assignments, matched via flag setters)
             "entry.m = 1", "entry.bo", "entry.cs", "entry.ad",
             # sizing slice
@@ -58,6 +59,20 @@ class TestUnifiedScriptGenerator:
         ]
         for key in expected_keys:
             assert key in script, f"expected field {key!r} to be emitted by unified script"
+
+    def test_stroke_gradient_transform_emitted(self):
+        """The unified walker must read node.strokes for gradientTransform
+        the same way it reads node.fills. Pre-fix only fills were enriched;
+        gradient strokes had no Plugin-API transform and the renderer
+        skipped them. Surfaced as the screen-68 missing_asset DRIFT."""
+        from dd.extract_plugin import generate_plugin_script
+
+        script = generate_plugin_script(["1:1"])
+        # Mirror of `entry.gt = gts;` for strokes
+        assert "entry.sgt" in script
+        assert "node.strokes" in script or "safeRead(node, 'strokes')" in script
+        # The structure should be {strokeIndex, gradientTransform}
+        assert "strokeIndex" in script
 
     def test_component_key_lookup_off_by_default(self):
         """Default: skip getMainComponentAsync per INSTANCE (REST handles it)."""
@@ -97,11 +112,15 @@ class TestUnifiedScriptGenerator:
         assert "entry.fst" in script
 
         # Heavy fields absent.
-        assert "entry.rt" not in script
-        assert "entry.vp" not in script
-        assert "entry.fg" not in script
-        assert "entry.sg" not in script
-        assert "entry.ot" not in script
+        # Use word boundaries to avoid false positives — "entry.sg" is a
+        # prefix of "entry.sgt" (the stroke gradientTransform field, which
+        # IS in the light slice). Heavy-only fields end with ` = ` or `;`.
+        import re
+        for token in ("entry.rt", "entry.vp", "entry.fg", "entry.sg", "entry.ot"):
+            pattern = re.compile(re.escape(token) + r"\b")
+            assert not pattern.search(script), (
+                f"heavy-only field {token!r} should not be in light slice"
+            )
 
     def test_slice_heavy_omits_light_fields(self):
         """'heavy' slice excludes sizing/typography/overrides/etc."""
