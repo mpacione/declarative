@@ -760,6 +760,22 @@ def _emit_phase1(
         var = var_map[id(node)]
         head_kind = node.head.head_kind
         etype = node.head.type_or_path if head_kind == "type" else ""
+        # Phase E residual #1 fix (2026-04-26): L3 markup uses
+        # hyphenated type names (`boolean-operation`); the renderer's
+        # dict lookups (`_TYPE_TO_CREATE_CALL`, `_FIGMA_NODE_TYPE`)
+        # use underscore form. Without this normalization, etype
+        # `boolean-operation` falls through `_TYPE_TO_CREATE_CALL.get`
+        # to `figma.createFrame()`, then `n.booleanOperation = "UNION"`
+        # prop write fails on the frame fallback. Codex 2026-04-26
+        # (gpt-5.5) traced the path: ir.py emits underscore →
+        # compress_l3.py:846 hyphenates for L3 grammar →
+        # render_figma_ast lookups expect underscore. Sonnet
+        # subagent verified all etype consumers expect underscore
+        # form and the fix is single-entry / no double-replace risk.
+        # `boolean-operation` is the only hyphenated L3 type today
+        # (markup_l3.py grammar §2.7); future hyphenated types are
+        # auto-handled.
+        etype = etype.replace("-", "_") if isinstance(etype, str) else ""
 
         raw_visual: dict[str, Any] = {}
         if db_visuals is not None:
