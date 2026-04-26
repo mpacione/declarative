@@ -7,16 +7,26 @@
 
 ## Headline
 
-*(Will be filled in once `sweep-out-postfix2/summary.json` is complete; placeholder structure below.)*
-
 | metric | Phase E baseline | Post-fix | delta |
 |---|---:|---:|---:|
 | total | 67 | 67 | 0 |
-| `is_parity_true` (strict) | 1 | TBD | TBD |
-| `is_structural_parity_true` | 61 | TBD | TBD |
-| `is_parity_false` (DRIFT) | 6 | TBD | TBD |
-| `total_runtime_errors` | 1015 | TBD | TBD |
-| `screens_with_runtime_errors` | 66 | TBD | TBD |
+| `is_parity_true` (strict P1) | 1 | **40** | **+39** (40× improvement) |
+| `is_structural_parity_true` | 61 | 62 | +1 |
+| `is_parity_false` (DRIFT) | 6 | 4 (+1 walk_failed) | -2 |
+| `total_runtime_errors` | 1015 | **52** | **-963 (-94.9%)** |
+| `screens_with_runtime_errors` | 66 | 23 | -43 (-65%) |
+| `append_child_failed` | 131 | **0** | **-131** (N1 cascade eliminated) |
+| `bounds_mismatch` (structural) | 3 | 0 | -3 |
+| `text_set_failed` | 698 | 20 | -678 (-97%) |
+| `font_load_failed` | 168 | 17 | -151 (-90%) |
+| Cluster validator warnings | 7 | 0 | -7 (verified on clean re-cluster) |
+| Strokeweight unbound bindings | 7575 | 0 | -7575 (P3b restored axis) |
+
+**Per-screen flips:** 0 regressions (PARITY → DRIFT), 2 recoveries (DRIFT → PARITY: screens 40 + 43, both nouns-ios-explore-05).
+
+**Note on `is_parity_true`:** the baseline number used the OLD lax definition (`is_parity ⇔ structural only`). Post-fix uses the new STRICT P1 definition (`is_parity ⇔ structural AND runtime-clean`). Direct comparison: baseline `is_structural_parity` = 61; post-fix `is_structural_parity` = 62 (+1). The 40× improvement headline is on the strict metric — pre-P1 it was always 1 of 67 (only one screen had zero runtime errors), now it's 40 of 67 (the renderer's aggregated runtime errors fell 95% so most screens are runtime-clean too).
+
+**P4 categories surfaced for the first time:** text_op_failed=20, font_health=17, instance_materialization=15. Total = 52 (matches total_runtime_errors). Categories make the residual signal scannable: 17 of 52 are font-license blockers (out of scope); 20 are text ops that fail downstream of font issues; 15 are instance prop writes on read-only-ish boolean operations. Future work would target the 15 instance_materialization residuals via 2-pass walk.
 
 ## Fixes shipped
 
@@ -78,9 +88,30 @@ Plus two follow-ups discovered during the re-run:
 
 ## Verification
 
-- 113/113 P-suite tests pass (P1..P7 + P3a-fix regression + P5b dead-branch test)
-- 224/224 broader render/cluster/boundary regression tests pass
+- 122/122 P-suite tests pass (P1..P7 + P3a-fix regression + P5b dead-branch test + P7 ADR-007-removed regression)
+- 409/409 P + render + cluster + fidelity + compose + boundary + F12 regression tests pass
 - 3669/3696 broader pytest tests/ run pass (27 pre-existing integration-test failures requiring real Dank DB data; not P-suite regressions)
+- 4 pre-existing test failures verified against baseline tip 8461403 (3 compress_l3 snapshot drifts + 1 timeout); not caused by P1..P7
+
+## Doc-update follow-ups (deferred)
+
+Per Codex review: "Do not mark all ADR-007 docs superseded: the
+unified verification channel is still live in dd/boundary.py,
+dd/verify_figma.py, and renderer guards. Only the
+RenderProtocol+Repair stack is superseded."
+
+Historical-narrative references to deleted modules remain in:
+
+- `docs/plan-authoring-loop.md` — describes M7.5 substrate
+- `docs/research/designer-cognition-and-agent-architecture.md` —
+  references repair_agent in role-specialised agent discussion
+- `docs/plan-synthetic-gen.md` — M7.5 milestone description
+
+These are historical records of the M7.5 journey, not active
+specifications. They could be updated with "(removed in P7)" notes
+in a follow-up, but the docs are accurate as historical narrative.
+`docs/module-reference.md` (the active module catalog) WAS updated
+to mark the deleted modules REMOVED with the Codex caveat preserved.
 
 ## Artifacts
 
