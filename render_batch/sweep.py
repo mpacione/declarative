@@ -189,6 +189,15 @@ def process_screen(
 
     row["verify_ok"] = True
     row["is_parity"] = report["is_parity"]
+    # P1 (Phase E Pattern 2 fix): the verifier's `is_parity` is now
+    # strict (structural OK AND zero runtime errors). Pull
+    # `is_structural_parity` too so callers that ONLY want shape
+    # signal (e.g. fidelity scoring) can opt in. Old artefacts
+    # without this field default to mirroring is_parity for
+    # backwards compatibility.
+    row["is_structural_parity"] = report.get(
+        "is_structural_parity", report["is_parity"],
+    )
     row["parity_ratio"] = report["parity_ratio"]
     row["ir_node_count"] = report["ir_node_count"]
     row["rendered_node_count"] = report["rendered_node_count"]
@@ -268,11 +277,18 @@ def summarize(rows: list[dict]) -> dict:
         total_runtime_errors += r.get("runtime_error_count", 0)
 
     total = len(rows)
-    parity_true = sum(1 for r in rows if r.get("is_parity") is True)
-    parity_true_clean = sum(
-        1 for r in rows
-        if r.get("is_parity") is True and not (r.get("runtime_error_kinds") or {})
+    # P1: structural-parity count — tree shape matches IR, ignores
+    # runtime errors. The pre-Phase-E meaning of "is_parity_true."
+    structural_parity_true = sum(
+        1 for r in rows if r.get("is_structural_parity") is True
     )
+    # P1: strict-parity count — structural OK AND zero runtime errors.
+    # The new (post-Phase-E) meaning of "is_parity_true."
+    parity_true = sum(1 for r in rows if r.get("is_parity") is True)
+    # `is_parity_true_clean` is now redundant with `is_parity_true`
+    # (both mean "structural + runtime clean"), but kept for backward-
+    # compat with older artefact readers / dashboards that key off it.
+    parity_true_clean = parity_true
     walk_failed = sum(1 for r in rows if r.get("walk_ok") is False and r.get("generate_ok"))
     generate_failed = sum(1 for r in rows if r.get("generate_ok") is False)
 
@@ -284,9 +300,18 @@ def summarize(rows: list[dict]) -> dict:
 
     return {
         "total": total,
+        # P1: HEADLINE strict-parity number. Cuts visual-fidelity gaps
+        # OUT — a screen with structural parity but runtime errors no
+        # longer counts here.
         "is_parity_true": parity_true,
-        # F12a: subset of is_parity_true with zero runtime errors —
-        # the "no visual fidelity gap detected" count.
+        # P1: NEW field for the structural-only signal. Useful for
+        # callers that want "did the renderer produce the right
+        # tree?" independent of "did all runtime ops land cleanly?"
+        # (e.g. fidelity scoring uses structural ratio.)
+        "is_structural_parity_true": structural_parity_true,
+        # Backward-compat alias for is_parity_true (same definition
+        # now). Older dashboards keyed on `is_parity_true_clean`
+        # for "fully clean" — still resolves correctly.
         "is_parity_true_clean": parity_true_clean,
         "is_parity_false": total - parity_true - walk_failed - generate_failed,
         "generate_failed": generate_failed,
@@ -394,11 +419,18 @@ def main() -> int:
             grid=grid,
         )
         elapsed = time.time() - t1
-        # F12a: PARITY+ marker means structural parity but with
-        # walk-side runtime errors (visual fidelity gap). Distinguishes
-        # "clean" from "structurally clean / visually degraded".
+        # P1 + F12a: status semantics, post-Phase-E:
+        #   PARITY  = strict parity (structural OK + 0 runtime errors)
+        #   PARITY+ = structural OK but runtime errors present
+        #             (visual-fidelity gap; pre-P1 this was just PARITY)
+        #   DRIFT   = structural drift (tree shape doesn't match IR)
+        #   FAIL    = generate or walk failed entirely
         if row["is_parity"] is True:
-            status = "PARITY+" if row.get("runtime_error_count", 0) > 0 else "PARITY"
+            # Strict parity: structural OK AND 0 runtime errors.
+            status = "PARITY"
+        elif row.get("is_structural_parity") is True:
+            # Structural OK but runtime errors break strict parity.
+            status = "PARITY+"
         elif row.get("failure"):
             status = "FAIL"
         else:
@@ -425,20 +457,19 @@ def main() -> int:
     (out_root / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
-    print(f"total:            {summary['total']}")
-    print(f"is_parity=True:   {summary['is_parity_true']}")
-    # F12a: surface "structurally clean / visually degraded" so the
-    # headline parity number isn't misread.
-    print(
-        f"  ├─ clean (no runtime errs):   {summary.get('is_parity_true_clean', summary['is_parity_true'])}"
-    )
-    print(
-        f"  └─ structurally OK / visually degraded: "
-        f"{summary['is_parity_true'] - summary.get('is_parity_true_clean', summary['is_parity_true'])}"
-    )
-    print(f"is_parity=False:  {summary['is_parity_false']}")
-    print(f"generate_failed:  {summary['generate_failed']}")
-    print(f"walk_failed:      {summary['walk_failed']}")
+    print(f"total:                       {summary['total']}")
+    # P1: structural parity is the tree-shape signal; strict parity
+    # adds the runtime-clean requirement on top. The two-line split
+    # makes both visible at a glance.
+    structural_t = summary.get("is_structural_parity_true", summary["is_parity_true"])
+    strict_t = summary["is_parity_true"]
+    structural_only = structural_t - strict_t
+    print(f"is_structural_parity=True:   {structural_t}  (tree shape matches IR)")
+    print(f"  ├─ strict (PARITY):        {strict_t}  (also 0 runtime errors)")
+    print(f"  └─ runtime errs (PARITY+): {structural_only}  (visual-fidelity gap)")
+    print(f"is_parity=False (DRIFT):     {summary['is_parity_false']}  (structural drift)")
+    print(f"generate_failed:             {summary['generate_failed']}")
+    print(f"walk_failed:                 {summary['walk_failed']}")
     print(
         f"retried:          {summary['retried']} "
         f"(recovered to PARITY: {summary['retried_recovered']})"

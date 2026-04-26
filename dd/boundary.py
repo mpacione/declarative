@@ -288,7 +288,7 @@ class ResourceProbe(Protocol):
 
 @dataclass(frozen=True)
 class RenderReport:
-    """Post-render structural parity report.
+    """Post-render parity report — structural + runtime.
 
     Symmetric with ``IngestResult`` on the ingest side: IR + rendered
     external-world state → structured diff. Every deviation is a
@@ -296,25 +296,90 @@ class RenderReport:
     failed, so downstream verification (CI, training loop) gets
     per-node credit assignment.
 
-    Invariants enforced at construction:
+    Two error channels, both consumed by ``is_parity``:
 
-    - ``is_parity ⇔ (errors == [] AND ir_node_count == rendered_node_count)``
-    - ``parity_ratio`` is monotone in ``len(errors)``.
+    - ``errors``: STRUCTURAL drift from the verifier's tree walk
+      (missing_child, type_mismatch, fill_mismatch, bounds_mismatch,
+      missing_text, etc.). One entry per failing IR position.
+    - ``runtime_errors``: RUNTIME failures recorded by the render
+      script's per-op try/catch handlers (text_set_failed,
+      font_load_failed, append_child_failed, group_create_failed,
+      etc.). Heterogeneous shape — kept as raw dicts because the
+      renderer's ``__errors.push`` calls have varied payloads (eid,
+      property, family/style, node_id, name, error). One entry per
+      failing operation.
+
+    Invariants:
+
+    - ``is_structural_parity ⇔ (errors == [] AND ir_node_count == rendered_node_count)``
+    - ``is_parity ⇔ is_structural_parity AND len(runtime_errors) == 0``
+    - ``parity_ratio`` is structural only — monotone in ``len(errors)``,
+      independent of ``runtime_errors``. **A report can have
+      ``is_parity=False`` with ``parity_ratio=1.0``** (rendered tree
+      matches IR shape exactly, but runtime errors were recorded).
+      Use ``is_structural_parity`` when you want the historical
+      shape-only signal; ``is_parity`` for the strict definition.
+
+    Phase E Pattern 2 fix (2026-04-25): Sonnet + Codex independently
+    found the verifier was reading ``rendered_ref["eid_map"]`` only
+    and ignoring ``rendered_ref["errors"]``, leaving 31 distinct
+    ``__errors`` kinds entirely invisible to the parity verdict. F12a
+    surfaced runtime_error_count in the CLI output but ``is_parity``
+    didn't consume it. Inhaling them here makes runtime cleanliness
+    part of the parity contract.
     """
 
     backend: str
     ir_node_count: int
     rendered_node_count: int
     errors: list[StructuredError]
+    runtime_errors: list[dict[str, Any]] = field(default_factory=list)
 
     @property
-    def is_parity(self) -> bool:
+    def is_structural_parity(self) -> bool:
+        """Pre-Phase-E definition: tree shape matches, no structural drift.
+
+        Use when the question is "did the renderer produce the right
+        TREE?", independent of whether runtime ops landed cleanly.
+        """
         return (
             len(self.errors) == 0
             and self.ir_node_count == self.rendered_node_count
         )
 
+    @property
+    def is_parity(self) -> bool:
+        """Strict parity: structural OK AND zero runtime errors.
+
+        Codex Phase E review (2026-04-25): "Catch-and-continue
+        prevents abort cascades and preserves diagnostic evidence.
+        But makes the single ``is_parity`` boolean less truthful,
+        because failures move from fatal-visible to recoverable-
+        invisible unless verifier scope expands." This expansion
+        closes that gap.
+        """
+        return self.is_structural_parity and len(self.runtime_errors) == 0
+
+    @property
+    def runtime_error_count(self) -> int:
+        return len(self.runtime_errors)
+
+    @property
+    def runtime_error_kinds(self) -> dict[str, int]:
+        """Counter of runtime error kinds. Convenience for callers
+        that want the distribution without iterating themselves."""
+        out: dict[str, int] = {}
+        for e in self.runtime_errors:
+            if isinstance(e, dict):
+                kind = str(e.get("kind", "?"))
+                out[kind] = out.get(kind, 0) + 1
+        return out
+
     def parity_ratio(self) -> float:
+        """Structural parity ratio. NOT affected by runtime_errors —
+        a report can have ``parity_ratio=1.0`` with
+        ``is_parity=False`` if every IR node landed in the rendered
+        tree but some runtime ops threw and were caught."""
         if self.ir_node_count == 0:
             return 1.0 if len(self.errors) == 0 else 0.0
         matched = max(0, self.ir_node_count - len(self.errors))

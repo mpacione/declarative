@@ -108,8 +108,28 @@ class FigmaRenderVerifier:
     ) -> RenderReport:
         elements = ir.get("elements", {}) if isinstance(ir, dict) else {}
         eid_map: dict[str, dict[str, Any]] = {}
+        # Phase E Pattern 2 fix (P1): inhale walk-side runtime errors.
+        # Pre-fix, the verifier read only `eid_map` and ignored
+        # `rendered_ref["errors"]` — leaving 31 distinct __errors
+        # kinds entirely invisible to the parity verdict. Sonnet +
+        # Codex independently flagged this as the chronic verifier-
+        # blindness pattern. F12a surfaced runtime_error_count in
+        # CLI output but `is_parity` never consumed it. The runtime
+        # errors are deep-copied into the frozen RenderReport so
+        # downstream mutation of the walk JSON doesn't corrupt the
+        # report's invariants.
+        runtime_errors: list[dict[str, Any]] = []
         if isinstance(rendered_ref, dict):
             eid_map = rendered_ref.get("eid_map", {}) or {}
+            raw_errs = rendered_ref.get("errors") or []
+            if isinstance(raw_errs, list):
+                # Filter to dict-shaped entries (defensive: walk_ref.js
+                # always emits dicts, but a malformed walk could carry
+                # other types; we don't want a non-dict to break
+                # report.runtime_error_kinds enumeration).
+                runtime_errors = [
+                    dict(e) for e in raw_errs if isinstance(e, dict)
+                ]
 
         # Mode 1 absorbs IR descendants: when an IR node rendered as an
         # INSTANCE, its IR descendants are instantiated from the master
@@ -415,4 +435,5 @@ class FigmaRenderVerifier:
             ir_node_count=ir_count,
             rendered_node_count=rendered_count,
             errors=errors,
+            runtime_errors=runtime_errors,
         )

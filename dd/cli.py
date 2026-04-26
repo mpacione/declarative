@@ -1133,34 +1133,28 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
 
     report = FigmaRenderVerifier().verify(spec, rendered_ref)
 
-    # F12a: surface the walk's runtime `__errors` (recorded by the
-    # render script's per-op try/catch handlers — F11.1 et al.) into
-    # the verifier's report payload. The structural verifier counts
-    # missing children only; runtime failures (text_set_failed,
-    # font_load_failed, component_missing, etc.) live on the walk
-    # side and previously vanished from the verifier output. With
-    # this surfaced, callers can distinguish "is_parity=True with N
-    # runtime errors" (visual-fidelity gap) from "is_parity=True
-    # with 0 runtime errors" (clean render).
-    walk_errors = rendered_ref.get("errors", []) if isinstance(rendered_ref, dict) else []
-    runtime_error_count = len(walk_errors)
-    runtime_error_kinds: dict[str, int] = {}
-    for e in walk_errors:
-        if isinstance(e, dict):
-            kind = str(e.get("kind", "?"))
-            runtime_error_kinds[kind] = runtime_error_kinds.get(kind, 0) + 1
-
+    # P1 (Phase E Pattern 2 fix): the verifier now inhales walk-side
+    # runtime errors directly into RenderReport. CLI sources its
+    # output fields from `report` instead of re-computing — single
+    # source of truth. `report.is_parity` is now strict (structural
+    # OK AND runtime clean); `report.is_structural_parity` preserves
+    # the old shape-only definition.
     if args.json:
         payload = {
             "backend": report.backend,
             "ir_node_count": report.ir_node_count,
             "rendered_node_count": report.rendered_node_count,
             "is_parity": report.is_parity,
+            # P1: surface the structural-only signal too so callers
+            # that only care about tree shape (e.g. fidelity scoring)
+            # can opt in. Also makes the structural-vs-runtime split
+            # readable from the output.
+            "is_structural_parity": report.is_structural_parity,
             "parity_ratio": report.parity_ratio(),
             "errors": [asdict(e) for e in report.errors],
-            "runtime_errors": walk_errors,
-            "runtime_error_count": runtime_error_count,
-            "runtime_error_kinds": runtime_error_kinds,
+            "runtime_errors": report.runtime_errors,
+            "runtime_error_count": report.runtime_error_count,
+            "runtime_error_kinds": report.runtime_error_kinds,
         }
         print(json.dumps(payload, indent=2))
     else:
@@ -1168,18 +1162,24 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
         print(f"  ir_node_count:       {report.ir_node_count}")
         print(f"  rendered_node_count: {report.rendered_node_count}")
         print(f"  is_parity:           {report.is_parity}")
-        print(f"  parity_ratio:        {report.parity_ratio():.4f}")
+        # P1: when strict-parity is False but structural is True, name
+        # the cause so users don't have to scroll the runtime_errors
+        # list to figure out the gap.
+        if not report.is_parity and report.is_structural_parity:
+            print(
+                f"    └─ structural OK; "
+                f"{report.runtime_error_count} runtime errors → strict parity False"
+            )
+        print(f"  parity_ratio:        {report.parity_ratio():.4f}  (structural)")
         print(f"  errors:              {len(report.errors)}")
         for err in report.errors[:20]:
             print(f"    kind={err.kind} id={err.id}  {(err.error or '')[:80]}")
         if len(report.errors) > 20:
             print(f"    ... ({len(report.errors) - 20} more)")
-        # F12a: also surface walk-side runtime errors in the human
-        # output. These are visual-fidelity signals, not structural.
-        if runtime_error_count:
-            print(f"  runtime_errors:      {runtime_error_count}")
+        if report.runtime_error_count:
+            print(f"  runtime_errors:      {report.runtime_error_count}")
             for kind, count in sorted(
-                runtime_error_kinds.items(), key=lambda kv: -kv[1]
+                report.runtime_error_kinds.items(), key=lambda kv: -kv[1]
             ):
                 print(f"    {count:4d}  {kind}")
 

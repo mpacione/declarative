@@ -71,14 +71,18 @@ class TestVerifyJsonSurfacesRuntimeErrors:
             text=True,
             timeout=30,
         )
-        # is_parity=True so exit 0; payload still goes to stdout
-        assert result.returncode == 0, f"stderr: {result.stderr}"
+        # P1 (Phase E): is_parity is now strict (structural OK AND
+        # runtime clean). Screen 44 has 16 runtime errors → strict
+        # parity is False → exit 1. The JSON payload still goes to
+        # stdout regardless of exit code.
+        assert result.returncode == 1, f"stderr: {result.stderr}"
         payload = json.loads(result.stdout)
         assert "runtime_error_count" in payload, (
-            "F12a contract: --json output must include runtime_error_count "
-            f"so callers can distinguish parity=True+0-runtime-errors "
-            f"(clean) from parity=True+N-runtime-errors (visual-fidelity "
-            f"gap). Got keys: {list(payload.keys())}"
+            "F12a contract (post-P1): --json output must include "
+            "runtime_error_count so callers can distinguish "
+            "structural-clean (is_structural_parity=True) from "
+            "fully-clean (is_parity=True). Got keys: "
+            f"{list(payload.keys())}"
         )
         # Screen 44 has 16 runtime errors per the walk.
         assert payload["runtime_error_count"] == 16
@@ -126,11 +130,16 @@ class TestVerifyJsonSurfacesRuntimeErrors:
         kinds_seen = {e.get("kind") for e in runtime_errors}
         assert kinds_seen == {"text_set_failed", "font_load_failed"}
 
-    def test_is_parity_independent_of_runtime_errors(self):
-        """is_parity remains structural — runtime errors don't flip it
-        to False. The whole point of surfacing them separately is so
-        callers can BOTH check structural parity AND see runtime gaps,
-        not have one absorb the other."""
+    def test_strict_parity_requires_runtime_clean_p1_post(self):
+        """P1 (Phase E Pattern 2 fix): `is_parity` is now strict —
+        requires structural parity AND zero runtime errors. The
+        permissive pre-P1 contract (`is_parity` ignored runtime
+        errors) was the chronic verifier-blindness pattern Sonnet +
+        Codex flagged in their Pattern 2 analysis. The strict
+        contract is the principled one; the permissive shape lives
+        on as `is_structural_parity` for callers that only want
+        tree-shape signal.
+        """
         result = subprocess.run(
             [
                 ".venv/bin/python", "-m", "dd", "verify",
@@ -144,14 +153,19 @@ class TestVerifyJsonSurfacesRuntimeErrors:
             text=True,
             timeout=30,
         )
-        # Exit 0 because is_parity=True; runtime errors don't fail the
-        # structural gate.
-        assert result.returncode == 0
+        # Screen 44 has 16 runtime errors, so strict is_parity is
+        # False → exit 1. (Pre-P1: this exited 0 with is_parity=True
+        # despite the 16 errors — the bug.)
+        assert result.returncode == 1
         payload = json.loads(result.stdout)
-        assert payload["is_parity"] is True
+        # Strict parity: False, because runtime errors exist.
+        assert payload["is_parity"] is False
+        # Structural parity: True (tree shape matches IR).
+        assert payload["is_structural_parity"] is True
+        # parity_ratio remains structural-only — unaffected by runtime.
         assert payload["parity_ratio"] == 1.0
-        # AND runtime_error_count > 0 — both true at the same time.
-        assert payload["runtime_error_count"] > 0
+        # And runtime errors are now visible at top-level.
+        assert payload["runtime_error_count"] == 16
 
 
 class TestSweepSummarySurfacesRuntimeErrors:
@@ -159,12 +173,18 @@ class TestSweepSummarySurfacesRuntimeErrors:
     expose the runtime-error fields too."""
 
     def test_summarize_aggregates_runtime_errors_across_rows(self):
+        """Post-P1: row fixtures must reflect the verifier's actual
+        post-P1 output. `is_parity` is now strict (False if runtime
+        errors > 0); `is_structural_parity` carries the tree-shape
+        signal. The summary aggregates BOTH."""
         from render_batch.sweep import summarize
 
         rows = [
             {
+                # Fully clean: structural OK, runtime clean → strict parity
                 "screen_id": 1,
                 "is_parity": True,
+                "is_structural_parity": True,
                 "error_kinds": [],
                 "error_count": 0,
                 "runtime_error_count": 0,
@@ -174,8 +194,10 @@ class TestSweepSummarySurfacesRuntimeErrors:
                 "verify_ok": True,
             },
             {
+                # Structural OK, but runtime errors → strict parity False
                 "screen_id": 2,
-                "is_parity": True,
+                "is_parity": False,
+                "is_structural_parity": True,
                 "error_kinds": [],
                 "error_count": 0,
                 "runtime_error_count": 16,
@@ -188,8 +210,10 @@ class TestSweepSummarySurfacesRuntimeErrors:
                 "verify_ok": True,
             },
             {
+                # Structural OK, smaller runtime drift → strict parity False
                 "screen_id": 3,
-                "is_parity": True,
+                "is_parity": False,
+                "is_structural_parity": True,
                 "error_kinds": [],
                 "error_count": 0,
                 "runtime_error_count": 5,
@@ -202,10 +226,13 @@ class TestSweepSummarySurfacesRuntimeErrors:
         summary = summarize(rows)
 
         assert summary["total"] == 3
-        assert summary["is_parity_true"] == 3
-        # F12a: clean = parity_true AND no runtime errors
+        # Post-P1: is_parity_true counts strict parity only
+        assert summary["is_parity_true"] == 1
+        # New: is_structural_parity_true counts the tree-shape signal
+        assert summary["is_structural_parity_true"] == 3
+        # is_parity_true_clean is now an alias for is_parity_true
         assert summary["is_parity_true_clean"] == 1
-        # Aggregated runtime stats
+        # Aggregated runtime stats unchanged
         assert summary["screens_with_runtime_errors"] == 2
         assert summary["total_runtime_errors"] == 21
         assert summary["runtime_error_kinds"] == {
