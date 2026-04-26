@@ -2,9 +2,9 @@
 
 **Date:** 2026-04-25
 **File audited:** HGB (Experimental), file_key `PsYyNUTuIE1IPifyoDIesy` — 44 app_screens, 20275 nodes, 113831 token bindings, 101 component-key registry rows
-**Branch:** `fix/20260425-1215` (tip `f30e317`)
-**Method:** Same 9-section harness as Phase B, plus a full 44-screen render-and-verify sweep ("Demo-Plus") for visual review of every rendered screen
-**Reviewers:** Codex `gpt-5.5` reviewed F11 design + implementation (caught two real defects)
+**Branch:** `fix/20260425-1215` (final tip `7a844b7`); merged into `v0.3-integration` at `ff869e3`
+**Method:** Same 9-section harness as Phase B, plus a full 44-screen render-and-verify sweep ("Demo-Plus") for visual review of every rendered screen, plus a follow-on visual-diff cycle on three user-reported issues that surfaced the F13 series
+**Reviewers:** Codex `gpt-5.5` reviewed every non-trivial design + implementation across the cycle (caught >5 verdict drifts the orchestrator made)
 
 ## Headline (revised after Codex synthesis + visual-diff investigation)
 
@@ -19,11 +19,15 @@ system font instead of the intended typography.
 
 **8 of 9 sections WORKS-CLEAN structurally; 1 intentionally WORKS-DEGRADED
 (§9). §7 is WORKS-CLEAN structurally / WORKS-DEGRADED visually for
-33 of 44 screens.** Five renderer/sweep fixes shipped this phase:
+33 of 44 screens.** Eight renderer/sweep fixes shipped this phase:
 F10 (sweep flags), F11 + F11.1 (font composition + load guards),
 F12 + F12a (per-eid attribution + walk-error surfacing in verifier
 output), F12d (sweep mode lays N renders out in a grid for visual
-review). All Codex-reviewed before commit.
+review), F13a + F13b (recursive deep-merge preserves widthPixels +
+text resize/textAutoResize in Phase 3), F13c (port GROUP deferral to
+the AST renderer so groups render as real `figma.group(...)` calls
+instead of silently coercing to FRAME). All Codex-reviewed before
+commit.
 
 **Codex synthesis review caught the original headline's overclaim**:
 I had written "44/44 PARITY, 0 errors" based on `summary.json`; Codex
@@ -150,6 +154,47 @@ Lead with the corpus-wide render-and-verify (Section 7) — that's the load-bear
 
 The Phase B recommendation to NOT lead with Mode-3 also stands — Section 8's behaviour is correct (zero CKR-name leaks, graceful fallback for templateless types), but the planner is still maturing on which catalog types to ask for (Phase D login emitted 0 imports because the planner picked types with no templates in this project). Frame Mode-3 as "early — composer emits real keys when the planner picks types we have templates for; otherwise graceful fallback to createFrame placeholders" rather than as the centerpiece.
 
+## F13 follow-on — three systemic fixes from a visual-diff audit
+
+After the F12d full-sweep grid was published, the user reviewed three rendered screens visually and reported three issues that the structural verifier and the runtime-error channel both missed. Each was investigated with parallel Explore subagents (one per issue) plus Codex synthesis review of the proposed fixes. All three turned out to be systemic root causes that affect more screens than the three flagged.
+
+### Bug A — Group 4746 vector logo rendered with children offset by group origin
+
+**Symptom (HGB Customer Complete Info Tablet):** the logo's vector children appeared at +19px offset, partially outside their parent Top Nav frame. Bridge truth showed the rendered "Group 4746" was `type: FRAME`, not GROUP — the AST renderer's `_TYPE_TO_CREATE_CALL` map at `dd/render_figma_ast.py:85` had no entry for "group", silently coercing every GROUP to `figma.createFrame()`. Per the documented `feedback_rest_plugin_coord_convention_divergence.md`, Plugin API reports a GROUP-CHILD's `node.x` in the GROUP's PARENT coordinate space; when emitted into a FRAME (where x is interpreted as frame-local), every child gets offset by the GROUP's own (x, y).
+
+**Fix shipped as F13c (commit `7a844b7`):** port a GROUP deferral path to the AST renderer. Phase 1 skips groups entirely (no create / no name / no visual / no layout / no `M[...]` assign). Phase 2's appendChild loop redirects non-group children whose parent is a deferred group to the nearest non-deferred ancestor (temporary parent) and registers them in the immediate-parent group's `direct_children` list. After the appendChild loop, walks deferred groups bottom-up by AST depth and emits `figma.group([direct_children_vars], grandparent_var)` for each. Phase 3 emits position-only (`x`, `y`, `visible`) — Figma `GroupNode` rejects fills/strokes/cornerRadius/autolayout.
+
+Codex pushed back on two pitfalls I would have copied from the OLD `dd/renderers/figma.py:1505+` path: (1) the OLD pattern of "register descendant in EVERY ancestor's children_vars" is suspicious for nested groups (only direct AST children should reach `figma.group`); (2) the OLD ordering by deferral-map insertion is less robust than bottom-up by AST depth.
+
+### Bug B — Letter body text rendered 1319px wide instead of source 560px
+
+**Symptom (HGB Customer Complete Info Desktop):** the long "Subject: Live Request..." text grew to 1319px on a single line instead of wrapping in source's 560×345 box. Bridge truth showed `width=1319, textAutoResize=WIDTH_AND_HEIGHT` (default) instead of source's `width=560, textAutoResize=HEIGHT`.
+
+**Root cause:** text nodes in non-autolayout parents got NO `resize()` and NO `textAutoResize` emitted. Phase 1 skips `_emit_layout` for text (line 855). Phase 3's resize block at line 1597 read `widthPixels`/`heightPixels` only — text-node IR uses literal numeric `width: 560.0, height: 345.0`. And even with a resize, default `WIDTH_AND_HEIGHT` would re-expand the width when characters are set.
+
+**Fix shipped as F13b (commit `2c553f5`):** Phase 3 reads canonical `resolve_element` output (matches Phase 1's locus); sizing lookup falls back to numeric `width`/`height` when `widthPixels` absent (mirrors `_emit_layout`'s tolerant lookup); for text after resize, emit `textAutoResize = <stored>` to lock — but only when stored mode is NOT `WIDTH_AND_HEIGHT` (Codex catch: emitting it after resize re-enables natural-width). Same `textAutoResize` lock added to autolayout-parent path. Order is `appendChild → characters → layoutSizing/resize → textAutoResize` per `feedback_text_layout_invariants.md`.
+
+### Bug C — Bordered table rendered 100×950 instead of source 1400×950
+
+**Symptom (HGB Transactions Selected):** the "table with border" frame had `clipsContent: true` and a height that clipped almost the entire table. Bridge truth showed `width=100` (default `createFrame()` size) when source was `width=1400` with `layoutSizingH=HUG`.
+
+**Root cause:** `_deep_merge_element_keys` at `dd/ast_to_element.py:284` was a two-level merge. When base's `layout.sizing` had `{"width": "hug", "widthPixels": 1400, "height": 950}` and AST head's overlay had `{"width": "hug", "heightPixels": 950}`, the merge wrote overlay's sizing-dict whole into the result, losing `widthPixels: 1400`. Even though the docstring promised "only keys PRESENT in overlay are touched."
+
+**Fix shipped as F13a (commit `2c553f5`, same commit as F13b):** the function now recurses into nested dicts at every depth. Lists are still replaced whole (Figma fills/strokes are ordered stacks). With this fix, F13b's Phase 3 lookup naturally reaches `widthPixels=1400` and emits `n3.resize(1400, 950)`.
+
+### F13 verification
+
+All three issues bridge-verified fixed:
+- Group 4746: `type: GROUP` (was FRAME), children at exact source positions
+- Letter body text: `w=560, autoResize=HEIGHT` (was 1319 / WIDTH_AND_HEIGHT)
+- Bordered table: `w=1400, h=950` (was 100×950)
+
+Full 44-screen sweep post-F13: identical headline numbers (44/44 PARITY, 11 fully clean, 33 visually degraded, 588 runtime errors all Akkurat). Zero new failures introduced; 0 regressions in 482-test smoke suite.
+
+### Process catch on F13b
+
+Self-shipped a first draft of F13b without consulting Codex (just a width/height fallback in Phase 3). The user caught me. Reverted, brought Codex in with the precise question, got back a sharper specification: read `resolve_element` output (not `spec_elements` directly), add `textAutoResize` lock with the `WIDTH_AND_HEIGHT`-skip catch, apply lock in BOTH autolayout and non-autolayout paths. The Codex-specified shape is what shipped. The bandaid attempt was reverted before commit. Sixth catch of the audit cycle.
+
 ## Artifacts
 
 - `audit/20260425-1725-phaseD-fullsweep/REPORT.md` — this document
@@ -161,23 +206,35 @@ The Phase B recommendation to NOT lead with Mode-3 also stands — Section 8's b
 - `audit/20260425-1042/` — Phase A original audit (compare)
 - `fixes/20260425-1215/` — full evidence trail for F1–F8 + F9
 - F10 commit `908423a` (sweep.py --db + --out-dir flags)
-- **F11 commit `8eb6c61` (renderer text-override font composition + load guards)**
-- **F11.1 commit `f30e317` (try/catch around character/text/subtitle write paths)**
+- F11 commit `8eb6c61` (renderer text-override font composition + load guards)
+- F11.1 commit `f30e317` (try/catch around character/text/subtitle write paths)
+- F12 + F12a commit `0cc30c1` (verifier surfaces walk runtime errors + per-eid attribution)
+- F12d commit `906d9cf` (sweep mode lays renders in a grid; visual review)
+- **F13a + F13b commit `2c553f5` (recursive deep-merge preserves widthPixels + Phase 3 text resize/textAutoResize)**
+- **F13c commit `7a844b7` (port GROUP deferral to render_figma_ast.py)**
+- **Merge commit `ff869e3` on `v0.3-integration` (`--no-ff` to preserve audit-batch boundary in `git log`)**
 
 For visual review of the rendered screens: open the connected Figma file
 (HGB (Experimental)) and navigate to the "Generated Test" page. All 44
-rendered screens are persisted there.
+rendered screens are persisted there in a 6-column grid (F12d).
 
 ---
 
 ## Final tally
 
-- **5 fixes shipped this phase**: F10, F11, F11.1, F12 + F12a, F12d — all on `fix/20260425-1215`
+- **8 fixes shipped this phase**: F10, F11, F11.1, F12 + F12a, F12d, F13a + F13b, F13c — all on `fix/20260425-1215`, now merged into `v0.3-integration` at `ff869e3`
 - **7 sections WORKS-CLEAN** (1, 2, 3a, 4, 5, 6, 8)
 - **1 section WORKS-CLEAN structurally / WORKS-DEGRADED visually** (7 — 44/44 structural parity, 11/44 fully clean, 33/44 visual fidelity gap from unlicensed Akkurat font)
 - **1 section intentionally WORKS-DEGRADED** (9 — variant induction; v0.1-shell scope)
-- **0 regressions** across the 9 sections
+- **0 regressions** across the 9 sections; **+4 tests fixed** vs `v0.3-integration` baseline
 - **44/44 app_screens render to STRUCTURAL parity** in the corpus-wide sweep; **11/44 with full visual fidelity, 33/44 with Akkurat-fallback text**
+- **3 user-reported visual-diff issues** fixed via the F13 series (Group 4746 logo offset, letter body text width, bordered table sizing) — all bridge-verified
 - **All 44 rendered screens persist** on the Generated Test page in a 6-column grid (F12d) for visual review
-- **~75 minutes Phase D wall time, ~$0.75 API costs**
-- **Process discipline (NEVER BLINDLY TRUST + Codex second opinion) prevented 4 verdict drifts** during this phase: F11 design (would have shipped wrong fix shape), F11 implementation (would have shipped without per-op catch), §7 synthesis headline (would have shipped "44/44 PARITY, 0 errors" without the visual-fidelity caveat), AND the visual-diff "new bug class" hypothesis (would have shipped F12b for a non-existent componentProperties bug; bridge truth showed it was the SAME Akkurat-Bold load failure)
+- **~95 minutes Phase D wall time** (75 baseline + 20 for F13 follow-on), **~$1 API costs**
+- **Process discipline (NEVER BLINDLY TRUST + Codex second opinion) prevented 6 verdict drifts** during this phase:
+  1. F11 design — would have shipped wrong fix shape (wrap virtual props in font-load instead of composing into fontName)
+  2. F11 implementation — would have shipped without per-op try/catch
+  3. §7 synthesis headline — would have shipped "44/44 PARITY, 0 errors" without the visual-fidelity caveat
+  4. Visual-diff "new bug class" hypothesis — would have shipped F12b for a non-existent componentProperties bug; bridge truth showed it was the SAME Akkurat-Bold load failure
+  5. F13b first draft — would have shipped a width/height fallback in Phase 3 without the textAutoResize lock or the WIDTH_AND_HEIGHT skip
+  6. F13c first instinct — would have replicated the OLD path's "register descendant in every ancestor's children_vars" pattern; Codex flagged it as suspicious for nested groups; correct shape is direct-AST-children only with bottom-up creation
