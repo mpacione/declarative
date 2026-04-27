@@ -5793,3 +5793,105 @@ class TestSessionB_PerOpGuards:
         assert any('"text-1"' in p for p in pushes), (
             "text_set_failed push must carry eid='text-1'"
         )
+
+
+class TestEmitTextPropsPerOpGuards:
+    """A2.3 (forensic-audit-2 architectural followon): each text-prop
+    write in _emit_text_props must be guarded individually so a
+    single throw doesn't abort the rest of the function (and Phase 1
+    of the node).
+
+    Pre-A2.3 only the ``fontName`` assignment was guarded with
+    _guarded_op; fontSize, textAlignHorizontal, textAlignVertical,
+    textDecoration, textCase, leadingTrim, lineHeight,
+    letterSpacing, paragraphSpacing were all naked. A throw on
+    fontSize cascaded through the rest of _emit_text_props
+    (silently dropping later prop writes) and was only caught by
+    the surrounding _guard_naked_prop_lines.
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26) chose
+    option (c): "guard each text op individually; characters
+    always scheduled in Phase 3; per-op fail-open behavior."
+    """
+
+    def _emit_with_text_node(self, db_visual: dict) -> str:
+        """Helper: render a screen with a single text node carrying
+        the provided db_visual fields."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "props": {"text": "hi"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "t-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {**db_visual, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        return script
+
+    def test_font_size_emission_guarded(self):
+        """fontSize write must be wrapped in try/catch that pushes
+        a structured kind on throw."""
+        script = self._emit_with_text_node({"font_size": 14})
+        # Find the line that emits fontSize. It must be inside a
+        # try/catch with a __errors.push.
+        # The simplest pin: the literal `fontSize = 14` should appear
+        # as part of a guarded statement (try { ... } catch).
+        assert "fontSize = 14" in script
+        # Find all lines containing "fontSize = " and confirm at
+        # least one is preceded by `try {`.
+        fs_idx = script.find("fontSize = 14")
+        assert fs_idx > 0
+        # Look backward up to 50 chars for `try {`
+        window = script[max(0, fs_idx - 50):fs_idx]
+        assert "try {" in window, (
+            f"A2.3: fontSize write must be guarded; preceding window: {window!r}"
+        )
+
+    def test_text_align_horizontal_guarded(self):
+        script = self._emit_with_text_node({"text_align": "CENTER"})
+        idx = script.find("textAlignHorizontal = ")
+        assert idx > 0
+        window = script[max(0, idx - 50):idx]
+        assert "try {" in window, (
+            f"A2.3: textAlignHorizontal write must be guarded"
+        )
+
+    def test_line_height_guarded(self):
+        import json as _json
+        script = self._emit_with_text_node({
+            "line_height": _json.dumps({"value": 24, "unit": "PIXELS"}),
+        })
+        idx = script.find("lineHeight = ")
+        assert idx > 0
+        window = script[max(0, idx - 60):idx]
+        assert "try {" in window, (
+            "A2.3: lineHeight write must be guarded"
+        )
+
+    def test_one_throw_does_not_abort_other_text_props(self):
+        """The headline contract: if fontSize throws (e.g. from a
+        bad value), the subsequent textAlign write must still
+        emit. Per-op guards mean each prop has independent
+        survival."""
+        # Build a node with multiple text props. Confirm each one
+        # appears as its own guarded statement in the script.
+        import json as _json
+        script = self._emit_with_text_node({
+            "font_size": 14,
+            "text_align": "CENTER",
+            "text_decoration": "UNDERLINE",
+            "line_height": _json.dumps({"value": 20, "unit": "PIXELS"}),
+        })
+        # Each prop name must appear after a `try {` on the SAME line
+        # (or the immediately-preceding line). Easiest way: count
+        # `try {` occurrences containing each of these props.
+        for prop in ("fontSize = ", "textAlignHorizontal = ",
+                     "textDecoration = ", "lineHeight = "):
+            idx = script.find(prop)
+            assert idx > 0, f"prop {prop!r} not in script"
+            window = script[max(0, idx - 60):idx]
+            assert "try {" in window, (
+                f"A2.3 contract: {prop!r} must be in its own try/catch; "
+                f"window before idx: {window!r}"
+            )

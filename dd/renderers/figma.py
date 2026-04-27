@@ -2666,11 +2666,25 @@ def _emit_text_props(
     else:
         lines.append(fontname_stmt)
 
+    # A2.3 (forensic-audit-2 architectural followon, 2026-04-26):
+    # each text prop write is guarded individually. Pre-fix only
+    # fontName was guarded; a throw on fontSize cascaded through
+    # the rest of this function and was only caught by the
+    # surrounding _guard_naked_prop_lines (losing per-op
+    # attribution). Codex 5.5 review chose option (c): "guard each
+    # text op individually; characters always scheduled in Phase 3;
+    # per-op fail-open."
+    def _emit_text_op(stmt: str) -> None:
+        if eid:
+            lines.append(_guarded_op(stmt, eid, "text_set_failed"))
+        else:
+            lines.append(stmt)
+
     font_size = _resolve_text_value(
         style.get("fontSize"), db_font.get("font_size"), tokens,
     )
     if font_size is not None:
-        lines.append(f"{var}.fontSize = {font_size};")
+        _emit_text_op(f"{var}.fontSize = {font_size};")
 
     # Note: text .characters is NOT emitted here. It's set in Phase 3
     # (Hydrate) after the node is appended to its container, so text
@@ -2679,19 +2693,19 @@ def _emit_text_props(
 
     text_align_h = db_font.get("text_align")
     if text_align_h:
-        lines.append(f'{var}.textAlignHorizontal = "{text_align_h}";')
+        _emit_text_op(f'{var}.textAlignHorizontal = "{text_align_h}";')
 
     text_align_v = db_font.get("text_align_v")
     if text_align_v:
-        lines.append(f'{var}.textAlignVertical = "{text_align_v}";')
+        _emit_text_op(f'{var}.textAlignVertical = "{text_align_v}";')
 
     text_decoration = db_font.get("text_decoration")
     if text_decoration:
-        lines.append(f'{var}.textDecoration = "{text_decoration}";')
+        _emit_text_op(f'{var}.textDecoration = "{text_decoration}";')
 
     text_case = db_font.get("text_case")
     if text_case:
-        lines.append(f'{var}.textCase = "{text_case}";')
+        _emit_text_op(f'{var}.textCase = "{text_case}";')
 
     # leadingTrim controls whether the text bounding box includes full
     # line-height padding (NONE, default) or trims to cap-height
@@ -2703,7 +2717,7 @@ def _emit_text_props(
     # Skip emission when "NONE" (Figma's default — redundant).
     leading_trim = db_font.get("leading_trim")
     if leading_trim and leading_trim != "NONE":
-        lines.append(f'{var}.leadingTrim = "{leading_trim}";')
+        _emit_text_op(f'{var}.leadingTrim = "{leading_trim}";')
 
     line_height = db_font.get("line_height")
     if line_height is not None:
@@ -2716,7 +2730,9 @@ def _emit_text_props(
             lh = line_height
         if isinstance(lh, dict) and "value" in lh:
             unit = lh.get("unit", "PIXELS")
-            lines.append(f'{var}.lineHeight = {{value: {lh["value"]}, unit: "{unit}"}};')
+            _emit_text_op(
+                f'{var}.lineHeight = {{value: {lh["value"]}, unit: "{unit}"}};'
+            )
 
     letter_spacing = db_font.get("letter_spacing")
     if letter_spacing is not None:
@@ -2729,11 +2745,13 @@ def _emit_text_props(
             ls = letter_spacing
         if isinstance(ls, dict) and "value" in ls:
             unit = ls.get("unit", "PIXELS")
-            lines.append(f'{var}.letterSpacing = {{value: {ls["value"]}, unit: "{unit}"}};')
+            _emit_text_op(
+                f'{var}.letterSpacing = {{value: {ls["value"]}, unit: "{unit}"}};'
+            )
 
     paragraph_spacing = db_font.get("paragraph_spacing")
     if paragraph_spacing is not None:
-        lines.append(f"{var}.paragraphSpacing = {paragraph_spacing};")
+        _emit_text_op(f"{var}.paragraphSpacing = {paragraph_spacing};")
 
 
 # ---------------------------------------------------------------------------
