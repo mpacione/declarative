@@ -2418,6 +2418,18 @@ def _run_design_brief(
     from dd.db import init_db
     init_db(db_path).close()
 
+    # Mirror lateral: build project_vocab once when --use-project-vocab.
+    project_vocab_obj = None
+    if use_project_vocab:
+        project_conn = get_connection(project_db or db_path)
+        try:
+            from dd.project_vocabulary import build_project_vocabulary
+            project_vocab_obj = build_project_vocabulary(
+                project_conn, file_id=1,
+            )
+        finally:
+            project_conn.close()
+
     client = _make_anthropic_client()
     conn = get_connection(db_path)
     try:
@@ -2425,6 +2437,7 @@ def _run_design_brief(
             conn, brief=brief, client=client, max_iters=max_iters,
             starting_doc=starting_doc,
             progress_stream=sys.stderr,
+            project_vocab=project_vocab_obj,
         )
     except ValueError as e:
         print(f"dd design: {e}", file=sys.stderr)
@@ -3174,6 +3187,23 @@ def _run_design_lateral(
     client = _make_anthropic_client()
     conn = get_connection(db_path)
 
+    # When --use-project-vocab is set, build the project's palette
+    # ONCE and pass it through to run_session for each sibling brief.
+    # The agent surfaces it in its per-turn user message so the LLM
+    # picks fills/radii/spacings from the project's actual values
+    # rather than hallucinating off-palette hex codes (constraint
+    # experiment 2026-04-27 — option 2 from the post-fix design).
+    project_vocab_obj = None
+    if use_project_vocab:
+        project_conn = get_connection(project_db or db_path)
+        try:
+            from dd.project_vocabulary import build_project_vocabulary
+            project_vocab_obj = build_project_vocabulary(
+                project_conn, file_id=1,
+            )
+        finally:
+            project_conn.close()
+
     # Verify parent exists before burning N Anthropic calls on a
     # doomed session. ``run_session`` itself raises ValueError on
     # missing parent, but it does so AFTER opening the client; this
@@ -3209,6 +3239,7 @@ def _run_design_lateral(
                     client=client,
                     max_iters=max_iters,
                     progress_stream=sys.stderr,
+                    project_vocab=project_vocab_obj,
                 )
             except ValueError as e:
                 print(f"dd design lateral: {e}", file=sys.stderr)

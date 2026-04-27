@@ -248,6 +248,61 @@ def _empty_starting_doc() -> L3Document:
     return parse_l3("screen #screen-root\n")
 
 
+def _format_vocab_palette(vocab: Any) -> str:
+    """Format a ``ProjectVocabulary`` as a readable palette block for
+    the agent's user message.
+
+    Constraint experiment (2026-04-27): when the host supplies the
+    project's extracted palette / radii / spacings, surface them in
+    the prompt so the LLM picks values from the source design system
+    rather than hallucinating hex codes from its general training.
+    Render-time vocab snapping (option 1) corrects drift but the LLM
+    keeps emitting off-palette literals; injection here (option 2)
+    aims to shift the upstream behavior so the move log itself reads
+    as palette-faithful.
+
+    Returns empty string when ``vocab`` is None or empty (caller
+    skips the section)."""
+    if vocab is None:
+        return ""
+    chromatic = list(getattr(vocab, "chromatic_fills", ()))
+    neutral = list(getattr(vocab, "neutral_fills", ()))
+    radii = list(getattr(vocab, "radii", ()))
+    spacings = list(getattr(vocab, "spacings", ()))
+    if not (chromatic or neutral or radii or spacings):
+        return ""
+    parts = []
+    parts.append("### Project palette — pick from these values")
+    parts.append(
+        "These are the canonical fills, radii, and spacings already "
+        "used in this project's design system. When you `set` a "
+        "fill, radius, or spacing, prefer values from these lists. "
+        "Off-palette hex codes from outside this list will be visibly "
+        "out-of-place."
+    )
+    if chromatic:
+        parts.append(
+            f"- chromatic fills ({len(chromatic)}): "
+            + ", ".join(chromatic)
+        )
+    if neutral:
+        parts.append(
+            f"- neutral fills ({len(neutral)}): "
+            + ", ".join(neutral)
+        )
+    if radii:
+        parts.append(
+            f"- corner radii ({len(radii)}): "
+            + ", ".join(f"{r:g}" for r in radii)
+        )
+    if spacings:
+        parts.append(
+            f"- spacings ({len(spacings)}): "
+            + ", ".join(f"{s:g}" for s in spacings)
+        )
+    return "\n".join(parts)
+
+
 def _build_user_message(
     *,
     brief: str,
@@ -255,19 +310,30 @@ def _build_user_message(
     iteration: int,
     max_iters: int,
     recent_log_summary: list[str],
+    project_vocab: Any = None,
 ) -> str:
     """Construct the per-turn user message for Sonnet.
 
     Per Codex's risk note (context bloat): pass the focused subtree
     (focus.doc) and a compact recent-log summary, NOT the entire
     root doc each turn.
-    """
+
+    ``project_vocab`` is an optional ``ProjectVocabulary`` (from
+    ``dd.project_vocabulary``); when supplied, its palette is
+    surfaced in a dedicated section so the LLM picks fills/radii/
+    spacings from the project's actual values instead of
+    hallucinating off-palette hex codes."""
     from dd.markup_l3 import emit_l3
     parts = [
         f"### Brief\n{brief}",
         f"\n### Iteration {iteration} / {max_iters}",
-        f"\n### Current scope\n```dd\n{emit_l3(focus.doc)}\n```",
     ]
+    palette_block = _format_vocab_palette(project_vocab)
+    if palette_block:
+        parts.append("\n" + palette_block)
+    parts.append(
+        f"\n### Current scope\n```dd\n{emit_l3(focus.doc)}\n```",
+    )
     if recent_log_summary:
         parts.append(
             "\n### Recent moves (most recent last)\n"
@@ -461,6 +527,7 @@ def run_session(
     component_paths: tuple[str, ...] = (),
     starting_doc: Optional[L3Document] = None,
     progress_stream: Optional[Any] = None,
+    project_vocab: Any = None,
 ) -> SessionRunResult:
     """Run one design session as an iteration loop.
 
@@ -578,6 +645,7 @@ def run_session(
             iteration=i,
             max_iters=max_iters,
             recent_log_summary=move_log_summary,
+            project_vocab=project_vocab,
         )
         resp = client.messages.create(
             model=model,
