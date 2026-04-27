@@ -456,6 +456,76 @@ _INSTANCE_OVERRIDE_TO_FIGMA_NAME: dict[str, str] = {
 }
 
 
+def _expected_descendant_id(head_figma_id: str, target_path: str) -> str:
+    """C9: construct the expected descendant figma_node_id from an
+    instance head + a non-:self target path.
+
+    Per Codex 5.5 round-8 architectural fork: strict construction
+    (not suffix match) keeps nested instances unambiguous. The
+    Figma extraction format encodes instance descendants as
+    ``I<head_figma_id><target_path>`` with the ``;`` separator
+    already at the start of the target. Helper handles the case
+    where the head is itself a nested instance (figma_node_id
+    already starts with ``I``) — must not double-prefix.
+
+    Examples:
+      _expected_descendant_id("512:28223", ";157:1425")
+        → "I512:28223;157:1425"
+
+      _expected_descendant_id("512:28223", ";157:1424;64:299")
+        → "I512:28223;157:1424;64:299"
+
+      _expected_descendant_id("I512:28223;157:1424", ";64:299")
+        → "I512:28223;157:1424;64:299"  (no II prefix)
+    """
+    prefix = head_figma_id if head_figma_id.startswith("I") else f"I{head_figma_id}"
+    return f"{prefix}{target_path}"
+
+
+def build_descendant_routings(
+    nodes: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    """C9: build the descendant-override routing map from the IR's
+    instance_overrides rows (Pass 1 of the two-pass IR build).
+
+    Returns a map from descendant ``figma_node_id`` to a set of
+    canonical figma_names that should land on that descendant's
+    ``_overrides`` side-car.
+
+    Per Codex 5.5 round-8 option (i): scan every instance node, for
+    each non-``:self`` target compute the expected descendant id via
+    ``_expected_descendant_id``, and record the mapped figma_name
+    against that id. ``map_node_to_element`` (Pass 2 of the build)
+    consumes this map by figma_node_id lookup.
+
+    Properties not in ``_INSTANCE_OVERRIDE_TO_FIGMA_NAME`` (e.g.
+    BOOLEAN visibility, INSTANCE_SWAP) are silently dropped — they
+    have separate handling paths (PathOverride, swap manifest).
+    """
+    routings: dict[str, set[str]] = {}
+    for node in nodes:
+        if node.get("canonical_type") != "instance":
+            continue
+        head_figma_id = node.get("figma_node_id")
+        if not head_figma_id:
+            continue
+        for ov in node.get("instance_overrides") or []:
+            if not isinstance(ov, dict):
+                continue
+            target = ov.get("target")
+            if not target or target == ":self":
+                continue  # :self handled by _build_overrides_sidecar
+            prop = ov.get("property")
+            if not isinstance(prop, str):
+                continue
+            figma_name = _INSTANCE_OVERRIDE_TO_FIGMA_NAME.get(prop)
+            if not figma_name:
+                continue  # unmapped property type — fail-open
+            descendant_id = _expected_descendant_id(head_figma_id, target)
+            routings.setdefault(descendant_id, set()).add(figma_name)
+    return routings
+
+
 def _build_overrides_sidecar(
     node: dict[str, Any], primitive_type: str,
 ) -> list[str] | None:
@@ -471,8 +541,11 @@ def _build_overrides_sidecar(
     other modes don't have the snapshot-vs-master ambiguity.
 
     Only ``:self`` targets count for the head node. Descendant
-    overrides (target like ``;126:10476``) are handled by
-    PathOverride / the visibility resolver — separate path.
+    overrides (target like ``;126:10476``) are routed to the
+    addressed descendant via :func:`build_descendant_routings`
+    (Sprint 2 C9, Codex 5.5 round-8 option (i)). The renderer
+    + verifier code paths are unchanged — they read
+    ``element["_overrides"]`` per node either way.
     """
     if primitive_type != "instance":
         return None
@@ -1495,6 +1568,12 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     sci_id_to_element_id: dict[int, str] = {}
     elements: dict[str, dict[str, Any]] = {}
 
+    # Sprint 2 C9 (Codex 5.5 round-8 option (i)): pass 1 of the two-pass
+    # build. Scan all nodes to collect non-:self override routings keyed
+    # by the DESCENDANT figma_node_id; pass 2 (the per-node loop below)
+    # merges these into each descendant's ``_overrides`` side-car.
+    descendant_routings = build_descendant_routings(nodes)
+
     for node in nodes:
         resolved_type = _resolve_element_type(node)
         type_counters[resolved_type] = type_counters.get(resolved_type, 0) + 1
@@ -1507,6 +1586,19 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         element = map_node_to_element(node)
         if node.get("name"):
             element["_original_name"] = node["name"]
+
+        # Sprint 2 C9 pass 2: if any ancestor instance overrode this
+        # descendant via a path target, merge the routed figma_names
+        # into _overrides. The descendant might not be an instance
+        # itself (TEXT, RECTANGLE etc.) — that's fine; provenance
+        # gating downstream uses the side-car presence regardless of
+        # primitive_type at the node.
+        figma_node_id = node.get("figma_node_id")
+        if figma_node_id and figma_node_id in descendant_routings:
+            existing = set(element.get("_overrides") or [])
+            existing |= descendant_routings[figma_node_id]
+            element["_overrides"] = sorted(existing)
+
         elements[element_id] = element
 
     # Wire children: always use DB parent_id (L0 ground-truth tree structure).
