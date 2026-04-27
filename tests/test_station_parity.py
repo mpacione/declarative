@@ -179,35 +179,36 @@ class TestFigmaPropertyStationFields:
 
 
 # ---------------------------------------------------------------------
-# C4 — defaults preserve current behavior
+# C4 — schema defaults still verifiable on a fresh property
 # ---------------------------------------------------------------------
+# (Pre-C5 these tests asserted defaults across PROPERTIES. Post-C5
+# the registry's _apply_inventory replaces every property with real
+# dispositions, so the per-PROPERTIES default assertion no longer
+# holds. The C4-shape contract is now: a freshly-constructed
+# FigmaProperty (no inventory applied) has the documented defaults.)
 
 
-class TestC4DefaultsAreNoOp:
-    """C4 adds metadata only; no property changes behavior. Every
-    existing property defaults to NOT_EMITTABLE / NOT_CAPTURED_SUPPORTED
-    / EXEMPT_REASON. C5 will set real values per property."""
+class TestC4DefaultsForFreshProperty:
+    """C4's contract: a fresh FigmaProperty (not in PROPERTIES) gets
+    the safe default dispositions. C5's _apply_inventory then
+    replaces every property in PROPERTIES with a dispositioned copy
+    (see tests/test_station_inventory.py for the per-property
+    coverage)."""
 
-    def test_every_property_defaults_to_not_emittable(self):
-        """Until C5 inventory wires real values, station_2 should
-        be NOT_EMITTABLE on every property — purely so the
-        inventory commit is the source of truth, not C4."""
-        from dd.property_registry import PROPERTIES, StationDisposition
+    def test_fresh_property_default_station_2(self):
+        from dd.property_registry import FigmaProperty, StationDisposition
 
-        for prop in PROPERTIES:
-            assert prop.station_2 == StationDisposition.NOT_EMITTABLE, (
-                f"{prop.figma_name}: expected default NOT_EMITTABLE "
-                f"in C4 (C5 will set real value), got {prop.station_2}"
-            )
+        prop = FigmaProperty(figma_name="freshly_constructed", db_column=None)
+        assert prop.station_2 == StationDisposition.NOT_EMITTABLE
 
-    def test_every_property_defaults_to_not_captured_supported(self):
-        from dd.property_registry import PROPERTIES, StationDisposition
+    def test_fresh_property_default_station_3(self):
+        from dd.property_registry import FigmaProperty, StationDisposition
 
-        for prop in PROPERTIES:
-            assert prop.station_3 == StationDisposition.NOT_CAPTURED_SUPPORTED
+        prop = FigmaProperty(figma_name="freshly_constructed", db_column=None)
+        assert prop.station_3 == StationDisposition.NOT_CAPTURED_SUPPORTED
 
-    def test_every_property_defaults_to_exempt_reason(self):
-        from dd.property_registry import PROPERTIES, StationDisposition
+    def test_fresh_property_default_station_4(self):
+        from dd.property_registry import FigmaProperty, StationDisposition
 
-        for prop in PROPERTIES:
-            assert prop.station_4 == StationDisposition.EXEMPT_REASON
+        prop = FigmaProperty(figma_name="freshly_constructed", db_column=None)
+        assert prop.station_4 == StationDisposition.EXEMPT_REASON
