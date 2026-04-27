@@ -66,3 +66,18 @@ tmp/
 
 # Archived snapshots (kept out of primary listing but not gitignored — explicitly tracked)
 # See archive/README.md for what's here and why
+
+# Audit / sweep / forensic outputs — bulk data is regenerable.
+# Already-tracked summary files (REPORT.md, RESULTS.md, summary.json,
+# sweep.stdout.txt, etc.) under audit/ stay tracked because git
+# doesn't untrack on .gitignore add. New audit runs are entirely
+# untracked. Use `git add -f <path>` to selectively track new
+# summaries.
+audit/
+
+# Local scratch + DB snapshots (regenerable; large)
+archive/db-snapshots/
+archive/scratch/
+
+# Sandboxed fix worktrees (per-session JS scratch, not load-bearing)
+fixes/
