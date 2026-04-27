@@ -54,6 +54,52 @@ _FIGMA_AUTO_LAYOUT = _FIGMA_CONTAINERS
 
 
 @dataclass(frozen=True)
+class FigmaComparatorSpec:
+    """Declarative comparator metadata for the Figma backend's verifier.
+
+    Sprint-2 architectural seam (Codex 5.5 sequencing call): registry
+    declares ``compare_figma=`` per property; ``dd/verify_figma.py``
+    owns the implementation map keyed by ``comparator``. Keeps the
+    registry declarative — no verifier-code imports leak into the
+    property registry.
+
+    Backend-shaped naming: explicit ``compare_figma`` field +
+    ``FigmaComparatorSpec`` class so future backends grow as
+    sibling fields/classes (``compare_html``, ``HTMLComparatorSpec``)
+    rather than a forced refactor of the existing surface.
+
+    Promotability: if/when backend #2 lands and we see two real
+    examples of the comparator-shape, this collapses cleanly to
+    ``compare={"figma": ..., "html": ...}`` without re-shaping
+    callers.
+    """
+
+    comparator: str
+    """Implementation id. ``dd/verify_figma.py`` owns the map
+    ``{id → callable}``. Keeps registry declarative + serializable."""
+
+    walker_key: str
+    """Field name in the rendered tree (per-node dict from
+    ``render_test/walk_ref.js``) where the comparator reads the
+    rendered value."""
+
+    kind: str
+    """``KIND_*`` string from ``dd/boundary.py`` — what error kind
+    this comparator emits when it finds drift."""
+
+    tolerance: float | None = None
+    """For numeric comparators: absolute tolerance for float
+    equality. None means exact equality."""
+
+    skip_when_provenance_absent: bool = True
+    """Mirrors A1.3 (``_is_snapshot_skip``): on Mode-1 INSTANCE,
+    skip comparison if the property isn't in the head's
+    ``_overrides`` side-car (i.e. the IR value is a master-default
+    snapshot, not an actual override). Most visual comparators
+    want this; bounds/structure comparators set False."""
+
+
+@dataclass(frozen=True)
 class FigmaProperty:
     figma_name: str
     db_column: str | None
@@ -70,6 +116,12 @@ class FigmaProperty:
     # this property. Empty/missing entry means "not supported on that backend"
     # (fail closed at the output gate; extraction still fails open).
     capabilities: dict[str, frozenset[str]] = field(default_factory=dict)
+    # Sprint-2: how this property is verified on the Figma backend.
+    # ``None`` means the property has no comparator declared today —
+    # the coverage harness in tests/test_figma_verifier_coverage.py
+    # will require either a spec OR an explicit exemption per the
+    # sprint-2 ladder (commits 2-7 wire each existing/new comparator).
+    compare_figma: FigmaComparatorSpec | None = None
 
 
 # ---------------------------------------------------------------------------
