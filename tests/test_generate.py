@@ -3374,9 +3374,14 @@ class TestResolveLayoutSizing:
 
     def test_db_value_takes_priority(self):
         from dd.visual import _resolve_layout_sizing
+        # Item 1 of the 13-item burn-down (Codex round-13): DB value
+        # is now validated against context. FILL requires auto-layout
+        # parent; HUG requires text or auto-layout frame. This test
+        # covers the valid-context case.
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True, node_is_autolayout_frame=True,
         )
         assert h == "FILL"
         assert v == "HUG"
@@ -3428,11 +3433,14 @@ class TestResolveLayoutSizing:
         assert v == "fixed"
 
     def test_db_sizing_takes_priority_over_pixel_dimensions(self):
-        """Ground-truth DB sizing overrides pixel dimension defaults."""
+        """Ground-truth DB sizing overrides pixel dimension defaults
+        when valid in context (item 1 burn-down: parent_is_autolayout
+        + node_is_autolayout_frame thread through)."""
         from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 200, "height": 100}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True, node_is_autolayout_frame=True,
         )
         assert h == "FILL"
         assert v == "HUG"

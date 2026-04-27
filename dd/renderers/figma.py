@@ -1835,8 +1835,34 @@ def generate_figma_script(
 
         parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
-        if parent_is_autolayout:
-            elem_sizing = element.get("layout", {}).get("sizing", {})
+
+        # Item 1 of the 13-item burn-down (Codex round-13/14):
+        # layoutSizing emission is no longer gated only on
+        # parent_is_autolayout. Per the Plugin API docs, layoutSizing
+        # applies to: auto-layout frames (HUG valid), auto-layout
+        # children (FILL valid), and text nodes (HUG valid via
+        # textAutoResize). Pre-fix the renderer skipped emission
+        # entirely for auto-layout frames whose parent isn't
+        # auto-layout — they defaulted to FIXED, surfacing 2,992
+        # mismatches across three corpora in Sprint 2 C11. The fix
+        # splits emission concerns:
+        #
+        #   emit_layout_sizing  = parent_is_AL or self_is_AL_frame or is_text
+        #   emit_explicit_position = not parent_is_AL  (parent's flow
+        #                                               handles it
+        #                                               otherwise)
+        #   emit_resize         = node not auto-layout, OR axes are
+        #                         FIXED (Codex round-14: avoid blanket
+        #                         resize() on HUG axes — locks them
+        #                         to fixed)
+        elem_layout_dir = element.get("layout", {}).get("direction", "")
+        node_is_autolayout_frame = elem_layout_dir in ("horizontal", "vertical")
+        emit_layout_sizing = (
+            parent_is_autolayout or node_is_autolayout_frame or is_text
+        )
+        elem_sizing = element.get("layout", {}).get("sizing", {})
+
+        if emit_layout_sizing:
             db_sizing_h = None
             db_sizing_v = None
             text_auto_resize = None
@@ -1850,7 +1876,35 @@ def generate_figma_script(
             sizing_h, sizing_v = _resolve_layout_sizing(
                 elem_sizing, db_sizing_h, db_sizing_v,
                 text_auto_resize, is_text, etype,
+                parent_is_autolayout=parent_is_autolayout,
+                node_is_autolayout_frame=node_is_autolayout_frame,
             )
+            # Codex round-14: emit numeric resize FIRST for axes that
+            # resolve to FIXED, so layoutSizing HUG/FILL on the OTHER
+            # axis isn't clobbered. resize() locks an axis to fixed;
+            # mixed-axis case (one HUG one FIXED) needs the FIXED axis
+            # set first via resize then HUG axis via layoutSizing.
+            pw = elem_sizing.get("widthPixels")
+            ph = elem_sizing.get("heightPixels")
+            sh_is_fixed = (sizing_h or "").upper() == "FIXED"
+            sv_is_fixed = (sizing_v or "").upper() == "FIXED"
+            if (sh_is_fixed and sv_is_fixed) and (
+                pw is not None and ph is not None
+            ):
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({round(pw, 2)}, {round(ph, 2)});",
+                    eid, "resize_failed",
+                ))
+            elif sh_is_fixed and pw is not None:
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({round(pw, 2)}, {var}.height);",
+                    eid, "resize_failed",
+                ))
+            elif sv_is_fixed and ph is not None:
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({var}.width, {round(ph, 2)});",
+                    eid, "resize_failed",
+                ))
             if sizing_h:
                 figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
                 phase2_lines.append(_guarded_op(
@@ -1871,10 +1925,9 @@ def generate_figma_script(
                 mode = text_autoresize_deferred[eid]
                 phase2_lines.append(f'{var}.textAutoResize = "{mode}";')
         else:
-            # Non-auto-layout parent: use pixel dimensions for resize
-            # and position. layoutSizing is irrelevant here — the node's
-            # size comes from explicit dimensions, not parent negotiation.
-            elem_sizing = element.get("layout", {}).get("sizing", {})
+            # Neither parent nor self auto-layout, and not text:
+            # explicit pixel resize (current behavior, no layoutSizing
+            # to consider).
             pw = elem_sizing.get("widthPixels")
             ph = elem_sizing.get("heightPixels")
             if pw is not None and ph is not None:
@@ -1889,6 +1942,13 @@ def generate_figma_script(
                 phase3_lines.append(_guarded_op(
                     f"{var}.resize({var}.width, {round(ph, 2)});", eid, "resize_failed",
                 ))
+
+        # Item 1: position emission moved out of the else branch —
+        # auto-layout-frame nodes whose parent isn't auto-layout still
+        # need explicit .x/.y because parent flow doesn't position them.
+        # Skip when parent IS auto-layout (flow handles position) OR
+        # when a relativeTransform is being emitted later.
+        if not parent_is_autolayout:
             # Skip .x/.y when a full relativeTransform will be emitted
             # below — the matrix includes translation, and scalar .x/.y
             # setters write the SAME translation column, which is then

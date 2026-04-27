@@ -1675,6 +1675,98 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     for parent_eid, child_ids in children_map.items():
         elements[parent_eid]["children"] = child_ids
 
+    # Item 1 of the 13-item burn-down (Codex round-12 architectural fork):
+    # canonicalize unrenderable layoutSizing on the IR side. The source DB
+    # often has ``layout_sizing_h='HUG'`` or 'FILL' on nodes whose parent
+    # context can't honor that semantic — Figma's UI lets you set HUG/FILL
+    # on any node, but the rendered result depends on parent type. Pre-fix,
+    # the IR carried the unrenderable intent and Sprint 2 C11 surfaced
+    # 2,992 mismatches across three corpora. This canonicalization removes
+    # the unrenderable enums in favor of numeric pixels (the actual
+    # rendered shape).
+    #
+    # Validity rules per Plugin API docs (Codex round-12 lock):
+    #   - FILL is valid ONLY when parent is auto-layout
+    #   - HUG is valid for: text nodes, auto-layout frames (regardless of parent)
+    #   - Otherwise → canonicalize to numeric pixels
+
+    # Build a parent-lookup for the post-pass.
+    eid_to_parent_eid: dict[str, str] = {}
+    for parent_eid, child_ids in children_map.items():
+        for child_eid in child_ids:
+            eid_to_parent_eid[child_eid] = parent_eid
+
+    def _parent_is_autolayout(eid: str) -> bool:
+        parent_eid = eid_to_parent_eid.get(eid)
+        if parent_eid is None:
+            return False  # root: no parent to be auto-layout
+        parent_layout = elements.get(parent_eid, {}).get("layout") or {}
+        return parent_layout.get("direction") in ("horizontal", "vertical")
+
+    def _node_is_autolayout_frame(eid: str) -> bool:
+        own_layout = elements.get(eid, {}).get("layout") or {}
+        return own_layout.get("direction") in ("horizontal", "vertical")
+
+    def _canonicalize_axis(
+        sizing: dict[str, Any],
+        axis: str,
+        is_text: bool,
+        is_autolayout_frame: bool,
+        parent_is_al: bool,
+    ) -> None:
+        """Apply Codex round-12 validity rules to one sizing axis.
+
+        ``axis`` is "width" or "height". Mutates ``sizing`` in place.
+        If the enum is unrenderable in this context, swap it for the
+        numeric pixel value (read from ``<axis>Pixels`` if present).
+        """
+        value = sizing.get(axis)
+        if value not in ("fill", "hug"):
+            return  # numeric or absent — already canonical
+
+        # FILL requires auto-layout parent
+        if value == "fill" and not parent_is_al:
+            pixels = sizing.get(f"{axis}Pixels")
+            if pixels is not None:
+                sizing[axis] = pixels
+            else:
+                sizing.pop(axis, None)
+            sizing.pop(f"{axis}Pixels", None)
+            return
+
+        # HUG valid for text or auto-layout-frame; otherwise canonicalize
+        if value == "hug" and not (is_text or is_autolayout_frame):
+            pixels = sizing.get(f"{axis}Pixels")
+            if pixels is not None:
+                sizing[axis] = pixels
+            else:
+                sizing.pop(axis, None)
+            sizing.pop(f"{axis}Pixels", None)
+            return
+
+    for eid, element in elements.items():
+        layout = element.get("layout") or {}
+        sizing = layout.get("sizing")
+        if not sizing:
+            continue
+
+        is_text = element.get("type") == "text"
+        is_autolayout_frame = _node_is_autolayout_frame(eid)
+        parent_is_al = _parent_is_autolayout(eid)
+
+        _canonicalize_axis(
+            sizing, "width", is_text, is_autolayout_frame, parent_is_al,
+        )
+        _canonicalize_axis(
+            sizing, "height", is_text, is_autolayout_frame, parent_is_al,
+        )
+
+        # If sizing dict is now empty, remove it
+        if not sizing:
+            layout.pop("sizing", None)
+            if not layout:
+                element.pop("layout", None)
+
     # Root elements: containers + classified nodes that have no parent
     root_ids = [
         node_id_to_element_id[n["node_id"]]

@@ -1912,9 +1912,16 @@ def _emit_phase2(
                 db_sizing_h = nv.get("layout_sizing_h")
                 db_sizing_v = nv.get("layout_sizing_v")
                 text_auto_resize = nv.get("text_auto_resize")
+            # Item 1 of the 13-item burn-down: thread auto-layout
+            # context so _resolve_one_axis can validate stale DB
+            # HUG/FILL values (Codex round-13).
+            elem_layout_dir = element.get("layout", {}).get("direction", "")
+            node_is_autolayout_frame = elem_layout_dir in ("horizontal", "vertical")
             sizing_h, sizing_v = _resolve_layout_sizing(
                 elem_sizing, db_sizing_h, db_sizing_v,
                 text_auto_resize, is_text, etype,
+                parent_is_autolayout=parent_is_autolayout,
+                node_is_autolayout_frame=node_is_autolayout_frame,
             )
             # Per-op guards — layoutSizing ops are ordering-sensitive
             # (feedback_text_layout_invariants.md) and can throw on
