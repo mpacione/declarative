@@ -1900,8 +1900,30 @@ def _emit_phase2(
         )
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
 
-        if parent_is_autolayout:
-            element = spec_elements.get(spec_key, {})
+        # Item 1 burn-down (Codex round-13/14) gate — ported from
+        # `dd/renderers/figma.py:1860`. layoutSizing emission is no
+        # longer gated only on `parent_is_autolayout`. Per Plugin API
+        # docs, layoutSizing applies to:
+        #   - auto-layout frames (HUG valid regardless of parent)
+        #   - auto-layout children (FILL valid)
+        #   - text nodes (HUG valid via textAutoResize)
+        # Pre-port the AST renderer skipped emission for self-auto-
+        # layout frames whose parent is NOT auto-layout — they
+        # defaulted to FIXED at runtime, surfacing as
+        # `IR='HUG' rendered='FIXED'` mismatches across every Dank
+        # screen with top-level container/button/card frames in the
+        # 2026-04-27 post-revert sweep. The sibling renderer
+        # `dd/renderers/figma.py` already had the broadened gate; the
+        # AST renderer was stale. Codex 5.5 + Sonnet diagnosis
+        # 2026-04-27 (high reasoning): port the rule, don't extend it.
+        element = spec_elements.get(spec_key, {})
+        elem_layout_dir = element.get("layout", {}).get("direction", "")
+        node_is_autolayout_frame = elem_layout_dir in ("horizontal", "vertical")
+        emit_layout_sizing = (
+            parent_is_autolayout or node_is_autolayout_frame or is_text
+        )
+
+        if emit_layout_sizing:
             elem_sizing = element.get("layout", {}).get("sizing", {})
             db_sizing_h = nv_sh = None
             db_sizing_v = nv_sv = None
@@ -1912,11 +1934,6 @@ def _emit_phase2(
                 db_sizing_h = nv.get("layout_sizing_h")
                 db_sizing_v = nv.get("layout_sizing_v")
                 text_auto_resize = nv.get("text_auto_resize")
-            # Item 1 of the 13-item burn-down: thread auto-layout
-            # context so _resolve_one_axis can validate stale DB
-            # HUG/FILL values (Codex round-13).
-            elem_layout_dir = element.get("layout", {}).get("direction", "")
-            node_is_autolayout_frame = elem_layout_dir in ("horizontal", "vertical")
             sizing_h, sizing_v = _resolve_layout_sizing(
                 elem_sizing, db_sizing_h, db_sizing_v,
                 text_auto_resize, is_text, etype,
