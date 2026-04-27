@@ -190,6 +190,29 @@ class TestBuildDescendantRoutings:
         routings = build_descendant_routings([non_instance])
         assert routings == {}
 
+    def test_unclassified_db_uses_node_type_fallback(self):
+        """C9 gate must accept both canonical_type=='instance' AND
+        node_type=='INSTANCE'. Discovered via C11 sweep on a fresh
+        DB that hadn't been classified: canonical_type is None on
+        every node, so routing was silently skipping. Ground truth
+        is node_type from extraction; canonical_type is the
+        post-classify semantic label."""
+        from dd.ir import build_descendant_routings
+
+        # Fresh extraction: canonical_type is None, node_type is INSTANCE
+        unclassified_head = {
+            "figma_node_id": "512:28223",
+            "canonical_type": None,
+            "node_type": "INSTANCE",
+            "instance_overrides": [
+                {"target": ";157:1425", "property": "TEXT", "value": "Reject"},
+            ],
+        }
+        routings = build_descendant_routings([unclassified_head])
+        # Routing must fire even without canonical_type set
+        assert "I512:28223;157:1425" in routings
+        assert routings["I512:28223;157:1425"] == {"characters"}
+
     def test_empty_instance_overrides_safe(self):
         """No instance_overrides field, or empty list, yields no routings."""
         from dd.ir import build_descendant_routings

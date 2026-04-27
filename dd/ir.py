@@ -502,9 +502,20 @@ def build_descendant_routings(
     BOOLEAN visibility, INSTANCE_SWAP) are silently dropped — they
     have separate handling paths (PathOverride, swap manifest).
     """
+    # Accept both the post-classification semantic label
+    # (``canonical_type == "instance"``) AND the pre-classification
+    # ground truth (``node_type == "INSTANCE"`` from extraction).
+    # C9 originally gated on canonical_type only, which silently
+    # skipped routing on un-classified DBs (e.g. fresh extracts
+    # before ``dd classify`` runs) — discovered via C11 sweep on
+    # /tmp/hgb-fresh-20260427.db.
     routings: dict[str, set[str]] = {}
     for node in nodes:
-        if node.get("canonical_type") != "instance":
+        is_instance = (
+            node.get("canonical_type") == "instance"
+            or node.get("node_type") == "INSTANCE"
+        )
+        if not is_instance:
             continue
         head_figma_id = node.get("figma_node_id")
         if not head_figma_id:
@@ -1463,6 +1474,12 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
         "n.text_content, n.corner_radius, n.opacity, n.fills, n.strokes, n.effects, "
         "n.font_family, n.font_weight, n.font_size, "
         "n.parent_id, n.component_key, n.visible, "
+        # Sprint 2 C11 fix: figma_node_id required by C9's
+        # build_descendant_routings (Codex round-8 flagged this gap;
+        # the C11 sweep on un-classified DBs surfaced it). Without
+        # this column the SELECT yields figma_node_id=None on every
+        # node and the descendant-routing pass produces zero entries.
+        "n.figma_node_id, "
         f"{rt_col}"
         f"{role_col}"
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "
@@ -1474,6 +1491,40 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     )
     columns = [desc[0] for desc in cursor.description]
     all_nodes = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    # Sprint 2 C11 fix: populate ``instance_overrides`` on each
+    # INSTANCE node per Codex round-8's C9 dependency. Without this,
+    # build_descendant_routings has nothing to scan and descendant
+    # overrides (text content "Reject" on ;157:1425 etc.) silently
+    # fail to route — which is what C11 surfaced on Dank/HGB.
+    has_overrides_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND "
+        "name='instance_overrides'"
+    ).fetchone()
+    if has_overrides_table:
+        instance_node_ids = [
+            n["node_id"] for n in all_nodes if n.get("node_type") == "INSTANCE"
+        ]
+        if instance_node_ids:
+            ph = ",".join("?" for _ in instance_node_ids)
+            override_cursor = conn.execute(
+                f"SELECT node_id, property_type, property_name, override_value "
+                f"FROM instance_overrides WHERE node_id IN ({ph})",
+                instance_node_ids,
+            )
+            overrides_by_node: dict[int, list[dict[str, Any]]] = {}
+            for row in override_cursor.fetchall():
+                target, prop = decompose_override(row[1], row[2])
+                overrides_by_node.setdefault(row[0], []).append({
+                    "target": target,
+                    "property": prop,
+                    "value": row[3],
+                })
+            for n in all_nodes:
+                if n.get("node_type") == "INSTANCE":
+                    n["instance_overrides"] = overrides_by_node.get(
+                        n["node_id"], []
+                    )
 
     bindings_cursor = conn.execute(
         "SELECT ntb.node_id, ntb.property, t.name as token_name, ntb.resolved_value "
