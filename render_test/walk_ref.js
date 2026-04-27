@@ -137,13 +137,48 @@ if (__gridRoot && typeof __gridRoot.x === 'number') {
 // plugin sandbox. The manifest is read on the Node side from
 // render_test/walker_manifest.generated.json and serialized inline here
 // so it is observable to capture handlers. C7 only injects + smoke-logs;
-// C8 will make capture decisions read __WALKER_MANIFEST.properties.
+// C8 makes capture decisions read __WALKER_MANIFEST.properties (below).
 const __WALKER_MANIFEST = ${JSON.stringify(__WALKER_MANIFEST)};
 const __WALKER_MANIFEST_VERSION = ${JSON.stringify(__WALKER_MANIFEST_VERSION)};
 if (__WALKER_MANIFEST && __WALKER_MANIFEST.properties) {
   console.log('[walker] manifest loaded: ' + Object.keys(__WALKER_MANIFEST.properties).length + ' properties');
 } else {
   console.log('[walker] manifest not loaded (self-boot fallback)');
+}
+
+// Sprint 2 C8 — precompute the set of property names whose capture
+// shape graduates from raw to {value, source} envelope. Per
+// docs/plan-sprint-2-station-parity.md §6 (walker capture semantics)
+// the manifest's per-property "envelope" field is the registry's
+// instruction to the walker; "value_source" means the walker emits
+// {value: <captured>, source: 'set'} instead of the bare value, so
+// downstream consumers can distinguish a real assignment from a
+// computed default / inherited value. Sprint 2 only emits the 'set'
+// tag; broader source-tag vocabulary is reserved for future families.
+//
+// Self-boot fallback per plan §10 R1: if __WALKER_MANIFEST is null
+// or missing the .properties field, fall back to a hardcoded Set of
+// the 3 names this commit graduates so C8 still works under fallback.
+const __VALUE_SOURCE_PROPS = (function () {
+  const s = new Set();
+  if (__WALKER_MANIFEST && __WALKER_MANIFEST.properties) {
+    for (const name of Object.keys(__WALKER_MANIFEST.properties)) {
+      if (__WALKER_MANIFEST.properties[name].envelope === 'value_source') {
+        s.add(name);
+      }
+    }
+    return s;
+  }
+  // Fallback: hardcode the 3 graduations from C8 so absence-of-manifest
+  // doesn't silently regress to raw-only capture.
+  s.add('characters');
+  s.add('layoutSizingHorizontal');
+  s.add('layoutSizingVertical');
+  return s;
+})();
+
+function __walkerMaybeEnvelope(name, value, source) {
+  return __VALUE_SOURCE_PROPS.has(name) ? { value: value, source: source } : value;
 }
 
 // Safeguard: resolve __page by NAME (never trust figma.currentPage —
@@ -326,8 +361,30 @@ if (rootNode) {
       try {
         if (typeof n.clipsContent === 'boolean') entry.clipsContent = n.clipsContent;
       } catch (_) {}
+      // Sprint 2 C8 — layoutSizingHorizontal/Vertical are graduated
+      // to {value, source} envelopes via __walkerMaybeEnvelope. The
+      // typeof === 'string' guard covers nodes that don't expose the
+      // sizing properties (e.g. GROUP) and the figma.Mixed sentinel;
+      // absence of the entry implies the property was not present on
+      // the node, rather than emitting a placeholder envelope. C10
+      // will register comparators on the verifier side; for now the
+      // captures land in the rendered map and any future read sites
+      // tolerate either shape via _rendered_value.
+      try {
+        if (typeof n.layoutSizingHorizontal === 'string') {
+          entry.layoutSizingHorizontal = __walkerMaybeEnvelope('layoutSizingHorizontal', n.layoutSizingHorizontal, 'set');
+        }
+      } catch (_) {}
+      try {
+        if (typeof n.layoutSizingVertical === 'string') {
+          entry.layoutSizingVertical = __walkerMaybeEnvelope('layoutSizingVertical', n.layoutSizingVertical, 'set');
+        }
+      } catch (_) {}
       if (n.type === 'TEXT') {
-        entry.characters = n.characters || '';
+        // Sprint 2 C8 — characters graduates to {value, source}
+        // envelope. textAutoResize stays raw (not in the C8
+        // graduation list).
+        entry.characters = __walkerMaybeEnvelope('characters', n.characters || '', 'set');
         entry.textAutoResize = n.textAutoResize;
       }
       if (n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION') {

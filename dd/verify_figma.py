@@ -46,6 +46,35 @@ _ROTATION_TOLERANCE = 1e-3     # ~0.06° — covers walker conversion error
 _CORNER_RADIUS_TOLERANCE = 1e-3  # sub-pixel
 
 
+def _rendered_value(
+    rendered: dict[str, Any], key: str, default: Any = None,
+) -> Any:
+    """Sprint 2 C8: read a rendered value that may be either:
+
+    - raw value (legacy / non-graduated properties)
+    - envelope ``{"value": <v>, "source": <tag>}`` (Sprint 2+
+      graduated properties per
+      ``docs/plan-sprint-2-station-parity.md`` §6)
+
+    Returns the underlying value in either case. Verifier code uses
+    this helper for properties that may have been graduated; the
+    envelope-vs-raw distinction is invisible at the comparator
+    level. C10 will wire registry-driven dispatch so every read site
+    flows through the same path; until then the helper is the
+    defensive shim.
+
+    A dict is treated as an envelope only when it has BOTH ``value``
+    and ``source`` keys — partial dicts ({"value": x} alone, or
+    arbitrary dicts that happen to include a ``value`` key) pass
+    through unchanged so future shape additions are not
+    misinterpreted.
+    """
+    raw = rendered.get(key, default)
+    if isinstance(raw, dict) and "value" in raw and "source" in raw:
+        return raw["value"]
+    return raw
+
+
 def _is_snapshot_skip(
     rendered_type: str | None, prop_name: str, element: dict[str, Any],
 ) -> bool:
@@ -317,10 +346,17 @@ class FigmaRenderVerifier:
                         },
                     ))
 
-            # Empty-text check — Defect 2 surfaces here
+            # Empty-text check — Defect 2 surfaces here.
+            #
+            # Sprint 2 C8: ``characters`` may now be either the raw
+            # string (legacy walker) or the envelope shape
+            # ``{"value": str, "source": "set"}`` (post-C8 walker per
+            # docs/plan-sprint-2-station-parity.md §6). ``_rendered_value``
+            # collapses both to the underlying string; the
+            # falsy-empty test below is unchanged.
             expected_text = (element.get("props") or {}).get("text")
             if ir_type == "text" and expected_text:
-                actual_text = rendered.get("characters", "")
+                actual_text = _rendered_value(rendered, "characters", "")
                 if not actual_text:
                     errors.append(StructuredError(
                         kind=KIND_MISSING_TEXT,

@@ -56,10 +56,17 @@ class TestC7ManifestInjection:
         )
 
     def test_existing_capture_behavior_unchanged(self):
-        """C7 MUST NOT change capture behavior. The entry.* assignments
-        for fills, strokes, opacity, blendMode, isMask, cornerRadius,
-        strokeWeight, strokeAlign, dashPattern, clipsContent, characters,
-        textAutoResize must all still be present and unchanged."""
+        """C7 MUST NOT change capture behavior for non-graduated
+        properties. The entry.* assignments for fills, strokes,
+        opacity, blendMode, isMask, cornerRadius, strokeWeight,
+        strokeAlign, dashPattern, clipsContent, textAutoResize must
+        all still be present and unchanged.
+
+        ``characters`` was originally part of this list but graduates
+        to a {value, source} envelope under C8 — see the dedicated
+        C8 tests in ``test_walker_envelope_c8.py``. The
+        ``entry.textAutoResize`` raw form remains as the negative
+        control (not in the C8 graduation list)."""
         contents = _WALKER_PATH.read_text()
         # These entry.* assignments must still exist (rough textual check)
         for line_substr in (
@@ -70,7 +77,6 @@ class TestC7ManifestInjection:
             "entry.strokeAlign = n.strokeAlign",
             "entry.dashPattern = n.dashPattern.slice()",
             "entry.clipsContent = n.clipsContent",
-            "entry.characters = n.characters",
             "entry.textAutoResize = n.textAutoResize",
         ):
             assert line_substr in contents, (
