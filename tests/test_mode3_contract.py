@@ -573,7 +573,18 @@ class TestVariantInducer:
         assert any(v.startswith("custom_") for v in variants)
 
     def test_variant_binding_missing_emits_structured_error(self):
-        """When ProjectCKRProvider queries for a binding that doesn't exist."""
+        """When ProjectCKRProvider queries for a binding that doesn't
+        exist, push KIND_VARIANT_BINDING_MISSING into context errors.
+
+        A4 (architectural sprint): also assert ``resolve()`` returns
+        ``None`` so the provider chain falls through to ingested /
+        universal. Pre-A4 the provider returned a fallback template
+        with empty bindings, blocking the chain — universal's
+        complete shape never got rendered. Codex 5.5 (gpt-5.5 high
+        reasoning) confirmed: "ProjectCKR has no project-native
+        template for `button/primary`, so it should not win the
+        cascade. Let Universal/Ingested resolve the complete shape."
+        """
         from dd.composition.providers.project_ckr import ProjectCKRProvider
         from dd.boundary import KIND_VARIANT_BINDING_MISSING
         # Use the real schema so provider and DB stay in sync.
@@ -582,11 +593,42 @@ class TestVariantInducer:
         provider = ProjectCKRProvider(conn)
         context: dict[str, object] = {}
         template = provider.resolve("button", "primary", context)
-        # Template still returned with a fallback shape so render
-        # proceeds; but at least one error must flag the missing binding.
+        # A4: the provider must NOT win the cascade when it has no
+        # bindings — return None so the provider chain falls through.
+        assert template is None, (
+            "A4: ProjectCKRProvider must return None when no bindings "
+            "exist for the (catalog_type, variant) pair, so the "
+            "provider chain falls through to ingested/universal."
+        )
+        # The diagnostic must still fire for visibility.
         errors = context.get("__errors__", [])
         kinds = {e.kind for e in errors}
         assert KIND_VARIANT_BINDING_MISSING in kinds
+
+    def test_variant_binding_present_returns_template(self):
+        """When ProjectCKRProvider has at least one binding row for
+        the (catalog_type, variant) pair, return a non-None template
+        so the project-native styling wins the cascade.
+        """
+        from dd.composition.providers.project_ckr import ProjectCKRProvider
+        from dd.db import init_db
+        conn = init_db(":memory:")
+        # Seed at least one binding for (button, custom_1, "fill")
+        conn.execute(
+            "INSERT INTO variant_token_binding "
+            "(catalog_type, variant, slot, literal_value, source) "
+            "VALUES ('button', 'custom_1', 'fill', '#ABC123', 'cluster')"
+        )
+        conn.commit()
+        provider = ProjectCKRProvider(conn)
+        context: dict[str, object] = {}
+        template = provider.resolve("button", "custom_1", context)
+        assert template is not None, (
+            "A4: when bindings exist, the provider must return a "
+            "real PresentationTemplate so the project-native style "
+            "wins."
+        )
+        assert template.style.get("fill") == "#ABC123"
 
 
 # ---------------------------------------------------------------------------
