@@ -460,6 +460,126 @@ class TestMapNodeToElement:
         ]
 
 
+class TestInstanceOverridesSidecar:
+    """A1.1 (Backlog #1 — provenance tagging plan).
+
+    Mode-1 INSTANCE heads carry an extraction snapshot of every
+    visual property in the IR's ``visual`` dict. The snapshot may
+    be a real override (instance_overrides row exists) OR a
+    passive observation of the master's defaults at extraction
+    time. The verifier conflates the two and produces false
+    positive ``fill_mismatch`` / ``stroke_mismatch`` errors.
+
+    The fix (per docs/plan-provenance-tagging.md): populate a new
+    IR side-car ``element["_overrides"]: list[str]`` listing the
+    canonical Figma property names that have override rows in
+    ``instance_overrides`` for this node. Renderer + verifier
+    consult this list to gate per-property emission and
+    comparison.
+
+    Source-of-truth mapping: ``instance_overrides.property_type``
+    → registry ``figma_name``. Codex 5.5 (gpt-5.5 high reasoning)
+    confirmed the single-source-of-truth shape and per-property
+    granularity.
+    """
+
+    def test_no_overrides_field_when_no_instance_overrides(self):
+        """A node with no instance_overrides rows gets no
+        ``_overrides`` field. (NOT empty list — absent.)"""
+        node = _make_node()
+        element = map_node_to_element(node)
+        assert "_overrides" not in element
+
+    def test_no_overrides_field_for_non_instance(self):
+        """A non-INSTANCE node (e.g. plain frame) doesn't get
+        ``_overrides`` even if it somehow had override rows.
+        Provenance gating only applies to Mode-1 INSTANCE heads."""
+        node = _make_node()  # default node_type='FRAME'
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+        ]
+        element = map_node_to_element(node)
+        # Frames don't get _overrides; provenance is INSTANCE-only.
+        assert "_overrides" not in element
+
+    def test_overrides_field_lists_canonical_figma_names(self):
+        """An INSTANCE with FILLS + STROKE_WEIGHT override rows
+        produces ``_overrides=["fills","strokeWeight"]`` (canonical
+        figma_name keys, sorted for determinism)."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ":self", "property": "strokeWeight", "value": "2"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == ["fills", "strokeWeight"]
+
+    def test_overrides_field_dedupes(self):
+        """Multiple rows for the same property collapse to one entry."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[a]"},
+            {"target": ":self", "property": "fills", "value": "[b]"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == ["fills"]
+
+    def test_overrides_only_self_targeted(self):
+        """A1.1 scope: only ``:self`` overrides count for the head
+        node's ``_overrides``. Descendant overrides (target like
+        ``;126:10476``) are handled by PathOverride / the
+        visibility resolver — separate path. Don't conflate."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ";126:10476", "property": "visible", "value": "false"},
+        ]
+        element = map_node_to_element(node)
+        # Only the :self FILLS makes it into the head's _overrides.
+        assert element.get("_overrides") == ["fills"]
+
+    def test_overrides_maps_property_type_aliases(self):
+        """Some upstream code paths may use the SQL property_type
+        casing (FILLS, STROKE_WEIGHT, CORNER_RADIUS) instead of
+        the canonical figma_name. The mapping table normalizes."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            # Casing variants — both should normalize to canonical.
+            {"target": ":self", "property": "FILLS", "value": "[]"},
+            {"target": ":self", "property": "STROKE_WEIGHT", "value": "2"},
+            {"target": ":self", "property": "CORNER_RADIUS", "value": "8"},
+            {"target": ":self", "property": "OPACITY", "value": "0.5"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == [
+            "cornerRadius", "fills", "opacity", "strokeWeight"
+        ]
+
+    def test_unknown_property_type_skipped_quietly(self):
+        """If an instance_overrides row has a property_type the
+        registry doesn't recognize (e.g. a future field added in
+        upstream extraction), it gets skipped without raising.
+        Fail-open (consistent with feedback_fail_open_not_closed)."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ":self", "property": "totally_made_up_field", "value": "x"},
+        ]
+        element = map_node_to_element(node)
+        # Only the recognized one survives.
+        assert element.get("_overrides") == ["fills"]
+
+
 class TestVerifierVisualCoverage:
     """P1 (forensic-audit-2 findings 8-12): the verifier-side IR builder
     `_build_visual` must carry every visual property the renderer emits

@@ -395,6 +395,111 @@ def _resolve_element_type(node: dict[str, Any]) -> str:
     return node.get("canonical_type") or node_type_raw.lower() or "frame"
 
 
+# A1.1 (provenance plan, Backlog #1): canonical mapping from
+# instance_overrides.property_type → registry figma_name. Source of
+# truth is the existing instance_overrides table; transport to the
+# renderer + verifier is the IR side-car ``element["_overrides"]``.
+#
+# Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26) confirmed
+# per-property granularity is correct: a STROKE_WEIGHT row does not
+# imply a STROKES row, etc. Each property in this map is verified
+# to correspond to a real registry entry; unmapped property_types
+# (e.g. INSTANCE_SWAP, BOOLEAN — which are handled via separate
+# paths) are intentionally absent and get silently dropped from the
+# _overrides side-car (fail-open, per
+# feedback_fail_open_not_closed.md).
+_INSTANCE_OVERRIDE_TO_FIGMA_NAME: dict[str, str] = {
+    # Visual paints
+    "FILLS": "fills",
+    "STROKES": "strokes",
+    # Stroke geometry
+    "STROKE_WEIGHT": "strokeWeight",
+    "STROKE_ALIGN": "strokeAlign",
+    # Effects
+    "EFFECTS": "effects",
+    # Geometry
+    "CORNER_RADIUS": "cornerRadius",
+    # Visual scalars
+    "OPACITY": "opacity",
+    "BLEND_MODE": "blendMode",
+    "CLIPS_CONTENT": "clipsContent",
+    # Sizing (will use per-axis logic in renderer)
+    "WIDTH": "width",
+    "HEIGHT": "height",
+    # Layout
+    "LAYOUT_SIZING_V": "layoutSizingVertical",
+    "LAYOUT_SIZING_H": "layoutSizingHorizontal",
+    # Text
+    "TEXT": "characters",
+    "FONT_SIZE": "fontSize",
+    "FONT_FAMILY": "fontFamily",
+    # Note: BOOLEAN (visibility) and INSTANCE_SWAP are NOT in this
+    # map — they're handled via PathOverride / swap paths, not via
+    # the head-node provenance side-car.
+    # Lowercase variants (some upstream code paths use already-
+    # canonicalized names from the registry side, not the SQL
+    # uppercase). Identity-pass these through.
+    "fills": "fills",
+    "strokes": "strokes",
+    "strokeWeight": "strokeWeight",
+    "strokeAlign": "strokeAlign",
+    "effects": "effects",
+    "cornerRadius": "cornerRadius",
+    "opacity": "opacity",
+    "blendMode": "blendMode",
+    "clipsContent": "clipsContent",
+    "width": "width",
+    "height": "height",
+    "characters": "characters",
+    "fontSize": "fontSize",
+    "fontFamily": "fontFamily",
+}
+
+
+def _build_overrides_sidecar(
+    node: dict[str, Any], primitive_type: str,
+) -> list[str] | None:
+    """Build the ``_overrides`` side-car from instance_overrides rows.
+
+    Returns a sorted list of canonical figma_name strings — the
+    visual properties that have ``:self`` override rows on this
+    node — or ``None`` when no overrides apply (kept absent from
+    the element dict to keep the IR compact).
+
+    Scope: only ``primitive_type == "instance"`` heads get this
+    side-car. Provenance gating only matters for Mode 1 because
+    other modes don't have the snapshot-vs-master ambiguity.
+
+    Only ``:self`` targets count for the head node. Descendant
+    overrides (target like ``;126:10476``) are handled by
+    PathOverride / the visibility resolver — separate path.
+    """
+    if primitive_type != "instance":
+        return None
+
+    raw_overrides = node.get("instance_overrides") or []
+    if not raw_overrides:
+        return None
+
+    figma_names: set[str] = set()
+    for ov in raw_overrides:
+        if not isinstance(ov, dict):
+            continue
+        target = ov.get("target")
+        if target != ":self":
+            continue
+        prop = ov.get("property")
+        if not isinstance(prop, str):
+            continue
+        figma_name = _INSTANCE_OVERRIDE_TO_FIGMA_NAME.get(prop)
+        if figma_name:
+            figma_names.add(figma_name)
+
+    if not figma_names:
+        return None
+    return sorted(figma_names)
+
+
 def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     """Convert a classified node dict to an IR element.
 
@@ -457,6 +562,17 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
 
     if node.get("visible") == 0:
         element["visible"] = False
+
+    # A1.1 (provenance plan, Backlog #1): provenance side-car for
+    # Mode-1 INSTANCE heads. Lists which visual properties have
+    # genuine override rows in instance_overrides — the renderer
+    # uses this to gate per-property emission and the verifier uses
+    # it to skip comparison on snapshot-only props (avoiding false
+    # positive fill_mismatch / stroke_mismatch errors of the
+    # extraction-snapshot-vs-master-default class).
+    overrides = _build_overrides_sidecar(node, primitive_type)
+    if overrides is not None:
+        element["_overrides"] = overrides
 
     return element
 
