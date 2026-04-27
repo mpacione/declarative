@@ -132,6 +132,23 @@ KIND_MASK_MISMATCH = "mask_mismatch"
 # rendered cornerRadius. Pre-P1 was the only "complex" registry visual
 # prop the verifier didn't compare despite being emitted.
 KIND_CORNERRADIUS_MISMATCH = "cornerradius_mismatch"
+# A node's IR strokeWeight differs from the rendered strokeWeight.
+# A5 (forensic-audit-2 sprint, Pattern G): strokeWeight is registry-
+# driven via _UNIFORM but pre-A5 had no comparator. Drift on stroke
+# weight (e.g. master defaults vs override) was silent.
+KIND_STROKE_WEIGHT_MISMATCH = "stroke_weight_mismatch"
+# A node's IR strokeAlign (INSIDE / CENTER / OUTSIDE) differs from
+# rendered. A5: strokeAlign affects stroke positioning relative to
+# the geometry boundary; visible difference but pre-A5 silent.
+KIND_STROKE_ALIGN_MISMATCH = "stroke_align_mismatch"
+# A node's IR dashPattern (array of dash/gap lengths) differs from
+# rendered. A5: a solid stroke vs a dashed stroke is a clear visual
+# loss; pre-A5 silent.
+KIND_DASH_PATTERN_MISMATCH = "dash_pattern_mismatch"
+# A node's IR clipsContent (boolean — whether overflowing children
+# get clipped) differs from rendered. A5: visible content
+# leak/clip; pre-A5 silent.
+KIND_CLIPS_CONTENT_MISMATCH = "clips_content_mismatch"
 # Gradient fill has no Plugin API gradientTransform — the REST API
 # handlePositions can't be reliably converted. Renderer skips the
 # gradient rather than emitting a wrong matrix.

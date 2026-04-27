@@ -266,6 +266,22 @@ if (rootNode) {
           if (typeof n.bottomLeftRadius === 'number') entry.bottomLeftRadius = n.bottomLeftRadius;
         }
       } catch (_) {}
+      // A5 (forensic-audit-2 Pattern G): capture stroke-geometry +
+      // clipsContent for verifier comparison. Pre-A5 these were
+      // emitted by the renderer (registry _UNIFORM templates) but
+      // never compared by the verifier — silent drift.
+      try {
+        if (typeof n.strokeWeight === 'number') entry.strokeWeight = n.strokeWeight;
+      } catch (_) {}
+      try {
+        if (typeof n.strokeAlign === 'string') entry.strokeAlign = n.strokeAlign;
+      } catch (_) {}
+      try {
+        if (Array.isArray(n.dashPattern)) entry.dashPattern = n.dashPattern.slice();
+      } catch (_) {}
+      try {
+        if (typeof n.clipsContent === 'boolean') entry.clipsContent = n.clipsContent;
+      } catch (_) {}
       if (n.type === 'TEXT') {
         entry.characters = n.characters || '';
         entry.textAutoResize = n.textAutoResize;

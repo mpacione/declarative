@@ -20,7 +20,9 @@ from typing import Any, ClassVar
 from dd.boundary import (
     KIND_BLENDMODE_MISMATCH,
     KIND_BOUNDS_MISMATCH,
+    KIND_CLIPS_CONTENT_MISMATCH,
     KIND_CORNERRADIUS_MISMATCH,
+    KIND_DASH_PATTERN_MISMATCH,
     KIND_EFFECT_MISSING,
     KIND_FILL_MISMATCH,
     KIND_MASK_MISMATCH,
@@ -29,7 +31,9 @@ from dd.boundary import (
     KIND_MISSING_TEXT,
     KIND_OPACITY_MISMATCH,
     KIND_ROTATION_MISMATCH,
+    KIND_STROKE_ALIGN_MISMATCH,
     KIND_STROKE_MISMATCH,
+    KIND_STROKE_WEIGHT_MISMATCH,
     KIND_TYPE_SUBSTITUTION,
     RenderReport,
     StructuredError,
@@ -627,6 +631,95 @@ class FigmaRenderVerifier:
                             "rendered_corner_radius": rd_cr,
                         },
                     ))
+
+            # A5 (forensic-audit-2 Pattern G): comparators for visual
+            # props the IR carries but pre-A5 had no comparator.
+            # Each gated by the A1.3 provenance gate.
+
+            # strokeWeight: numeric tolerance for sub-pixel jitter.
+            ir_sw = ir_visual.get("strokeWeight")
+            rd_sw = rendered.get("strokeWeight")
+            if _is_snapshot_skip(rendered.get("type"), "strokeWeight", element):
+                pass
+            elif (
+                isinstance(ir_sw, (int, float))
+                and isinstance(rd_sw, (int, float))
+            ):
+                if abs(ir_sw - rd_sw) > _CORNER_RADIUS_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_STROKE_WEIGHT_MISMATCH,
+                        id=eid,
+                        error=f"strokeWeight: IR={ir_sw}, rendered={rd_sw}",
+                        context={
+                            "ir_stroke_weight": ir_sw,
+                            "rendered_stroke_weight": rd_sw,
+                        },
+                    ))
+
+            # strokeAlign: exact-string compare (INSIDE / CENTER / OUTSIDE).
+            ir_sa = ir_visual.get("strokeAlign")
+            rd_sa = rendered.get("strokeAlign")
+            if _is_snapshot_skip(rendered.get("type"), "strokeAlign", element):
+                pass
+            elif (
+                isinstance(ir_sa, str)
+                and isinstance(rd_sa, str)
+                and ir_sa != rd_sa
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_STROKE_ALIGN_MISMATCH,
+                    id=eid,
+                    error=f"strokeAlign: IR={ir_sa}, rendered={rd_sa}",
+                    context={
+                        "ir_stroke_align": ir_sa,
+                        "rendered_stroke_align": rd_sa,
+                    },
+                ))
+
+            # dashPattern: array equality (sequence of numeric lengths).
+            # Empty array (solid stroke) is a real value distinct from
+            # absent.
+            ir_dp = ir_visual.get("dashPattern")
+            rd_dp = rendered.get("dashPattern")
+            if _is_snapshot_skip(rendered.get("type"), "dashPattern", element):
+                pass
+            elif (
+                isinstance(ir_dp, list)
+                and isinstance(rd_dp, list)
+                and ir_dp != rd_dp
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_DASH_PATTERN_MISMATCH,
+                    id=eid,
+                    error=f"dashPattern: IR={ir_dp}, rendered={rd_dp}",
+                    context={
+                        "ir_dash_pattern": ir_dp,
+                        "rendered_dash_pattern": rd_dp,
+                    },
+                ))
+
+            # clipsContent: boolean equality. Only meaningful on
+            # container types (FRAME / COMPONENT / INSTANCE / SECTION);
+            # other types may not even carry the value. Skip when
+            # either side is None.
+            ir_cc = ir_visual.get("clipsContent")
+            rd_cc = rendered.get("clipsContent")
+            if _is_snapshot_skip(rendered.get("type"), "clipsContent", element):
+                pass
+            elif (
+                isinstance(ir_cc, bool)
+                and isinstance(rd_cc, bool)
+                and ir_cc != rd_cc
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_CLIPS_CONTENT_MISMATCH,
+                    id=eid,
+                    error=f"clipsContent: IR={ir_cc}, rendered={rd_cc}",
+                    context={
+                        "ir_clips_content": ir_cc,
+                        "rendered_clips_content": rd_cc,
+                    },
+                ))
 
         return RenderReport(
             backend=self.backend,

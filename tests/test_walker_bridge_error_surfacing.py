@@ -133,3 +133,29 @@ class TestWalkerVisualPropCapture:
             assert corner in src, (
                 f"P1b: walker must capture per-corner radius {corner}"
             )
+
+
+class TestWalkerA5VisualPropCapture:
+    """A5 (forensic-audit-2 Pattern G): walker must capture
+    strokeWeight, strokeAlign, dashPattern, clipsContent for the
+    new verifier comparators. Pre-A5 these were emitted by the
+    renderer but the walker never measured them on the rendered
+    side — silent drift.
+    """
+
+    def test_walker_captures_stroke_weight(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.strokeWeight = n.strokeWeight" in src
+
+    def test_walker_captures_stroke_align(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.strokeAlign = n.strokeAlign" in src
+
+    def test_walker_captures_dash_pattern(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.dashPattern" in src
+        assert "n.dashPattern" in src
+
+    def test_walker_captures_clips_content(self):
+        src = WALK_REF_JS.read_text()
+        assert "entry.clipsContent = n.clipsContent" in src
