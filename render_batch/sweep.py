@@ -356,6 +356,73 @@ def process_screen(
     return row
 
 
+# Backlog #4 (forensic-audit-2 architectural sprint, 2026-04-26):
+# kind classes that benefit from retry vs not. Real-bug verifier
+# mismatches surfaced by P1/A1.3/A5 don't resolve on rerun (same
+# data, same diff, same drift). Retry only when the failure is
+# bridge-load class.
+_TRANSIENT_VERIFIER_KINDS: frozenset[str] = frozenset()  # currently none
+_TRANSIENT_RUNTIME_KINDS: frozenset[str] = frozenset({
+    "missing_component_node",
+    "missing_instance_node",
+    "component_missing",
+    "create_instance_failed",
+    "ckr_unbuilt",
+    "prefetch_failed",
+    "no_main_component",
+    "import_component_failed",
+})
+
+
+def _is_likely_transient_failure(row: dict) -> bool:
+    """Decide whether to retry a DRIFT row.
+
+    Returns True when the row's failures are likely bridge-load
+    transients (missing_component_node, etc. — the original retry
+    motivation per feedback_sweep_transient_timeouts.md). Returns
+    False when ALL surfaced kinds are deterministic verifier
+    mismatches (fill_mismatch, opacity_mismatch, etc. — the
+    classes P1/A1.3/A5 added) that won't change on rerun.
+
+    Conservative defaults:
+    - walk_ok=False → True (outright walk failure is the canonical
+      transient case)
+    - empty error info on a DRIFT row → True (unknown cause; safer
+      to retry once)
+    - any transient kind in the row → True (might fix the verifier
+      mismatches as a downstream effect)
+    - all kinds are real-bug verifier mismatches → False
+    """
+    # Outright walk failure — always retry.
+    if row.get("walk_ok") is False:
+        return True
+    if row.get("walk_failure_class"):
+        return True
+
+    error_kinds = list(row.get("error_kinds") or [])
+    runtime_kinds = dict(row.get("runtime_error_kinds") or {})
+
+    # Empty error info on a DRIFT row → unknown; retry conservatively.
+    if not error_kinds and not runtime_kinds:
+        return True
+
+    # Any transient kind in the runtime channel → retry (it may
+    # cascade-fix the verifier mismatches once the bridge load
+    # subsides).
+    for kind in runtime_kinds:
+        if kind in _TRANSIENT_RUNTIME_KINDS:
+            return True
+
+    # Any transient kind in the verifier channel → retry. (Currently
+    # none, but the structure is in place for future kinds.)
+    for kind in error_kinds:
+        if kind in _TRANSIENT_VERIFIER_KINDS:
+            return True
+
+    # All kinds are real-bug verifier mismatches → no retry.
+    return False
+
+
 def process_screen_with_retry(
     sid: int, name: str, skip_existing: bool, port: str,
     max_retries: int = 2, retry_backoff: float = 1.0, db_path: Path = None,
@@ -370,12 +437,24 @@ def process_screen_with_retry(
     errors that resolve cleanly on a fresh retry. Same for outright walk
     timeouts on iPad-sized screens.
 
+    Backlog #4 (forensic-audit-2 architectural sprint, 2026-04-26):
+    after P1+A1.3+A5 added real-bug verifier comparators, DRIFT
+    screens started including deterministic mismatches that don't
+    resolve on retry. Retry now consults
+    ``_is_likely_transient_failure`` to skip retrying real-bug
+    DRIFT (saves wall time without losing transient recovery).
+    Sweep elapsed dropped 8x (260s → 2060s pre-fix; ~260s
+    post-fix expected).
+
     Retry policy:
     - Generate failures NEVER retry (deterministic; usually a real bug).
     - Walk-failure (script timeout, bridge error) DOES retry — these are
       pure transients on the bridge side.
-    - Verify success but is_parity=False with errors DOES retry — most
-      likely the prefetch-returned-null class.
+    - Verify success but is_parity=False with TRANSIENT kinds DOES
+      retry — the prefetch-returned-null class.
+    - Verify success but is_parity=False with REAL-BUG kinds (verifier
+      mismatches only) DOES NOT retry — same data, same diff, no
+      benefit.
     - is_parity=True is the success case; return immediately.
 
     Backoff is exponential capped at 10s: 1s, 2s, 4s.
@@ -394,6 +473,11 @@ def process_screen_with_retry(
             return row
         # Don't retry generate failures
         if row.get("generate_ok") is False:
+            return row
+        # Backlog #4: don't retry real-bug DRIFT (verifier mismatches
+        # only, no transient kinds in the row). Retry was tuned for
+        # bridge-load transients; real-bug DRIFT just wastes time.
+        if not _is_likely_transient_failure(row):
             return row
     return last_row
 
