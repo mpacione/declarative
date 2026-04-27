@@ -2668,6 +2668,7 @@ def _render_session_to_figma(
     brief: str | None = None,
     bridge_port: int = 9228,
     use_project_vocab: bool = False,
+    page_name_override: str | None = None,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2730,7 +2731,7 @@ def _render_session_to_figma(
     # region so resumes that fire within the same millisecond still
     # land on distinct pages (10-char ULID time prefix + 2 chars of
     # the random suffix).
-    page_name = (
+    page_name = page_name_override or (
         f"design session {session_id[:8]} / {final_variant_id[:12]}"
     )
 
