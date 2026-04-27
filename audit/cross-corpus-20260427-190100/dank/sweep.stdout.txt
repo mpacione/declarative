@@ -1,0 +1,225 @@
+Sweeping 200 app_screens from dank-fresh-20260427.db (skip_existing=False, port=9225, out=/Users/mattpacione/declarative-build/audit/cross-corpus-20260427-190100/dank)
+[warmup] bridge probe ok (port 9225)
+[1/200] screen=  1 PARITY  t=  2.1s parity=1.0 errs=0  
+[2/200] screen=  2 PARITY  t=  1.7s parity=1.0 errs=0  
+[3/200] screen=  3 PARITY  t=  1.6s parity=1.0 errs=0  
+[4/200] screen=  4 PARITY  t=  2.4s parity=1.0 errs=0  
+[5/200] screen=  5 PARITY  t=  1.9s parity=1.0 errs=0  
+[6/200] screen=  6 PARITY  t=  1.7s parity=1.0 errs=0  
+[7/200] screen=  7 PARITY  t=  1.7s parity=1.0 errs=0  
+[8/200] screen=  8 PARITY  t=  1.8s parity=1.0 errs=0  
+[9/200] screen=  9 PARITY  t=  1.7s parity=1.0 errs=0  
+[10/200] screen= 10 PARITY  t=  2.0s parity=1.0 errs=0  
+[11/200] screen= 11 PARITY  t=  2.1s parity=1.0 errs=0  
+[12/200] screen= 12 PARITY  t=  2.5s parity=1.0 errs=0  
+[13/200] screen= 13 PARITY  t=  2.2s parity=1.0 errs=0  
+[14/200] screen= 14 PARITY  t=  2.2s parity=1.0 errs=0  
+[15/200] screen= 15 PARITY  t=  2.3s parity=1.0 errs=0  
+[16/200] screen= 16 PARITY  t=  2.4s parity=1.0 errs=0  
+[17/200] screen= 17 PARITY  t=  2.4s parity=1.0 errs=0  
+[18/200] screen= 18 PARITY  t=  2.3s parity=1.0 errs=0  
+[19/200] screen= 19 PARITY  t=  2.3s parity=1.0 errs=0  
+[20/200] screen= 20 PARITY  t=  2.2s parity=1.0 errs=0  
+[21/200] screen= 21 PARITY  t=  2.1s parity=1.0 errs=0  
+[22/200] screen= 22 PARITY  t=  0.9s parity=1.0 errs=0  
+[23/200] screen= 23 PARITY  t=  1.3s parity=1.0 errs=0  
+[24/200] screen= 24 PARITY  t=  1.4s parity=1.0 errs=0  
+[25/200] screen= 25 PARITY  t=  1.1s parity=1.0 errs=0  
+[26/200] screen= 26 PARITY  t=  0.9s parity=1.0 errs=0  
+[27/200] screen= 27 PARITY  t=  1.0s parity=1.0 errs=0  
+[28/200] screen= 28 PARITY  t=  1.0s parity=1.0 errs=0  
+[29/200] screen= 29 PARITY  t=  1.1s parity=1.0 errs=0  
+[30/200] screen= 30 PARITY  t=  1.0s parity=1.0 errs=0  
+[31/200] screen= 31 PARITY  t=  1.5s parity=1.0 errs=0  
+[32/200] screen= 32 PARITY  t=  2.2s parity=1.0 errs=0  
+[33/200] screen= 33 PARITY  t=  2.4s parity=1.0 errs=0  
+[34/200] screen= 34 PARITY  t=  2.1s parity=1.0 errs=0  
+[35/200] screen= 35 PARITY  t=  2.1s parity=1.0 errs=0  
+[36/200] screen= 36 PARITY  t=  2.2s parity=1.0 errs=0  
+[37/200] screen= 37 PARITY  t=  2.2s parity=1.0 errs=0  
+[38/200] screen= 38 PARITY  t=  2.3s parity=1.0 errs=0  
+[39/200] screen= 39 PARITY  t=  2.2s parity=1.0 errs=0  
+[40/200] screen= 40 PARITY  t=  2.2s parity=1.0 errs=0  
+[41/200] screen= 41 PARITY  t=  2.4s parity=1.0 errs=0  
+[42/200] screen= 42 PARITY  t=  2.3s parity=1.0 errs=0  
+[43/200] screen= 43 PARITY  t=  2.1s parity=1.0 errs=0  
+[44/200] screen= 44 PARITY  t=  2.1s parity=1.0 errs=0  
+[45/200] screen= 45 PARITY  t=  2.2s parity=1.0 errs=0  
+[46/200] screen= 46 PARITY  t=  2.1s parity=1.0 errs=0  
+[47/200] screen= 47 PARITY  t=  2.2s parity=1.0 errs=0  
+[48/200] screen= 48 PARITY  t=  1.9s parity=1.0 errs=0  
+[49/200] screen= 49 PARITY  t=  1.5s parity=1.0 errs=0  
+[50/200] screen= 50 PARITY  t=  1.5s parity=1.0 errs=0  
+[51/200] screen= 51 PARITY  t=  1.2s parity=1.0 errs=0  
+[52/200] screen= 52 PARITY  t=  1.0s parity=1.0 errs=0  
+[53/200] screen= 53 PARITY  t=  1.2s parity=1.0 errs=0  
+[54/200] screen= 54 PARITY  t=  0.8s parity=1.0 errs=0  
+[55/200] screen= 55 PARITY  t=  1.0s parity=1.0 errs=0  
+[56/200] screen= 56 PARITY  t=  0.8s parity=1.0 errs=0  
+[57/200] screen= 57 PARITY  t=  0.8s parity=1.0 errs=0  
+[58/200] screen= 58 PARITY  t=  1.6s parity=1.0 errs=0  
+[59/200] screen= 59 PARITY  t=  0.9s parity=1.0 errs=0  
+[60/200] screen= 60 PARITY  t=  1.3s parity=1.0 errs=0  
+[61/200] screen= 61 PARITY  t=  1.8s parity=1.0 errs=0  
+[62/200] screen= 62 DRIFT   t=  1.3s parity=0.9818181818181818 errs=1 kinds=cornerradius_mismatch 
+[63/200] screen= 63 DRIFT   t=  1.5s parity=0.9818181818181818 errs=1 kinds=cornerradius_mismatch 
+[64/200] screen= 64 DRIFT   t=  1.8s parity=0.9866666666666667 errs=1 kinds=cornerradius_mismatch 
+[65/200] screen= 65 PARITY  t=  1.1s parity=1.0 errs=0  
+[66/200] screen= 66 PARITY  t=  1.1s parity=1.0 errs=0  
+[67/200] screen= 67 PARITY  t=  1.0s parity=1.0 errs=0  
+[68/200] screen= 68 PARITY  t=  1.0s parity=1.0 errs=0  
+[69/200] screen= 69 PARITY  t=  1.5s parity=1.0 errs=0  
+[70/200] screen= 70 PARITY  t=  1.3s parity=1.0 errs=0  
+[71/200] screen= 71 PARITY  t=  1.3s parity=1.0 errs=0  
+[72/200] screen= 72 PARITY  t=  1.3s parity=1.0 errs=0  
+[73/200] screen= 73 PARITY  t=  1.3s parity=1.0 errs=0  
+[74/200] screen= 74 PARITY  t=  1.5s parity=1.0 errs=0  
+[75/200] screen= 75 PARITY  t=  1.5s parity=1.0 errs=0  
+[76/200] screen= 76 PARITY  t=  1.7s parity=1.0 errs=0  
+[77/200] screen= 77 PARITY  t=  1.6s parity=1.0 errs=0  
+[78/200] screen= 78 PARITY  t=  1.3s parity=1.0 errs=0  
+[79/200] screen= 79 PARITY  t=  1.8s parity=1.0 errs=0  
+[80/200] screen= 80 PARITY  t=  1.4s parity=1.0 errs=0  
+[81/200] screen= 81 PARITY  t=  1.2s parity=1.0 errs=0  
+[82/200] screen= 82 PARITY  t=  1.2s parity=1.0 errs=0  
+[83/200] screen= 83 PARITY  t=  1.4s parity=1.0 errs=0  
+[84/200] screen= 84 PARITY  t=  1.1s parity=1.0 errs=0  
+[85/200] screen= 85 PARITY  t=  0.9s parity=1.0 errs=0  
+[86/200] screen= 86 PARITY  t=  1.1s parity=1.0 errs=0  
+[87/200] screen= 87 PARITY  t=  1.4s parity=1.0 errs=0  
+[88/200] screen= 88 PARITY  t=  1.2s parity=1.0 errs=0  
+[89/200] screen= 89 DRIFT   t=  1.7s parity=0.989010989010989 errs=1 kinds=cornerradius_mismatch 
+[90/200] screen= 90 DRIFT   t=  1.9s parity=0.989010989010989 errs=1 kinds=cornerradius_mismatch 
+[91/200] screen= 91 PARITY  t=  1.5s parity=1.0 errs=0  
+[92/200] screen= 92 PARITY  t=  1.5s parity=1.0 errs=0  
+[93/200] screen= 93 PARITY  t=  1.8s parity=1.0 errs=0  
+[94/200] screen= 94 PARITY  t=  1.5s parity=1.0 errs=0  
+[95/200] screen= 95 PARITY  t=  1.3s parity=1.0 errs=0  
+[96/200] screen= 96 PARITY  t=  1.2s parity=1.0 errs=0  
+[97/200] screen= 97 PARITY  t=  1.8s parity=1.0 errs=0  
+[98/200] screen= 98 PARITY  t=  1.7s parity=1.0 errs=0  
+[99/200] screen= 99 PARITY  t=  1.6s parity=1.0 errs=0  
+[100/200] screen=100 PARITY  t=  1.4s parity=1.0 errs=0  
+[101/200] screen=101 PARITY  t=  1.4s parity=1.0 errs=0  
+[102/200] screen=102 PARITY  t=  1.3s parity=1.0 errs=0  
+[103/200] screen=103 PARITY  t=  1.4s parity=1.0 errs=0  
+[104/200] screen=104 PARITY  t=  1.7s parity=1.0 errs=0  
+[105/200] screen=105 PARITY  t=  1.6s parity=1.0 errs=0  
+[106/200] screen=106 PARITY  t=  1.8s parity=1.0 errs=0  
+[107/200] screen=107 DRIFT   t=  1.9s parity=0.989010989010989 errs=1 kinds=cornerradius_mismatch 
+[108/200] screen=108 DRIFT   t=  1.9s parity=0.9891304347826086 errs=1 kinds=cornerradius_mismatch 
+[109/200] screen=109 PARITY  t=  1.4s parity=1.0 errs=0  
+[110/200] screen=110 PARITY  t=  1.8s parity=1.0 errs=0  
+[111/200] screen=111 PARITY  t=  2.3s parity=1.0 errs=0  
+[112/200] screen=112 PARITY  t=  2.8s parity=1.0 errs=0  
+[113/200] screen=113 PARITY  t=  3.2s parity=1.0 errs=0  
+[114/200] screen=114 PARITY  t=  3.0s parity=1.0 errs=0  
+[115/200] screen=115 DRIFT   t=  2.6s parity=0.9930555555555556 errs=1 kinds=cornerradius_mismatch 
+[116/200] screen=116 DRIFT   t=  2.8s parity=0.9929577464788732 errs=1 kinds=cornerradius_mismatch 
+[117/200] screen=117 DRIFT   t=  2.7s parity=0.9931506849315068 errs=1 kinds=cornerradius_mismatch 
+[118/200] screen=118 PARITY  t=  2.5s parity=1.0 errs=0  
+[119/200] screen=119 PARITY  t=  2.7s parity=1.0 errs=0  
+[120/200] screen=120 DRIFT   t=  2.8s parity=0.9932885906040269 errs=1 kinds=cornerradius_mismatch 
+[121/200] screen=121 DRIFT   t=  2.8s parity=0.9931972789115646 errs=1 kinds=cornerradius_mismatch 
+[122/200] screen=122 DRIFT   t=  2.9s parity=0.993103448275862 errs=1 kinds=cornerradius_mismatch 
+[123/200] screen=123 PARITY  t=  2.7s parity=1.0 errs=0  
+[124/200] screen=124 PARITY  t=  2.3s parity=1.0 errs=0  
+[125/200] screen=125 PARITY  t=  2.9s parity=1.0 errs=0  
+[126/200] screen=126 PARITY  t=  2.9s parity=1.0 errs=0  
+[127/200] screen=127 PARITY  t=  2.9s parity=1.0 errs=0  
+[128/200] screen=128 PARITY  t=  2.6s parity=1.0 errs=0  
+[129/200] screen=129 PARITY  t=  2.5s parity=1.0 errs=0  
+[130/200] screen=130 PARITY  t=  2.6s parity=1.0 errs=0  
+[131/200] screen=131 PARITY  t=  2.7s parity=1.0 errs=0  
+[132/200] screen=132 PARITY  t=  2.7s parity=1.0 errs=0  
+[133/200] screen=133 PARITY  t=  2.6s parity=1.0 errs=0  
+[134/200] screen=134 PARITY  t=  2.6s parity=1.0 errs=0  
+[135/200] screen=135 PARITY  t=  2.5s parity=1.0 errs=0  
+[136/200] screen=136 PARITY  t=  2.4s parity=1.0 errs=0  
+[137/200] screen=137 PARITY  t=  3.0s parity=1.0 errs=0  
+[138/200] screen=138 PARITY  t=  3.0s parity=1.0 errs=0  
+[139/200] screen=139 PARITY  t=  3.0s parity=1.0 errs=0  
+[140/200] screen=140 DRIFT   t=  3.3s parity=0.9941176470588236 errs=1 kinds=cornerradius_mismatch 
+[141/200] screen=141 DRIFT   t=  3.3s parity=0.9941176470588236 errs=1 kinds=cornerradius_mismatch 
+[142/200] screen=142 PARITY  t=  3.1s parity=1.0 errs=0  
+[143/200] screen=143 PARITY  t=  3.1s parity=1.0 errs=0  
+[144/200] screen=144 PARITY  t=  3.0s parity=1.0 errs=0  
+[145/200] screen=145 PARITY  t=  3.1s parity=1.0 errs=0  
+[146/200] screen=146 PARITY  t=  3.1s parity=1.0 errs=0  
+[147/200] screen=147 PARITY  t=  3.2s parity=1.0 errs=0  
+[148/200] screen=148 PARITY  t=  3.1s parity=1.0 errs=0  
+[149/200] screen=149 PARITY  t=  3.1s parity=1.0 errs=0  
+[150/200] screen=150 PARITY  t=  5.6s parity=1.0 errs=0  
+[151/200] screen=151 PARITY  t=  2.9s parity=1.0 errs=0  
+[152/200] screen=152 PARITY  t=  2.9s parity=1.0 errs=0  
+[153/200] screen=153 DRIFT   t=  3.2s parity=0.9937106918238994 errs=1 kinds=cornerradius_mismatch 
+[154/200] screen=154 DRIFT   t=  3.5s parity=0.9937106918238994 errs=1 kinds=cornerradius_mismatch 
+[155/200] screen=155 PARITY  t=  3.3s parity=1.0 errs=0  
+[156/200] screen=156 PARITY  t=  3.2s parity=1.0 errs=0  
+[157/200] screen=157 PARITY  t=  3.0s parity=1.0 errs=0  
+[158/200] screen=158 PARITY  t=  3.0s parity=1.0 errs=0  
+[159/200] screen=159 PARITY  t=  3.0s parity=1.0 errs=0  
+[160/200] screen=160 PARITY  t=  3.0s parity=1.0 errs=0  
+[161/200] screen=161 PARITY  t=  3.1s parity=1.0 errs=0  
+[162/200] screen=162 PARITY  t=  2.9s parity=1.0 errs=0  
+[163/200] screen=163 PARITY  t=  2.9s parity=1.0 errs=0  
+[164/200] screen=164 PARITY  t=  3.6s parity=1.0 errs=0  
+[165/200] screen=165 PARITY  t=  2.7s parity=1.0 errs=0  
+[166/200] screen=166 PARITY  t=  3.2s parity=1.0 errs=0  
+[167/200] screen=167 PARITY  t=  3.0s parity=1.0 errs=0  
+[168/200] screen=168 DRIFT   t=  3.0s parity=0.9933333333333333 errs=1 kinds=cornerradius_mismatch 
+[169/200] screen=169 DRIFT   t=  3.0s parity=0.9933333333333333 errs=1 kinds=cornerradius_mismatch 
+[170/200] screen=170 DRIFT   t=  3.2s parity=0.9929577464788732 errs=1 kinds=cornerradius_mismatch 
+[171/200] screen=171 PARITY  t= 14.3s parity=1.0 errs=0  
+[172/200] screen=172 PARITY  t=  5.1s parity=1.0 errs=0  
+[173/200] screen=173 PARITY  t=  2.6s parity=1.0 errs=0  
+[174/200] screen=174 DRIFT   t=  2.6s parity=0.9925925925925926 errs=1 kinds=cornerradius_mismatch 
+[175/200] screen=175 DRIFT   t=  2.6s parity=0.9925925925925926 errs=1 kinds=cornerradius_mismatch 
+[176/200] screen=176 DRIFT   t=  2.7s parity=0.9921259842519685 errs=1 kinds=cornerradius_mismatch 
+[177/200] screen=177 PARITY  t=  2.6s parity=1.0 errs=0  
+[178/200] screen=178 PARITY  t=  3.2s parity=1.0 errs=0  
+[179/200] screen=179 PARITY  t=  2.7s parity=1.0 errs=0  
+[180/200] screen=180 PARITY  t=  2.2s parity=1.0 errs=0  
+[181/200] screen=181 PARITY  t=  1.5s parity=1.0 errs=0  
+[182/200] screen=182 PARITY  t=  2.5s parity=1.0 errs=0  
+[183/200] screen=183 PARITY  t=  1.4s parity=1.0 errs=0  
+[184/200] screen=184 PARITY  t=  1.1s parity=1.0 errs=0  
+[185/200] screen=185 PARITY  t=  1.2s parity=1.0 errs=0  
+[186/200] screen=186 PARITY  t=  0.8s parity=1.0 errs=0  
+[187/200] screen=187 PARITY+ t=  2.0s parity=1.0 errs=0 rt=2  
+[188/200] screen=188 PARITY+ t=  2.5s parity=1.0 errs=0 rt=2  
+[189/200] screen=189 PARITY  t=  2.5s parity=1.0 errs=0  
+[190/200] screen=190 PARITY+ t=  2.9s parity=1.0 errs=0 rt=2  
+[191/200] screen=191 PARITY  t=  2.6s parity=1.0 errs=0  
+[192/200] screen=192 PARITY  t=  1.7s parity=1.0 errs=0  
+[193/200] screen=193 PARITY  t=  3.3s parity=1.0 errs=0  
+[194/200] screen=194 PARITY  t=  3.2s parity=1.0 errs=0  
+[195/200] screen=196 PARITY  t=  2.6s parity=1.0 errs=0  
+[196/200] screen=197 PARITY  t=  2.3s parity=1.0 errs=0  
+[197/200] screen=198 PARITY  t=  1.3s parity=1.0 errs=0  
+[198/200] screen=199 PARITY  t=  1.1s parity=1.0 errs=0  
+[199/200] screen=200 PARITY  t=  2.7s parity=1.0 errs=0  
+[200/200] screen=201 PARITY  t=  2.8s parity=1.0 errs=0  
+
+=== SUMMARY ===
+total:                       200
+is_structural_parity=True:   177  (tree shape matches IR)
+  ├─ strict (PARITY):        174  (also 0 runtime errors)
+  └─ runtime errs (PARITY+): 3  (visual-fidelity gap)
+is_parity=False (DRIFT):     26  (structural drift)
+generate_failed:             0
+walk_failed:                 0
+retried:          0 (recovered to PARITY: 0)
+elapsed:          439.1s
+
+error_kinds (structural — verifier-reported):
+  cornerradius_mismatch           23
+
+runtime_errors:   6 across 3 screens (visual-fidelity channel — F11.1 catch-and-continue)
+  by category:
+    font_health                     3
+    text_op_failed                  3
+  by raw kind:
+    font_load_failed                3
+    text_set_failed                 3
+EXIT=0
