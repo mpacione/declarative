@@ -2505,11 +2505,27 @@ def _emit_fills(
 def _emit_strokes(
     var: str, eid: str, strokes: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma strokes array from IR normalized strokes.
+    """Emit Figma strokes paint array — paint-only.
 
     Handles SOLID, GRADIENT_*, and IMAGE types via the shared
-    ``_format_paint_array`` helper, then emits ``strokeWeight`` (which
-    is a stroke-only property — fills don't have it).
+    ``_format_paint_array`` helper.
+
+    A2.1 (forensic-audit-2 architectural followon, 2026-04-26):
+    PAINT-ONLY. ``strokeWeight`` is its own registry property
+    (``dd/property_registry.py:99``) with its own ``_UNIFORM`` emit
+    template, so the registry-driven path emits it independently
+    via ``emit_from_registry``. Pre-split, this function ALSO
+    emitted ``n.strokeWeight = ...`` extracted from
+    ``strokes[0].get("width")`` — duplicate emission. Evidence in
+    audit/sprint-final-.../scripts/24.js: ``n3.strokeWeight = 2;``
+    immediately followed by ``n3.strokeWeight = 2.0;`` (the
+    duplicate; idempotent but blocked per-property provenance
+    gating in Backlog #1).
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26):
+    "Split it. Do not add emit_paint/emit_weight flags. strokeWeight
+    is already a registry property; the bad part is _emit_strokes
+    emits it from strokes[0].width."
 
     Pre-fix this function only handled SOLID and silently dropped
     gradient and image strokes — a three-layer drop alongside
@@ -2521,10 +2537,8 @@ def _emit_strokes(
     lines: list[str] = []
     if paint_strs:
         lines.append(f'{var}.strokes = [{", ".join(paint_strs)}];')
-    width = strokes[0].get("width") if strokes else None
-    if width is not None:
-        lines.append(f"{var}.strokeWeight = {width};")
-
+    # strokeWeight emission moved to the registry _UNIFORM path —
+    # see emit_from_registry dispatch on the strokeWeight property.
     return (lines, refs)
 
 
