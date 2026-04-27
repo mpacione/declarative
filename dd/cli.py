@@ -1888,6 +1888,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "page (default: labels ON). Use for clean parity "
              "renders or when running automated visual checks.",
     )
+    design_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228). The plugin's port may differ when "
+             "fallback ports are in use; check `figma_get_status` "
+             "for the active port.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1973,6 +1980,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "ORIGINAL / VARIANT / brief labels on the rendered "
              "page (default: labels ON). Use for clean parity "
              "renders or when running automated visual checks.",
+    )
+    design_resume_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228).",
     )
 
     design_score_parser = design_subparsers.add_parser(
@@ -2163,6 +2175,7 @@ def _run_design(db_path: str, args) -> None:
             dump_scripts=args.dump_scripts,
             variant_only=args.variant_only,
             labels=args.labels,
+            bridge_port=args.bridge_port,
         )
         return
 
@@ -2178,6 +2191,7 @@ def _run_design(db_path: str, args) -> None:
             variant_only=args.variant_only,
             labels=args.labels,
             override_brief=args.brief,
+            bridge_port=args.bridge_port,
         )
         return
 
@@ -2222,6 +2236,7 @@ def _run_design_brief(
     dump_scripts: str | None = None,
     variant_only: bool = False,
     labels: bool = True,
+    bridge_port: int = 9228,
 ) -> None:
     """M1 of the authoring-loop Figma round-trip (docs/rationale/
     stage-3-session-loop.md + Codex sign-off 2026-04-24).
@@ -2302,6 +2317,7 @@ def _run_design_brief(
             variant_only=variant_only,
             labels=labels,
             brief=brief,
+            bridge_port=bridge_port,
         )
         if variant_only:
             page_hint = (
@@ -2522,6 +2538,7 @@ def _render_session_to_figma(
     variant_only: bool = False,
     labels: bool = True,
     brief: str | None = None,
+    bridge_port: int = 9228,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2729,9 +2746,13 @@ def _render_session_to_figma(
             assert original_script is not None  # narrow for type-checkers
             original_ack = _ap.execute_script_via_bridge(
                 script=original_script,
+                ws_port=bridge_port,
             )
             _check_bridge_ack(original_ack, phase="original")
-        variant_ack = _ap.execute_script_via_bridge(script=variant_script)
+        variant_ack = _ap.execute_script_via_bridge(
+            script=variant_script,
+            ws_port=bridge_port,
+        )
         _check_bridge_ack(variant_ack, phase="variant")
 
         # Demo-grade labels — third bridge call (see
@@ -2757,6 +2778,7 @@ def _render_session_to_figma(
                 (dump_scripts / "labels.js").write_text(labels_script)
             labels_ack = _ap.execute_script_via_bridge(
                 script=labels_script,
+                ws_port=bridge_port,
             )
             _check_bridge_ack(labels_ack, phase="labels")
     except BridgeError as e:
@@ -2825,6 +2847,7 @@ def _run_design_resume(
     variant_only: bool = False,
     labels: bool = True,
     override_brief: str | None = None,
+    bridge_port: int = 9228,
 ) -> None:
     """M2 demo-blocker: resume must support the same Figma round-trip
     flag family as --brief so the multi-turn iteration story lands.
@@ -2907,6 +2930,7 @@ def _run_design_resume(
             variant_only=variant_only,
             labels=labels,
             brief=session_brief,
+            bridge_port=bridge_port,
         )
         if variant_only:
             page_hint = (
