@@ -1,0 +1,70 @@
+Sweeping 44 app_screens from hgb-fresh-20260427.db (skip_existing=False, port=9225, out=/Users/mattpacione/declarative-build/audit/sprint-2-station-parity-20260427-205500/hgb-rerun)
+[warmup] bridge probe ok (port 9225)
+[1/44] screen=  1 DRIFT   t=  1.9s parity=0.95 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[2/44] screen=  2 DRIFT   t=  1.6s parity=0.9444444444444444 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[3/44] screen=  3 DRIFT   t=  1.5s parity=0.975 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[4/44] screen=  4 DRIFT   t=  1.2s parity=0.9120879120879121 errs=8 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[5/44] screen=  5 DRIFT   t=  1.2s parity=0.9148936170212766 errs=8 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[6/44] screen=  6 DRIFT   t=  1.1s parity=0.9139784946236559 errs=8 rt=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[7/44] screen=  7 DRIFT   t=  1.1s parity=0.9361702127659575 errs=6 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[8/44] screen=  8 DRIFT   t=  1.2s parity=0.9354838709677419 errs=6 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[9/44] screen=  9 DRIFT   t=  1.3s parity=0.9130434782608695 errs=8 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[10/44] screen= 10 DRIFT   t=  1.0s parity=0.9607843137254902 errs=2 rt=13 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[11/44] screen= 11 DRIFT   t=  1.1s parity=0.9210526315789473 errs=6 rt=32 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[12/44] screen= 12 DRIFT   t=  1.0s parity=0.8823529411764706 errs=6 rt=19 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[13/44] screen= 13 DRIFT   t=  1.2s parity=0.8823529411764706 errs=6 rt=20 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[14/44] screen= 14 DRIFT   t=  1.0s parity=0.9512195121951219 errs=2 rt=11 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[15/44] screen= 15 PARITY+ t=  1.0s parity=1.0 errs=0 rt=15  
+[16/44] screen= 16 DRIFT   t=  0.9s parity=0.9512195121951219 errs=2 rt=11 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[17/44] screen= 17 DRIFT   t=  0.8s parity=0.9642857142857143 errs=1 rt=5 kinds=layout_sizing_h_mismatch 
+[18/44] screen= 18 DRIFT   t=  1.5s parity=0.9607843137254902 errs=2 rt=20 kinds=layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[19/44] screen= 19 DRIFT   t=  1.5s parity=0.9607843137254902 errs=2 rt=20 kinds=layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[20/44] screen= 20 DRIFT   t=  0.9s parity=0.9642857142857143 errs=1 rt=5 kinds=layout_sizing_h_mismatch 
+[21/44] screen= 21 DRIFT   t=  0.8s parity=0.9642857142857143 errs=1 rt=5 kinds=layout_sizing_h_mismatch 
+[22/44] screen= 22 PARITY+ t=  0.5s parity=1.0 errs=0 rt=2  
+[23/44] screen= 23 DRIFT   t=  0.6s parity=0.9444444444444444 errs=1 rt=5 kinds=layout_sizing_v_mismatch 
+[24/44] screen= 24 DRIFT   t=  0.6s parity=0.9444444444444444 errs=1 rt=5 kinds=layout_sizing_v_mismatch 
+[25/44] screen= 25 DRIFT   t=  0.6s parity=0.9473684210526315 errs=1 rt=6 kinds=layout_sizing_v_mismatch 
+[26/44] screen= 26 DRIFT   t=  1.0s parity=0.9661016949152542 errs=2 rt=15 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[27/44] screen= 27 PARITY+ t=  2.8s parity=1.0 errs=0 rt=9  
+[28/44] screen= 28 PARITY+ t=  2.1s parity=1.0 errs=0 rt=9  
+[29/44] screen= 29 PARITY+ t=  2.1s parity=1.0 errs=0 rt=9  
+[30/44] screen= 30 DRIFT   t=  3.3s parity=0.9876543209876543 errs=1 rt=42 kinds=layout_sizing_v_mismatch 
+[31/44] screen= 31 PARITY+ t=  2.2s parity=1.0 errs=0 rt=10  
+[32/44] screen= 32 PARITY+ t=  2.2s parity=1.0 errs=0 rt=10  
+[33/44] screen= 33 DRIFT   t=  1.6s parity=0.95 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[34/44] screen= 34 DRIFT   t=  1.5s parity=0.9444444444444444 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[35/44] screen= 35 DRIFT   t=  1.1s parity=0.978494623655914 errs=2 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[36/44] screen= 36 DRIFT   t=  2.6s parity=0.9555555555555556 errs=4 rt=51 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[37/44] screen= 37 DRIFT   t=  2.7s parity=0.9555555555555556 errs=4 rt=51 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[38/44] screen= 38 DRIFT   t=  2.8s parity=0.9555555555555556 errs=4 rt=52 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch,layout_sizing_h_mismatch 
+[39/44] screen= 39 DRIFT   t=  4.0s parity=0.9553571428571429 errs=5 rt=77 kinds=layout_sizing_v_mismatch,layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[40/44] screen= 40 PARITY+ t=  0.6s parity=1.0 errs=0 rt=1  
+[41/44] screen= 41 DRIFT   t=  0.8s parity=0.9411764705882353 errs=2 rt=8 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[42/44] screen= 42 DRIFT   t=  0.9s parity=0.9583333333333334 errs=2 rt=16 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[43/44] screen= 43 DRIFT   t=  1.0s parity=0.9655172413793104 errs=2 rt=16 kinds=layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+[44/44] screen= 44 DRIFT   t=  1.0s parity=0.95 errs=3 rt=16 kinds=layout_sizing_h_mismatch,layout_sizing_h_mismatch,layout_sizing_v_mismatch 
+
+=== SUMMARY ===
+total:                       44
+is_structural_parity=True:   8  (tree shape matches IR)
+  ├─ strict (PARITY):        0  (also 0 runtime errors)
+  └─ runtime errs (PARITY+): 8  (visual-fidelity gap)
+is_parity=False (DRIFT):     44  (structural drift)
+generate_failed:             0
+walk_failed:                 0
+retried:          0 (recovered to PARITY: 0)
+elapsed:          63.4s
+
+error_kinds (structural — verifier-reported):
+  layout_sizing_v_mismatch        60
+  layout_sizing_h_mismatch        59
+
+runtime_errors:   588 across 33 screens (visual-fidelity channel — F11.1 catch-and-continue)
+  by category:
+    text_op_failed                  528
+    font_health                     60
+  by raw kind:
+    text_set_failed                 528
+    font_load_failed                60
+EXIT=0

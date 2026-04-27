@@ -239,11 +239,23 @@ def cluster_spacing(conn: sqlite3.Connection, file_id: int, collection_id: int, 
             (token_id, mode_id, raw_value, value_str)
         )
 
-        # Bind ALL original resolved_values that round to this integer
+        # Bind ALL original resolved_values that round to this integer.
+        # P5a (Phase E Pattern 3 fix) — port `cluster_colors`'s
+        # snap-on-UPDATE pattern so the binding's `resolved_value` is
+        # rewritten to match the token's `resolved_value`. Pre-P5a:
+        # token wrote `"15"`; binding kept `"14.5697...`; downstream
+        # validator's _normalize_numeric (0.001 epsilon) failed to
+        # bridge sub-pixel design noise (`14.5697...` vs `15`),
+        # producing 2 of 7 Phase E `binding_token_consistency`
+        # warnings (`space.10` ×24, `space.md` ×6 on Nouns).
+        # Snap-on-UPDATE matches cluster_colors's contract and is the
+        # canonical solution per Codex Phase E review (2026-04-25).
+        canonical_value = str(rounded_value)
         for original_str in rounded_groups[rounded_value]:
             cursor = conn.execute(
                 """UPDATE node_token_bindings
-                   SET token_id = ?, binding_status = 'proposed', confidence = 1.0
+                   SET token_id = ?, binding_status = 'proposed',
+                       confidence = 1.0, resolved_value = ?
                    WHERE resolved_value = ?
                      AND property IN ('padding.top','padding.right','padding.bottom','padding.left',
                                      'itemSpacing','counterAxisSpacing')
@@ -253,7 +265,7 @@ def cluster_spacing(conn: sqlite3.Connection, file_id: int, collection_id: int, 
                          JOIN screens s ON n.screen_id = s.id
                          WHERE s.file_id = ?
                      )""",
-                (token_id, original_str, file_id)
+                (token_id, canonical_value, original_str, file_id)
             )
             bindings_updated += cursor.rowcount
 

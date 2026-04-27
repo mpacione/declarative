@@ -1,0 +1,39 @@
+// Stage 2 archetype — migrated from profile.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define profile() {
+    header {
+        icon-button
+        text
+        icon-button
+    }
+    card {
+        avatar
+        heading
+        text
+        button-group {
+            button variant=primary
+            button variant=secondary
+        }
+    }
+    list {
+        list-item {
+            text
+            badge
+        }
+        list-item {
+            text
+            badge
+        }
+        list-item {
+            text
+            badge
+        }
+    }
+    tabs {
+        text
+        text
+        text
+    }
+}

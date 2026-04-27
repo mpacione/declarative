@@ -18,17 +18,208 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from dd.boundary import (
+    KIND_BLENDMODE_MISMATCH,
     KIND_BOUNDS_MISMATCH,
+    KIND_CLIPS_CONTENT_MISMATCH,
+    KIND_CORNERRADIUS_MISMATCH,
+    KIND_DASH_PATTERN_MISMATCH,
     KIND_EFFECT_MISSING,
     KIND_FILL_MISMATCH,
+    KIND_MASK_MISMATCH,
     KIND_MISSING_ASSET,
     KIND_MISSING_CHILD,
     KIND_MISSING_TEXT,
+    KIND_OPACITY_MISMATCH,
+    KIND_ROTATION_MISMATCH,
+    KIND_STROKE_ALIGN_MISMATCH,
     KIND_STROKE_MISMATCH,
+    KIND_STROKE_WEIGHT_MISMATCH,
     KIND_TYPE_SUBSTITUTION,
     RenderReport,
     StructuredError,
 )
+from dd.property_registry import (
+    FigmaComparatorSpec,
+    PROPERTIES,
+    StationDisposition,
+)
+
+# Tolerances for the new P1c numeric comparators. Float jitter from
+# the deg→rad walker conversion + IR build paths needs slack.
+_OPACITY_TOLERANCE = 1e-3      # 0.001 — well below visible difference
+_ROTATION_TOLERANCE = 1e-3     # ~0.06° — covers walker conversion error
+_CORNER_RADIUS_TOLERANCE = 1e-3  # sub-pixel
+
+
+# ---------------------------------------------------------------------
+# Sprint 2 C10 — registry-driven comparator dispatch
+# ---------------------------------------------------------------------
+# Per docs/plan-sprint-2-station-parity.md §3 (station model) and
+# Codex 5.5 round-9 architectural fork: graduated properties (those
+# with station_4 == COMPARE_DISPATCH and a compare_figma spec) are
+# compared via this dispatch, NOT the hand-rolled paths above. The
+# 11 existing comparators (fills/strokes/cornerRadius/etc.) keep
+# their hand-rolled implementations because they pre-date Sprint 2
+# and bundling the migration with the rail risks scope-creep.
+#
+# Single comparator signature: ``(ir_value, rendered_value, element,
+# *, spec)`` — keyword-only spec lets generic comparators like
+# enum_equality emit different KIND_* errors per property. Closes
+# the bug class A1.3 left open: drift on uncompared properties.
+
+
+def _ir_value_for(element: dict[str, Any], figma_name: str) -> Any:
+    """Read the IR-side value for a graduated property.
+
+    Codex round-9 lock: helper switch (NOT declarative ir_path on
+    spec) because some properties need normalization across the
+    IR-vs-walker shape boundary. Layout sizing in particular: IR
+    stores ``"hug"/"fill"`` lowercase strings or numeric pixel
+    widths (FIXED); walker emits ``"HUG"/"FILL"/"FIXED"`` uppercase.
+    Helper normalizes IR side to walker's enum.
+
+    Returns ``None`` when the element has no value for the property —
+    the dispatch loop skips comparison rather than treating absence
+    as drift.
+    """
+    if figma_name == "characters":
+        return (element.get("props") or {}).get("text")
+
+    if figma_name in ("layoutSizingHorizontal", "layoutSizingVertical"):
+        sizing = (element.get("layout") or {}).get("sizing") or {}
+        axis_key = "width" if figma_name == "layoutSizingHorizontal" else "height"
+        raw = sizing.get(axis_key)
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            # IR lowercase ("hug" / "fill" / "fixed") → walker uppercase
+            return raw.upper()
+        if isinstance(raw, (int, float)):
+            # Numeric pixel value implies FIXED sizing mode in the IR
+            return "FIXED"
+        return None
+
+    return None  # unknown graduation; defensive
+
+
+def _compare_text_equality(
+    ir_value: Any, rendered_value: Any, element: dict[str, Any],
+    *, spec: "FigmaComparatorSpec",
+) -> "StructuredError | None":
+    """C10 graduation: text content equality. Used by ``characters``.
+
+    Empty strings compare normally per Codex round-9: empty == empty
+    is a match, empty IR vs non-empty rendered is a mismatch.
+    """
+    if ir_value == rendered_value:
+        return None
+    return StructuredError(
+        kind=spec.kind,
+        id=element.get("id", "?"),
+        error=(
+            f"text: IR={ir_value!r}, rendered={rendered_value!r}"
+        ),
+        context={
+            "ir_text": ir_value,
+            "rendered_text": rendered_value,
+        },
+    )
+
+
+def _compare_enum_equality(
+    ir_value: Any, rendered_value: Any, element: dict[str, Any],
+    *, spec: "FigmaComparatorSpec",
+) -> "StructuredError | None":
+    """C10 graduation: enum string equality. Used by
+    ``layoutSizingHorizontal/Vertical`` — same impl, different
+    ``spec.kind`` per property. The spec drives error metadata so
+    the comparator stays generic.
+    """
+    if ir_value == rendered_value:
+        return None
+    return StructuredError(
+        kind=spec.kind,
+        id=element.get("id", "?"),
+        error=(
+            f"{spec.walker_key}: IR={ir_value!r}, rendered={rendered_value!r}"
+        ),
+        context={
+            "ir_value": ir_value,
+            "rendered_value": rendered_value,
+        },
+    )
+
+
+# Registered comparator implementations, keyed by FigmaComparatorSpec.comparator.
+# Adding a new comparator id requires an entry here AND a registry
+# property pointing at it via compare_figma. The C10 coverage test
+# fails if any COMPARE_DISPATCH property points to an unregistered id.
+_COMPARATOR_IMPLS: dict[str, Any] = {
+    "text_equality": _compare_text_equality,
+    "enum_equality": _compare_enum_equality,
+}
+
+
+def _rendered_value(
+    rendered: dict[str, Any], key: str, default: Any = None,
+) -> Any:
+    """Sprint 2 C8: read a rendered value that may be either:
+
+    - raw value (legacy / non-graduated properties)
+    - envelope ``{"value": <v>, "source": <tag>}`` (Sprint 2+
+      graduated properties per
+      ``docs/plan-sprint-2-station-parity.md`` §6)
+
+    Returns the underlying value in either case. Verifier code uses
+    this helper for properties that may have been graduated; the
+    envelope-vs-raw distinction is invisible at the comparator
+    level. C10 will wire registry-driven dispatch so every read site
+    flows through the same path; until then the helper is the
+    defensive shim.
+
+    A dict is treated as an envelope only when it has BOTH ``value``
+    and ``source`` keys — partial dicts ({"value": x} alone, or
+    arbitrary dicts that happen to include a ``value`` key) pass
+    through unchanged so future shape additions are not
+    misinterpreted.
+    """
+    raw = rendered.get(key, default)
+    if isinstance(raw, dict) and "value" in raw and "source" in raw:
+        return raw["value"]
+    return raw
+
+
+def _is_snapshot_skip(
+    rendered_type: str | None, prop_name: str, element: dict[str, Any],
+) -> bool:
+    """A1.3 (Backlog #1, provenance plan): per-property snapshot
+    gate for Mode-1 INSTANCE heads.
+
+    Returns ``True`` when the verifier should SKIP the comparison
+    because the IR value is an extraction-time snapshot of master
+    defaults rather than a real override directive.
+
+    Conditions for skip:
+    - rendered node IS an INSTANCE (only Mode-1 has the
+      snapshot-vs-master-default ambiguity)
+    - the property is NOT in ``element["_overrides"]``
+
+    When ``element["_overrides"]`` is missing entirely (legacy IR
+    pre-A1.1), default to "snapshot" — Codex 5.5: "missing
+    provenance on Mode-1 INSTANCE defaults to snapshot, not
+    override; safer to under-flag than over-flag false-positives."
+
+    Non-INSTANCE rendered nodes never get the gate. They don't
+    delegate visual rendering to a master, so the IR snapshot IS
+    the render-time directive.
+    """
+    if rendered_type != "INSTANCE":
+        return False
+    overrides = element.get("_overrides")
+    if overrides is None:
+        # Legacy IR: default snapshot (skip).
+        return True
+    return prop_name not in overrides
 
 
 # Text height tolerance before we flag a wrap.
@@ -108,8 +299,28 @@ class FigmaRenderVerifier:
     ) -> RenderReport:
         elements = ir.get("elements", {}) if isinstance(ir, dict) else {}
         eid_map: dict[str, dict[str, Any]] = {}
+        # Phase E Pattern 2 fix (P1): inhale walk-side runtime errors.
+        # Pre-fix, the verifier read only `eid_map` and ignored
+        # `rendered_ref["errors"]` — leaving 31 distinct __errors
+        # kinds entirely invisible to the parity verdict. Sonnet +
+        # Codex independently flagged this as the chronic verifier-
+        # blindness pattern. F12a surfaced runtime_error_count in
+        # CLI output but `is_parity` never consumed it. The runtime
+        # errors are deep-copied into the frozen RenderReport so
+        # downstream mutation of the walk JSON doesn't corrupt the
+        # report's invariants.
+        runtime_errors: list[dict[str, Any]] = []
         if isinstance(rendered_ref, dict):
             eid_map = rendered_ref.get("eid_map", {}) or {}
+            raw_errs = rendered_ref.get("errors") or []
+            if isinstance(raw_errs, list):
+                # Filter to dict-shaped entries (defensive: walk_ref.js
+                # always emits dicts, but a malformed walk could carry
+                # other types; we don't want a non-dict to break
+                # report.runtime_error_kinds enumeration).
+                runtime_errors = [
+                    dict(e) for e in raw_errs if isinstance(e, dict)
+                ]
 
         # Mode 1 absorbs IR descendants: when an IR node rendered as an
         # INSTANCE, its IR descendants are instantiated from the master
@@ -145,6 +356,15 @@ class FigmaRenderVerifier:
                     kind=KIND_MISSING_CHILD,
                     id=eid,
                     error="element present in IR but missing from render",
+                    hint=(
+                        f"IR expects an element at @{eid} but the "
+                        "render produced no matching node. Options: "
+                        "(a) `delete @{eid}` if the element is no "
+                        "longer needed; (b) confirm the parent "
+                        "didn't absorb the child under a Mode-1 "
+                        "INSTANCE; (c) check the compressor didn't "
+                        "inline it away."
+                    ).replace("{eid}", eid),
                 ))
                 continue
 
@@ -163,6 +383,14 @@ class FigmaRenderVerifier:
                         f"got {rendered_type}"
                     ),
                     context={"ir_type": ir_type, "rendered_type": rendered_type},
+                    hint=(
+                        f"The IR at @{eid} expects a {ir_type} "
+                        f"(Figma type in {sorted(expected)}) but "
+                        f"got {rendered_type}. Either `swap @{eid} "
+                        "with=-> <master>` to a library component "
+                        "of the right type, or `delete @{eid}` if "
+                        "the classification was wrong."
+                    ).replace("{eid}", eid),
                 ))
                 continue
 
@@ -189,6 +417,17 @@ class FigmaRenderVerifier:
                         f"render produced FRAME (ADR-007 Defect 1)"
                     ),
                     context={"ir_type": ir_type, "rendered_type": rendered_type},
+                    hint=(
+                        f"@{eid} is classified as {ir_type} and is "
+                        "Mode-1 eligible, but the render degraded to "
+                        "FRAME. Likely the library component went "
+                        "missing or the CKR lookup failed. Options: "
+                        f"(a) `swap @{eid} with=-> <known-master>` "
+                        "to a valid library component; (b) check the "
+                        "CKR is populated (`component_key_registry` "
+                        "table); (c) delete the node if its semantic "
+                        "classification was wrong."
+                    ),
                 ))
                 continue
 
@@ -221,10 +460,17 @@ class FigmaRenderVerifier:
                         },
                     ))
 
-            # Empty-text check — Defect 2 surfaces here
+            # Empty-text check — Defect 2 surfaces here.
+            #
+            # Sprint 2 C8: ``characters`` may now be either the raw
+            # string (legacy walker) or the envelope shape
+            # ``{"value": str, "source": "set"}`` (post-C8 walker per
+            # docs/plan-sprint-2-station-parity.md §6). ``_rendered_value``
+            # collapses both to the underlying string; the
+            # falsy-empty test below is unchanged.
             expected_text = (element.get("props") or {}).get("text")
             if ir_type == "text" and expected_text:
-                actual_text = rendered.get("characters", "")
+                actual_text = _rendered_value(rendered, "characters", "")
                 if not actual_text:
                     errors.append(StructuredError(
                         kind=KIND_MISSING_TEXT,
@@ -280,7 +526,15 @@ class FigmaRenderVerifier:
             # older walkers that omit fills don't trigger false positives.
             ir_fills = (element.get("visual") or {}).get("fills")
             rendered_fills = rendered.get("fills")
-            if isinstance(ir_fills, list) and isinstance(rendered_fills, list):
+            # A1.3 (Backlog #1, provenance plan): on a Mode-1 INSTANCE
+            # head, fills is a snapshot unless _overrides says
+            # otherwise. The narrow chip-1 token-gradient suppression
+            # that lived here pre-A1.3 is subsumed by this gate — the
+            # chip-1 case clears because chip-1 has no FILLS row in
+            # instance_overrides.
+            if _is_snapshot_skip(rendered.get("type"), "fills", element):
+                pass  # snapshot — skip comparison
+            elif isinstance(ir_fills, list) and isinstance(rendered_fills, list):
                 ir_solids = [f for f in ir_fills if f.get("type") == "solid"]
                 rd_solids = [f for f in rendered_fills if f.get("type") == "solid"]
 
@@ -319,9 +573,12 @@ class FigmaRenderVerifier:
                             ))
 
             # Stroke-color comparison: same shape as fill comparison.
+            # A1.3: same provenance gate as fills.
             ir_strokes = (element.get("visual") or {}).get("strokes")
             rendered_strokes = rendered.get("strokes")
-            if isinstance(ir_strokes, list) and isinstance(rendered_strokes, list):
+            if _is_snapshot_skip(rendered.get("type"), "strokes", element):
+                pass  # snapshot — skip comparison
+            elif isinstance(ir_strokes, list) and isinstance(rendered_strokes, list):
                 ir_ss = [s for s in ir_strokes if s.get("type") == "solid"]
                 rd_ss = [s for s in rendered_strokes if s.get("type") == "solid"]
 
@@ -382,9 +639,275 @@ class FigmaRenderVerifier:
                         },
                     ))
 
+            # ============================================================
+            # P1c (forensic-audit-2): visual prop comparators that close
+            # the verifier blind spots. P1a populated the IR side; P1b
+            # populated the walker side. These compare them and emit a
+            # structured error per drift class.
+            # ============================================================
+            ir_visual = element.get("visual") or {}
+
+            # Opacity drift — numeric tolerance to absorb float jitter.
+            # A1.3 provenance gate: skip on Mode-1 INSTANCE snapshot.
+            ir_opacity = ir_visual.get("opacity")
+            rd_opacity = rendered.get("opacity")
+            if _is_snapshot_skip(rendered.get("type"), "opacity", element):
+                pass  # snapshot — skip
+            elif (
+                isinstance(ir_opacity, (int, float))
+                and isinstance(rd_opacity, (int, float))
+            ):
+                if abs(ir_opacity - rd_opacity) > _OPACITY_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_OPACITY_MISMATCH,
+                        id=eid,
+                        error=f"opacity: IR={ir_opacity}, rendered={rd_opacity}",
+                        context={
+                            "ir_opacity": ir_opacity,
+                            "rendered_opacity": rd_opacity,
+                        },
+                    ))
+
+            # Blend mode drift — exact-string compare.
+            # A1.3 provenance gate.
+            ir_blend = ir_visual.get("blendMode")
+            rd_blend = rendered.get("blendMode")
+            if _is_snapshot_skip(rendered.get("type"), "blendMode", element):
+                pass  # snapshot — skip
+            elif (
+                isinstance(ir_blend, str)
+                and isinstance(rd_blend, str)
+                and ir_blend != rd_blend
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_BLENDMODE_MISMATCH,
+                    id=eid,
+                    error=f"blendMode: IR={ir_blend}, rendered={rd_blend}",
+                    context={
+                        "ir_blend_mode": ir_blend,
+                        "rendered_blend_mode": rd_blend,
+                    },
+                ))
+
+            # Rotation drift — radians, numeric tolerance.
+            ir_rotation = ir_visual.get("rotation")
+            rd_rotation = rendered.get("rotation")
+            if (
+                isinstance(ir_rotation, (int, float))
+                and isinstance(rd_rotation, (int, float))
+            ):
+                if abs(ir_rotation - rd_rotation) > _ROTATION_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_ROTATION_MISMATCH,
+                        id=eid,
+                        error=(
+                            f"rotation: IR={ir_rotation:.6f} rad, "
+                            f"rendered={rd_rotation:.6f} rad"
+                        ),
+                        context={
+                            "ir_rotation": ir_rotation,
+                            "rendered_rotation": rd_rotation,
+                        },
+                    ))
+
+            # isMask drift — boolean equality. Either direction is a
+            # real visual difference.
+            ir_mask = ir_visual.get("isMask")
+            rd_mask = rendered.get("isMask")
+            if (
+                isinstance(ir_mask, bool)
+                and isinstance(rd_mask, bool)
+                and ir_mask != rd_mask
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_MASK_MISMATCH,
+                    id=eid,
+                    error=f"isMask: IR={ir_mask}, rendered={rd_mask}",
+                    context={
+                        "ir_is_mask": ir_mask,
+                        "rendered_is_mask": rd_mask,
+                    },
+                ))
+
+            # Corner radius drift — uniform-vs-uniform with tolerance,
+            # plus mixed (per-corner) when the walker reports
+            # cornerRadiusMixed=true. Skip-emit if IR has no
+            # cornerRadius opinion.
+            # A1.3 provenance gate.
+            ir_cr = ir_visual.get("cornerRadius")
+            rd_mixed = rendered.get("cornerRadiusMixed") is True
+            rd_cr = rendered.get("cornerRadius")
+            if _is_snapshot_skip(rendered.get("type"), "cornerRadius", element):
+                pass  # snapshot — skip
+            elif isinstance(ir_cr, (int, float)):
+                if rd_mixed:
+                    # IR uniform vs rendered per-corner: compare
+                    # each side to the IR uniform value.
+                    sides = (
+                        rendered.get("topLeftRadius"),
+                        rendered.get("topRightRadius"),
+                        rendered.get("bottomRightRadius"),
+                        rendered.get("bottomLeftRadius"),
+                    )
+                    drifted_sides = [
+                        side for side in sides
+                        if isinstance(side, (int, float))
+                        and abs(side - ir_cr) > _CORNER_RADIUS_TOLERANCE
+                    ]
+                    if drifted_sides:
+                        errors.append(StructuredError(
+                            kind=KIND_CORNERRADIUS_MISMATCH,
+                            id=eid,
+                            error=(
+                                f"cornerRadius: IR uniform={ir_cr}, "
+                                f"rendered per-corner with "
+                                f"{len(drifted_sides)} side(s) drifted"
+                            ),
+                            context={
+                                "ir_corner_radius": ir_cr,
+                                "rendered_per_corner": list(sides),
+                            },
+                        ))
+                elif (
+                    isinstance(rd_cr, (int, float))
+                    and abs(ir_cr - rd_cr) > _CORNER_RADIUS_TOLERANCE
+                ):
+                    errors.append(StructuredError(
+                        kind=KIND_CORNERRADIUS_MISMATCH,
+                        id=eid,
+                        error=f"cornerRadius: IR={ir_cr}, rendered={rd_cr}",
+                        context={
+                            "ir_corner_radius": ir_cr,
+                            "rendered_corner_radius": rd_cr,
+                        },
+                    ))
+
+            # A5 (forensic-audit-2 Pattern G): comparators for visual
+            # props the IR carries but pre-A5 had no comparator.
+            # Each gated by the A1.3 provenance gate.
+
+            # strokeWeight: numeric tolerance for sub-pixel jitter.
+            ir_sw = ir_visual.get("strokeWeight")
+            rd_sw = rendered.get("strokeWeight")
+            if _is_snapshot_skip(rendered.get("type"), "strokeWeight", element):
+                pass
+            elif (
+                isinstance(ir_sw, (int, float))
+                and isinstance(rd_sw, (int, float))
+            ):
+                if abs(ir_sw - rd_sw) > _CORNER_RADIUS_TOLERANCE:
+                    errors.append(StructuredError(
+                        kind=KIND_STROKE_WEIGHT_MISMATCH,
+                        id=eid,
+                        error=f"strokeWeight: IR={ir_sw}, rendered={rd_sw}",
+                        context={
+                            "ir_stroke_weight": ir_sw,
+                            "rendered_stroke_weight": rd_sw,
+                        },
+                    ))
+
+            # strokeAlign: exact-string compare (INSIDE / CENTER / OUTSIDE).
+            ir_sa = ir_visual.get("strokeAlign")
+            rd_sa = rendered.get("strokeAlign")
+            if _is_snapshot_skip(rendered.get("type"), "strokeAlign", element):
+                pass
+            elif (
+                isinstance(ir_sa, str)
+                and isinstance(rd_sa, str)
+                and ir_sa != rd_sa
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_STROKE_ALIGN_MISMATCH,
+                    id=eid,
+                    error=f"strokeAlign: IR={ir_sa}, rendered={rd_sa}",
+                    context={
+                        "ir_stroke_align": ir_sa,
+                        "rendered_stroke_align": rd_sa,
+                    },
+                ))
+
+            # dashPattern: array equality (sequence of numeric lengths).
+            # Empty array (solid stroke) is a real value distinct from
+            # absent.
+            ir_dp = ir_visual.get("dashPattern")
+            rd_dp = rendered.get("dashPattern")
+            if _is_snapshot_skip(rendered.get("type"), "dashPattern", element):
+                pass
+            elif (
+                isinstance(ir_dp, list)
+                and isinstance(rd_dp, list)
+                and ir_dp != rd_dp
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_DASH_PATTERN_MISMATCH,
+                    id=eid,
+                    error=f"dashPattern: IR={ir_dp}, rendered={rd_dp}",
+                    context={
+                        "ir_dash_pattern": ir_dp,
+                        "rendered_dash_pattern": rd_dp,
+                    },
+                ))
+
+            # clipsContent: boolean equality. Only meaningful on
+            # container types (FRAME / COMPONENT / INSTANCE / SECTION);
+            # other types may not even carry the value. Skip when
+            # either side is None.
+            ir_cc = ir_visual.get("clipsContent")
+            rd_cc = rendered.get("clipsContent")
+            if _is_snapshot_skip(rendered.get("type"), "clipsContent", element):
+                pass
+            elif (
+                isinstance(ir_cc, bool)
+                and isinstance(rd_cc, bool)
+                and ir_cc != rd_cc
+            ):
+                errors.append(StructuredError(
+                    kind=KIND_CLIPS_CONTENT_MISMATCH,
+                    id=eid,
+                    error=f"clipsContent: IR={ir_cc}, rendered={rd_cc}",
+                    context={
+                        "ir_clips_content": ir_cc,
+                        "rendered_clips_content": rd_cc,
+                    },
+                ))
+
+            # Sprint 2 C10 — registry-driven comparator dispatch for
+            # the 3 graduated properties (characters,
+            # layoutSizingHorizontal, layoutSizingVertical). Per plan
+            # §10 R2 (paired walker emission + verifier dispatch):
+            # this is where the cross-corpus bugs the user observed
+            # surface as KIND_TEXT_CONTENT_MISMATCH /
+            # KIND_LAYOUT_SIZING_*_MISMATCH errors. Hand-rolled
+            # comparators above are NOT migrated — they keep their
+            # paths to bound Sprint 2's scope (Codex round-9 lock).
+            for prop in PROPERTIES:
+                if prop.station_4 != StationDisposition.COMPARE_DISPATCH:
+                    continue
+                spec = prop.compare_figma
+                if spec is None:
+                    continue  # defensive — coverage test enforces this can't happen
+                # A1.3 provenance gate
+                if spec.skip_when_provenance_absent and _is_snapshot_skip(
+                    rendered.get("type"), spec.walker_key, element,
+                ):
+                    continue
+                ir_value = _ir_value_for(element, prop.figma_name)
+                rendered_value = _rendered_value(rendered, spec.walker_key, None)
+                # Skip only on None — empty strings/falsy values still compare
+                # (Codex round-9: "" vs "Hello" is a real mismatch).
+                if ir_value is None or rendered_value is None:
+                    continue
+                impl = _COMPARATOR_IMPLS.get(spec.comparator)
+                if impl is None:
+                    continue  # defensive; coverage test pins this
+                err = impl(ir_value, rendered_value, element, spec=spec)
+                if err is not None:
+                    errors.append(err)
+
         return RenderReport(
             backend=self.backend,
             ir_node_count=ir_count,
             rendered_node_count=rendered_count,
             errors=errors,
+            runtime_errors=runtime_errors,
         )

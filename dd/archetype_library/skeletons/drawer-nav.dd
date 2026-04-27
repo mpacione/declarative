@@ -1,0 +1,40 @@
+// Stage 2 archetype — migrated from drawer-nav.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define drawer-nav() {
+    drawer {
+        header {
+            avatar
+            heading
+            text
+        }
+        list {
+            navigation-row {
+                icon
+                text
+            }
+            navigation-row {
+                icon
+                text
+            }
+            navigation-row {
+                icon
+                text
+            }
+            navigation-row {
+                icon
+                text
+            }
+            navigation-row {
+                icon
+                text
+            }
+            navigation-row {
+                icon
+                text
+            }
+        }
+        button variant=secondary
+    }
+}

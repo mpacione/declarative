@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -156,6 +157,48 @@ class TestCrossValidateVision:
 # Batched screenshot fetcher tests
 # ---------------------------------------------------------------------------
 
+class TestFullScreenFilter:
+    """Classifier v2: vision_batched._fetch_unclassified_for_screen
+    excludes nodes that fill the entire viewport (canvas/root
+    containers).
+    """
+
+    def test_full_screen_node_filtered(self):
+        from dd.classify_vision_batched import _fetch_unclassified_for_screen
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')"
+        )
+        conn.execute(
+            "INSERT INTO screens "
+            "(id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'S', 428, 926)"
+        )
+        # Canvas FRAME at 99% of viewport → should be filtered.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, x, y, width, height) "
+            "VALUES (60, 1, 'c60', 'Canvas', 'FRAME', 1, 0, "
+            " 0, 0, 424, 917)"
+        )
+        # Content FRAME at 60% of viewport → stays.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, "
+            " sort_order, x, y, width, height) "
+            "VALUES (61, 1, 'c61', 'Content', 'FRAME', 1, 1, "
+            " 10, 10, 257, 556)"
+        )
+        conn.commit()
+        candidates = _fetch_unclassified_for_screen(conn, 1)
+        names = [c["name"] for c in candidates]
+        conn.close()
+        assert "Canvas" not in names
+        assert "Content" in names
+
+
 class TestBatchedScreenshotFetcher:
     """Verify the batched Figma screenshot fetcher with retry."""
 
@@ -245,7 +288,13 @@ def _make_mock_figma_session(node_bytes_map: dict) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 def _make_vision_client(type_map: dict) -> MagicMock:
-    """Mock Anthropic client that classifies based on figma_node_id → type mapping."""
+    """Mock Anthropic client returning tool_use responses shaped
+    like ``dd.classify_vision.VISION_TOOL_SCHEMA``.
+
+    Looks at the prompt text for the node's figma_node_id; returns
+    the mapped canonical_type with confidence 0.9 and a stubbed
+    reason. Mirrors the shape a real Claude tool-use reply takes.
+    """
     def create_response(**kwargs):
         messages = kwargs.get("messages", [])
         for msg in messages:
@@ -254,10 +303,28 @@ def _make_vision_client(type_map: dict) -> MagicMock:
                     if isinstance(block, dict) and block.get("type") == "text":
                         for fid, ctype in type_map.items():
                             if fid in block["text"]:
-                                return MagicMock(
-                                    content=[MagicMock(text=json.dumps({"type": ctype, "confidence": 0.9}))]
-                                )
-        return MagicMock(content=[MagicMock(text=json.dumps({"type": "unknown", "confidence": 0.3}))])
+                                return SimpleNamespace(content=[
+                                    SimpleNamespace(
+                                        type="tool_use",
+                                        name="classify_node_from_screenshot",
+                                        input={
+                                            "canonical_type": ctype,
+                                            "confidence": 0.9,
+                                            "reason": f"Mock vision match for {fid}",
+                                        },
+                                    ),
+                                ])
+        return SimpleNamespace(content=[
+            SimpleNamespace(
+                type="tool_use",
+                name="classify_node_from_screenshot",
+                input={
+                    "canonical_type": "unsure",
+                    "confidence": 0.3,
+                    "reason": "No match in mock type_map",
+                },
+            ),
+        ])
 
     mock = MagicMock()
     mock.messages.create.side_effect = create_response

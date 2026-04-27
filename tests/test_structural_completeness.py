@@ -114,6 +114,11 @@ _STRUCTURAL_DB_COLUMNS: set[str] = {
     # registry property because there's no cross-backend canonical
     # form yet (relativeTransform in particular is Figma-specific).
     "relative_transform", "opentype_features", "vector_paths",
+    # Migration 021: classifier-assigned semantic role. Denormalized
+    # from screen_component_instances.canonical_type. Not a visual
+    # property — it's a semantic annotation consumed by grammar/
+    # labeling layers; structural dispatch uses node_type.
+    "role",
 }
 
 

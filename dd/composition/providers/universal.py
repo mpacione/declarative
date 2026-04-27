@@ -28,6 +28,37 @@ from dd.composition.protocol import (
 )
 
 
+# A3.2 — silent-default-leak fix (audit/architectural-flow-matrix-20260426.md
+# Pattern A). Every universal template's ``style`` carries an explicit
+# ``opacity: 1.0`` so a downstream LLM-driven override has a concrete
+# value to differ against. Templates that declare a ``stroke`` ref also
+# carry stroke geometry (``strokeWeight`` / ``strokeAlign`` /
+# ``dashPattern``); templates without a stroke ref omit geometry
+# entirely (geometry-without-paint is brittle and conflicts with
+# Backlog #2 0-weight-with-strokes).
+#
+# Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26): keep these top-level
+# in ``template.style``; do NOT add ``visible: True`` (visibility is
+# handled separately as ``element['visible'] is False``); do NOT use
+# ``strokeWeight: 0`` to mean "no stroke."
+_DEFAULT_OPACITY: float = 1.0
+_DEFAULT_STROKE_WEIGHT: float = 1.0
+_DEFAULT_STROKE_ALIGN: str = "INSIDE"
+_DEFAULT_DASH_PATTERN: list[float] = []
+
+
+def _stroke_geometry_defaults() -> dict[str, Any]:
+    """Stroke-geometry block that accompanies any template with a
+    ``stroke`` ref. Exposed as a helper so the per-template builders
+    stay declarative.
+    """
+    return {
+        "strokeWeight": _DEFAULT_STROKE_WEIGHT,
+        "strokeAlign": _DEFAULT_STROKE_ALIGN,
+        "dashPattern": list(_DEFAULT_DASH_PATTERN),
+    }
+
+
 # 27-type universal backbone (ADR-008 §10 + v0.1.5 H2 extension).
 # Extended types fall through to ingested providers.
 #
@@ -45,6 +76,26 @@ _BACKBONE: frozenset[str] = frozenset({
     "image", "dialog", "tooltip", "popover", "menu", "link",
     "drawer", "header", "navigation_row",
 })
+
+
+# Phase E #7 fix (2026-04-26): public-API export of the types the
+# universal catalog provider supports. Pre-fix `dd/compose.py`
+# warned "no template — will render as empty frame" for any type
+# missing from the project-specific `component_templates` table,
+# even though the universal provider would render those types
+# correctly via `_BUILDERS` (image, card, button, dialog, etc).
+# Codex 2026-04-26 (gpt-5.5 high reasoning): "Export an intentional
+# constant/API from the universal provider module, then use that
+# in compose.py... avoids having compose.py import a private
+# implementation detail. Makes the contract explicit: 'these types
+# are universally renderable.'"
+#
+# Consumers (e.g. `dd.compose.validate_components`) should treat
+# membership in this set as "renderable via universal fallback —
+# no project-specific template needed." This is the public name;
+# `_BACKBONE` remains the internal marker the provider's
+# `supports()` method consults.
+UNIVERSAL_COMPONENT_TYPES: frozenset[str] = _BACKBONE
 
 
 def _button_template(variant: str | None) -> PresentationTemplate:
@@ -84,6 +135,7 @@ def _button_template(variant: str | None) -> PresentationTemplate:
             "fill": fill,
             "fg": fg,
             "radius": "{radius.button}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.button.fontFamily}",
                 "fontSize": "{typography.button.fontSize}",
@@ -116,12 +168,14 @@ def _text_input_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.input.bg}",
             "stroke": "{color.input.border}",
             "radius": "{radius.input}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.input.fontFamily}",
                 "fontSize": "{typography.input.fontSize}",
                 "fontWeight": "{typography.input.fontWeight}",
             },
             "height_pixels": 48,
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -149,6 +203,8 @@ def _card_template(variant: str | None) -> PresentationTemplate:
             "stroke": "{color.surface.card_border}",
             "radius": "{radius.card}",
             "shadow": "{shadow.card}",
+            "opacity": _DEFAULT_OPACITY,
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -174,6 +230,7 @@ def _dialog_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.surface.dialog}",
             "radius": "{radius.dialog}",
             "shadow": "{shadow.dialog}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
@@ -204,6 +261,7 @@ def _toggle_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.toggle.track.off}",
             "thumb_fill": "{color.toggle.thumb}",
             "radius": "{radius.toggle}",
+            "opacity": _DEFAULT_OPACITY,
             "track_width_pixels": 44,
             "track_height_pixels": 26,
             "typography": {
@@ -235,12 +293,14 @@ def _checkbox_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.checkbox.fill}",
             "stroke": "{color.checkbox.border}",
             "radius": "{radius.checkbox}",
+            "opacity": _DEFAULT_OPACITY,
             "size_pixels": 20,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
                 "fontWeight": "{typography.body.fontWeight}",
             },
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -266,6 +326,7 @@ def _icon_button_template(variant: str | None) -> PresentationTemplate:
         style={
             "fill": "{color.action.ghost.bg}",
             "radius": "{radius.button}",
+            "opacity": _DEFAULT_OPACITY,
         },
     )
 
@@ -293,6 +354,7 @@ def _list_item_template(variant: str | None) -> PresentationTemplate:
         },
         style={
             "fill": "{color.surface.list_item}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.list_item.fontFamily}",
                 "fontSize": "{typography.list_item.fontSize}",
@@ -326,12 +388,14 @@ def _header_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.surface.header}",
             "stroke": "{color.surface.header_border}",
             "fg": "{color.text.heading}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.heading.fontFamily}",
                 "fontSize": "{typography.header.fontSize}",
                 "fontWeight": "{typography.header.fontWeight}",
             },
             "height_pixels": 56,
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -364,11 +428,13 @@ def _drawer_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.surface.drawer}",
             "stroke": "{color.surface.drawer_border}",
             "fg": "{color.text.default}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
                 "fontWeight": "{typography.body.fontWeight}",
             },
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -396,6 +462,7 @@ def _navigation_row_template(variant: str | None) -> PresentationTemplate:
         style={
             "fill": "{color.surface.list_item}",
             "fg": "{color.text.default}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.list_item.fontFamily}",
                 "fontSize": "{typography.list_item.fontSize}",
@@ -428,6 +495,7 @@ def _avatar_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.avatar.fill}",
             "fg": "{color.avatar.fg}",
             "radius": 999,
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.avatar.fontSize}",
@@ -472,6 +540,7 @@ def _badge_template(variant: str | None) -> PresentationTemplate:
             "fill": fill,
             "fg": fg,
             "radius": "{radius.badge}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.badge.fontSize}",
@@ -503,6 +572,7 @@ def _image_template(variant: str | None) -> PresentationTemplate:
         style={
             "fill": "{color.surface.image_placeholder}",
             "radius": "{radius.image}",
+            "opacity": _DEFAULT_OPACITY,
         },
     )
 
@@ -523,6 +593,7 @@ def _icon_template(variant: str | None) -> PresentationTemplate:
         style={
             "fill": "{color.text.default}",
             "radius": 4,
+            "opacity": _DEFAULT_OPACITY,
         },
     )
 
@@ -548,11 +619,13 @@ def _menu_template(variant: str | None) -> PresentationTemplate:
             "stroke": "{color.surface.menu_border}",
             "radius": "{radius.menu}",
             "shadow": "{shadow.menu}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
                 "fontWeight": "{typography.body.fontWeight}",
             },
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -577,6 +650,7 @@ def _tooltip_template(variant: str | None) -> PresentationTemplate:
             "fill": "{color.surface.tooltip}",
             "fg": "{color.text.on_tooltip}",
             "radius": "{radius.tooltip}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.caption.fontSize}",
@@ -607,11 +681,13 @@ def _popover_template(variant: str | None) -> PresentationTemplate:
             "stroke": "{color.surface.popover_border}",
             "radius": "{radius.popover}",
             "shadow": "{shadow.popover}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
                 "fontWeight": "{typography.body.fontWeight}",
             },
+            **_stroke_geometry_defaults(),
         },
     )
 
@@ -634,6 +710,7 @@ def _link_template(variant: str | None) -> PresentationTemplate:
         style={
             "fill": None,
             "fg": "{color.text.link}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",
@@ -683,6 +760,7 @@ def _generic_frame_template(
         },
         style={
             "radius": "{radius.default}",
+            "opacity": _DEFAULT_OPACITY,
             "typography": {
                 "fontFamily": "{typography.body.fontFamily}",
                 "fontSize": "{typography.body.fontSize}",

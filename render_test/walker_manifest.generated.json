@@ -1,0 +1,1067 @@
+{
+  "properties": {
+    "arcData": {
+      "capability_node_types": [
+        "ELLIPSE"
+      ],
+      "envelope": "raw",
+      "figma_name": "arcData",
+      "handler": {
+        "kind": "default_property",
+        "property": "arcData"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "blendMode": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "blendMode",
+      "handler": {
+        "kind": "default_property",
+        "property": "blendMode"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "booleanOperation": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION"
+      ],
+      "envelope": "raw",
+      "figma_name": "booleanOperation",
+      "handler": {
+        "kind": "default_property",
+        "property": "booleanOperation"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "characters": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "value_source",
+      "figma_name": "characters",
+      "handler": {
+        "kind": "default_property",
+        "property": "characters"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DISPATCH"
+    },
+    "clipsContent": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "clipsContent",
+      "handler": {
+        "kind": "default_property",
+        "property": "clipsContent"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "constraints.horizontal": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "constraints.horizontal",
+      "handler": {
+        "kind": "default_property",
+        "property": "constraints.horizontal"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "constraints.vertical": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "constraints.vertical",
+      "handler": {
+        "kind": "default_property",
+        "property": "constraints.vertical"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "cornerRadius": {
+      "capability_node_types": [
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR"
+      ],
+      "envelope": "raw",
+      "figma_name": "cornerRadius",
+      "handler": {
+        "kind": "default_property",
+        "property": "cornerRadius"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "cornerSmoothing": {
+      "capability_node_types": [
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR"
+      ],
+      "envelope": "raw",
+      "figma_name": "cornerSmoothing",
+      "handler": {
+        "kind": "default_property",
+        "property": "cornerSmoothing"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "counterAxisAlignItems": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "counterAxisAlignItems",
+      "handler": {
+        "kind": "default_property",
+        "property": "counterAxisAlignItems"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "counterAxisSpacing": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "counterAxisSpacing",
+      "handler": {
+        "kind": "default_property",
+        "property": "counterAxisSpacing"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "dashPattern": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "dashPattern",
+      "handler": {
+        "kind": "default_property",
+        "property": "dashPattern"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "effects": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "effects",
+      "handler": {
+        "kind": "default_property",
+        "property": "effects"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "fills": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "fills",
+      "handler": {
+        "kind": "default_property",
+        "property": "fills"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "fontFamily": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "fontFamily",
+      "handler": {
+        "kind": "default_property",
+        "property": "fontFamily"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "fontSize": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "fontSize",
+      "handler": {
+        "kind": "default_property",
+        "property": "fontSize"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "fontStyle": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "fontStyle",
+      "handler": {
+        "kind": "default_property",
+        "property": "fontStyle"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "fontWeight": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "fontWeight",
+      "handler": {
+        "kind": "default_property",
+        "property": "fontWeight"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "height": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "height",
+      "handler": {
+        "kind": "default_property",
+        "property": "height"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "DEDICATED_PATH",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "isMask": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "isMask",
+      "handler": {
+        "kind": "default_property",
+        "property": "isMask"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "itemSpacing": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "itemSpacing",
+      "handler": {
+        "kind": "default_property",
+        "property": "itemSpacing"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "layoutMode": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "layoutMode",
+      "handler": {
+        "kind": "default_property",
+        "property": "layoutMode"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "layoutPositioning": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "layoutPositioning",
+      "handler": {
+        "kind": "default_property",
+        "property": "layoutPositioning"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "layoutSizingHorizontal": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "value_source",
+      "figma_name": "layoutSizingHorizontal",
+      "handler": {
+        "kind": "default_property",
+        "property": "layoutSizingHorizontal"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DISPATCH"
+    },
+    "layoutSizingVertical": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "value_source",
+      "figma_name": "layoutSizingVertical",
+      "handler": {
+        "kind": "default_property",
+        "property": "layoutSizingVertical"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DISPATCH"
+    },
+    "layoutWrap": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "layoutWrap",
+      "handler": {
+        "kind": "default_property",
+        "property": "layoutWrap"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "leadingTrim": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "leadingTrim",
+      "handler": {
+        "kind": "default_property",
+        "property": "leadingTrim"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "letterSpacing": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "letterSpacing",
+      "handler": {
+        "kind": "default_property",
+        "property": "letterSpacing"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "lineHeight": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "lineHeight",
+      "handler": {
+        "kind": "default_property",
+        "property": "lineHeight"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "maxHeight": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "maxHeight",
+      "handler": {
+        "kind": "default_property",
+        "property": "maxHeight"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "maxWidth": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "maxWidth",
+      "handler": {
+        "kind": "default_property",
+        "property": "maxWidth"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "minHeight": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "minHeight",
+      "handler": {
+        "kind": "default_property",
+        "property": "minHeight"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "minWidth": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "INSTANCE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "minWidth",
+      "handler": {
+        "kind": "default_property",
+        "property": "minWidth"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "opacity": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "opacity",
+      "handler": {
+        "kind": "default_property",
+        "property": "opacity"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "paddingBottom": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "paddingBottom",
+      "handler": {
+        "kind": "default_property",
+        "property": "paddingBottom"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "paddingLeft": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "paddingLeft",
+      "handler": {
+        "kind": "default_property",
+        "property": "paddingLeft"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "paddingRight": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "paddingRight",
+      "handler": {
+        "kind": "default_property",
+        "property": "paddingRight"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "paddingTop": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "paddingTop",
+      "handler": {
+        "kind": "default_property",
+        "property": "paddingTop"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "paragraphSpacing": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "paragraphSpacing",
+      "handler": {
+        "kind": "default_property",
+        "property": "paragraphSpacing"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "primaryAxisAlignItems": {
+      "capability_node_types": [
+        "COMPONENT",
+        "FRAME",
+        "INSTANCE",
+        "SECTION"
+      ],
+      "envelope": "raw",
+      "figma_name": "primaryAxisAlignItems",
+      "handler": {
+        "kind": "default_property",
+        "property": "primaryAxisAlignItems"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "rotation": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "rotation",
+      "handler": {
+        "kind": "default_property",
+        "property": "rotation"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "DEDICATED_PATH",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "strokeAlign": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "strokeAlign",
+      "handler": {
+        "kind": "default_property",
+        "property": "strokeAlign"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "strokeCap": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "strokeCap",
+      "handler": {
+        "kind": "default_property",
+        "property": "strokeCap"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "strokeJoin": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "strokeJoin",
+      "handler": {
+        "kind": "default_property",
+        "property": "strokeJoin"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "strokeWeight": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "strokeWeight",
+      "handler": {
+        "kind": "default_property",
+        "property": "strokeWeight"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "strokes": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "strokes",
+      "handler": {
+        "kind": "default_property",
+        "property": "strokes"
+      },
+      "station_2": "EMIT_HANDLER",
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DEDICATED"
+    },
+    "textAlignHorizontal": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "textAlignHorizontal",
+      "handler": {
+        "kind": "default_property",
+        "property": "textAlignHorizontal"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "textAlignVertical": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "textAlignVertical",
+      "handler": {
+        "kind": "default_property",
+        "property": "textAlignVertical"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "textAutoResize": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "textAutoResize",
+      "handler": {
+        "kind": "default_property",
+        "property": "textAutoResize"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "CAPTURED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "textCase": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "textCase",
+      "handler": {
+        "kind": "default_property",
+        "property": "textCase"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "textDecoration": {
+      "capability_node_types": [
+        "TEXT"
+      ],
+      "envelope": "raw",
+      "figma_name": "textDecoration",
+      "handler": {
+        "kind": "default_property",
+        "property": "textDecoration"
+      },
+      "station_2": "EMIT_UNIFORM",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "visible": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "visible",
+      "handler": {
+        "kind": "default_property",
+        "property": "visible"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "NOT_CAPTURED_SUPPORTED",
+      "station_4": "EXEMPT_REASON"
+    },
+    "width": {
+      "capability_node_types": [
+        "BOOLEAN_OPERATION",
+        "COMPONENT",
+        "ELLIPSE",
+        "FRAME",
+        "GROUP",
+        "INSTANCE",
+        "LINE",
+        "POLYGON",
+        "RECTANGLE",
+        "SECTION",
+        "STAR",
+        "TEXT",
+        "VECTOR"
+      ],
+      "envelope": "raw",
+      "figma_name": "width",
+      "handler": {
+        "kind": "default_property",
+        "property": "width"
+      },
+      "station_2": "EMIT_DEFERRED",
+      "station_3": "DEDICATED_PATH",
+      "station_4": "COMPARE_DEDICATED"
+    }
+  },
+  "version": "1.0"
+}

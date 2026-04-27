@@ -464,3 +464,39 @@ class TestSystemPrompt:
         # Explicit namedrop of the highest-volume offender from the v3
         # baseline failure taxonomy:
         assert "list_item" in prompt
+
+
+class TestMode3RegistryIncludesProjectCKR:
+    """Stage 0 cleanup (docs/plan-authoring-loop.md §4.1): the Mode-3
+    cascade must include ProjectCKRProvider between
+    CorpusRetrievalProvider (priority 150) and UniversalCatalogProvider
+    (priority 10). Without it the project's own component_key_registry
+    + variant_token_binding rows never win the resolution cascade, and
+    "Mode 3 resolves project components" doesn't actually work
+    end-to-end. The two Mode-3 registries (one in dd/prompt_parser.py,
+    one in dd/compose.py) must both include it — otherwise fixing
+    one site silently leaves the other drifted."""
+
+    def _has_provider_of_class(self, registry, cls):
+        # ProviderRegistry exposes its ordered providers list;
+        # when it doesn't, fall back to duck-typing the `backend`.
+        providers = getattr(registry, "providers", None) or []
+        return any(isinstance(p, cls) for p in providers)
+
+    def test_prompt_parser_mode3_registry_includes_project_ckr(self):
+        import sqlite3
+
+        from dd.composition.providers.project_ckr import ProjectCKRProvider
+        from dd.prompt_parser import _build_mode3_registry
+        conn = sqlite3.connect(":memory:")
+        reg = _build_mode3_registry(conn)
+        assert self._has_provider_of_class(reg, ProjectCKRProvider)
+
+    def test_compose_default_mode3_registry_includes_project_ckr(self):
+        import sqlite3
+
+        from dd.compose import _build_default_mode3_registry
+        from dd.composition.providers.project_ckr import ProjectCKRProvider
+        conn = sqlite3.connect(":memory:")
+        reg = _build_default_mode3_registry(conn)
+        assert self._has_provider_of_class(reg, ProjectCKRProvider)

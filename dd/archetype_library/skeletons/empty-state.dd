@@ -1,0 +1,17 @@
+// Stage 2 archetype — migrated from empty-state.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define empty-state() {
+    header {
+        icon-button
+        text
+    }
+    empty-state {
+        image
+        heading
+        text
+        button variant=primary
+        link
+    }
+}

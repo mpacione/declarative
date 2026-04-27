@@ -238,13 +238,17 @@ def _extract_subtree(
     type_counters: dict[str, int] = {}
     node_to_eid: dict[int, str] = {}
 
+    # eid prefix uses the canonical {role || type} helper from dd.ir
+    # — role-first when classifier has an opinion, primitive fallback
+    # otherwise. Matches the Stage 2 eid naming rule.
+    from dd.ir import _resolve_element_type as _eid_prefix
     elements: dict[str, dict[str, Any]] = {}
     for r in rows:
-        etype = _resolve_element_type(r)
+        etype = _eid_prefix(r)
         type_counters[etype] = type_counters.get(etype, 0) + 1
         eid = f"{etype}-{type_counters[etype]}"
         node_to_eid[r["id"]] = eid
-        elements[eid] = _build_element(r, etype)
+        elements[eid] = _build_element(r)
 
     for r in rows:
         eid = node_to_eid[r["id"]]
@@ -388,21 +392,13 @@ def _fetch_subtree_rows(
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-def _resolve_element_type(row: dict[str, Any]) -> str:
-    """Prefer canonical_type (SCI); fall back to lowered node_type."""
-    ct = row.get("canonical_type")
-    if ct:
-        return ct
-    nt = (row.get("node_type") or "frame").lower()
-    if nt == "instance":
-        return "instance"
-    if nt == "text":
-        return "text"
-    return "frame"
+def _build_element(row: dict[str, Any]) -> dict[str, Any]:
+    """Assemble the element dict in the type/role split shape.
 
-
-def _build_element(row: dict[str, Any], etype: str) -> dict[str, Any]:
-    """Assemble the element dict: type + visual + layout + props.
+    ``type`` is the structural Figma primitive (from ``node_type``);
+    ``role`` carries the classifier's semantic label (from
+    ``canonical_type``) and is elided when ``role == type``. See
+    docs/plan-type-role-split.md.
 
     ``visual`` uses DB snake_case keys (fills/strokes/effects/
     corner_radius/stroke_weight/opacity) so ``build_template_visuals``
@@ -411,7 +407,13 @@ def _build_element(row: dict[str, Any], etype: str) -> dict[str, Any]:
     pre-parsed lists/numbers, but ``normalize_fills``/``normalize_strokes``
     tolerate both JSON strings and already-parsed lists.
     """
-    element: dict[str, Any] = {"type": etype}
+    from dd.ir import _resolve_primitive_type
+    primitive_type = _resolve_primitive_type(row)
+    semantic_role = row.get("canonical_type")
+
+    element: dict[str, Any] = {"type": primitive_type}
+    if semantic_role and semantic_role != primitive_type:
+        element["role"] = semantic_role
 
     visual: dict[str, Any] = {}
     fills = _parse_json(row.get("fills"))

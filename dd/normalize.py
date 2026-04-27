@@ -107,7 +107,38 @@ def normalize_stroke(strokes: list[dict[str, Any]]) -> list[dict[str, str]]:
                 "raw_value": json.dumps(color),
                 "resolved_value": hex_color
             })
-        # Skip gradients/images
+        elif stroke_type in ["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]:
+            # Mirror normalize_fill: emit gradient marker binding plus
+            # per-stop color bindings. Pre-fix this branch was a silent
+            # drop ("# Skip gradients/images") — surfaced as the
+            # screen-68 missing_asset DRIFT in the Phase E sweep.
+            bindings.append({
+                "property": f"stroke.{i}.gradient",
+                "raw_value": json.dumps(stroke),
+                "resolved_value": "gradient"
+            })
+            for j, stop in enumerate(stroke.get("gradientStops", [])):
+                stop_color = stop.get("color", {})
+                hex_color = rgba_to_hex(
+                    stop_color.get("r", 0),
+                    stop_color.get("g", 0),
+                    stop_color.get("b", 0),
+                    stop_color.get("a", 1),
+                )
+                bindings.append({
+                    "property": f"stroke.{i}.gradient.stop.{j}.color",
+                    "raw_value": json.dumps(stop_color),
+                    "resolved_value": hex_color
+                })
+        elif stroke_type == "IMAGE":
+            bindings.append({
+                "property": f"stroke.{i}.image",
+                "raw_value": json.dumps({
+                    "imageRef": stroke.get("imageRef"),
+                    "scaleMode": stroke.get("scaleMode"),
+                }),
+                "resolved_value": "image"
+            })
 
     return bindings
 

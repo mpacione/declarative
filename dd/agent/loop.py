@@ -1,0 +1,852 @@
+"""Stage 3.3 — agent session-loop orchestrator.
+
+Per Codex+Sonnet 2026-04-23 unanimous picks:
+- B2 (Python iteration loop, stateless calls — matches Stage 1+2
+  pattern; replayable per-iter).
+- A2 + cheap per-turn structural score for stop signal (no
+  render in loop; full render+VLM deferred to ``dd design score``).
+- Convergence: hard cap + explicit DONE tool + stall detector.
+- Persist the tree, not the conversation (LangGraph / AB-MCTS /
+  Cline-Aider pattern from the lit-review; the DB is the truth,
+  prompts reconstruct from path).
+
+The loop wires together:
+
+- Stage 1's ``propose_edits`` (7 edit verbs)
+- Stage 2's ``name_subtree`` / ``drill`` / ``climb`` primitives
+- Stage 3.2's ``dd/sessions.py`` persistence layer (sessions /
+  variants / move_log)
+- A new ``emit_done`` tool the agent can call to signal completion
+
+Public entry point::
+
+    run_session(
+        conn, *, brief=None, parent_variant_id=None,
+        client, model="claude-sonnet-4-6", max_iters=10,
+        component_paths=(), starting_doc=None,
+    ) -> SessionRunResult
+
+Either ``brief`` (new session) OR ``parent_variant_id`` (resume /
+branch) must be supplied.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Optional
+
+from dd.agent.primitives import climb, drill, name_subtree
+from dd.focus import FocusContext, MoveLogEntry
+from dd.markup_l3 import L3Document, parse_l3
+from dd.propose_edits import (
+    ProposeEditsResult,
+    build_propose_edits_tools,
+    parse_tool_call_to_edit,
+    propose_edits as _stage1_propose_edits,
+)
+from dd.sessions import (
+    append_move_log_entry,
+    create_session,
+    create_variant,
+    load_variant,
+)
+from dd.structural_verbs import existing_eids
+
+
+_DEFAULT_MODEL = "claude-sonnet-4-6"
+_STALL_WINDOW = 3  # iters of no structural change → halt
+
+# Edit-pressure gate: after this many consecutive non-edit turns
+# (NAME / DRILL / CLIMB) AND zero successful EDITs in the session,
+# strip the focus primitives + emit_done from the tool list so the
+# next turn must commit to an edit verb. Tuning: 2 leaves room for 1
+# scoping move (DRILL or NAME) before forcing commitment, which is
+# what the system prompt's "targeting discipline" paragraph encourages
+# anyway.
+_NON_EDIT_PRESSURE_TURNS = 2
+
+
+# --------------------------------------------------------------------------- #
+# Result shape                                                                #
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class SessionRunResult:
+    """Outcome of one ``run_session`` call.
+
+    ``halt_reason`` is one of: ``"done"`` (agent or implicit),
+    ``"max_iters"``, ``"stalled"``, ``"all_failed"``.
+    """
+    session_id: str
+    final_variant_id: str
+    iterations: int
+    halt_reason: str
+    move_log_summary: list[str]
+
+
+# --------------------------------------------------------------------------- #
+# Tool registry                                                               #
+# --------------------------------------------------------------------------- #
+
+def _emit_name_subtree_schema(eids: list[str]) -> dict[str, Any]:
+    return {
+        "name": "emit_name_subtree",
+        "description": (
+            "NAME a subtree with a semantic description (e.g. 'product "
+            "showcase section'). Pure metadata — doesn't change the "
+            "doc, only the move log. Useful when you've identified a "
+            "meaningful region you may want to drill into later."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "eid": {"type": "string", "enum": eids},
+                "description": {
+                    "type": "string", "minLength": 1, "maxLength": 200,
+                },
+            },
+            "required": ["eid", "description"],
+        },
+    }
+
+
+def _emit_drill_schema(eids: list[str]) -> dict[str, Any]:
+    return {
+        "name": "emit_drill",
+        "description": (
+            "DRILL into a subtree to scope subsequent edits. After "
+            "this turn, you'll see only the named subtree as your "
+            "context. Use ``emit_climb`` to pop back."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "eid": {"type": "string", "enum": eids},
+                "focus_goal": {
+                    "type": "string", "minLength": 1, "maxLength": 200,
+                    "description": "Why you're drilling — for the move log.",
+                },
+            },
+            "required": ["eid", "focus_goal"],
+        },
+    }
+
+
+def _emit_climb_schema() -> dict[str, Any]:
+    return {
+        "name": "emit_climb",
+        "description": (
+            "CLIMB back out of a drilled subtree. Pops one level of "
+            "scope. No-op at root scope."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rationale": {
+                    "type": "string", "minLength": 1, "maxLength": 200,
+                },
+            },
+            "required": ["rationale"],
+        },
+    }
+
+
+def _emit_done_schema() -> dict[str, Any]:
+    return {
+        "name": "emit_done",
+        "description": (
+            "DONE — signal that the design is complete and no further "
+            "edits are needed. Stops the loop cleanly."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rationale": {
+                    "type": "string", "minLength": 1, "maxLength": 280,
+                    "description": "Why you're calling it done.",
+                },
+            },
+            "required": ["rationale"],
+        },
+    }
+
+
+def build_loop_tools(
+    doc: L3Document,
+    component_paths: list[str],
+) -> list[dict[str, Any]]:
+    """Assemble the full tool list the loop registers per turn.
+
+    Reuses ``propose_edits``'s 7 verb schemas (built per-doc from the
+    current eid set), adds the three focus primitives + DONE.
+    """
+    tools = list(build_propose_edits_tools(doc, component_paths))
+    eids = sorted(existing_eids(doc))
+    if eids:
+        tools.append(_emit_name_subtree_schema(eids))
+        tools.append(_emit_drill_schema(eids))
+    tools.append(_emit_climb_schema())
+    tools.append(_emit_done_schema())
+    return tools
+
+
+# --------------------------------------------------------------------------- #
+# Cheap structural score (Codex's hybrid amendment)                            #
+# --------------------------------------------------------------------------- #
+
+def cheap_structural_score(
+    *,
+    pre_doc: L3Document,
+    post_result: ProposeEditsResult,
+) -> dict[str, Any]:
+    """Per-turn structural score — no render, no VLM. Used as the
+    stop signal (stall detector). A2's deferred render+VLM scoring
+    runs separately via ``dd design score``.
+
+    Signals:
+    - ``edit_applied`` — did the propose_edits call succeed?
+    - ``change_magnitude`` — eids added/removed by this turn (pure
+      structural delta; doesn't catch semantic-only edits like
+      a property set).
+    - ``out_of_scope`` — count of eids in the post-doc that weren't
+      in the pre-doc OR were dropped (used by stall detector to
+      decide if "no change" really means no change).
+    """
+    if not post_result.ok:
+        return {
+            "edit_applied": False,
+            "change_magnitude": 0,
+            "out_of_scope": 0,
+        }
+    pre_eids = existing_eids(pre_doc)
+    post_eids = existing_eids(post_result.applied_doc)
+    added = post_eids - pre_eids
+    removed = pre_eids - post_eids
+    return {
+        "edit_applied": True,
+        "change_magnitude": len(added) + len(removed),
+        "out_of_scope": 0,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Helpers — building Sonnet's user message + dispatching one tool             #
+# --------------------------------------------------------------------------- #
+
+_SYSTEM_PROMPT = (
+    "You are a UI design agent. The user has a design brief and you "
+    "iterate on a tree of UI elements one edit at a time using the "
+    "tools provided. Tools include 7 edit verbs (set / delete / "
+    "append / insert / move / swap / replace) plus three focus "
+    "primitives (name_subtree / drill / climb) and an explicit "
+    "emit_done tool. Call exactly ONE tool per turn. When the design "
+    "is complete and no further edits are needed, call emit_done.\n\n"
+    "**Targeting discipline.** When the brief refers to 'the X' "
+    "and multiple candidate Xs exist in the tree (e.g. 'the toolbar' "
+    "with several toolbar instances, 'the header' across multiple "
+    "headers), call emit_drill FIRST to narrow scope to the "
+    "specific subtree before editing. Picking the wrong target "
+    "with a confident-sounding edit verb is worse than spending "
+    "one turn to confirm scope. Use emit_name_subtree to label a "
+    "region you want to keep working on across multiple iterations."
+)
+
+
+def _empty_starting_doc() -> L3Document:
+    """Default doc for SYNTHESIZE mode (brief without starting_doc)."""
+    return parse_l3("screen #screen-root\n")
+
+
+def _format_vocab_palette(vocab: Any) -> str:
+    """Format a ``ProjectVocabulary`` as a readable palette block for
+    the agent's user message.
+
+    Constraint experiment (2026-04-27): when the host supplies the
+    project's extracted palette / radii / spacings, surface them in
+    the prompt so the LLM picks values from the source design system
+    rather than hallucinating hex codes from its general training.
+    Render-time vocab snapping (option 1) corrects drift but the LLM
+    keeps emitting off-palette literals; injection here (option 2)
+    aims to shift the upstream behavior so the move log itself reads
+    as palette-faithful.
+
+    Returns empty string when ``vocab`` is None or empty (caller
+    skips the section)."""
+    if vocab is None:
+        return ""
+    chromatic = list(getattr(vocab, "chromatic_fills", ()))
+    neutral = list(getattr(vocab, "neutral_fills", ()))
+    radii = list(getattr(vocab, "radii", ()))
+    spacings = list(getattr(vocab, "spacings", ()))
+    if not (chromatic or neutral or radii or spacings):
+        return ""
+    parts = []
+    parts.append("### Project palette — pick from these values")
+    parts.append(
+        "These are the canonical fills, radii, and spacings already "
+        "used in this project's design system. When you `set` a "
+        "fill, radius, or spacing, prefer values from these lists. "
+        "Off-palette hex codes from outside this list will be visibly "
+        "out-of-place."
+    )
+    if chromatic:
+        parts.append(
+            f"- chromatic fills ({len(chromatic)}): "
+            + ", ".join(chromatic)
+        )
+    if neutral:
+        parts.append(
+            f"- neutral fills ({len(neutral)}): "
+            + ", ".join(neutral)
+        )
+    if radii:
+        parts.append(
+            f"- corner radii ({len(radii)}): "
+            + ", ".join(f"{r:g}" for r in radii)
+        )
+    if spacings:
+        parts.append(
+            f"- spacings ({len(spacings)}): "
+            + ", ".join(f"{s:g}" for s in spacings)
+        )
+    return "\n".join(parts)
+
+
+def _build_user_message(
+    *,
+    brief: str,
+    focus: FocusContext,
+    iteration: int,
+    max_iters: int,
+    recent_log_summary: list[str],
+    project_vocab: Any = None,
+    force_edit_pressure: bool = False,
+) -> str:
+    """Construct the per-turn user message for Sonnet.
+
+    Per Codex's risk note (context bloat): pass the focused subtree
+    (focus.doc) and a compact recent-log summary, NOT the entire
+    root doc each turn.
+
+    ``project_vocab`` is an optional ``ProjectVocabulary`` (from
+    ``dd.project_vocabulary``); when supplied, its palette is
+    surfaced in a dedicated section so the LLM picks fills/radii/
+    spacings from the project's actual values instead of
+    hallucinating off-palette hex codes.
+
+    ``force_edit_pressure`` is set by the loop's edit-pressure gate
+    (see :data:`_NON_EDIT_PRESSURE_TURNS`). When True, the caller has
+    also stripped the focus primitives + ``emit_done`` from the tool
+    list — this kwarg adds a matching pressure line to the user
+    message so the LLM sees both the policy AND the available tools
+    pointing the same direction."""
+    from dd.markup_l3 import emit_l3
+    parts = [
+        f"### Brief\n{brief}",
+        f"\n### Iteration {iteration} / {max_iters}",
+    ]
+    palette_block = _format_vocab_palette(project_vocab)
+    if palette_block:
+        parts.append("\n" + palette_block)
+    parts.append(
+        f"\n### Current scope\n```dd\n{emit_l3(focus.doc)}\n```",
+    )
+    if recent_log_summary:
+        parts.append(
+            "\n### Recent moves (most recent last)\n"
+            + "\n".join(f"- {line}" for line in recent_log_summary[-6:])
+        )
+    if force_edit_pressure:
+        parts.append(
+            "\n### COMMIT NOW\n"
+            "You have not changed the document yet. This turn MUST "
+            "call one edit verb (`set` / `delete` / `append` / "
+            "`insert` / `move` / `swap` / `replace`). Use `append` or "
+            "`insert` for missing content the brief asks for; use "
+            "`set` to change a property on an existing element. The "
+            "focus primitives (drill / name / climb) are not "
+            "available this turn — pick the most-confident edit you "
+            "can make to move the design toward the brief."
+        )
+    else:
+        parts.append(
+            "\nPick ONE tool to call. When complete, call emit_done."
+        )
+    return "\n".join(parts)
+
+
+def _move_log_summary_lines(log: list[MoveLogEntry]) -> list[str]:
+    """Compact one-line-per-entry summary for the prompt."""
+    out = []
+    for e in log:
+        bits = [e.primitive]
+        if e.scope_eid:
+            bits.append(f"@{e.scope_eid}")
+        if e.payload:
+            for k, v in e.payload.items():
+                if isinstance(v, str) and v:
+                    bits.append(f"{k}={v[:40]}")
+        out.append(" ".join(bits))
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Per-turn dispatch                                                           #
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class _TurnOutcome:
+    """What happened on one turn — drives persistence + stall check."""
+    primitive: str
+    edit_source: Optional[str]
+    rationale: Optional[str]
+    new_focus: FocusContext
+    score: dict[str, Any]
+    did_edit: bool   # True if the doc actually changed
+    is_done: bool    # True if the agent called emit_done
+    halt_no_tool: bool  # True if the LLM emitted no tool_use
+
+
+def _dispatch_one_tool_call(
+    *,
+    focus: FocusContext,
+    tool_block: Any,
+    component_paths: list[str],
+    client: Any,
+    model: str,
+) -> _TurnOutcome:
+    """Apply one tool_use block. Returns a _TurnOutcome.
+
+    For edit verbs we delegate to the per-verb edit-grammar
+    lowering (propose_edits's parse_tool_call_to_edit) and apply
+    against the current ROOT doc — eids stable across the doc per
+    Stage 2's 2a mechanic. For NAME / DRILL / CLIMB we route to
+    the focus primitives. emit_done sets is_done.
+    """
+    name = tool_block.name
+    inp = dict(tool_block.input or {})
+    rationale = inp.get("rationale")
+
+    if name == "emit_done":
+        return _TurnOutcome(
+            primitive="DONE", edit_source=None, rationale=rationale,
+            new_focus=focus,
+            score={"edit_applied": True, "change_magnitude": 0,
+                   "out_of_scope": 0},
+            did_edit=False, is_done=True, halt_no_tool=False,
+        )
+
+    if name == "emit_name_subtree":
+        new_focus = name_subtree(focus, inp["eid"], inp["description"])
+        return _TurnOutcome(
+            primitive="NAME", edit_source=None, rationale=None,
+            new_focus=new_focus,
+            score={"edit_applied": True, "change_magnitude": 0,
+                   "out_of_scope": 0},
+            did_edit=False, is_done=False, halt_no_tool=False,
+        )
+
+    if name == "emit_drill":
+        new_focus = drill(focus, inp["eid"], focus_goal=inp.get("focus_goal"))
+        return _TurnOutcome(
+            primitive="DRILL", edit_source=None, rationale=None,
+            new_focus=new_focus,
+            score={"edit_applied": True, "change_magnitude": 0,
+                   "out_of_scope": 0},
+            did_edit=False, is_done=False, halt_no_tool=False,
+        )
+
+    if name == "emit_climb":
+        new_focus = climb(focus)
+        return _TurnOutcome(
+            primitive="CLIMB", edit_source=None, rationale=None,
+            new_focus=new_focus,
+            score={"edit_applied": True, "change_magnitude": 0,
+                   "out_of_scope": 0},
+            did_edit=False, is_done=False, halt_no_tool=False,
+        )
+
+    # Otherwise: an edit verb. Lower to source, apply against the
+    # ROOT doc (Stage 2's 2a mechanic), persist as new variant.
+    try:
+        edit_source = parse_tool_call_to_edit(name, inp, doc=focus.doc)
+    except (KeyError, ValueError) as e:
+        # Defensive — schema enum should prevent this, but if the
+        # mock LLM hands us garbage, surface it as a non-edit turn.
+        from dd.propose_edits import ProposeEditsResult
+        result = ProposeEditsResult(
+            ok=False, tool_name=name, edit_source=None,
+            rationale=rationale, applied_doc=focus.root_doc,
+            error_kind="KIND_PARSE_FAILED", error_detail=str(e),
+        )
+        return _TurnOutcome(
+            primitive="EDIT", edit_source=None, rationale=rationale,
+            new_focus=focus,
+            score=cheap_structural_score(
+                pre_doc=focus.root_doc, post_result=result,
+            ),
+            did_edit=False, is_done=False, halt_no_tool=False,
+        )
+
+    from dd.markup_l3 import apply_edits
+    try:
+        edit_doc = parse_l3(edit_source)
+        new_root = apply_edits(focus.root_doc, list(edit_doc.edits))
+    except Exception as e:  # noqa: BLE001
+        from dd.propose_edits import ProposeEditsResult
+        result = ProposeEditsResult(
+            ok=False, tool_name=name, edit_source=edit_source,
+            rationale=rationale, applied_doc=focus.root_doc,
+            error_kind="KIND_APPLY_FAILED", error_detail=str(e),
+        )
+        return _TurnOutcome(
+            primitive="EDIT", edit_source=edit_source, rationale=rationale,
+            new_focus=focus,
+            score=cheap_structural_score(
+                pre_doc=focus.root_doc, post_result=result,
+            ),
+            did_edit=False, is_done=False, halt_no_tool=False,
+        )
+
+    from dd.propose_edits import ProposeEditsResult
+    result = ProposeEditsResult(
+        ok=True, tool_name=name, edit_source=edit_source,
+        rationale=rationale, applied_doc=new_root,
+    )
+    new_focus = FocusContext(
+        root_doc=new_root,
+        scope_eid=focus.scope_eid,
+        parent_chain=list(focus.parent_chain),
+        move_log=list(focus.move_log),
+    )
+    return _TurnOutcome(
+        primitive="EDIT", edit_source=edit_source, rationale=rationale,
+        new_focus=new_focus,
+        score=cheap_structural_score(
+            pre_doc=focus.root_doc, post_result=result,
+        ),
+        did_edit=True, is_done=False, halt_no_tool=False,
+    )
+
+
+def _no_tool_outcome(focus: FocusContext) -> _TurnOutcome:
+    """Agent emitted no tool block — treat as implicit done (per
+    plan's 'least-surprising UX' Codex amendment)."""
+    return _TurnOutcome(
+        primitive="DONE", edit_source=None,
+        rationale="agent emitted no tool call",
+        new_focus=focus,
+        score={"edit_applied": True, "change_magnitude": 0,
+               "out_of_scope": 0},
+        did_edit=False, is_done=False, halt_no_tool=True,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Orchestrator                                                                #
+# --------------------------------------------------------------------------- #
+
+def run_session(
+    conn,
+    *,
+    brief: Optional[str] = None,
+    parent_variant_id: Optional[str] = None,
+    client: Any,
+    model: str = _DEFAULT_MODEL,
+    max_iters: int = 10,
+    component_paths: tuple[str, ...] = (),
+    starting_doc: Optional[L3Document] = None,
+    progress_stream: Optional[Any] = None,
+    project_vocab: Any = None,
+) -> SessionRunResult:
+    """Run one design session as an iteration loop.
+
+    Either ``brief`` (new session, SYNTHESIZE mode) OR
+    ``parent_variant_id`` (resume / branch) must be supplied.
+
+    Per Codex's risk on context bloat: each per-turn user message
+    carries the FOCUSED subtree + a compact recent-move-log summary,
+    NOT the full root doc.
+
+    When ``progress_stream`` is a file-like (the CLI passes
+    ``sys.stderr``), emits a ``[iter N/M] ...`` heartbeat at the
+    start of each iteration so a multi-minute demo run visibly
+    advances instead of looking hung. Silent by default — library
+    callers that capture stdio are unaffected.
+    """
+    if not brief and not parent_variant_id:
+        raise ValueError(
+            "must supply either `brief` (new session) or "
+            "`parent_variant_id` (resume/branch)"
+        )
+
+    # ── Bootstrap ────────────────────────────────────────────────────────
+    resume_override_brief: Optional[str] = None
+    resume_parent_vid: Optional[str] = None
+    if parent_variant_id:
+        parent = load_variant(conn, parent_variant_id)
+        if parent is None:
+            raise ValueError(
+                f"parent_variant_id {parent_variant_id!r} not found"
+            )
+        session_id = parent.session_id
+        starting = parent.doc
+        # Resume brief resolution: an explicit ``brief`` arg overrides
+        # the session's stored brief (M2 iteration UX — the user wants
+        # to refine this iteration with a new instruction). The stored
+        # brief column is NOT modified; it's a log of the original
+        # goal. A REBRIEF move_log entry is appended below so the
+        # iteration history surfaces the new instruction.
+        sess_row = conn.execute(
+            "SELECT brief FROM design_sessions WHERE id=?",
+            (session_id,),
+        ).fetchone()
+        stored_brief = sess_row["brief"] if sess_row else ""
+        if brief:
+            active_brief = brief
+            resume_override_brief = brief
+            resume_parent_vid = parent_variant_id
+        else:
+            active_brief = stored_brief or ""
+    else:
+        session_id = create_session(conn, brief=brief)
+        starting = starting_doc if starting_doc is not None else _empty_starting_doc()
+        active_brief = brief
+        # Persist a root variant snapshot so the loop's first variant
+        # has something to point parent_id at.
+        parent_variant_id = create_variant(
+            conn, session_id=session_id, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=starting,
+        )
+
+    # Resume-with-new-brief: append a REBRIEF entry so the iteration
+    # history is auditable. No variant row (the doc hasn't changed
+    # yet; the REBRIEF is metadata, not a structural edit).
+    if resume_override_brief is not None:
+        append_move_log_entry(
+            conn, session_id=session_id,
+            variant_id=resume_parent_vid,
+            entry=MoveLogEntry(
+                primitive="REBRIEF",
+                scope_eid=None,
+                payload={
+                    "new_brief": resume_override_brief,
+                    "previous_variant": resume_parent_vid,
+                },
+                rationale="user provided a new brief mid-session",
+            ),
+        )
+
+    focus = FocusContext.root(starting)
+    last_variant_id = parent_variant_id
+    halt_reason: Optional[str] = None
+    iterations = 0
+    # Stall window tracks "iters where an EDIT verb was attempted but
+    # did NOT successfully apply". A successful `set` that only
+    # changes a property (no eid delta) is still productive work and
+    # must NOT count toward stall — measuring structural eid-delta
+    # halts any styling-only or append-then-style flow at iter 3.
+    recent_edit_unproductive: list[bool] = []
+    recent_failures: list[bool] = []
+    move_log_summary: list[str] = []
+
+    # Edit-pressure gate (Codex 5.5 + Sonnet diagnosis 2026-04-27): the
+    # agent can spend an entire session on NAME / DRILL / CLIMB without
+    # ever issuing a structural EDIT, because focus primitives don't
+    # feed the stall detector and `tool_choice={"type": "any"}` is
+    # always satisfied by them. After ``_NON_EDIT_PRESSURE_TURNS``
+    # consecutive non-edit turns AND zero successful edits in the
+    # session, force the next turn's tool list to edit verbs only and
+    # add a "you must edit now" line to the user message. The forced
+    # state still allows the LLM to refuse via no-tool-block (which
+    # halts via halt_no_tool); it just can't keep cognitively spinning.
+    successful_edit_count = 0
+    consecutive_non_edit_turns = 0
+
+    # ── Loop ────────────────────────────────────────────────────────────
+    for i in range(1, max_iters + 1):
+        iterations = i
+        if progress_stream is not None:
+            # Heartbeat: one line per iter. Includes the focus eid
+            # so a multi-primitive session visibly shifts scope as
+            # the agent DRILLs in. Written before the Anthropic
+            # call so the user sees activity the moment latency
+            # begins.
+            try:
+                print(
+                    f"[iter {i}/{max_iters}] focus=@{focus.scope_eid} ...",
+                    file=progress_stream, flush=True,
+                )
+            except Exception:
+                # Don't let a broken stream abort a demo run.
+                pass
+
+        force_edit_only = (
+            successful_edit_count == 0
+            and consecutive_non_edit_turns >= _NON_EDIT_PRESSURE_TURNS
+        )
+        if force_edit_only:
+            # Strip NAME / DRILL / CLIMB / DONE from the tool surface.
+            # The agent must commit an edit verb this turn or emit no
+            # tool block (which halts via halt_no_tool). emit_done is
+            # excluded too — a session that never edited shouldn't be
+            # allowed to "complete."
+            from dd.propose_edits import build_propose_edits_tools
+            tools = list(build_propose_edits_tools(
+                focus.doc, list(component_paths),
+            ))
+        else:
+            tools = build_loop_tools(focus.doc, list(component_paths))
+        user_msg = _build_user_message(
+            brief=active_brief or "",
+            focus=focus,
+            iteration=i,
+            max_iters=max_iters,
+            recent_log_summary=move_log_summary,
+            project_vocab=project_vocab,
+            force_edit_pressure=force_edit_only,
+        )
+        resp = client.messages.create(
+            model=model,
+            max_tokens=2048,
+            temperature=0.0,
+            system=_SYSTEM_PROMPT,
+            tools=tools,
+            tool_choice={"type": "any"},
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        tool_blocks = [
+            b for b in (resp.content or [])
+            if getattr(b, "type", None) == "tool_use"
+        ]
+
+        if not tool_blocks:
+            outcome = _no_tool_outcome(focus)
+        else:
+            # Codex Stage 1.2 risk: enforce one tool per turn. If
+            # the LLM emits multiple, take the first and warn (the
+            # session loop should be more tolerant than propose_edits's
+            # hard-fail since we have many turns to recover).
+            outcome = _dispatch_one_tool_call(
+                focus=focus, tool_block=tool_blocks[0],
+                component_paths=list(component_paths),
+                client=client, model=model,
+            )
+
+        # Persist the outcome.
+        focus = outcome.new_focus
+        if outcome.is_done or outcome.halt_no_tool:
+            # A DONE doesn't create a new variant snapshot — the prior
+            # variant is already the final state. But we DO log it.
+            entry = MoveLogEntry(
+                primitive="DONE",
+                scope_eid=focus.scope_eid,
+                payload={"halt_no_tool": outcome.halt_no_tool},
+                rationale=outcome.rationale,
+            )
+            append_move_log_entry(
+                conn, session_id=session_id,
+                variant_id=last_variant_id, entry=entry,
+            )
+            move_log_summary.append(
+                f"DONE rationale={(outcome.rationale or '')[:40]}"
+            )
+            halt_reason = "done"
+            break
+
+        # NAME / DRILL / CLIMB / EDIT all become a variant + log entry.
+        new_vid = create_variant(
+            conn,
+            session_id=session_id,
+            parent_id=last_variant_id,
+            primitive=outcome.primitive,
+            edit_script=outcome.edit_source,
+            doc=focus.root_doc,
+            notes=outcome.rationale,
+        )
+        last_variant_id = new_vid
+
+        # The focus primitive paths (NAME/DRILL/CLIMB) emit log
+        # entries onto focus.move_log internally; the EDIT path
+        # doesn't. Persist whatever was produced PLUS an explicit
+        # entry for EDIT.
+        if outcome.primitive == "EDIT":
+            entry = MoveLogEntry(
+                primitive="EDIT",
+                scope_eid=focus.scope_eid,
+                payload={
+                    "edit_source": outcome.edit_source,
+                    "tool_name": "edit_verb",
+                },
+                rationale=outcome.rationale,
+            )
+            append_move_log_entry(
+                conn, session_id=session_id,
+                variant_id=new_vid, entry=entry,
+            )
+        else:
+            # NAME / DRILL / CLIMB — copy whatever the focus primitive
+            # appended onto its move_log to the SQL log.
+            if focus.move_log:
+                latest = focus.move_log[-1]
+                append_move_log_entry(
+                    conn, session_id=session_id,
+                    variant_id=new_vid, entry=latest,
+                )
+
+        # Update summary for next-turn's prompt.
+        if outcome.edit_source:
+            move_log_summary.append(
+                f"{outcome.primitive} {outcome.edit_source[:60]}"
+            )
+        else:
+            move_log_summary.append(outcome.primitive)
+
+        # Stall + all-failed detector.
+        #
+        # A turn is "unproductive" only when the AGENT attempted an
+        # EDIT verb AND the apply failed. A successful `set` edit —
+        # which changes a property but no eids — is productive work
+        # and resets the stall window. NAME / DRILL / CLIMB are
+        # structurally zero-change by design so they don't feed the
+        # window at all (they neither advance nor stall it).
+        is_edit_turn = outcome.primitive == "EDIT"
+        is_edit_unproductive = (
+            is_edit_turn and not outcome.score["edit_applied"]
+        )
+        recent_failures.append(not outcome.score["edit_applied"])
+        if is_edit_turn:
+            recent_edit_unproductive.append(is_edit_unproductive)
+
+        # Edit-pressure gate counters. A "successful edit" is an EDIT
+        # turn whose apply landed; anything else (NAME/DRILL/CLIMB or a
+        # failed EDIT) counts as a non-edit turn. Once the agent makes
+        # ANY successful edit in the session, the gate is permanently
+        # disarmed for that session (successful_edit_count > 0).
+        if is_edit_turn and outcome.score["edit_applied"]:
+            successful_edit_count += 1
+            consecutive_non_edit_turns = 0
+        else:
+            consecutive_non_edit_turns += 1
+        if len(recent_failures) >= _STALL_WINDOW and all(
+            recent_failures[-_STALL_WINDOW:]
+        ):
+            halt_reason = "all_failed"
+            break
+        if len(recent_edit_unproductive) >= _STALL_WINDOW and all(
+            recent_edit_unproductive[-_STALL_WINDOW:]
+        ):
+            halt_reason = "stalled"
+            break
+
+    if halt_reason is None:
+        halt_reason = "max_iters"
+
+    return SessionRunResult(
+        session_id=session_id,
+        final_variant_id=last_variant_id,
+        iterations=iterations,
+        halt_reason=halt_reason,
+        move_log_summary=move_log_summary,
+    )

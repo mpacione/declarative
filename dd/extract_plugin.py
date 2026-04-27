@@ -199,6 +199,26 @@ def generate_plugin_script(
     }
     if (gts.length > 0) entry.gt = gts;
   }
+
+  // ---- supplement slice: stroke gradientTransform enrichment -------------
+  // Mirror of fill gradientTransform — the Plugin API Paint union is
+  // shared between fills and strokes, so the same enrichment shape
+  // applies. Pre-fix this branch did not exist; gradient strokes had
+  // no Plugin-API transform, the renderer skipped them, and the
+  // verifier reported missing_asset DRIFT (screen-68 Ellipse 58 in
+  // the Phase E sweep). The matching apply-side code lives in
+  // dd/extract_supplement.py:apply_supplement under the "sgt" branch.
+  const strokes = safeRead(node, 'strokes');
+  if (strokes && strokes.length > 0) {
+    const sgts = [];
+    for (let i = 0; i < strokes.length; i++) {
+      const s = strokes[i];
+      if (s && s.gradientTransform) {
+        sgts.push({ strokeIndex: i, gradientTransform: s.gradientTransform });
+      }
+    }
+    if (sgts.length > 0) entry.sgt = sgts;
+  }
 """.replace("%CK_BLOCK%", ck_block).replace("%OVERRIDE_CHECKS%", override_checks)
 
     heavy_block = """

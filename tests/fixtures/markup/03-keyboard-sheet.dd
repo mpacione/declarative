@@ -1,0 +1,166 @@
+// -----------------------------------------------------------------------------
+// 03-keyboard-sheet.dd — Dank reference screen 237 ("iPhone 13 Pro Max - 79")
+//
+// Status:  hand-authored Plan A.4 fixture. Normative for grammar spec.
+// Profile: complex · 417 L0 nodes · 181 L1 classified · 9 canonical types
+// Source:  Dank-EXP-02.declarative.db screens.id = 237
+// See:     03-keyboard-sheet.l0-summary.md (frozen L0+L1+L2 reference)
+//
+// Semantic:  Meme-editor sheet state with software keyboard raised. This is
+//            the state-variant of screen 222 ("card-sheet") — same base
+//            composition, but the keyboard push-up shortens the card and
+//            adds `ios/alpha-keyboard` above it.
+//
+// Features exercised (beyond fixtures 01 + 02):
+//   - Mixed-axis density: `#body` block populates only Structure + Spatial
+//     (no Visual or Content) to exercise wireframe authoring
+//   - Style-only section: `#style-only-demo` populates only Visual
+//   - Keyword-arg structural edit preview (`append to=`, `@eid` addressing)
+//     kept inside a comment block — shows what Plan B Stage 1 edit-grammar
+//     parses, but that work is Stage 4+. The construction grammar in this
+//     fixture does NOT invoke the edit verbs; construction and edits parse
+//     through identical rules (Tier 0 §4.2)
+//   - External `use` of a sibling fixture (02) to demonstrate that definitions
+//     cross file boundaries via namespace aliases
+//   - Multiline string literal in content
+//   - `$ext` extension metadata preserved untouched by the grammar (Q10)
+// -----------------------------------------------------------------------------
+
+namespace dank.reference.screen-237
+
+// Cross-file reference: the `card-section` and `preset-tile` definitions
+// live in screen-222's fixture. We alias that file's namespace here.
+// NOTE for Stage 1 implementation: `use` on a sibling fixture demonstrates
+// that the parser must resolve file paths relative to the importing file.
+use "./02-card-sheet" as sheet22
+
+
+screen #keyboard-sheet (extracted src=237) {
+  width=428 height=926 fill={color.surface.default}
+
+
+  // ==================== WIREFRAME-DENSITY REGION ============================
+  // `#body` populates Structure + Spatial only — no Visual, no Content. At
+  // render time the compiler fills defaults from the catalog (per S3 OQ-7).
+  // This demonstrates that axis-subset specification is valid at any node.
+  container #body x=17 y=231 width=395 height=415
+      layout=vertical gap=10
+  // (no fills, strokes, effects, children defined — wireframe)
+
+
+  // ==================== STYLE-ONLY DEMONSTRATION NODE =======================
+  // `#style-only-demo` populates Visual axis only — the node has no
+  // structure (empty children, no layout mode) and no spatial extent beyond
+  // absolute placement. Legal per Tier 0 §4.1; the renderer treats missing
+  // children as empty and missing layout as the absolute default.
+  rectangle #style-only-demo
+      x=0 y=0 width=0 height=0      // nominal spatial slot; Visual axis primary
+      fill={color.surface.popover}
+      radius={radius.popover}
+      shadow={shadow.popover}
+      visible=false                 // design-intent placeholder
+
+
+  // ==================== FULL-DENSITY COMPOSITION ============================
+  // `#overlay` through `#status-bar` are the real-content nodes. Together
+  // they compose the keyboard-sheet screen in the same shape as 02-card-sheet
+  // but with the keyboard visible and the card shortened to accommodate.
+
+  // --- Dimming overlay -----------------------------------------------------
+  frame #overlay x=0 y=0 width=428 height=926 fill=#0000004D
+
+
+  // --- Toolbar buttons on overlay ------------------------------------------
+  -> button/toolbar #toolbar-small x=0 y=0 width=176 height=60
+  -> button/toolbar #toolbar-wide  x=0 y=0 width=410 height=60
+
+
+  // --- Shortened bottom sheet ----------------------------------------------
+  // Same `card` structure as screen 222 but height=362 (vs 387) because the
+  // keyboard pushes it up. Reusing the sibling fixture's section patterns.
+  card #sheet variant="sheet/success"
+       x=0 y=274 width=428 height=362
+       layout=vertical gap=16
+       padding={top=20 right=24 bottom=24 left=24}
+       fill={color.surface.card}
+       radius={top-left={radius.dialog} top-right={radius.dialog}}
+       shadow={shadow.card} {
+
+    frame #sheet-header width=380 height=40
+          layout=horizontal gap=12 align=center
+          mainAxis=space-between {
+      text "Add Text"
+           color={color.text.heading}
+           size={typography.heading.fontSize}
+           weight={typography.heading.fontWeight}
+      -> button/small/translucent #done width=99 height=40 {
+        text="Done"
+      }
+    }
+
+    // Cross-file pattern reference. Normative: this MUST resolve against
+    // `sheet22.card-section` or the parser fails with a clear error.
+    & sheet22::card-section #style heading="Style" {
+      body = frame #style-row width=380 height=86
+                   layout=horizontal gap=12 {
+        & sheet22::preset-tile #plain     label="Plain"
+        & sheet22::preset-tile #bold      label="Bold"     preview_width=52
+        & sheet22::preset-tile #italic    label="Italic"   preview_width=52
+        & sheet22::preset-tile #outline   label="Outline"  preview_width=52
+      }
+    }
+
+    // Multiline content example.
+    & sheet22::card-section #caption heading="Caption" {
+      body = text #caption-text
+             """When the meme hits different
+             but you can't quite place the vibe."""
+             color={color.text.default}
+             size={typography.body.fontSize}
+             weight={typography.body.fontWeight}
+    }
+  }
+
+
+  // --- Software keyboard (design content, not filter target) --------------
+  // `ios/alpha-keyboard` is a Dank component instance representing the
+  // iOS alphabetic keyboard. Per feedback_system_chrome_is_design, this
+  // is NOT filtered — a keyboard on a sheet communicates the editing state.
+  -> ios/alpha-keyboard #keyboard
+      x=0 y=636 width=428 height=290
+
+
+  // --- System chrome -------------------------------------------------------
+  -> safari/bottom      #safari     x=0 y=782
+  -> ios/home-indicator #home       x=0 y=892
+  -> nav/top-nav        #top-nav    x=0 y=0
+  -> ios/status-bar     #status-bar x=0 y=0
+
+  // ---------- $ext — tool-specific metadata (Q10) --------------------------
+  // Preserved literally through serde. Not validated by the parser. Used by
+  // external tools (CI, linters, provenance-aware UI) to attach metadata
+  // without perturbing the normative grammar.
+  $ext.figma_page = "Home Screen"
+  $ext.dank.capture_session = "session-2026-04-18T09:12:00Z"
+}
+
+
+// =============================================================================
+// EDIT-GRAMMAR PREVIEW (commented; for reference only — NOT parsed here)
+// =============================================================================
+// Screen 237 is 222 + {keyboard present + card shortened}. Expressed as edits
+// against the 222 IR, the delta would be:
+//
+//   @02-card-sheet::#sheet height=362
+//   @02-card-sheet::#sheet.children.presets.body.strip {
+//     // (keyboard-state doesn't use presets section; delete it)
+//     delete @presets
+//   }
+//   append to=@02-card-sheet
+//       -> ios/alpha-keyboard #keyboard x=0 y=636 width=428 height=290
+//
+// Seven verbs (set/append/insert/delete/move/swap/replace) address nodes by
+// stable `@eid`. `set` is implicit on property assignment. Same grammar,
+// same parser, same verifier — no separate edit DSL. See Tier 0 §4.2.
+// This comment is illustrative; the edit grammar is Stage 4+ scope.
+// =============================================================================

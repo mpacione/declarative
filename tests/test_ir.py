@@ -180,6 +180,56 @@ class TestNormalizeStrokes:
         strokes = normalize_strokes(STROKE_JSON, bindings, {"stroke_weight": 1})
         assert strokes[0]["color"] == "{color.border}"
 
+    def test_gradient_stroke_preserved_in_ir(self):
+        """Gradient stroke is materialized in IR with type and stops.
+
+        Pre-fix dd/ir.py:143 had `if stroke.get("type") != "SOLID": continue`
+        which silently dropped every non-SOLID stroke. This is the
+        IR-layer half of the screen-68 missing_asset fix.
+        """
+        stroke_json = json.dumps([{
+            "type": "GRADIENT_ANGULAR",
+            "gradientStops": [
+                {"position": 0, "color": {"r": 0.26, "g": 0.86, "b": 0.94, "a": 1.0}},
+                {"position": 0.5, "color": {"r": 0.81, "g": 0.37, "b": 0.93, "a": 1.0}},
+                {"position": 1, "color": {"r": 0.98, "g": 0.30, "b": 0.58, "a": 1.0}},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 8})
+        assert len(strokes) == 1
+        assert strokes[0]["type"] == "gradient-angular"
+        assert strokes[0]["width"] == 8
+        assert len(strokes[0]["stops"]) == 3
+        # Transform preserved for renderer (Plugin API needs the matrix)
+        assert strokes[0]["gradientTransform"] == [[1, 0, 0], [0, 1, 0]]
+
+    def test_gradient_stroke_without_transform_still_carries_stops(self):
+        """When supplement extractor hasn't enriched the stroke yet,
+        the IR still carries stops + type so the renderer can decide
+        what to do (skip gradient body, keep strokeWeight)."""
+        stroke_json = json.dumps([{
+            "type": "GRADIENT_LINEAR",
+            "gradientStops": [
+                {"position": 0, "color": {"r": 1, "g": 0, "b": 0, "a": 1}},
+                {"position": 1, "color": {"r": 0, "g": 0, "b": 1, "a": 1}},
+            ],
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 2})
+        assert strokes[0]["type"] == "gradient-linear"
+        assert "gradientTransform" not in strokes[0]
+
+    def test_image_stroke_preserved_in_ir(self):
+        stroke_json = json.dumps([{
+            "type": "IMAGE",
+            "imageRef": "abc123",
+            "scaleMode": "FILL",
+        }])
+        strokes = normalize_strokes(stroke_json, [], {"stroke_weight": 1})
+        assert len(strokes) == 1
+        assert strokes[0]["type"] == "image"
+        assert strokes[0]["asset_hash"] == "abc123"
+
 
 class TestNormalizeEffects:
     def test_drop_shadow(self):
@@ -239,10 +289,14 @@ class TestNormalizeCornerRadius:
 class TestMapNodeToElement:
     """Verify map_node_to_element() converts a node dict to an IR element."""
 
-    def test_maps_type_from_canonical(self):
-        node = _make_node(canonical_type="button")
+    def test_maps_type_from_node_type_and_role_from_canonical(self):
+        """Type/role split: type is the structural primitive (node_type),
+        role is the classifier's semantic label (canonical_type). See
+        docs/plan-type-role-split.md."""
+        node = _make_node(canonical_type="button")  # _make_node defaults node_type='FRAME'
         element = map_node_to_element(node)
-        assert element["type"] == "button"
+        assert element["type"] == "frame"
+        assert element["role"] == "button"
 
     def test_maps_horizontal_layout(self):
         node = _make_node(layout_mode="HORIZONTAL", item_spacing=16)
@@ -404,6 +458,229 @@ class TestMapNodeToElement:
         assert element["visual"]["fills"] == [
             {"type": "solid", "color": "{color.surface.primary}"},
         ]
+
+
+class TestInstanceOverridesSidecar:
+    """A1.1 (Backlog #1 — provenance tagging plan).
+
+    Mode-1 INSTANCE heads carry an extraction snapshot of every
+    visual property in the IR's ``visual`` dict. The snapshot may
+    be a real override (instance_overrides row exists) OR a
+    passive observation of the master's defaults at extraction
+    time. The verifier conflates the two and produces false
+    positive ``fill_mismatch`` / ``stroke_mismatch`` errors.
+
+    The fix (per docs/plan-provenance-tagging.md): populate a new
+    IR side-car ``element["_overrides"]: list[str]`` listing the
+    canonical Figma property names that have override rows in
+    ``instance_overrides`` for this node. Renderer + verifier
+    consult this list to gate per-property emission and
+    comparison.
+
+    Source-of-truth mapping: ``instance_overrides.property_type``
+    → registry ``figma_name``. Codex 5.5 (gpt-5.5 high reasoning)
+    confirmed the single-source-of-truth shape and per-property
+    granularity.
+    """
+
+    def test_no_overrides_field_when_no_instance_overrides(self):
+        """A node with no instance_overrides rows gets no
+        ``_overrides`` field. (NOT empty list — absent.)"""
+        node = _make_node()
+        element = map_node_to_element(node)
+        assert "_overrides" not in element
+
+    def test_no_overrides_field_for_non_instance(self):
+        """A non-INSTANCE node (e.g. plain frame) doesn't get
+        ``_overrides`` even if it somehow had override rows.
+        Provenance gating only applies to Mode-1 INSTANCE heads."""
+        node = _make_node()  # default node_type='FRAME'
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+        ]
+        element = map_node_to_element(node)
+        # Frames don't get _overrides; provenance is INSTANCE-only.
+        assert "_overrides" not in element
+
+    def test_overrides_field_lists_canonical_figma_names(self):
+        """An INSTANCE with FILLS + STROKE_WEIGHT override rows
+        produces ``_overrides=["fills","strokeWeight"]`` (canonical
+        figma_name keys, sorted for determinism)."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ":self", "property": "strokeWeight", "value": "2"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == ["fills", "strokeWeight"]
+
+    def test_overrides_field_dedupes(self):
+        """Multiple rows for the same property collapse to one entry."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[a]"},
+            {"target": ":self", "property": "fills", "value": "[b]"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == ["fills"]
+
+    def test_overrides_only_self_targeted(self):
+        """A1.1 scope: only ``:self`` overrides count for the head
+        node's ``_overrides``. Descendant overrides (target like
+        ``;126:10476``) are handled by PathOverride / the
+        visibility resolver — separate path. Don't conflate."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ";126:10476", "property": "visible", "value": "false"},
+        ]
+        element = map_node_to_element(node)
+        # Only the :self FILLS makes it into the head's _overrides.
+        assert element.get("_overrides") == ["fills"]
+
+    def test_overrides_maps_property_type_aliases(self):
+        """Some upstream code paths may use the SQL property_type
+        casing (FILLS, STROKE_WEIGHT, CORNER_RADIUS) instead of
+        the canonical figma_name. The mapping table normalizes."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            # Casing variants — both should normalize to canonical.
+            {"target": ":self", "property": "FILLS", "value": "[]"},
+            {"target": ":self", "property": "STROKE_WEIGHT", "value": "2"},
+            {"target": ":self", "property": "CORNER_RADIUS", "value": "8"},
+            {"target": ":self", "property": "OPACITY", "value": "0.5"},
+        ]
+        element = map_node_to_element(node)
+        assert element.get("_overrides") == [
+            "cornerRadius", "fills", "opacity", "strokeWeight"
+        ]
+
+    def test_unknown_property_type_skipped_quietly(self):
+        """If an instance_overrides row has a property_type the
+        registry doesn't recognize (e.g. a future field added in
+        upstream extraction), it gets skipped without raising.
+        Fail-open (consistent with feedback_fail_open_not_closed)."""
+        node = _make_node()
+        node["node_type"] = "INSTANCE"
+        node["figma_node_id"] = "1:100"
+        node["instance_overrides"] = [
+            {"target": ":self", "property": "fills", "value": "[]"},
+            {"target": ":self", "property": "totally_made_up_field", "value": "x"},
+        ]
+        element = map_node_to_element(node)
+        # Only the recognized one survives.
+        assert element.get("_overrides") == ["fills"]
+
+
+class TestVerifierVisualCoverage:
+    """P1 (forensic-audit-2 findings 8-12): the verifier-side IR builder
+    `_build_visual` must carry every visual property the renderer emits
+    so the verifier can detect IR-vs-rendered drift.
+
+    Pre-P1: `_build_visual` only carried fills/strokes/effects. The
+    renderer-side `dd/visual.py:build_visual_from_db` emits opacity,
+    blendMode, rotation, isMask, cornerRadius via the registry, but
+    the verifier had no way to compare them. Drift on those 5 prop
+    classes was invisible — surfaced by the post-rextract sweep when
+    Mode-1 dispatch finally fired correctly and exposed 17 DRIFT
+    screens that had been silently broken.
+    """
+
+    def test_opacity_carried_in_verifier_ir(self):
+        """Opacity below 1.0 surfaces as visual.opacity for verification."""
+        node = _make_node(opacity=0.5)
+        element = map_node_to_element(node)
+        assert element["visual"].get("opacity") == 0.5, (
+            "P1: opacity must be in verifier-side IR visual dict"
+        )
+
+    def test_opacity_omitted_when_default(self):
+        """Default opacity (1.0) is correctly skip-emitted to keep IR compact."""
+        node = _make_node(opacity=1.0)
+        element = map_node_to_element(node)
+        assert "opacity" not in (element.get("visual") or {})
+
+    def test_blend_mode_carried_in_verifier_ir(self):
+        """Non-default blendMode surfaces as visual.blendMode."""
+        node = _make_node(opacity=0.5)
+        node["blend_mode"] = "MULTIPLY"
+        element = map_node_to_element(node)
+        assert element["visual"].get("blendMode") == "MULTIPLY", (
+            "P1: blendMode must be in verifier-side IR visual dict"
+        )
+
+    def test_blend_mode_omitted_when_default(self):
+        """The registry pins the default blendMode (PASS_THROUGH for
+        FRAME); when the value matches, skip-emit-if-default fires."""
+        from dd.property_registry import by_figma_name
+        bm_default = by_figma_name("blendMode").default_value
+        node = _make_node()
+        node["blend_mode"] = bm_default
+        element = map_node_to_element(node)
+        assert "blendMode" not in (element.get("visual") or {})
+
+    def test_rotation_carried_in_verifier_ir(self):
+        """Non-zero rotation (in radians) surfaces as visual.rotation."""
+        node = _make_node()
+        node["rotation"] = 1.5707963267948966  # 90 degrees in radians
+        element = map_node_to_element(node)
+        assert element["visual"].get("rotation") == 1.5707963267948966, (
+            "P1: rotation must be in verifier-side IR visual dict"
+        )
+
+    def test_rotation_omitted_when_zero(self):
+        """Zero rotation is skip-emitted."""
+        node = _make_node()
+        node["rotation"] = 0.0
+        element = map_node_to_element(node)
+        assert "rotation" not in (element.get("visual") or {})
+
+    def test_is_mask_carried_in_verifier_ir(self):
+        """Mask flag surfaces as visual.isMask."""
+        node = _make_node()
+        node["is_mask"] = True
+        element = map_node_to_element(node)
+        assert element["visual"].get("isMask") is True, (
+            "P1: isMask must be in verifier-side IR visual dict"
+        )
+
+    def test_is_mask_omitted_when_false(self):
+        """Default False isMask is skip-emitted (most nodes are not masks)."""
+        node = _make_node()
+        node["is_mask"] = False
+        element = map_node_to_element(node)
+        assert "isMask" not in (element.get("visual") or {})
+
+    def test_corner_radius_carried_in_verifier_ir(self):
+        """cornerRadius surfaces as visual.cornerRadius (separate from
+        the existing complex-normalize path)."""
+        node = _make_node(corner_radius="8")
+        element = map_node_to_element(node)
+        cr = element["visual"].get("cornerRadius")
+        assert cr in (8, 8.0, "8"), (
+            f"P1: cornerRadius must be in verifier-side IR visual dict; "
+            f"got: {cr!r}"
+        )
+
+    def test_existing_fills_strokes_effects_unchanged(self):
+        """Regression guard: the new visual props don't break the
+        existing fills/strokes/effects path."""
+        fills_json = json.dumps([{
+            "type": "SOLID", "visible": True,
+            "color": {"r": 0.5, "g": 0.5, "b": 0.5, "a": 1.0},
+        }])
+        node = _make_node(fills=fills_json)
+        element = map_node_to_element(node)
+        assert element["visual"]["fills"][0]["type"] == "solid"
+        assert element["visual"]["fills"][0]["color"].startswith("#")
 
 
 # ---------------------------------------------------------------------------
@@ -588,9 +865,11 @@ class TestBuildCompositionSpec:
     def test_header_element_has_children(self, db: sqlite3.Connection):
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        # Find the header element
+        # Find the header element by semantic role — type is now the
+        # structural primitive ("frame"), role carries the classifier
+        # label ("header").
         header = next(
-            (el for el in spec["elements"].values() if el["type"] == "header"),
+            (el for el in spec["elements"].values() if el.get("role") == "header"),
             None,
         )
         assert header is not None
@@ -621,7 +900,9 @@ class TestBuildCompositionSpec:
         db.commit()
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert "visual" in header
         assert header["visual"]["fills"] == [{"type": "solid", "color": "{color.surface.primary}"}]
 
@@ -682,7 +963,9 @@ class TestBuildCompositionSpec:
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
         # Header is at x=0, y=0 in seed data (node 10)
-        header = next(el for el in spec["elements"].values() if el["type"] == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert header["layout"]["position"]["x"] == 0
         assert header["layout"]["position"]["y"] == 0
 
@@ -709,12 +992,21 @@ class TestBuildCompositionSpec:
         rect_eid = next(eid for eid, nid in node_id_map.items() if nid == 14)
         assert rect_eid.startswith("rectangle-")
 
-    def test_classified_element_still_uses_canonical_type(self, db: sqlite3.Connection):
-        """Classified nodes still use canonical_type, not node_type."""
+    def test_classified_element_has_role_from_canonical_type(self, db: sqlite3.Connection):
+        """Classified nodes carry canonical_type in the `role` field;
+        `type` holds the structural primitive from node_type. See
+        docs/plan-type-role-split.md for the rationale."""
         data = query_screen_for_ir(db, screen_id=1)
         spec = build_composition_spec(data)
-        header = next(el for el in spec["elements"].values() if el.get("type") == "header")
+        header = next(
+            el for el in spec["elements"].values() if el.get("role") == "header"
+        )
         assert header is not None
+        # Structural primitive comes from node_type (INSTANCE in this
+        # fixture — nav/top-nav is a component instance); role carries
+        # the classifier label.
+        assert header["type"] in {"frame", "instance"}
+        assert header.get("role") == "header"
 
     def test_original_name_preserved_in_element(self, db: sqlite3.Connection):
         """Elements carry _original_name from the DB node name."""

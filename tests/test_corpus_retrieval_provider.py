@@ -263,7 +263,10 @@ class TestResolveReturnsSubtree:
         assert "elements" in subtree
         root_eid = subtree["root"]
         root_elem = subtree["elements"][root_eid]
-        assert root_elem["type"] == "card"
+        # Type/role split: "card" is a semantic role, structural
+        # primitive is "frame". See docs/plan-type-role-split.md.
+        assert root_elem["type"] == "frame"
+        assert root_elem.get("role") == "card"
         # Visual dict present with fills/strokes/radius (DB snake_case)
         assert "visual" in root_elem
         assert root_elem["visual"]["fills"]  # non-empty

@@ -408,15 +408,25 @@ def _run_seed_catalog(db_path: str) -> None:
     print(f"Seeded {count} component types into catalog.")
 
 
-def _run_generate(db_path: str, screen_id: int, dry_run: bool = False) -> None:
+def _run_generate(
+    db_path: str, screen_id: int, dry_run: bool = False,
+    canvas_x: float | None = None, canvas_y: float | None = None,
+) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
     from dd.renderers.figma import generate_screen
 
+    canvas_position = None
+    if canvas_x is not None or canvas_y is not None:
+        canvas_position = (canvas_x or 0.0, canvas_y or 0.0)
+
     conn = get_connection(db_path)
-    result = generate_screen(conn, screen_id)
+    result = generate_screen(
+        conn, screen_id,
+        canvas_position=canvas_position,
+    )
     conn.close()
 
     if dry_run:
@@ -452,18 +462,46 @@ def _run_generate_ir(db_path: str, screen_arg: str) -> None:
     conn.close()
 
 
-def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False) -> None:
+def _run_classify(
+    db_path: str,
+    use_llm: bool = False,
+    use_vision: bool = False,
+    truncate: bool = False,
+    since: int | None = None,
+    limit: int | None = None,
+    three_source: bool = False,
+    classifier_v2: bool = False,
+    force_reclassify: bool = False,
+) -> None:
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
+    if three_source or classifier_v2:
+        # Both three-source and classifier-v2 require both LLM +
+        # vision stages. Flip both flags so downstream wiring
+        # (client + fetch_screenshot) follows the normal path.
+        use_llm = True
+        use_vision = True
+
     from dd.catalog import seed_catalog
-    from dd.classify import run_classification
+    from dd.classify import run_classification, truncate_classifications
 
     conn = get_connection(db_path)
 
     # Ensure catalog is seeded before classifying
     seed_catalog(conn)
+
+    if truncate:
+        # M7.0.a path: full-cascade rerun with updated prompts.
+        # Wipe the classification tables cleanly before starting.
+        # Catalog + CKR + component_templates are not touched.
+        result = truncate_classifications(conn)
+        print(
+            f"Truncated classifications: "
+            f"{result['instances_deleted']} instances, "
+            f"{result['skeletons_deleted']} skeletons."
+        )
 
     cursor = conn.execute("SELECT id, file_key FROM files LIMIT 1")
     row = cursor.fetchone()
@@ -483,27 +521,249 @@ def _run_classify(db_path: str, use_llm: bool = False, use_vision: bool = False)
         client = anthropic.Anthropic()
 
     if use_vision:
-        fetch_screenshot = make_figma_screenshot_fetcher()
+        # Classifier v2 uses scale=2 — 4x source pixels for small-
+        # node crops; spotlight pipeline upscales to 400px min-side
+        # so the vision model sees sharper detail. v1 stays at
+        # scale=1 for byte-identical behaviour.
+        scale = 2 if classifier_v2 else 1
+        fetch_screenshot = make_figma_screenshot_fetcher(scale=scale)
 
-    result = run_classification(
-        conn, file_id,
-        client=client,
-        file_key=file_key if use_vision else None,
+    def _progress(i: int, n: int, sid: int, per_screen: dict) -> None:
+        parts = [
+            f"[{i}/{n}]", f"screen={sid}",
+            f"formal={per_screen.get('formal', 0)}",
+            f"heuristic={per_screen.get('heuristic', 0)}",
+        ]
+        if use_llm:
+            parts.append(f"llm={per_screen.get('llm', 0)}")
+        if use_vision and "vision" in per_screen:
+            v = per_screen["vision"]
+            parts.append(
+                f"vision={v['validated']} "
+                f"(✓{v['agreed']}/✗{v['disagreed']})"
+            )
+        if three_source and "vision_ps" in per_screen:
+            parts.append(f"ps={per_screen['vision_ps']}")
+        print(" ".join(parts), flush=True)
+
+    if classifier_v2:
+        from dd.classify_v2 import run_classification_v2
+        result = run_classification_v2(
+            conn, file_id,
+            client=client,
+            file_key=file_key,
+            fetch_screenshot=fetch_screenshot,
+            since_screen_id=since,
+            limit=limit,
+            force_reclassify=force_reclassify,
+        )
+    else:
+        result = run_classification(
+            conn, file_id,
+            client=client,
+            file_key=file_key if use_vision else None,
+            fetch_screenshot=fetch_screenshot,
+            since_screen_id=since,
+            limit=limit,
+            progress_callback=_progress,
+            three_source=three_source,
+        )
+    conn.close()
+
+    print("\nClassification complete:")
+    print(f"  Screens processed:     {result['screens_processed']}")
+    # classifier_v2 returns a different summary shape — skip the
+    # per-stage counts (formal/heuristic/llm/parent_links) that only
+    # exist on the non-v2 result dict.
+    if not classifier_v2:
+        print(f"  Formal classified:     {result['formal_classified']}")
+        print(f"  Heuristic classified:  {result['heuristic_classified']}")
+        if use_llm:
+            print(f"  LLM classified:        {result['llm_classified']}")
+        print(f"  Parent links:          {result['parent_links']}")
+    if use_vision and not three_source:
+        v = result["vision"]
+        print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
+    if three_source:
+        print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
+        print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
+        consensus = result.get("consensus") or {}
+        if consensus:
+            print(f"  Consensus breakdown:")
+            for method in sorted(consensus.keys()):
+                print(f"    {method:<28} {consensus[method]}")
+    if classifier_v2:
+        print(f"  Dedup candidates:      {result.get('dedup_candidates', 0)}")
+        print(f"  Dedup groups:          {result.get('dedup_groups', 0)}")
+        print(f"  LLM inserts:           {result.get('llm_inserts', 0)}")
+        print(f"  Vision PS applied:     {result.get('vision_ps_applied', 0)}")
+        print(f"  Vision CS applied:     {result.get('vision_cs_applied', 0)}")
+        print(f"  Vision SoM applied:    {result.get('vision_som_applied', 0)}")
+        consensus = result.get("consensus") or {}
+        if consensus:
+            print(f"  Consensus breakdown:")
+            for method in sorted(consensus.keys()):
+                print(f"    {method:<28} {consensus[method]}")
+    print(f"  Skeletons generated:   {result['skeletons_generated']}")
+
+
+def _run_classify_review(
+    db_path: str,
+    *,
+    screen_id: int | None = None,
+    limit: int | None = None,
+    no_preview: bool = False,
+) -> None:
+    """CLI entrypoint for the Tier 1.5 interactive review loop.
+
+    Walks flagged rows on the given screen (or all flagged screens
+    when no --screen is given), shows LLM/PS/CS verdicts + reasons +
+    Figma deep-link, and records the human decision into
+    `classification_reviews`.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_review import run_review_tui
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_preview:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            # Screenshot previews are optional — don't block review
+            # when Figma auth is misconfigured.
+            print(
+                f"  (preview disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    summary = run_review_tui(
+        conn,
+        file_key=file_key,
+        screen_id=screen_id,
+        limit=limit,
+        fetch_screenshot=fetch_screenshot,
+    )
+
+    conn.close()
+
+    print("\nReview complete:")
+    for decision_type, count in sorted(summary.items()):
+        print(f"  {decision_type:<15} {count}")
+
+
+def _run_classify_audit(
+    db_path: str,
+    *,
+    sample: int,
+    screen_id: int | None = None,
+    seed: int | None = None,
+    no_preview: bool = False,
+) -> None:
+    """CLI entrypoint for the audit spot-check loop."""
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_audit import run_audit_tui
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_preview:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            print(
+                f"  (preview disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    summary = run_audit_tui(
+        conn,
+        n=sample,
+        file_key=file_key,
+        seed=seed,
+        screen_id=screen_id,
+        fetch_screenshot=fetch_screenshot,
+    )
+
+    conn.close()
+
+    print("\nAudit complete:")
+    for action, count in sorted(summary.items()):
+        print(f"  {action:<15} {count}")
+
+
+def _run_classify_review_index(
+    db_path: str,
+    *,
+    out: str,
+    screen_id: int | None = None,
+    limit: int | None = None,
+    no_screenshots: bool = False,
+) -> None:
+    """Render the static HTML companion page.
+
+    Opens alongside `dd classify-review` — the terminal drives
+    decisions, the browser shows the visual context.
+    """
+    if not Path(db_path).exists():
+        print(f"Error: Database not found: {db_path}", file=sys.stderr)
+        sys.exit(1)
+
+    from dd.classify_review import render_review_index_html
+
+    conn = get_connection(db_path)
+    cursor = conn.execute("SELECT file_key FROM files LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        print("Error: No file found in database.", file=sys.stderr)
+        conn.close()
+        sys.exit(1)
+    file_key = row[0]
+
+    fetch_screenshot = None
+    if not no_screenshots:
+        try:
+            fetch_screenshot = make_figma_screenshot_fetcher()
+        except Exception as e:
+            print(
+                f"  (screenshots disabled: {e!r})",
+                file=sys.stderr,
+            )
+
+    html_output = render_review_index_html(
+        conn,
+        file_key=file_key,
+        screen_id=screen_id,
+        limit=limit,
         fetch_screenshot=fetch_screenshot,
     )
     conn.close()
 
-    print("Classification complete:")
-    print(f"  Screens processed:     {result['screens_processed']}")
-    print(f"  Formal classified:     {result['formal_classified']}")
-    print(f"  Heuristic classified:  {result['heuristic_classified']}")
-    if use_llm:
-        print(f"  LLM classified:        {result['llm_classified']}")
-    print(f"  Parent links:          {result['parent_links']}")
-    if use_vision:
-        v = result["vision"]
-        print(f"  Vision validated:      {v['validated']} (agreed={v['agreed']}, disagreed={v['disagreed']})")
-    print(f"  Skeletons generated:   {result['skeletons_generated']}")
+    out_path = Path(out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html_output, encoding="utf-8")
+    print(f"Wrote review index: {out_path}")
 
 
 def make_figma_screenshot_fetcher(
@@ -511,6 +771,7 @@ def make_figma_screenshot_fetcher(
     token: str | None = None,
     max_retries: int = 5,
     retry_delay: float = 2.0,
+    scale: int = 1,
 ):
     """Create a batch screenshot fetcher with retry/backoff for Figma rate limits.
 
@@ -531,7 +792,10 @@ def make_figma_screenshot_fetcher(
     def _fetch_image_urls(file_key: str, node_ids: list[str]) -> dict[str, str]:
         url = f"https://api.figma.com/v1/images/{file_key}"
         headers = {"X-Figma-Token": token}
-        params = {"ids": ",".join(node_ids), "format": "png", "scale": "1"}
+        params = {
+            "ids": ",".join(node_ids), "format": "png",
+            "scale": str(scale),
+        }
 
         delay = retry_delay
         for attempt in range(max_retries + 1):
@@ -869,14 +1133,35 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
 
     report = FigmaRenderVerifier().verify(spec, rendered_ref)
 
+    # P1 (Phase E Pattern 2 fix): the verifier now inhales walk-side
+    # runtime errors directly into RenderReport. CLI sources its
+    # output fields from `report` instead of re-computing — single
+    # source of truth. `report.is_parity` is now strict (structural
+    # OK AND runtime clean); `report.is_structural_parity` preserves
+    # the old shape-only definition.
     if args.json:
         payload = {
             "backend": report.backend,
             "ir_node_count": report.ir_node_count,
             "rendered_node_count": report.rendered_node_count,
             "is_parity": report.is_parity,
+            # P1: surface the structural-only signal too so callers
+            # that only care about tree shape (e.g. fidelity scoring)
+            # can opt in. Also makes the structural-vs-runtime split
+            # readable from the output.
+            "is_structural_parity": report.is_structural_parity,
+            # P4: explicit runtime channel so callers don't write
+            # `runtime_error_count == 0` themselves.
+            "is_runtime_clean": report.is_runtime_clean,
             "parity_ratio": report.parity_ratio(),
             "errors": [asdict(e) for e in report.errors],
+            "runtime_errors": report.runtime_errors,
+            "runtime_error_count": report.runtime_error_count,
+            "runtime_error_kinds": report.runtime_error_kinds,
+            # P4: diagnostic categorization. Sweep summary uses this
+            # to render "1015 runtime errors: 600 font_health, 268
+            # escaped_artifact, ..." instead of an opaque flat list.
+            "runtime_error_categories": report.runtime_error_categories,
         }
         print(json.dumps(payload, indent=2))
     else:
@@ -884,12 +1169,39 @@ def _run_verify(db_path: str, args: argparse.Namespace) -> None:
         print(f"  ir_node_count:       {report.ir_node_count}")
         print(f"  rendered_node_count: {report.rendered_node_count}")
         print(f"  is_parity:           {report.is_parity}")
-        print(f"  parity_ratio:        {report.parity_ratio():.4f}")
+        # P1: when strict-parity is False but structural is True, name
+        # the cause so users don't have to scroll the runtime_errors
+        # list to figure out the gap.
+        if not report.is_parity and report.is_structural_parity:
+            print(
+                f"    └─ structural OK; "
+                f"{report.runtime_error_count} runtime errors → strict parity False"
+            )
+        print(f"  parity_ratio:        {report.parity_ratio():.4f}  (structural)")
         print(f"  errors:              {len(report.errors)}")
         for err in report.errors[:20]:
             print(f"    kind={err.kind} id={err.id}  {(err.error or '')[:80]}")
         if len(report.errors) > 20:
             print(f"    ... ({len(report.errors) - 20} more)")
+        if report.runtime_error_count:
+            print(f"  runtime_errors:      {report.runtime_error_count}")
+            # P4: top-3 categories first (Codex review: "show top 3
+            # categories first, then top 3 raw kinds"), then top-3
+            # raw kinds for the sharp signal.
+            top_cats = sorted(
+                report.runtime_error_categories.items(), key=lambda kv: -kv[1]
+            )[:3]
+            if top_cats:
+                print("  runtime_error_categories (top 3):")
+                for cat, count in top_cats:
+                    print(f"    {count:4d}  {cat}")
+            top_kinds = sorted(
+                report.runtime_error_kinds.items(), key=lambda kv: -kv[1]
+            )[:3]
+            if top_kinds:
+                print("  runtime_error_kinds (top 3):")
+                for kind, count in top_kinds:
+                    print(f"    {count:4d}  {kind}")
 
     if not report.is_parity:
         sys.exit(1)
@@ -1009,64 +1321,68 @@ def _parse_figma_input(raw: str) -> str:
 
 
 def _run_induce_variants(db_path: str, args: argparse.Namespace) -> None:
-    """Induce variant_token_binding rows for the user's corpus (ADR-008).
+    """Induce variant_token_binding rows (ADR-008 Stream B + Phase E #4).
 
-    Opt-in Stream-B inducer: clusters classified instances per catalog
-    type, calls Gemini 3.1 Pro to label each cluster with a variant
-    name from a closed vocabulary, and persists one row per
-    (catalog_type, variant, slot) to ``variant_token_binding``.
-    ``ProjectCKRProvider`` queries these rows at Mode-3 resolution
-    time to attach project-native presentation values.
+    Default behaviour (no flags): cluster-only induction. Each
+    classified catalog type's instances are clustered by visual
+    feature vector; one row per (catalog_type, variant=custom_N, slot)
+    is UPSERTed with cluster-medoid representative values. Idempotent.
 
-    Usage: ``dd induce-variants [--db PATH]``. Idempotent — re-running
-    updates existing rows (UPSERT on the unique key).
+    With ``--vlm``: enables VLM-driven relabeling. The cluster pipeline
+    runs as before, then ``_apply_vlm_labels`` calls Gemini per
+    cluster with rendered thumbnails of representative members. When
+    the verdict clears the confidence threshold, custom_N is replaced
+    with a STANDARD_VARIANTS label (primary/secondary/destructive/
+    ghost/link/disabled). Requires both GEMINI_API_KEY (or
+    GOOGLE_API_KEY) and a live Figma plugin bridge on ``--vlm-port``.
+    Without either, the run falls back to cluster-only with a stderr
+    warning — no exception, no retry.
     """
-    from dd.cluster_variants import induce_variants
-    from dd.visual_inspect import _default_gemini_call, VLM_PROMPT
+    from dd.cluster_variants import (
+        build_bridge_image_provider,
+        build_gemini_vlm_call,
+        induce_variants,
+        null_vlm_call,
+    )
 
     if not Path(db_path).exists():
         print(f"Error: Database not found: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        print(
-            "Warning: GOOGLE_API_KEY not set — inducer will run with a stub "
-            "VLM that labels every cluster 'unknown' (rows persist as "
-            "custom_N). Set GOOGLE_API_KEY to get real variant labels.",
-            file=sys.stderr,
-        )
+    use_vlm = bool(getattr(args, "vlm", False))
+    vlm_port = int(getattr(args, "vlm_port", 9227))
 
-    def vlm_call(prompt: str, images: list) -> dict:
-        """Adapter from the inducer's simple call shape to Gemini 3.1 Pro.
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
-        v0.1: the inducer shell doesn't pass real rendered images yet
-        (cluster analysis is a shell). When images are present, route
-        through the existing Gemini call; otherwise return a conservative
-        'unknown' verdict so the row persists as custom_N.
-        """
-        if not images or not api_key:
-            return {"verdict": "unknown", "confidence": 0.0}
-        try:
-            import json as _json
-            import re as _re
-            raw = _default_gemini_call(prompt, images[0], api_key)
-            text = raw["candidates"][0]["content"]["parts"][0]["text"]
-            text = text.strip()
-            if text.startswith("```"):
-                text = _re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=_re.S)
-            data = _json.loads(text)
-            return {
-                "verdict": str(data.get("verdict", "unknown")).lower(),
-                "confidence": float(data.get("confidence", 0.5)),
-            }
-        except Exception as e:
-            print(f"  VLM call failed: {e}", file=sys.stderr)
-            return {"verdict": "unknown", "confidence": 0.0}
+    image_provider = None
+    if use_vlm:
+        if not api_key:
+            print(
+                "Warning: --vlm requires GEMINI_API_KEY (or GOOGLE_API_KEY) "
+                "in env. Falling back to cluster-only induction (no relabel).",
+                file=sys.stderr,
+            )
+            use_vlm = False
+        else:
+            print(
+                f"VLM relabeling enabled — bridge port {vlm_port}, "
+                f"Gemini adapter wired.",
+                file=sys.stderr,
+            )
 
     conn = get_connection(db_path)
     try:
-        written_per_type = induce_variants(conn, vlm_call)
+        if use_vlm:
+            vlm_call = build_gemini_vlm_call(api_key=api_key)
+            image_provider = build_bridge_image_provider(
+                conn=conn, port=vlm_port,
+            )
+        else:
+            vlm_call = null_vlm_call
+
+        written_per_type = induce_variants(
+            conn, vlm_call, image_provider=image_provider,
+        )
     finally:
         conn.close()
 
@@ -1129,7 +1445,10 @@ def _run_inspect_experiment(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def main(argv: list | None = None) -> None:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the top-level CLI parser. Extracted from `main()` so
+    individual subcommand argument shapes can be unit-tested without
+    invoking the dispatch logic."""
     parser = argparse.ArgumentParser(prog="dd", description="Declarative Design CLI")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -1173,6 +1492,167 @@ def main(argv: list | None = None) -> None:
     classify_parser.add_argument("--db", help="Database path")
     classify_parser.add_argument("--llm", action="store_true", help="Enable LLM classification (requires ANTHROPIC_API_KEY)")
     classify_parser.add_argument("--vision", action="store_true", help="Enable vision cross-validation (requires ANTHROPIC_API_KEY + FIGMA_ACCESS_TOKEN)")
+    classify_parser.add_argument(
+        "--truncate", action="store_true",
+        help=(
+            "Delete all rows from screen_component_instances and "
+            "screen_skeletons before reclassifying. Used by M7.0.a's "
+            "full-cascade rerun. Catalog + CKR + templates untouched."
+        ),
+    )
+    classify_parser.add_argument(
+        "--since", type=int, default=None,
+        help=(
+            "Resume from screen id >= SINCE. Crude but effective — "
+            "combined with per-row INSERT OR IGNORE, lets a crashed "
+            "run pick up near where it left off. Redoes the most "
+            "recent screen (cheap for formal/heuristic; incurs one "
+            "duplicate LLM batch for that screen)."
+        ),
+    )
+    classify_parser.add_argument(
+        "--limit", type=int, default=None,
+        help=(
+            "Stop after processing this many screens. Useful for "
+            "dry-runs (--limit 1 probes a single screen before "
+            "committing token budget to the full corpus)."
+        ),
+    )
+    classify_parser.add_argument(
+        "--three-source", action="store_true",
+        help=(
+            "Run the three-source cascade (M7.0.a): formal rules and "
+            "the heuristic classifier run first; only nodes that BOTH "
+            "skip (no sci row written) fall through to LLM + vision-"
+            "per-screen (PS) + vision-cross-screen (CS). On each "
+            "cascaded node, consensus rule v1 votes across the three "
+            "verdicts; canonical_type becomes the computed consensus. "
+            "Typical behaviour on a real corpus: 80-95%% of nodes are "
+            "classified by formal+heuristic (fast/free); 5-20%% reach "
+            "the LLM/Vision tier (paid). Cost scales with the size of "
+            "the unclassified remainder, not the total node count. "
+            "Implies --llm + --vision. Budget: ~$3-15 on a 200-screen "
+            "corpus; the previous Dank-EXP-02 estimate of ~$35 was "
+            "for a worst case where heuristics caught fewer nodes."
+        ),
+    )
+    classify_parser.add_argument(
+        "--classifier-v2", action="store_true",
+        help=(
+            "Classifier v2 (M7.0.a step 11): corpus-wide dedup by "
+            "structural signature + full-screen node filter + per-"
+            "node spotlight crops to the vision model. Expected "
+            "5-8x fewer API calls, higher accuracy on small-bbox "
+            "nodes. Implies --llm + --vision. See "
+            "docs/plan-classifier-v2.md."
+        ),
+    )
+    classify_parser.add_argument(
+        "--rerun", action="store_true",
+        help=(
+            "Re-classify every eligible node regardless of existing "
+            "classifications. Uses UPSERT so existing sci rows are "
+            "updated in place — classification_reviews (human "
+            "decisions, FK'd via ON DELETE CASCADE) are preserved. "
+            "Only meaningful with --classifier-v2; typical use is "
+            "refreshing verdicts after a catalog expansion. Does NOT "
+            "touch node_id, screen_id, parent_instance_id, or the "
+            "review trail."
+        ),
+    )
+
+    classify_review_parser = subparsers.add_parser(
+        "classify-review",
+        help=(
+            "Interactively review flagged classification rows "
+            "(M7.0.a Tier 1.5). Walks consensus-flagged rows on a "
+            "screen, shows LLM/PS/CS verdicts + reasons + Figma "
+            "deep-link, records the human decision."
+        ),
+    )
+    classify_review_parser.add_argument("--db", help="Database path")
+    classify_review_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to review (defaults to all flagged screens)",
+    )
+    classify_review_parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Stop after reviewing this many rows",
+    )
+    classify_review_parser.add_argument(
+        "--no-preview", action="store_true",
+        help=(
+            "Skip fetching + opening the local PNG preview. Useful "
+            "when Figma REST is rate-limited or when triaging "
+            "offline."
+        ),
+    )
+
+    classify_audit_parser = subparsers.add_parser(
+        "classify-audit",
+        help=(
+            "Spot-check unflagged classification rows (M7.0.a "
+            "Step 8). Catches systematic errors where all three "
+            "sources agreed on the wrong answer. Samples N "
+            "unflagged + unreviewed rows; decisions record "
+            "decision_type='audit' in classification_reviews."
+        ),
+    )
+    classify_audit_parser.add_argument("--db", help="Database path")
+    classify_audit_parser.add_argument(
+        "--sample", type=int, default=25,
+        help="Number of rows to sample (default: 25).",
+    )
+    classify_audit_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to sample from (defaults to all screens).",
+    )
+    classify_audit_parser.add_argument(
+        "--seed", type=int, default=None,
+        help=(
+            "Seed for deterministic sampling. When set, rerunning "
+            "with the same seed returns the same rows — useful for "
+            "picking up a paused audit pass."
+        ),
+    )
+    classify_audit_parser.add_argument(
+        "--no-preview", action="store_true",
+        help="Skip opening the local PNG preview.",
+    )
+
+    classify_review_index_parser = subparsers.add_parser(
+        "classify-review-index",
+        help=(
+            "Dump a scrollable HTML companion page listing every "
+            "flagged row with screenshot + three-source verdicts + "
+            "Figma deep-link. Self-contained; open in a browser "
+            "while driving classify-review in the terminal."
+        ),
+    )
+    classify_review_index_parser.add_argument("--db", help="Database path")
+    classify_review_index_parser.add_argument(
+        "--screen", type=int, default=None,
+        help="Screen ID to render (defaults to all flagged screens)",
+    )
+    classify_review_index_parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Stop after N rows",
+    )
+    classify_review_index_parser.add_argument(
+        "--out", default="render_batch/m7_review_index.html",
+        help=(
+            "Output HTML path (default: "
+            "render_batch/m7_review_index.html)."
+        ),
+    )
+    classify_review_index_parser.add_argument(
+        "--no-screenshots", action="store_true",
+        help=(
+            "Skip fetching node screenshots — faster, but no visual "
+            "context. Useful for offline triage or when Figma REST "
+            "is rate-limited."
+        ),
+    )
 
     ir_parser = subparsers.add_parser("generate-ir", help="Generate CompositionSpec IR for a screen")
     ir_parser.add_argument("--db", help="Database path")
@@ -1182,7 +1662,17 @@ def main(argv: list | None = None) -> None:
     gen_parser.add_argument("--db", help="Database path")
     gen_parser.add_argument("--screen", required=True, help="Screen ID")
     gen_parser.add_argument("--dry-run", action="store_true", help="Show stats only")
-
+    gen_parser.add_argument(
+        "--canvas-x", type=float, default=None,
+        help="Place the rendered screen's root frame at this x "
+             "coordinate on the Figma canvas. Used by grid_render.py "
+             "to lay multiple screens out side-by-side.",
+    )
+    gen_parser.add_argument(
+        "--canvas-y", type=float, default=None,
+        help="Place the rendered screen's root frame at this y "
+             "coordinate on the Figma canvas.",
+    )
     supp_parser = subparsers.add_parser("extract-supplement", help="Extract Plugin API-only fields (componentKey, layoutPositioning, Grid)")
     supp_parser.add_argument("--db", help="Database path")
     supp_parser.add_argument("--port", type=int, default=9227, help="WebSocket port for PROXY_EXECUTE")
@@ -1223,9 +1713,62 @@ def main(argv: list | None = None) -> None:
 
     induce_parser = subparsers.add_parser(
         "induce-variants",
-        help="Induce variant_token_binding rows for Mode 3 (ADR-008 Stream B)",
+        help=(
+            "Induce placeholder variant_token_binding rows for each "
+            "catalog type. v0.1 shell — writes one custom_1 placeholder "
+            "per (catalog_type, slot) with confidence=0 and no actual "
+            "variant labels. The VLM-based variant labeling described "
+            "in ADR-008 Stream B is not yet implemented; calling this "
+            "command does NOT call Gemini and does NOT produce real "
+            "variant labels. ProjectCKRProvider can query these rows "
+            "at Mode-3 resolution time as a placeholder until the real "
+            "implementation lands."
+        ),
+        description=(
+            "Induce placeholder variant_token_binding rows for each "
+            "catalog type (ADR-008 Stream B v0.1 shell).\n\n"
+            "Current behaviour: every catalog type is treated as a "
+            "single cluster and the injected vlm_call is invoked with "
+            "an EMPTY image list — no rendered thumbnails are plumbed "
+            "in v0.1. The CLI's vlm_call adapter returns "
+            "{verdict: 'unknown', confidence: 0} on empty image lists, "
+            "so each cluster is persisted as 'custom_1' with "
+            "confidence=0 and NULL token/literal values. Gemini 3.1 "
+            "Pro is NOT actually called; the typical 100-200ms runtime "
+            "is too short for a network round-trip. The schema-level "
+            "contract is real: rows persist to variant_token_binding "
+            "and ProjectCKRProvider can query them at Mode-3 "
+            "resolution time. The cluster analysis (per-feature "
+            "k-means + silhouette) and the real VLM labelling are "
+            "NOT YET IMPLEMENTED — both are flagged 'when real corpus "
+            "coverage is wired up' in dd/cluster_variants.py:90.\n\n"
+            "Idempotent — re-running UPSERTs existing placeholder "
+            "rows on the unique (catalog_type, variant, slot) key."
+        ),
     )
     induce_parser.add_argument("--db", help="Database path")
+    induce_parser.add_argument(
+        "--vlm",
+        action="store_true",
+        help=(
+            "Enable VLM-driven variant relabeling (Phase E #4 follow-on). "
+            "Requires GEMINI_API_KEY (or GOOGLE_API_KEY) in env AND a live "
+            "Figma plugin bridge on --vlm-port. With --vlm, cluster-only "
+            "custom_N labels get relabeled to STANDARD_VARIANTS "
+            "(primary/secondary/destructive/ghost/link/disabled) when the "
+            "VLM verdict clears the confidence threshold."
+        ),
+    )
+    induce_parser.add_argument(
+        "--vlm-port",
+        type=int,
+        default=9227,
+        help=(
+            "Bridge WebSocket port for thumbnail rendering when --vlm is "
+            "set. Default 9227. The Phase E sweep on Nouns Experimental "
+            "used 9225."
+        ),
+    )
 
     inspect_parser = subparsers.add_parser(
         "inspect-experiment",
@@ -1257,6 +1800,345 @@ def main(argv: list | None = None) -> None:
         "--json", action="store_true", help="Emit the full RenderReport as JSON",
     )
 
+    # ── Stage 3 — `dd design` session-loop CLI ──────────────────────────
+    design_parser = subparsers.add_parser(
+        "design",
+        help="Run the agent-driven design session loop (Stage 3 of "
+             "docs/plan-authoring-loop.md)",
+    )
+    design_parser.add_argument("--db", help="Database path")
+    design_subparsers = design_parser.add_subparsers(
+        dest="design_command",
+    )
+    # `dd design --brief "..."`. The brief flag exists at the top
+    # `design` parser too so `dd design --brief ...` (no subcommand)
+    # works as documented in the plan.
+    design_parser.add_argument(
+        "--brief",
+        help="Natural-language brief — starts a NEW design session.",
+    )
+    design_parser.add_argument(
+        "--max-iters", type=int, default=4,
+        help="Max iterations per session (default 4 — demo-friendly; "
+             "bump to 8-10 for deeper sessions)",
+    )
+    # M1 — close the Figma round-trip. --starting-screen loads a real
+    # screen from the project DB as the agent's starting context;
+    # --render-to-figma additionally ships the final variant (and a
+    # fresh render of the original) to the live plugin bridge so the
+    # demo lands visibly on a new page. --project-db splits "where
+    # sessions persist" from "where the source-of-truth screens live";
+    # defaults to --db when omitted (single-DB workflow).
+    design_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the agent's "
+             "starting context (instead of the default empty SYNTHESIZE "
+             "doc).",
+    )
+    design_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After the session halts, render the starting screen + "
+             "the final variant to a new Figma page via the plugin "
+             "bridge on port 9228. Requires --starting-screen.",
+    )
+    design_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
+    # Diagnostic side-channel: write the generated JS render scripts
+    # to <dir>/original.js and <dir>/variant.js so a human can inspect
+    # what would ship to the Figma bridge. Additive — the bridge call
+    # still runs. Useful when `--render-to-figma` times out or lands
+    # an unexpected result and the question is "what did we send?".
+    design_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts to "
+             "<DIR>/original.js and <DIR>/variant.js for inspection "
+             "(additive — bridge calls still run). Requires "
+             "--render-to-figma.",
+    )
+    # Demo-recovery: rendering the source screen against a fresh
+    # Figma file containing the 87k-descendant Dank 1.0 library page
+    # consistently times out at the 300s PROXY_EXECUTE cap. The
+    # original render is the heavier of the two (more findOne calls
+    # under the preamble's currentPage side-effect dance).
+    # `--variant-only` skips the original render entirely; the user
+    # can compare to the original by opening it directly in the
+    # source file.
+    design_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render and ship only the final variant. Use when the "
+             "source file is large enough that the original render "
+             "times out at the PROXY_EXECUTE cap.",
+    )
+    # Demo-grade labels (ORIGINAL / VARIANT / Brief: ...) on the
+    # rendered Figma page so a Loom audience can immediately read
+    # what they're looking at. Default ON; `--no-labels` skips the
+    # third bridge call for clean side-by-side parity renders.
+    design_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON). Use for clean parity "
+             "renders or when running automated visual checks.",
+    )
+    design_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228). The plugin's port may differ when "
+             "fallback ports are in use; check `figma_get_status` "
+             "for the active port.",
+    )
+    # C5 — project-vocabulary snapping. Off by default; demo toggles
+    # on. When enabled, the rendered spec's untokenized literal hex /
+    # radius / spacing / fontSize values are snapped to the nearest
+    # project-canonical value (top-K by frequency from --project-db).
+    # See dd/project_vocabulary.py for thresholds + scope.
+    design_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values in the rendered IR to "
+             "the nearest project-canonical value (top-K by frequency "
+             "from --project-db). Affects fills (SOLID hex), corner "
+             "radii, padding/itemSpacing, and font sizes. Default: "
+             "OFF — preserves the agent's emitted IR verbatim. With "
+             "this flag, generated variants look native to the source "
+             "design system at the cost of some emission fidelity.",
+    )
+
+    design_resume_parser = design_subparsers.add_parser(
+        "resume",
+        help="Continue an existing variant (or branch from a non-leaf)",
+    )
+    design_resume_parser.add_argument(
+        "variant_id",
+        help="Variant ULID to resume from. Resuming from a non-leaf "
+             "creates a sibling chain — branching falls out for free.",
+    )
+    design_resume_parser.add_argument(
+        "--max-iters", type=int, default=4,
+        help="Max iterations (default 4 — matches --brief default)",
+    )
+    design_resume_parser.add_argument("--db", help="Database path")
+    # M2 iteration UX: supply a NEW brief on resume. The LLM sees the
+    # new brief in per-turn user messages; the session's stored brief
+    # column is NOT modified (it's the log of the original goal). A
+    # REBRIEF move-log entry is appended so the iteration history is
+    # auditable. Without this flag, resume inherits the session's
+    # original brief (existing behavior, unchanged).
+    design_resume_parser.add_argument(
+        "--brief",
+        default=None,
+        help="Optional new brief to refine this resume iteration. "
+             "The LLM receives this in place of the session's stored "
+             "brief for the duration of this resume; the stored brief "
+             "is NOT modified. Example: first run was 'build a login "
+             "form', then resume with --brief 'now make the submit "
+             "button red' to continue from the prior variant's state "
+             "with a new instruction.",
+    )
+    # M2 demo-blocker — multi-turn iteration needs the same Figma
+    # round-trip flags on `resume` as on `--brief`. Without these,
+    # the user can kick off a session with `--brief --render-to-figma`
+    # but can't re-render after `resume`, which kills the
+    # progressive-constraint demo (brief A, then resume with
+    # refining brief B). ``starting_screen`` is not persisted on the
+    # session row — user re-passes it, same as `--brief`.
+    design_resume_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the original-"
+             "render baseline (same value used on the initial "
+             "`--brief` run). Required with --render-to-figma.",
+    )
+    design_resume_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After the resume session halts, render the starting "
+             "screen + the NEW final variant to a new Figma page via "
+             "the plugin bridge. Each resume lands on its own page "
+             "(variant ULID in the page name), so iterations don't "
+             "stack on top of each other.",
+    )
+    design_resume_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
+    design_resume_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts to "
+             "<DIR>/original.js and <DIR>/variant.js for inspection "
+             "(additive — bridge calls still run). Requires "
+             "--render-to-figma.",
+    )
+    # Mirror of --brief's --variant-only: skip the heavy original
+    # render on resume too, so the multi-turn demo can iterate
+    # without re-paying the source-file walk cost each turn.
+    design_resume_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render and ship only the final variant. Use when the "
+             "source file is large enough that the original render "
+             "times out at the PROXY_EXECUTE cap.",
+    )
+    design_resume_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON). Use for clean parity "
+             "renders or when running automated visual checks.",
+    )
+    design_resume_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228).",
+    )
+    # C5 — same snap toggle on resume so the same flag works
+    # whether the user kicks off with --brief or continues a session.
+    design_resume_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values to project-canonical "
+             "vocab (top-K by frequency from --project-db). See "
+             "`dd design --help` for full description.",
+    )
+
+    design_score_parser = design_subparsers.add_parser(
+        "score",
+        help="Score every variant in a session via render+verify "
+             "(deferred-scoring entry point per A2)",
+    )
+    design_score_parser.add_argument(
+        "session_id", help="Session ULID to score",
+    )
+    design_score_parser.add_argument("--db", help="Database path")
+
+    # `dd design log <session-id>` — surface the agent's full
+    # reasoning trail in the terminal. Every `--brief` / `resume` run
+    # already writes rich move_log rows (primitives, scope_eids, edit
+    # sources, rationales); this is the read-back path.
+    design_log_parser = design_subparsers.add_parser(
+        "log",
+        help="Print a human-readable summary of every move_log "
+             "entry for a session (ordered, with rationales).",
+    )
+    design_log_parser.add_argument(
+        "session_id", help="Session ULID to render the move log for",
+    )
+    design_log_parser.add_argument("--db", help="Database path")
+    design_log_parser.add_argument(
+        "--limit", type=int, default=50,
+        help="Maximum number of move_log entries to render "
+             "(default 50). Use --all to disable truncation.",
+    )
+    design_log_parser.add_argument(
+        "--all", dest="show_all", action="store_true",
+        help="Render every move_log entry, regardless of --limit. "
+             "Useful for long sessions where you need the complete "
+             "trail.",
+    )
+    design_log_parser.add_argument(
+        "--json", dest="as_json", action="store_true",
+        help="Emit the raw move_log entries as a JSON array instead "
+             "of the pretty-printed summary. Useful for `jq` piping.",
+    )
+
+    # `dd design lateral <parent-variant-id> --brief A --brief B ...`
+    # — produce N sibling variants from one parent in a single CLI
+    # call. The seam between "agent edits a screen once" (resume) and
+    # "designer explores variants" (lateral). Each --brief becomes one
+    # `run_session` call rooted at the same parent_variant_id; the
+    # data model already supports siblings via `parent_id`, lateral
+    # is the CLI surface that exercises it.
+    design_lateral_parser = design_subparsers.add_parser(
+        "lateral",
+        help="Produce N sibling variants from one parent variant by "
+             "running the agent loop once per --brief (repeatable).",
+    )
+    design_lateral_parser.add_argument(
+        "parent_variant_id",
+        help="Parent variant ULID. Each --brief creates a sibling "
+             "child under this parent.",
+    )
+    design_lateral_parser.add_argument(
+        "--brief", action="append", default=None, dest="briefs",
+        help="Natural-language brief for one sibling variant. "
+             "Repeatable: pass --brief once per sibling. At least 2 "
+             "briefs required (lateral with 1 brief is just `dd "
+             "design resume`).",
+    )
+    design_lateral_parser.add_argument(
+        "--max-iters", type=int, default=3,
+        help="Max iterations per sibling session (default 3 — "
+             "demo-friendly).",
+    )
+    design_lateral_parser.add_argument("--db", help="Database path")
+    design_lateral_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the original-"
+             "render baseline. Required with --render-to-figma.",
+    )
+    design_lateral_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After all siblings produced, render each sibling's "
+             "final variant to its own Figma page via the plugin "
+             "bridge. Each variant lands on a distinct page.",
+    )
+    design_lateral_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
+    design_lateral_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts per sibling to "
+             "<DIR>/<variant_id>/{original,variant,labels}.js for "
+             "inspection.",
+    )
+    design_lateral_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render per sibling and ship only the variant.",
+    )
+    design_lateral_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON).",
+    )
+    design_lateral_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228).",
+    )
+    # C5 — project-vocab snap on lateral siblings. The demo headline
+    # flag: each sibling's render reflects project-native colors /
+    # radii / spacing / font sizes, making the synthesised variants
+    # look native to the source design system.
+    design_lateral_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values in each sibling's "
+             "rendered IR to project-canonical vocab. The demo "
+             "headline flag: variants look native to the source "
+             "design system. See `dd design --help` for thresholds.",
+    )
+
+    return parser
+
+
+def main(argv: list | None = None) -> None:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -1298,13 +2180,52 @@ def main(argv: list | None = None) -> None:
         _run_seed_catalog(db_path)
     elif args.command == "classify":
         db_path = detect_db_path(args.db)
-        _run_classify(db_path, use_llm=args.llm, use_vision=args.vision)
+        _run_classify(
+            db_path,
+            use_llm=args.llm,
+            use_vision=args.vision,
+            truncate=args.truncate,
+            since=args.since,
+            limit=args.limit,
+            three_source=args.three_source,
+            classifier_v2=args.classifier_v2,
+            force_reclassify=args.rerun,
+        )
+    elif args.command == "classify-review":
+        db_path = detect_db_path(args.db)
+        _run_classify_review(
+            db_path,
+            screen_id=args.screen,
+            limit=args.limit,
+            no_preview=args.no_preview,
+        )
+    elif args.command == "classify-review-index":
+        db_path = detect_db_path(args.db)
+        _run_classify_review_index(
+            db_path,
+            out=args.out,
+            screen_id=args.screen,
+            limit=args.limit,
+            no_screenshots=args.no_screenshots,
+        )
+    elif args.command == "classify-audit":
+        db_path = detect_db_path(args.db)
+        _run_classify_audit(
+            db_path,
+            sample=args.sample,
+            screen_id=args.screen,
+            seed=args.seed,
+            no_preview=args.no_preview,
+        )
     elif args.command == "generate-ir":
         db_path = detect_db_path(args.db)
         _run_generate_ir(db_path, args.screen)
     elif args.command == "generate":
         db_path = detect_db_path(args.db)
-        _run_generate(db_path, int(args.screen), dry_run=args.dry_run)
+        _run_generate(
+            db_path, int(args.screen), dry_run=args.dry_run,
+            canvas_x=args.canvas_x, canvas_y=args.canvas_y,
+        )
     elif args.command == "extract-supplement":
         db_path = detect_db_path(args.db)
         _run_extract_supplement(db_path, args)
@@ -1325,6 +2246,1308 @@ def main(argv: list | None = None) -> None:
     elif args.command == "induce-variants":
         db_path = detect_db_path(args.db)
         _run_induce_variants(db_path, args)
+    elif args.command == "design":
+        db_path = detect_db_path(args.db)
+        _run_design(db_path, args)
+
+
+def _run_design(db_path: str, args) -> None:
+    """`dd design` dispatch — handles --brief / resume / score.
+
+    Per Codex+Sonnet 2026-04-23 unanimous picks: 3 subcommands
+    minimum-viable. ``ls`` and ``show`` deferred to follow-up;
+    use raw SQL on the design_sessions / variants tables.
+    """
+    from dd.db import get_connection
+
+    sub = args.design_command
+
+    if sub is None:
+        # Top-level `dd design --brief "..."` form.
+        if not args.brief:
+            print(
+                "dd design: pass --brief \"<text>\" to start a new "
+                "session, or use a subcommand (resume / score). See "
+                "`dd design --help`.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _run_design_brief(
+            db_path,
+            brief=args.brief,
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
+            labels=args.labels,
+            bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
+        )
+        return
+
+    if sub == "resume":
+        _run_design_resume(
+            db_path,
+            variant_id=args.variant_id,
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
+            labels=args.labels,
+            override_brief=args.brief,
+            bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
+        )
+        return
+
+    if sub == "score":
+        _run_design_score(db_path, session_id=args.session_id)
+        return
+
+    if sub == "log":
+        _run_design_log(
+            db_path,
+            session_id=args.session_id,
+            limit=args.limit,
+            show_all=args.show_all,
+            as_json=args.as_json,
+        )
+        return
+
+    if sub == "lateral":
+        _run_design_lateral(
+            db_path,
+            parent_variant_id=args.parent_variant_id,
+            briefs=args.briefs or [],
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
+            labels=args.labels,
+            bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
+        )
+        return
+
+
+def _make_anthropic_client():
+    """Construct an Anthropic client. Surface API-key errors as
+    user-friendly exits, not stack traces."""
+    try:
+        import anthropic
+        return anthropic.Anthropic()
+    except Exception as e:  # noqa: BLE001
+        print(
+            f"dd design: failed to initialize Anthropic client: {e}\n"
+            "Set ANTHROPIC_API_KEY in your environment or .env file.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _run_design_brief(
+    db_path: str,
+    *,
+    brief: str,
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+    dump_scripts: str | None = None,
+    variant_only: bool = False,
+    labels: bool = True,
+    bridge_port: int = 9228,
+    use_project_vocab: bool = False,
+) -> None:
+    """M1 of the authoring-loop Figma round-trip (docs/rationale/
+    stage-3-session-loop.md + Codex sign-off 2026-04-24).
+
+    Three modes:
+
+    1. **SYNTHESIZE** (``--brief`` only): run the agent on the
+       default empty starting doc, persist session, print summary.
+    2. **Brief + starting-screen** (``--brief`` +
+       ``--starting-screen``): load the starting doc from the project
+       DB via generate_ir + compress_to_l3 round-trip, run the agent
+       against it, persist session. Useful for testing without a
+       live Figma bridge.
+    3. **Full round-trip** (add ``--render-to-figma``): after the
+       session halts, render the starting screen AND the final
+       variant to a new Figma page keyed on the session ULID,
+       side-by-side on one page. Requires ``--starting-screen``;
+       rendering to Figma with no source material is an empty-canvas
+       demo. Uses ``execute_script_via_bridge`` (M1.1) to ship each
+       render over PROXY_EXECUTE.
+    """
+    from dd.agent.loop import run_session
+    from dd.db import get_connection
+
+    if not brief or not brief.strip():
+        print("dd design: --brief must not be blank.", file=sys.stderr)
+        sys.exit(1)
+
+    # Flag-combination invariant (Codex's "ambiguous combinations"
+    # risk): require --starting-screen alongside --render-to-figma.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    starting_doc = None
+    if starting_screen is not None:
+        starting_doc = _load_starting_doc(
+            project_db_path=project_db or db_path,
+            screen_id=starting_screen,
+        )
+
+    # Auto-init the session DB schema. ``init_db`` is idempotent —
+    # returns early if tables already exist — so the single-command
+    # demo flow works against either a fresh path, an empty file,
+    # or an existing session DB. Avoids the `no such table:
+    # design_sessions` stumble on first run.
+    from dd.db import init_db
+    init_db(db_path).close()
+
+    # Mirror lateral: build project_vocab once when --use-project-vocab.
+    project_vocab_obj = None
+    if use_project_vocab:
+        project_conn = get_connection(project_db or db_path)
+        try:
+            from dd.project_vocabulary import build_project_vocabulary
+            project_vocab_obj = build_project_vocabulary(
+                project_conn, file_id=1,
+            )
+        finally:
+            project_conn.close()
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+    try:
+        result = run_session(
+            conn, brief=brief, client=client, max_iters=max_iters,
+            starting_doc=starting_doc,
+            progress_stream=sys.stderr,
+            project_vocab=project_vocab_obj,
+        )
+    except ValueError as e:
+        print(f"dd design: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+
+    page_hint = ""
+    if render_to_figma:
+        page_name = _render_session_to_figma(
+            session_db_path=db_path,
+            project_db_path=project_db or db_path,
+            session_id=result.session_id,
+            final_variant_id=result.final_variant_id,
+            starting_screen_id=starting_screen,
+            dump_scripts=Path(dump_scripts) if dump_scripts else None,
+            variant_only=variant_only,
+            labels=labels,
+            brief=brief,
+            bridge_port=bridge_port,
+            use_project_vocab=use_project_vocab,
+        )
+        if variant_only:
+            page_hint = (
+                f"\n  → rendered variant only to Figma page "
+                f"'{page_name}' (compare to original at screen "
+                f"{starting_screen} in the source file)"
+            )
+        else:
+            page_hint = (
+                f"\n  → rendered to Figma page '{page_name}' "
+                f"(original at x=0, variant offset right)"
+            )
+
+    print(result.session_id)
+    print(
+        f"  iterations: {result.iterations}  "
+        f"halt: {result.halt_reason}  "
+        f"final_variant: {result.final_variant_id}"
+        f"{page_hint}"
+    )
+
+
+def _load_starting_doc(*, project_db_path: str, screen_id: int):
+    """Load and round-trip an L3 starting doc from a project DB screen.
+
+    Mirrors the capstone-test recipe (tests/test_stage3_acceptance.py):
+    generate_ir → compress_to_l3 → emit_l3 + parse_l3 round-trip so the
+    returned doc is the same shape the agent loop will produce after
+    each iter. Surfaces a clear `screen {id} not found` error if the
+    project DB doesn't have the screen — better than reaching the
+    Anthropic client and burning an API call on a doomed session.
+    """
+    from dd.compress_l3 import compress_to_l3_with_maps
+    from dd.db import get_connection
+    from dd.ir import generate_ir
+    from dd.markup_l3 import emit_l3, parse_l3
+
+    conn = get_connection(project_db_path)
+    try:
+        row = conn.execute(
+            "SELECT id FROM screens WHERE id=?", (screen_id,),
+        ).fetchone()
+        if row is None:
+            print(
+                f"dd design: screen {screen_id} not found in "
+                f"{project_db_path}. Pass --project-db to point at "
+                "a classified project DB.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        ir_result = generate_ir(conn, screen_id)
+        # CRITICAL: ``collapse_wrapper=False`` must match the value
+        # used by the canonical render path (``generate_screen`` →
+        # ``_compress_to_l3_impl`` at dd/renderers/figma.py:2554).
+        # The public ``compress_to_l3`` defaults to collapse_wrapper=True
+        # (a grammar- and round-trip-test shape); using that shape
+        # produces an L3 doc whose eid-chain paths DIFFER from the
+        # renderer's original_doc, so every entry in
+        # ``rebuild_maps_after_edits``'s nid_map misses and the final
+        # variant falls to Mode-2 cheap-emission (an almost-empty
+        # frame) even though the agent's edits were minimal. Root
+        # cause of the M1 live-capstone "variant is blank" regression
+        # — diagnosed 2026-04-24 by a subagent-driven path-coverage
+        # experiment (0/109 at True, 109/109 at False against the
+        # same applied doc).
+        doc, *_ = compress_to_l3_with_maps(
+            ir_result["spec"], conn=conn, screen_id=screen_id,
+            collapse_wrapper=False,
+        )
+        # Round-trip through emit/parse so the agent sees the exact
+        # shape `apply_edits` would produce, not the compressor's
+        # internal object identity. Prevents id(Node)-keyed maps from
+        # mis-aligning on the first turn.
+        return parse_l3(emit_l3(doc))
+    finally:
+        conn.close()
+
+
+def _build_labels_script(
+    *,
+    page_name: str,
+    brief: str,
+    original_x: float,
+    original_y: float,
+    variant_x: float,
+    variant_y: float,
+    screen_width: float,
+    variant_only: bool = False,
+) -> str:
+    """Emit a standalone Figma JS script that adds three demo-grade
+    text labels to ``page_name``: "ORIGINAL" above the original
+    frame, "VARIANT" above the variant frame, and a multi-line
+    "Brief: ..." below both frames.
+
+    Shape mirrors the renderer's preamble / try-catch / __errors
+    contract so the bridge ack surfaces the same shape as an
+    original/variant script and :func:`_check_bridge_ack` treats
+    mid-script throws uniformly. Script is intentionally small:
+    three createText() calls, two font loads, one find-or-create
+    page block.
+
+    ``variant_only``: when True, skip the "ORIGINAL" label (there's
+    no original frame beside the variant to label). "VARIANT" and
+    "Brief" still emit — the brief text is the demo's headline and
+    works regardless.
+
+    Colors are baked RGB (mid-grey #666666 / 0.4,0.4,0.4) so the
+    labels read against both light and dark backgrounds.
+    """
+    from dd.renderers.figma import _escape_js
+
+    escaped_name = _escape_js(page_name)
+    brief_js = _escape_js(brief or "")
+
+    # Position math: labels sit above their frame (y - LABEL_OFFSET),
+    # with a small x-inset so the label text doesn't lie flush to the
+    # frame's left edge. The brief spans from x=0 across the full
+    # two-column layout, below both frames.
+    LABEL_OFFSET_Y = 60.0  # px above the frame top
+    LABEL_INSET_X = 10.0   # px inset from frame's left edge
+    # Phone screens are ~926px tall; iPad Pro 12.9" is ~1366px. 1500
+    # puts the brief below either comfortably without measuring every
+    # screen's height precisely — good enough for a Loom demo.
+    BRIEF_OFFSET_BELOW_FRAME = 1500.0
+    orig_label_x = original_x + LABEL_INSET_X
+    orig_label_y = original_y - LABEL_OFFSET_Y
+    var_label_x = variant_x + LABEL_INSET_X
+    var_label_y = variant_y - LABEL_OFFSET_Y
+    brief_y = max(original_y, variant_y) + BRIEF_OFFSET_BELOW_FRAME
+    # The brief spans from x=0 (page origin) to the right edge of the
+    # variant frame — screen_width + gap + screen_width for the
+    # side-by-side layout, or a single screen_width under --variant-only.
+    brief_width = (
+        screen_width if variant_only else screen_width * 2.0 + 200.0
+    )
+    # Grey for label legibility against both light + dark backgrounds.
+    grey_fill = (
+        '[{type:"SOLID", color:{r:0.4, g:0.4, b:0.4}}]'
+    )
+
+    lines: list[str] = []
+    lines.append("let __errors = [];")
+    lines.append("try {")
+    lines.append(
+        'await figma.loadFontAsync({family: "Inter", style: "Bold"});'
+    )
+    lines.append(
+        'await figma.loadFontAsync({family: "Inter", style: "Regular"});'
+    )
+    lines.append(
+        f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
+    )
+    lines.append(
+        f'if (!_page) {{ _page = figma.createPage(); _page.name = "{escaped_name}"; }}'
+    )
+    lines.append("await figma.setCurrentPageAsync(_page);")
+
+    if not variant_only:
+        lines.append("const _origLabel = figma.createText();")
+        lines.append("_page.appendChild(_origLabel);")
+        lines.append(
+            '_origLabel.fontName = {family: "Inter", style: "Bold"};'
+        )
+        lines.append("_origLabel.fontSize = 40;")
+        lines.append('_origLabel.characters = "ORIGINAL";')
+        lines.append(f"_origLabel.x = {orig_label_x};")
+        lines.append(f"_origLabel.y = {orig_label_y};")
+        lines.append(f"_origLabel.fills = {grey_fill};")
+        lines.append('_origLabel.name = "ORIGINAL (demo label)";')
+
+    lines.append("const _varLabel = figma.createText();")
+    lines.append("_page.appendChild(_varLabel);")
+    lines.append('_varLabel.fontName = {family: "Inter", style: "Bold"};')
+    lines.append("_varLabel.fontSize = 40;")
+    lines.append('_varLabel.characters = "VARIANT";')
+    lines.append(f"_varLabel.x = {var_label_x};")
+    lines.append(f"_varLabel.y = {var_label_y};")
+    lines.append(f"_varLabel.fills = {grey_fill};")
+    lines.append('_varLabel.name = "VARIANT (demo label)";')
+
+    lines.append("const _briefLabel = figma.createText();")
+    lines.append("_page.appendChild(_briefLabel);")
+    lines.append(
+        '_briefLabel.fontName = {family: "Inter", style: "Regular"};'
+    )
+    lines.append("_briefLabel.fontSize = 22;")
+    lines.append(f'_briefLabel.characters = "Brief: {brief_js}";')
+    lines.append("_briefLabel.x = 0;")
+    lines.append(f"_briefLabel.y = {brief_y};")
+    lines.append(
+        '_briefLabel.textAutoResize = "HEIGHT";'
+    )
+    lines.append(f"_briefLabel.resize({brief_width}, _briefLabel.height);")
+    lines.append(f"_briefLabel.fills = {grey_fill};")
+    lines.append('_briefLabel.name = "Brief (demo label)";')
+
+    lines.append("} catch (__thrown) {")
+    lines.append(
+        '  __errors.push({kind: "render_thrown", '
+        'error: String(__thrown && __thrown.message || __thrown), '
+        'stack: (__thrown && __thrown.stack) ? '
+        'String(__thrown.stack).split("\\n").slice(0, 6).join(" | ") : null});'
+    )
+    lines.append("}")
+    lines.append("return {__ok: true, errors: __errors};")
+
+    return "\n".join(lines)
+
+
+def _render_session_to_figma(
+    *,
+    session_db_path: str,
+    project_db_path: str,
+    session_id: str,
+    final_variant_id: str,
+    starting_screen_id: int,
+    dump_scripts: Path | None = None,
+    variant_only: bool = False,
+    labels: bool = True,
+    brief: str | None = None,
+    bridge_port: int = 9228,
+    use_project_vocab: bool = False,
+    page_name_override: str | None = None,
+) -> str:
+    """Render the starting screen + the session's final variant to
+    a new Figma page via the plugin bridge. Returns the page name.
+
+    Two bridge calls (not one concatenated script): the page_name
+    find-or-create preamble in render_figma_ast makes the second call
+    idempotent on the same page. Two calls also let a mid-pipeline
+    failure land visibly (original rendered, variant failed) rather
+    than atomic-nothing — better for a demo where the user can
+    diagnose by looking at the canvas.
+
+    Page-name + canvas-position split:
+      - Original render:  page_name="design session <SID8> / <VID12>",
+                          canvas_position=(0, 0).
+      - Variant render:   same page_name,
+                          canvas_position=(screen_width + 200, 0).
+
+    ``variant_only``: when True, skip the original render entirely
+    and ship only the variant. The variant lands at canvas_position
+    (0, 0) since there's no original to sit beside. The user
+    compares against the original by opening the source file
+    directly. Demo-recovery escape hatch for source files large
+    enough that the original render times out at the 300s
+    PROXY_EXECUTE cap (e.g. the Dank 1.0 library page with 87k
+    descendants).
+
+    The variant-ULID suffix is the M2 page-collision fix: within a
+    single session, successive resumes produce different final
+    variants; keying the page name on BOTH the session AND the new
+    leaf variant means each resume lands on its own page rather than
+    stacking on top of a previous render. The shared session prefix
+    keeps the iteration history visible in Figma's sidebar (all
+    "design session 01ABCD / …" pages cluster alphabetically).
+    The variant prefix is 12 chars (not 8) so it spans into the ULID
+    random region; 10 chars is the time prefix only and two variants
+    created in the same millisecond share that whole window.
+    Resuming a session within the same millisecond as another
+    resume is unlikely but happens in tests.
+
+    ``dump_scripts``: if set, additionally write the generated JS to
+    ``<dir>/original.js`` and ``<dir>/variant.js`` BEFORE shipping to
+    the bridge. Diagnostic side-channel — bridge I/O is unchanged, so
+    the dump survives even when the bridge rejects the variant script
+    (at which point the on-disk file is the only thing left to
+    inspect).
+    """
+    from dd.apply_render import (
+        BridgeError, DegradedMapping, execute_script_via_bridge,
+        render_applied_doc,
+    )
+    from dd.compress_l3 import _compress_to_l3_impl
+    from dd.db import get_connection
+    from dd.ir import generate_ir, query_screen_visuals
+    from dd.renderers.figma import collect_fonts, generate_screen
+    from dd.sessions import iter_edits_on_path, load_variant
+
+    # ``session_id[:8]`` is the time prefix only — fine for grouping,
+    # since the resume-loop creates new variants UNDER the same
+    # session row. ``final_variant_id[:12]`` extends into the random
+    # region so resumes that fire within the same millisecond still
+    # land on distinct pages (10-char ULID time prefix + 2 chars of
+    # the random suffix).
+    page_name = page_name_override or (
+        f"design session {session_id[:8]} / {final_variant_id[:12]}"
+    )
+
+    # --- Original render -------------------------------------------
+    # Skipped under ``variant_only`` (demo-recovery: avoid the heavy
+    # original render against large source files that time out at the
+    # 300s PROXY_EXECUTE cap). We still need ``screen_width`` for the
+    # variant's canvas position when not variant-only, so the width
+    # query stays — but the generate_screen + dump_scripts/original.js
+    # writes are gated.
+    original_script: str | None = None
+    project_conn = get_connection(project_db_path)
+    try:
+        screen_row = project_conn.execute(
+            "SELECT width FROM screens WHERE id=?", (starting_screen_id,),
+        ).fetchone()
+        screen_width = float(screen_row["width"] or 428.0) if screen_row else 428.0
+
+        if not variant_only:
+            original_result = generate_screen(
+                project_conn, starting_screen_id,
+                canvas_position=(0.0, 0.0),
+                page_name=page_name,
+            )
+            original_script = original_result["structure_script"]
+            if dump_scripts is not None:
+                dump_scripts.mkdir(parents=True, exist_ok=True)
+                (dump_scripts / "original.js").write_text(original_script)
+    finally:
+        project_conn.close()
+
+    # --- Variant render --------------------------------------------
+    session_conn = get_connection(session_db_path)
+    project_conn = get_connection(project_db_path)
+    try:
+        final_variant = load_variant(session_conn, final_variant_id)
+        if final_variant is None:
+            print(
+                f"dd design: final variant {final_variant_id!r} not "
+                "found — session persistence is inconsistent.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        cumulative_edits = iter_edits_on_path(
+            session_conn, final_variant_id,
+        )
+
+        # Rebuild the original-screen render-side state. The renderer's
+        # maps are keyed on the original AST + the full edit list (via
+        # rebuild_maps_after_edits); this is the same shape
+        # generate_screen builds internally.
+        ir_result = generate_ir(project_conn, starting_screen_id)
+        spec = ir_result["spec"]
+        # C5 — project-vocabulary snap (option (c) per Codex round-13).
+        # Snap the spec's untokenized literal values to the nearest
+        # project-canonical value BEFORE _compress_to_l3_impl consumes
+        # it. The session DB stays untouched; only the render-time
+        # spec reflects the snapped values. Same variant rendered with
+        # vs. without --use-project-vocab produces visibly different
+        # output, demonstrating the design-system snap is firing.
+        if use_project_vocab:
+            from dd.project_vocabulary import (
+                build_project_vocabulary, snap_ir_to_vocabulary,
+            )
+            vocab = build_project_vocabulary(project_conn, file_id=1)
+            print(
+                f"project vocab: {len(vocab.chromatic_fills)} "
+                f"chromatic / {len(vocab.neutral_fills)} neutral / "
+                f"{len(vocab.radii)} radii / {len(vocab.spacings)} "
+                f"spacing / {len(vocab.font_sizes)} fontSize values "
+                f"loaded",
+                file=sys.stderr,
+            )
+            spec, snap_report = snap_ir_to_vocabulary(spec, vocab)
+            print(
+                f"project vocab: fills {snap_report.fills_snapped}, "
+                f"radii {snap_report.radii_snapped}, "
+                f"spacing {snap_report.spacing_snapped}, "
+                f"fontSize {snap_report.font_size_snapped} snapped",
+                file=sys.stderr,
+            )
+        visuals = query_screen_visuals(project_conn, starting_screen_id)
+        ckr_exists = project_conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='component_key_registry'"
+        ).fetchone()
+        if ckr_exists:
+            ckr_row = project_conn.execute(
+                "SELECT COUNT(*) FROM component_key_registry"
+            ).fetchone()
+            ckr_built = bool(ckr_row and ckr_row[0] > 0)
+        else:
+            ckr_built = False
+
+        (
+            original_doc, _eid_nid, nid_map, spec_key_map,
+            original_name_map, _descendant_resolver,
+        ) = _compress_to_l3_impl(
+            spec, project_conn, screen_id=starting_screen_id,
+            collapse_wrapper=False,
+        )
+        fonts = collect_fonts(spec, db_visuals=visuals)
+
+        # ``strict_mapping=0.9`` — Codex's A' invariant (sign-off
+        # 2026-04-24): if nid_map coverage drops below 90% of
+        # eligible applied-doc nodes, raise DegradedMapping instead
+        # of silently producing a Mode-2 empty frame. Originally
+        # hit as the M1 "variant renders blank" bug
+        # (wrapper-collapse mismatch between the agent's
+        # starting-doc compression and the renderer's original-doc
+        # compression). A future regression of the same class
+        # surfaces as a user-visible BridgeError-like failure.
+        # When variant_only, place the variant at the page origin —
+        # there's no original beside it to offset from.
+        variant_canvas = (
+            (0.0, 0.0)
+            if variant_only
+            else (screen_width + 200.0, 0.0)
+        )
+        try:
+            variant_rendered = render_applied_doc(
+                applied_doc=final_variant.doc,
+                original_doc=original_doc,
+                edits=cumulative_edits,
+                spec=spec,
+                conn=project_conn,
+                db_visuals=visuals,
+                fonts=fonts,
+                old_nid_map=nid_map,
+                old_spec_key_map=spec_key_map,
+                old_original_name_map=original_name_map,
+                ckr_built=ckr_built,
+                page_name=page_name,
+                canvas_position=variant_canvas,
+                strict_mapping=0.9,
+            )
+        except DegradedMapping as e:
+            print(
+                f"dd design: variant render would be degraded — {e}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        variant_script = variant_rendered.script
+        if dump_scripts is not None:
+            dump_scripts.mkdir(parents=True, exist_ok=True)
+            (dump_scripts / "variant.js").write_text(variant_script)
+    finally:
+        session_conn.close()
+        project_conn.close()
+
+    # --- Bridge I/O ------------------------------------------------
+    # Two PROXY_EXECUTE calls (or one, under ``variant_only``). Any
+    # BridgeError reaches the user via sys.stderr + non-zero exit —
+    # we do NOT silently skip the variant render if the original
+    # succeeded (the user wants both; half is a bug, not a feature).
+    #
+    # BridgeError vs script-thrown: the bridge ack returns 200/__ok
+    # even when the script throws mid-execution. The thrown error
+    # lands in ``ack["errors"]`` as a ``kind:"render_thrown"`` entry
+    # (emitted by ``_emit_end_wrapper`` in render_figma_ast). Before
+    # this landed, the CLI discarded the ack and printed "success"
+    # while Phase 1 had aborted and stranded the created nodes as
+    # orphans on ``figma.currentPage``. Now we inspect the ack and
+    # fail fast with the last-completed stage so the user can
+    # diagnose without picking through the demo page for orphans.
+    try:
+        from dd import apply_render as _ap
+        if not variant_only:
+            assert original_script is not None  # narrow for type-checkers
+            original_ack = _ap.execute_script_via_bridge(
+                script=original_script,
+                ws_port=bridge_port,
+            )
+            _check_bridge_ack(original_ack, phase="original")
+        variant_ack = _ap.execute_script_via_bridge(
+            script=variant_script,
+            ws_port=bridge_port,
+        )
+        _check_bridge_ack(variant_ack, phase="variant")
+
+        # Demo-grade labels — third bridge call (see
+        # _build_labels_script docstring). Additive: a labels-script
+        # failure does NOT invalidate the completed renders. Labels
+        # are a demo feature, not a render-fidelity feature; a
+        # screen that's legible without "ORIGINAL"/"VARIANT" is
+        # still a successful demo. We still surface mid-script
+        # throws via _check_bridge_ack for visibility.
+        if labels:
+            labels_script = _build_labels_script(
+                page_name=page_name,
+                brief=brief or "",
+                original_x=0.0,
+                original_y=0.0,
+                variant_x=0.0 if variant_only else screen_width + 200.0,
+                variant_y=0.0,
+                screen_width=screen_width,
+                variant_only=variant_only,
+            )
+            if dump_scripts is not None:
+                dump_scripts.mkdir(parents=True, exist_ok=True)
+                (dump_scripts / "labels.js").write_text(labels_script)
+            labels_ack = _ap.execute_script_via_bridge(
+                script=labels_script,
+                ws_port=bridge_port,
+            )
+            _check_bridge_ack(labels_ack, phase="labels")
+    except BridgeError as e:
+        print(
+            f"dd design: render-to-figma bridge call failed: {e}\n"
+            "Is the Figma plugin listening on port 9228?",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return page_name
+
+
+def _check_bridge_ack(ack: dict, *, phase: str) -> None:
+    """Fail fast on a script-thrown bridge ack.
+
+    The bridge returns ``{__ok, errors, perf, request_id}``. ``__ok``
+    is the wrapper's "script completed execution" flag — it does NOT
+    capture runtime throws inside the script, because those are
+    swallowed by the outer try/catch in ``_emit_end_wrapper`` and
+    pushed into ``__errors`` as ``kind:"render_thrown"``. When that
+    happens, every op after the throw was skipped — including the
+    root page-attach. Nodes already created in Phase 1 are stranded
+    on ``figma.currentPage`` as orphans and the user sees a "success"
+    message for a broken render.
+    """
+    if not isinstance(ack, dict):
+        return
+    script_errors = ack.get("errors") or []
+    render_thrown = [
+        e for e in script_errors
+        if isinstance(e, dict) and e.get("kind") == "render_thrown"
+    ]
+    if not render_thrown:
+        return
+    perf = ack.get("perf") or {}
+    stages = perf.get("stages") or {} if isinstance(perf, dict) else {}
+    if stages and isinstance(stages, dict):
+        try:
+            last_stage = max(stages, key=lambda k: stages[k])
+        except (TypeError, ValueError):
+            last_stage = "<none>"
+    else:
+        last_stage = "<none>"
+    err_msg = render_thrown[0].get("error", "<no message>")
+    if not isinstance(err_msg, str):
+        err_msg = str(err_msg)
+    print(
+        f"dd design: {phase} render threw mid-script. "
+        f"Last completed stage: {last_stage}. "
+        f"Error: {err_msg[:300]}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _run_design_resume(
+    db_path: str,
+    *,
+    variant_id: str,
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+    dump_scripts: str | None = None,
+    variant_only: bool = False,
+    labels: bool = True,
+    override_brief: str | None = None,
+    bridge_port: int = 9228,
+    use_project_vocab: bool = False,
+) -> None:
+    """M2 demo-blocker: resume must support the same Figma round-trip
+    flag family as --brief so the multi-turn iteration story lands.
+
+    Mirrors `_run_design_brief`'s post-session render path. Each
+    resume produces a new leaf variant; ``_render_session_to_figma``
+    keys the Figma page on BOTH the session prefix and the new
+    variant prefix, so successive resumes land on different pages
+    and the user can see the iteration history in the sidebar.
+
+    When ``override_brief`` is provided, it's passed to ``run_session``
+    which substitutes it for the session's stored brief in each LLM
+    turn and logs a ``REBRIEF`` move_log entry. The stored brief
+    column is unchanged — it remains the original goal.
+    """
+    from dd.agent.loop import run_session
+    from dd.db import get_connection, init_db
+
+    # Same flag-combination invariant as --brief: rendering to Figma
+    # with no starting screen produces an empty-canvas render that's
+    # confusing for the user. Fail loudly.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Same auto-init contract as --brief. Idempotent on populated DBs.
+    init_db(db_path).close()
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+    try:
+        result = run_session(
+            conn, parent_variant_id=variant_id,
+            brief=override_brief,
+            client=client, max_iters=max_iters,
+            progress_stream=sys.stderr,
+        )
+    except ValueError as e:
+        print(f"dd design: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+
+    page_hint = ""
+    if render_to_figma:
+        # Fetch the session's brief from the DB so the demo-grade
+        # label script can render it verbatim below both frames.
+        # Resume doesn't carry the brief in its argv (it's on the
+        # parent session row) — fall back to "" if labels=False.
+        # When the user supplied --brief on resume, prefer THAT as
+        # the label — it's the active instruction for this iteration
+        # and that's what the demo audience needs to read.
+        session_brief = ""
+        if labels:
+            if override_brief:
+                session_brief = override_brief
+            else:
+                lookup_conn = get_connection(db_path)
+                try:
+                    row = lookup_conn.execute(
+                        "SELECT brief FROM design_sessions WHERE id=?",
+                        (result.session_id,),
+                    ).fetchone()
+                    session_brief = (row["brief"] if row else "") or ""
+                finally:
+                    lookup_conn.close()
+
+        page_name = _render_session_to_figma(
+            session_db_path=db_path,
+            project_db_path=project_db or db_path,
+            session_id=result.session_id,
+            final_variant_id=result.final_variant_id,
+            starting_screen_id=starting_screen,
+            dump_scripts=Path(dump_scripts) if dump_scripts else None,
+            variant_only=variant_only,
+            labels=labels,
+            brief=session_brief,
+            bridge_port=bridge_port,
+            use_project_vocab=use_project_vocab,
+        )
+        if variant_only:
+            page_hint = (
+                f"\n  → rendered variant only to Figma page "
+                f"'{page_name}' (compare to original at screen "
+                f"{starting_screen} in the source file)"
+            )
+        else:
+            page_hint = (
+                f"\n  → rendered to Figma page '{page_name}' "
+                f"(original at x=0, variant offset right)"
+            )
+
+    print(result.session_id)
+    print(
+        f"  iterations: {result.iterations}  "
+        f"halt: {result.halt_reason}  "
+        f"final_variant: {result.final_variant_id}"
+        f"{page_hint}"
+    )
+
+
+def _run_design_lateral(
+    db_path: str,
+    *,
+    parent_variant_id: str,
+    briefs: list[str],
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+    dump_scripts: str | None = None,
+    variant_only: bool = False,
+    labels: bool = True,
+    bridge_port: int = 9228,
+    use_project_vocab: bool = False,
+) -> None:
+    """C3: produce N sibling variants from one parent in a single
+    CLI call. Each ``--brief`` becomes one ``run_session`` call rooted
+    at the same ``parent_variant_id`` — the variant data model already
+    supports siblings via ``parent_id``, this is the user-facing
+    surface that exercises it.
+
+    All sibling sessions share the same ``session_id`` (the parent's),
+    because ``run_session`` resolves ``session_id`` from
+    ``parent.session_id`` when ``parent_variant_id`` is supplied.
+
+    When ``--render-to-figma``, each leaf variant is rendered to its
+    own Figma page (page name keyed on session+leaf so siblings don't
+    stack on top of each other). The render path is the same as
+    ``--brief`` and ``resume``.
+    """
+    from dd.agent.loop import run_session
+    from dd.sessions import load_variant
+
+    # Defensive guard — parser already enforces this via append+later
+    # check, but a Python-level call to _run_design_lateral could
+    # bypass argparse and reach here with too few briefs.
+    if len(briefs) < 2:
+        print(
+            "dd design lateral: at least 2 --brief values required "
+            "(lateral with 1 sibling is `dd design resume`).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Mirror --brief / resume: rendering to Figma with no starting
+    # screen produces an empty-canvas demo. Fail loudly.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Same auto-init contract as --brief / resume. Idempotent.
+    init_db(db_path).close()
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+
+    # When --use-project-vocab is set, build the project's palette
+    # ONCE and pass it through to run_session for each sibling brief.
+    # The agent surfaces it in its per-turn user message so the LLM
+    # picks fills/radii/spacings from the project's actual values
+    # rather than hallucinating off-palette hex codes (constraint
+    # experiment 2026-04-27 — option 2 from the post-fix design).
+    project_vocab_obj = None
+    if use_project_vocab:
+        project_conn = get_connection(project_db or db_path)
+        try:
+            from dd.project_vocabulary import build_project_vocabulary
+            project_vocab_obj = build_project_vocabulary(
+                project_conn, file_id=1,
+            )
+        finally:
+            project_conn.close()
+
+    # Verify parent exists before burning N Anthropic calls on a
+    # doomed session. ``run_session`` itself raises ValueError on
+    # missing parent, but it does so AFTER opening the client; this
+    # is the cheap fail-fast check.
+    parent = load_variant(conn, parent_variant_id)
+    if parent is None:
+        conn.close()
+        print(
+            f"dd design lateral: parent variant "
+            f"{parent_variant_id!r} not found.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    sibling_results = []
+    try:
+        for idx, brief in enumerate(briefs, start=1):
+            excerpt = (brief[:60] + "...") if len(brief) > 60 else brief
+            try:
+                print(
+                    f"[lateral {idx}/{len(briefs)}] brief: "
+                    f"\"{excerpt}\"",
+                    file=sys.stderr, flush=True,
+                )
+            except Exception:
+                pass
+
+            try:
+                result = run_session(
+                    conn,
+                    brief=brief,
+                    parent_variant_id=parent_variant_id,
+                    client=client,
+                    max_iters=max_iters,
+                    progress_stream=sys.stderr,
+                    project_vocab=project_vocab_obj,
+                )
+            except ValueError as e:
+                print(f"dd design lateral: {e}", file=sys.stderr)
+                sys.exit(1)
+            sibling_results.append((brief, result))
+    finally:
+        conn.close()
+
+    # Render each sibling's leaf variant to its own Figma page.
+    # Done after all run_session calls complete so the agent loop
+    # latency doesn't interleave with bridge I/O latency.
+    page_names: dict[str, str | None] = {}
+    if render_to_figma:
+        for brief, result in sibling_results:
+            sibling_dump_dir: Path | None = None
+            if dump_scripts:
+                sibling_dump_dir = (
+                    Path(dump_scripts) / result.final_variant_id
+                )
+            page_name = _render_session_to_figma(
+                session_db_path=db_path,
+                project_db_path=project_db or db_path,
+                session_id=result.session_id,
+                final_variant_id=result.final_variant_id,
+                starting_screen_id=starting_screen,
+                dump_scripts=sibling_dump_dir,
+                variant_only=variant_only,
+                labels=labels,
+                brief=brief,
+                bridge_port=bridge_port,
+                use_project_vocab=use_project_vocab,
+            )
+            page_names[result.final_variant_id] = page_name
+
+    # Summary block. Sibling sessions share session_id (run_session
+    # resolves it from parent.session_id), so the header lists one
+    # session_id + the parent variant; per-sibling lines list the
+    # leaf variant + brief excerpt + page name (when rendered).
+    shared_session_id = sibling_results[0][1].session_id
+    print(f"session: {shared_session_id}")
+    print(f"  root: {parent_variant_id}")
+    total = len(sibling_results)
+    for idx, (brief, result) in enumerate(sibling_results, start=1):
+        excerpt = (brief[:60] + "...") if len(brief) > 60 else brief
+        page_suffix = ""
+        if render_to_figma:
+            page_name = page_names.get(result.final_variant_id)
+            if page_name:
+                page_suffix = f"  page: {page_name}"
+        print(
+            f"  variant {idx}/{total}: {result.final_variant_id}  "
+            f"brief: \"{excerpt}\"{page_suffix}"
+        )
+
+
+def _run_design_score(db_path: str, *, session_id: str) -> None:
+    """Stage 3 ships this as a stub that confirms the session
+    exists and prints a "not yet implemented" line. The wiring is
+    the user-facing surface; the deep render+VLM scoring lands in
+    a follow-up (per Codex+Sonnet's A2 pick: deferred scoring).
+    """
+    from dd.db import get_connection
+    from dd.sessions import list_sessions, list_variants
+
+    conn = get_connection(db_path)
+    try:
+        sessions = list_sessions(conn)
+        if session_id not in {s.id for s in sessions}:
+            print(
+                f"dd design: session {session_id!r} not found.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        variants = list_variants(conn, session_id)
+        print(
+            f"dd design score: session {session_id} has "
+            f"{len(variants)} variant(s)."
+        )
+        print(
+            "  (deferred: render + fidelity scoring not yet "
+            "wired into this subcommand. The session + variants + "
+            "move log are persisted; rerun once the score backend "
+            "lands.)"
+        )
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# `dd design log <session-id>` — human-readable move_log replay               #
+# --------------------------------------------------------------------------- #
+#
+# Every `dd design --brief` / `resume` run writes a MoveLogEntry per
+# agent turn (dd/focus.py::MoveLogEntry). The row shape carries
+# primitive (EDIT / NAME / DRILL / CLIMB / DONE / REBRIEF) +
+# scope_eid + payload + rationale. That IS the agent's reasoning
+# trail. Without a CLI read-back, the only way to inspect it is raw
+# SQL — `_run_design_log` is the pretty-print path.
+#
+# Risk-guards per task brief:
+#   - Tolerant parsing: missing fields render as "<missing>" rather
+#     than crashing. Schema evolves; old session reads keep working.
+#   - Pagination: --limit (default 50), --all disables.
+#   - Golden test (test_cli_design.py::TestDesignLog) pins the shape
+#     so accidental formatting regressions surface in CI.
+
+
+# Body-line indent under the iter/primitive label column.
+_LOG_BODY_INDENT = "                   "  # 19 spaces — aligns under payload
+
+# Rationale wrap width (inclusive of the "rationale: " prefix).
+_LOG_WRAP_WIDTH = 70
+
+# Per-primitive payload-field preference order. First hit wins for
+# the one-line body summary; everything else is printed as
+# "key=value" on continuation lines.
+_PRIMITIVE_PRIMARY_FIELDS: dict[str, tuple[str, ...]] = {
+    "EDIT": ("edit_source",),
+    "NAME": ("description", "eid"),
+    "DRILL": ("focus_goal", "eid"),
+    "CLIMB": (),
+    "DONE": (),
+    "REBRIEF": ("new_brief",),
+}
+
+
+def _wrap_body(text: str, *, indent: str, width: int) -> list[str]:
+    """Word-wrap ``text`` to ``width``-long lines. Lines after the
+    first are prefixed with ``indent`` so they align under the first
+    line's body column.
+
+    Minimal textwrap-ish so there's no surprise dependency. Keeps
+    run-together tokens together (doesn't break on `=`), which
+    matters for edit_source literals like `fill="#FF3B30"`.
+    """
+    if not text:
+        return [""]
+    words = text.split(" ")
+    lines: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for w in words:
+        add = (1 if cur else 0) + len(w)
+        if cur and cur_len + add > width:
+            lines.append(" ".join(cur))
+            cur = [w]
+            cur_len = len(w)
+        else:
+            cur.append(w)
+            cur_len += add
+    if cur:
+        lines.append(" ".join(cur))
+    if len(lines) == 1:
+        return lines
+    return [lines[0]] + [indent + line for line in lines[1:]]
+
+
+def _render_move_log_entry(
+    entry, *, edit_iter: int | None,  # noqa: ANN001 — MoveLogEntry
+) -> list[str]:
+    """Return the block of lines rendering one ``MoveLogEntry``.
+
+    ``edit_iter`` is the 1-based iter counter (EDIT only); pass
+    None for non-EDIT primitives (they don't get a number).
+    Missing fields fall through to ``<missing>`` — never crashes.
+    """
+    primitive = entry.primitive or "<missing>"
+    payload = entry.payload or {}
+
+    # Leading label: "iter 1   EDIT  " (EDIT) or "         DONE  "
+    # (others). Width tuned so body lines line up visually under one
+    # indent column.
+    if edit_iter is not None:
+        label = f"  iter {edit_iter:<3d} {primitive:<8s}"
+    else:
+        label = f"  {'':<8} {primitive:<8s}"
+
+    # Primary body line — the field that best describes what the
+    # primitive did. Missing → <missing>.
+    primary_fields = _PRIMITIVE_PRIMARY_FIELDS.get(primitive, ())
+    primary_value: str | None = None
+    for f in primary_fields:
+        if f in payload and payload[f] not in (None, ""):
+            primary_value = str(payload[f])
+            break
+    if primary_value is None and primary_fields:
+        primary_value = "<missing>"
+
+    scope_suffix = ""
+    if entry.scope_eid:
+        scope_suffix = f" scope=@{entry.scope_eid}"
+
+    # Build the first block line.
+    if primary_value is not None:
+        first = f"{label} {primary_value}{scope_suffix}"
+    else:
+        first = f"{label}{scope_suffix}".rstrip()
+
+    lines = _wrap_body(
+        first, indent=_LOG_BODY_INDENT, width=_LOG_WRAP_WIDTH,
+    )
+
+    # Secondary payload fields (NOT the primary, NOT internal
+    # plumbing like tool_name). Keep stable order — sorted keys.
+    skip_keys = {"tool_name"}
+    if primary_fields and primary_value != "<missing>":
+        skip_keys.add(primary_fields[0])
+    for k in sorted(payload):
+        if k in skip_keys:
+            continue
+        v = payload[k]
+        if v in (None, "", {}, []):
+            continue
+        body = f"{k}={v}"
+        wrapped = _wrap_body(
+            _LOG_BODY_INDENT + body,
+            indent=_LOG_BODY_INDENT,
+            width=_LOG_WRAP_WIDTH,
+        )
+        lines.extend(wrapped)
+
+    # Rationale — missing → <missing>.
+    rationale = entry.rationale
+    if rationale is None:
+        rationale_line = "rationale: <missing>"
+    else:
+        rationale_line = f"rationale: {rationale}"
+    lines.extend(_wrap_body(
+        _LOG_BODY_INDENT + rationale_line,
+        indent=_LOG_BODY_INDENT,
+        width=_LOG_WRAP_WIDTH,
+    ))
+
+    return lines
+
+
+def _run_design_log(
+    db_path: str,
+    *,
+    session_id: str,
+    limit: int = 50,
+    show_all: bool = False,
+    as_json: bool = False,
+) -> None:
+    """Pretty-print every move_log entry for ``session_id``.
+
+    Exits 1 if the session doesn't exist. Truncates to ``limit``
+    entries unless ``show_all`` is True; ``--json`` always renders
+    the full list (scripts pipe that to `jq` and expect complete
+    data).
+    """
+    from dd.db import get_connection
+    from dd.sessions import list_move_log, list_sessions
+
+    conn = get_connection(db_path)
+    try:
+        sessions = {s.id: s for s in list_sessions(conn)}
+        session = sessions.get(session_id)
+        if session is None:
+            print(
+                f"dd design: session {session_id!r} not found.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        entries = list_move_log(conn, session_id)
+    finally:
+        conn.close()
+
+    if as_json:
+        print(json.dumps([e.to_dict() for e in entries], indent=2))
+        return
+
+    # Header block.
+    print(f"Session: {session.id}")
+    print(f"Brief: {session.brief}")
+    print(f"Created: {session.created_at}")
+    print(f"Status: {session.status}")
+    print()
+
+    total = len(entries)
+    if total == 0:
+        print("Move log: (no entries yet)")
+        return
+
+    shown = entries if show_all else entries[:limit]
+    truncated = total - len(shown)
+
+    print(f"Move log ({total} {'entry' if total == 1 else 'entries'}):")
+    print()
+
+    edit_counter = 0
+    for entry in shown:
+        if entry.primitive == "EDIT":
+            edit_counter += 1
+            iter_num = edit_counter
+        else:
+            iter_num = None
+        for line in _render_move_log_entry(entry, edit_iter=iter_num):
+            print(line)
+        print()  # Blank line between entries.
+
+    if truncated > 0:
+        print(
+            f"... {truncated} more "
+            f"{'entry' if truncated == 1 else 'entries'}; "
+            f"rerun with --limit {total} (or --all) to see the rest."
+        )
 
 
 if __name__ == "__main__":

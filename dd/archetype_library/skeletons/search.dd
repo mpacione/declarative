@@ -1,0 +1,38 @@
+// Stage 2 archetype — migrated from search.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define search() {
+    header {
+        icon-button
+        search-input
+        icon-button
+    }
+    tabs {
+        text
+        text
+        text
+    }
+    button-group {
+        button
+        button
+        button
+    }
+    list {
+        list-item {
+            avatar
+            text
+            icon
+        }
+        list-item {
+            avatar
+            text
+            icon
+        }
+        list-item {
+            avatar
+            text
+            icon
+        }
+    }
+}

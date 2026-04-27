@@ -1,0 +1,32 @@
+{
+  "phaseD_started_at": "2026-04-26T00:25:37.691362+00:00",
+  "intent": "Phase D \u2014 full re-audit on HGB after F1-F10 fixes (10 commits on fix/20260425-1215). Includes full corpus sweep via sweep.py --db (F10 unblocked).",
+  "git": {
+    "branch": "fix/20260425-1215",
+    "head": "908423a",
+    "head_msg": "fix(sweep): F10 \u2014 add --db and --out-dir flags to render_batch/sweep.py",
+    "fix_commits": [
+      "908423a fix(sweep): F10 \u2014 add --db and --out-dir flags to render_batch/sweep.py",
+      "bd8bd04 fix(compose): F9 \u2014 normalize CKR-name component_keys to real hex keys",
+      "c084e17 fix(audit+cli): F4 + F5 + F8 \u2014 extract-plugin workflow + doc honesty",
+      "fa28f69 fix(cluster): F6.1 \u2014 bucketed naming preserves canonical name on highest-usage value",
+      "29faf24 fix(cluster): three-bug fix for token-value collisions",
+      "254f8bc fix(render+compose+prompt): Mode-3 emits importComponentByKeyAsync for keyed components",
+      "f6e5f0a fix(compress_l3): hoist token-ref colors in _fill_to_value",
+      "5575fcc fix(markup/compress): unblock 201/204 corpus round-trip via three-layer fix",
+      "2939679 fix(markup_l3): emitter escapes multi-line strings via _quote_string fallback"
+    ]
+  },
+  "env_vars_present": {
+    "FIGMA_ACCESS_TOKEN": true,
+    "ANTHROPIC_API_KEY": true,
+    "GOOGLE_API_KEY": true
+  },
+  "bridge": {
+    "port_9223": "OPEN",
+    "port_9224": "OPEN",
+    "port_9225": "OPEN",
+    "port_9227": "CLOSED ([Errno 61] Connection refused)",
+    "port_9228": "CLOSED ([Errno 61] Connection refused)"
+  }
+}

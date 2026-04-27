@@ -135,6 +135,68 @@ class TestComposeScreen:
         assert spec["version"] == "1.0"
 
 
+class TestComposePreservesPlannerEids:
+    """Stage 0.4 — LLM-provided ``eid`` survives into ``spec['elements']``.
+
+    Pre-Stage-0 the counter allocator discards whatever the planner named
+    an entity and emits ``<type>-<N>``. That destroys downstream
+    addressability: the edit grammar, session log, and drift check can
+    no longer refer to ``product-showcase-section`` because compose
+    silently renamed it to ``frame-1``.
+    """
+
+    def test_eid_on_top_level_node_survives(self):
+        spec = compose_screen([{"type": "card", "eid": "product-showcase-section"}])
+        assert "product-showcase-section" in spec["elements"]
+        assert spec["elements"]["product-showcase-section"]["type"] == "card"
+
+    def test_eid_on_nested_node_survives(self):
+        spec = compose_screen([{
+            "type": "card",
+            "eid": "product-showcase-section",
+            "children": [
+                {"type": "heading", "eid": "section-title"},
+                {"type": "text", "eid": "section-body"},
+            ],
+        }])
+        assert "section-title" in spec["elements"]
+        assert "section-body" in spec["elements"]
+        card = spec["elements"]["product-showcase-section"]
+        assert set(card["children"]) == {"section-title", "section-body"}
+
+    def test_missing_eid_falls_back_to_counter(self):
+        """Nodes without ``eid`` still get the legacy counter form so
+        pre-Stage-0 callers aren't broken."""
+        spec = compose_screen([{"type": "card"}, {"type": "card"}])
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+        assert all(eid.startswith("card-") for eid in card_ids)
+
+    def test_eid_collision_falls_back_to_counter(self):
+        """Two LLM nodes that claim the same ``eid`` keep it for the
+        first; the second falls back to the counter form. Stage 0.6's
+        drift check is expected to surface duplicate-eid as KIND_PLAN_DRIFT
+        before we reach compose, but compose itself must not crash.
+        """
+        spec = compose_screen([
+            {"type": "card", "eid": "my-card"},
+            {"type": "card", "eid": "my-card"},
+        ])
+        assert "my-card" in spec["elements"]
+        # Second one got a counter-allocated id
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+
+    def test_invalid_eid_falls_back_to_counter(self):
+        """Non-string / empty / whitespace eids fall back silently.
+        Validation of eid shape is the planner's job; compose is lenient.
+        """
+        spec = compose_screen([{"type": "card", "eid": ""}, {"type": "card", "eid": "   "}])
+        card_ids = [eid for eid, el in spec["elements"].items() if el["type"] == "card"]
+        assert len(card_ids) == 2
+        assert all(eid.startswith("card-") for eid in card_ids)
+
+
 # ---------------------------------------------------------------------------
 # build_template_visuals tests
 # ---------------------------------------------------------------------------
@@ -367,6 +429,302 @@ class TestGenerateFromPrompt:
         )
         assert "template_rebind_entries" in result
         assert isinstance(result["template_rebind_entries"], list)
+
+
+class TestF1ImportComponentByKey:
+    """F1 regression: when component_templates resolves a component_key
+    but ``component_key_registry`` lacks the figma_node_id (the common
+    case on freshly-extracted DBs without a CKR build pass), the
+    generated script must emit ``importComponentByKeyAsync(<key>)``
+    rather than silently falling through to ``createFrame()``.
+
+    Pre-fix behavior: 0 imports, every keyed element rendered as a
+    generic frame (verified against the audit DB at
+    ``audit/20260425-1042/sections/08-mode3-composition``).
+    """
+
+    @pytest.fixture
+    def db_with_keyed_button(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        # Real component_key, no component_figma_id (simulates fresh DB
+        # where CKR.figma_node_id is null)
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height, padding_top, padding_right, "
+            "padding_bottom, padding_left, item_spacing, fills, corner_radius, opacity) "
+            "VALUES ('button', 'project/primary', 'real_button_key_abc', 50, "
+            "'HORIZONTAL', 100, 40, 8, 16, 8, 16, 8, "
+            "'[{\"type\":\"SOLID\",\"color\":{\"r\":0,\"g\":0.5,\"b\":1,\"a\":1}}]', "
+            "'8', 1.0)"
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('card', 'project/default', 'real_card_key_xyz', 100, "
+            "'VERTICAL', 320, 200)"
+        )
+        # CKR table exists but figma_node_id is null (the broken state
+        # this fix addresses).
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES ('real_button_key_abc', NULL, 'project/primary', 50), "
+            "       ('real_card_key_xyz', NULL, 'project/default', 100)"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_emits_import_component_by_key(self, db_with_keyed_button):
+        """A keyed button should be emitted via importComponentByKeyAsync."""
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{"type": "button", "props": {"text": "Submit"}}],
+        )
+        script = result["structure_script"]
+        assert 'importComponentByKeyAsync("real_button_key_abc")' in script
+        # F1 regression guard: pre-fix this asserted == 0; the bug was
+        # that the renderer silently fell through to createFrame.
+        assert script.count("importComponentByKeyAsync") >= 1
+
+    def test_emits_import_for_keyed_card_with_children(
+        self, db_with_keyed_button,
+    ):
+        """A card with children must still resolve to its keyed instance.
+
+        The pre-F1 behavior was to fall through to createFrame because
+        the renderer's gate accepted component_key but no emission
+        branch matched it. The instance subtree handles its own
+        children — the LLM-supplied children are still spliced via the
+        override tree path.
+
+        P3a-fix update (2026-04-26): the keyed CARD gets its own
+        importComponentByKeyAsync (the Mode-1 head); the BUTTON inside
+        the card MUST NOT get its own importComponentByKeyAsync,
+        because the card's instance subtree already includes a button
+        slot and re-instantiating it would double-render (the button's
+        Figma node would float outside the card subtree as a page
+        orphan). Pre-P3a-fix the test asserted `>= 2` which encoded
+        exactly that double-instantiation bug. Post-P3a-fix the
+        renderer correctly absorbs the button into the card's
+        instance subtree per Mode-1 semantics.
+        Codex 2026-04-26 (gpt-5.5): "Re-instantiating the keyed
+        button as a sibling/independent node would recreate the
+        pre-P3a double-instantiation bug and can float outside the
+        card subtree."
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{
+                "type": "card",
+                "children": [
+                    {"type": "heading", "props": {"text": "Title"}},
+                    {"type": "button", "props": {"text": "Submit"}},
+                ],
+            }],
+        )
+        script = result["structure_script"]
+        # The card's keyed import IS emitted.
+        assert 'importComponentByKeyAsync("real_card_key_xyz")' in script, (
+            "P3a-fix: the keyed card should still get its own "
+            "importComponentByKeyAsync (it's the Mode-1 head)."
+        )
+        # The button's keyed import MUST NOT be emitted — it's
+        # absorbed into the card's instance subtree.
+        assert (
+            'importComponentByKeyAsync("real_button_key_abc")'
+            not in script
+        ), (
+            "P3a-fix: the button is a child of the keyed card, so "
+            "the card's instance subtree already provides the button "
+            "slot. Re-instantiating it via importComponentByKeyAsync "
+            "would float the button outside the card subtree."
+        )
+        # Total count: exactly 1 (the card's import).
+        assert script.count("importComponentByKeyAsync") == 1, (
+            f"P3a-fix: exactly 1 importComponentByKeyAsync expected "
+            f"(the card). Got {script.count('importComponentByKeyAsync')}."
+        )
+
+    def test_falls_back_to_frame_when_no_key_at_all(self, db_with_keyed_button):
+        """A type with no template at all still falls through to a frame
+        (the F1 fix is component_key-aware, not a blanket override).
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [{"type": "frame", "children": []}],
+        )
+        script = result["structure_script"]
+        # `frame` has no template row; renderer creates a Mode-2 frame.
+        assert "figma.createFrame()" in script
+
+    def test_universal_text_types_do_not_warn(self, db_with_keyed_button):
+        """text/heading/link/frame are universal IR primitives — they
+        render via createText() or createFrame() respectively and should
+        NOT emit a "no template" warning even though they don't have a
+        component_templates row. Pre-F1 the warning fired for `link`
+        (a text type) which was misleading.
+        """
+        result = generate_from_prompt(
+            db_with_keyed_button,
+            [
+                {"type": "link", "props": {"text": "Forgot password?"}},
+                {"type": "frame", "children": []},
+                {"type": "text", "props": {"text": "Hello"}},
+            ],
+        )
+        warnings = result.get("warnings", [])
+        misleading = [
+            w for w in warnings
+            if "Type 'link'" in w
+            or "Type 'frame'" in w
+            or "Type 'text'" in w
+            or "Type 'heading'" in w
+        ]
+        assert misleading == [], (
+            f"Universal types should not warn 'no template': {misleading}"
+        )
+
+
+class TestF9ComponentKeyNormalization:
+    """F9 regression: the LLM is intentionally told it may emit
+    ``"component_key": "<name>"`` (per ``dd/prompt_parser.py:65,204``)
+    using names from the project's CKR vocabulary block. Without
+    composer-side normalisation, those name-as-key values leak through
+    to ``figma.importComponentByKeyAsync(...)``, which Figma rejects —
+    100% of name-emitted instances degrade to wireframe placeholders.
+
+    Pre-fix evidence (audit/20260425-1626-validation/sections/
+    08-mode3-composition): 3 of 5 import args were CKR names
+    (``"cards/_default"``, ``"buttons/button with icon"``,
+    ``"icons/left chevron"``).
+
+    The fix adds a ``_resolve_component_keys`` pre-pass between
+    ``compose_screen`` and ``build_template_visuals`` that swaps each
+    CKR name for its real 40-char hex key, drops unknown values with
+    a warning, and is fully DB-driven (no hardcoded names).
+    """
+
+    _HEX_KEY_BUTTON = "a" * 40
+    _HEX_KEY_CARD = "b" * 40
+
+    @pytest.fixture
+    def db_with_ckr_names(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('card', 'cards/_default', ?, 100, 'VERTICAL', 320, 200)",
+            (self._HEX_KEY_CARD,),
+        )
+        conn.execute(
+            "INSERT INTO component_templates "
+            "(catalog_type, variant, component_key, instance_count, "
+            "layout_mode, width, height) "
+            "VALUES ('button', 'buttons/button with icon', ?, 50, "
+            "'HORIZONTAL', 120, 40)",
+            (self._HEX_KEY_BUTTON,),
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, NULL, 'cards/_default', 100), "
+            "       (?, NULL, 'buttons/button with icon', 50)",
+            (self._HEX_KEY_CARD, self._HEX_KEY_BUTTON),
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_ckr_name_component_key_is_normalized_to_real_key(
+        self, db_with_ckr_names,
+    ):
+        """LLM emits ``component_key: "cards/_default"`` (a CKR name);
+        the generated script must call ``importComponentByKeyAsync``
+        with the real 40-char hex key, NOT with the name.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "card", "component_key": "cards/_default"}],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_CARD}")' in script
+        assert 'importComponentByKeyAsync("cards/_default")' not in script
+
+    def test_real_ckr_key_is_preserved(self, db_with_ckr_names):
+        """LLM emits a real 40-char CKR hex key directly — pre-pass
+        must not corrupt it.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "button", "component_key": self._HEX_KEY_BUTTON}],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_BUTTON}")' in script
+
+    def test_unknown_component_key_name_is_not_imported(
+        self, db_with_ckr_names,
+    ):
+        """LLM emits a name that doesn't exist in CKR — the field must
+        be dropped (no rejected import call) and a warning surfaced so
+        the LLM-loop / orchestrator can see what went unresolved.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{"type": "card", "component_key": "cards/missing"}],
+        )
+        script = result["structure_script"]
+        warnings = result["warnings"]
+        assert 'importComponentByKeyAsync("cards/missing")' not in script
+        assert any(
+            "unresolved component_key" in w and "cards/missing" in w
+            for w in warnings
+        ), f"missing unresolved-component_key warning in {warnings!r}"
+
+    def test_template_key_not_overridden_by_ckr_name(
+        self, db_with_ckr_names,
+    ):
+        """Belt-and-braces: when both ``variant`` AND ``component_key``
+        point at the same CKR name, the import arg must still be the
+        real hex key — not the name leaking through via either route.
+
+        Pre-fix this was the dominant failure mode in
+        ``dd/compose.py:1124`` where ``ir_component_key`` (a name)
+        unconditionally overrode ``tmpl.component_key`` (the real key)
+        on the way into ``visual_entry``.
+        """
+        result = generate_from_prompt(
+            db_with_ckr_names,
+            [{
+                "type": "card",
+                "variant": "cards/_default",
+                "component_key": "cards/_default",
+            }],
+        )
+        script = result["structure_script"]
+        assert f'importComponentByKeyAsync("{self._HEX_KEY_CARD}")' in script
+        assert 'importComponentByKeyAsync("cards/_default")' not in script
 
 
 # ---------------------------------------------------------------------------
@@ -809,8 +1167,18 @@ class TestValidateComponentsWithAliases:
         assert not any("no template" in w.lower() for w in toggle_warnings)
 
     def test_truly_unsupported_type_still_warns(self):
+        # Phase E #7 fix (2026-04-26): `slider` was the test fixture
+        # but it's now in UNIVERSAL_COMPONENT_TYPES (the universal
+        # provider has a hand-authored slider template). Use a name
+        # that's NOT in _BACKBONE / _BUILDERS so the warning still
+        # fires for genuinely unsupported types. `pickle_jar` is
+        # intentionally fictional.
         templates = {"button": [{"variant": "default"}]}
         components, warnings = validate_components(
-            [{"type": "slider"}], templates,
+            [{"type": "pickle_jar"}], templates,
         )
-        assert any("slider" in w for w in warnings)
+        assert any("pickle_jar" in w for w in warnings), (
+            "Truly-unsupported types (not in templates AND not in "
+            "UNIVERSAL_COMPONENT_TYPES) should still produce a "
+            "no-template warning."
+        )

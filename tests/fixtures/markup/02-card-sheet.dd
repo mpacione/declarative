@@ -1,0 +1,159 @@
+// -----------------------------------------------------------------------------
+// 02-card-sheet.dd — Dank reference screen 222 ("iPhone 13 Pro Max - 87")
+//
+// Status:  hand-authored Plan A.4 fixture. Normative for grammar spec.
+// Profile: medium · 303 L0 nodes · 157 L1 classified · 10 canonical types
+// Source:  Dank-EXP-02.declarative.db screens.id = 222
+// See:     02-card-sheet.l0-summary.md (frozen L0+L1+L2 reference)
+//
+// Semantic:  "Border size" bottom-sheet picker over a meme-editor canvas.
+//            Shows preset tiles + custom-size slider in a modal card.
+//
+// Features exercised (beyond fixture 01):
+//   - Inline `card` node type (semantic, not a component instance)
+//   - Bottom-sheet modal composition (overlay + card layered with z-order)
+//   - Section-within-card pattern (heading + tile row)
+//   - Four-tile repetition (define `preset-tile` — three Rule-of-Three
+//     indicators plus one variant for active-state)
+//   - Per-instance slot override (the second toolbar has width=392 vs 176)
+//   - Instance property overrides on `-> card/sheet/success` (NOT exercised
+//     because the real screen 222 emits card inline — illustrates that
+//     inline-vs-component is an extractor/authoring decision, not a
+//     grammar constraint)
+//   - Inline pattern application inside a screen body (append-style)
+// -----------------------------------------------------------------------------
+
+namespace dank.reference.screen-222
+
+
+// A "preset-tile" — 86×86 square with a centered preview. Screen 222 has
+// 4 of these in the Border Size picker; one is the active state. The
+// active state is a path-addressed override at call site.
+define preset-tile(
+  label: text = "Preset",
+  preview_width: number = 60,
+  slot preview = rectangle #preview
+                     width={preview_width}
+                     height={preview_width}
+                     fill={color.surface.default}
+                     radius={radius.image},
+) {
+  frame #tile width=86 height=86
+        layout=vertical gap=6 align=center
+        padding={top=10 bottom=10 left=10 right=10}
+        fill={color.surface.card}
+        radius={radius.card} {
+    {preview}
+    text {label}
+         color={color.text.caption}
+         size={typography.caption.fontSize}
+         weight={typography.caption.fontWeight}
+  }
+}
+
+
+// A "section" pattern — heading + arbitrary body. Used twice within the
+// sheet (Presets + Custom Size).
+define card-section(
+  heading: text = "Section",
+  slot body,
+) {
+  frame #section width=380 layout=vertical gap=8 {
+    text #heading {heading}
+         color={color.text.default}
+         size={typography.body.fontSize}
+         weight={typography.body.fontWeight}
+    {body}
+  }
+}
+
+
+screen #card-sheet (extracted src=222) {
+  width=428 height=926 fill={color.surface.default}
+
+  // ---------- Base layer: meme-editor canvas (minimal, abstracted) --------
+  // The real screen has a rich editor here; this fixture collapses it into
+  // a single container to keep focus on the sheet-composition grammar.
+  container #canvas x=17 y=231 width=395 height=415
+      layout=vertical gap=10 fill={color.surface.default} {
+    rectangle #canvas-bg width=fill height=fill
+              fill={color.surface.image_placeholder}
+              radius={radius.image}
+  }
+
+  // ---------- Dimming overlay (intentionally transparent black) -----------
+  // `fill` uses a raw rgba literal because the universal palette has
+  // no matching token. Stage 3 clustering may introduce
+  // `color.overlay.scrim` and a future re-derivation will replace this.
+  frame #overlay
+      x=0 y=0 width=428 height=926
+      fill=#0000004D
+
+  // ---------- Toolbar buttons layered above overlay -----------------------
+  // Two toolbar buttons (canonical_type=button, node_type=FRAME).
+  // The second is wider than the first (392 vs 176) — differentiating via
+  // direct width overrides demonstrates instance variance without needing
+  // variant properties.
+  -> button/toolbar #toolbar-small
+      x=0 y=0 width=176 height=60
+
+  -> button/toolbar #toolbar-wide
+      x=0 y=0 width=392 height=60
+
+  // ---------- Bottom sheet card. Expressed inline via the `card` type. ---
+  // Variant tag (`variant="sheet/success"`) carries the Figma layer name
+  // through serde; renderer uses it for component lookup when re-rendering
+  // to Figma (fallback: emit as inline frame with these properties).
+  card #sheet variant="sheet/success"
+       x=0 y=539 width=428 height=387
+       layout=vertical gap=20
+       padding={top=24 right=24 bottom=32 left=24}
+       fill={color.surface.card}
+       radius={top-left={radius.dialog} top-right={radius.dialog}}
+       shadow={shadow.card} {
+
+    // --- Header: section title + dismiss button -------------------------
+    frame #sheet-header width=380 height=40
+          layout=horizontal gap=12 align=center
+          mainAxis=space-between {
+      text "Border Size"
+           color={color.text.heading}
+           size={typography.heading.fontSize}
+           weight={typography.heading.fontWeight}
+      -> button/small/translucent #done width=99 height=40 {
+        // Override the default slot content of the button; the
+        // `label` param comes through as a keyword arg.
+        text="Done"
+      }
+    }
+
+    // --- Presets section (4-tile row) ----------------------------------
+    & card-section #presets heading="Presets" {
+      body = frame #strip width=380 height=86
+                   layout=horizontal gap=12 {
+        & preset-tile #preset-sm  label="S" preview_width=40
+        & preset-tile #preset-md  label="M" preview_width=52
+        & preset-tile #preset-lg  label="L" preview_width=64
+                      // active-state override via path-addressed assignment
+                      tile.fill={color.action.primary.bg}
+                      tile.stroke={color.action.primary.bg}
+        & preset-tile #preset-xl  label="XL" preview_width=72
+      }
+    }
+
+    // --- Custom Size section (slider) ----------------------------------
+    & card-section #custom heading="Custom Size" {
+      body = slider #size-slider
+             width=380 height=81
+             min=0 max=100 value=32
+             fill={color.action.primary.bg}
+             radius={radius.toggle}
+    }
+  }
+
+  // ---------- System chrome ------------------------------------------------
+  -> safari/bottom      #safari     x=0 y=782
+  -> ios/home-indicator #home       x=0 y=892
+  -> nav/top-nav        #top-nav    x=0 y=0
+  -> ios/status-bar     #status-bar x=0 y=0
+}

@@ -17,10 +17,13 @@ from dd.cluster_colors import cluster_colors, ensure_collection_and_mode
 from dd.cluster_misc import (
     cluster_effects,
     cluster_opacity,
+    cluster_paragraph_spacing,
     cluster_radius,
+    cluster_stroke_weight,
     ensure_effects_collection,
     ensure_opacity_collection,
     ensure_radius_collection,
+    ensure_stroke_weight_collection,
 )
 from dd.cluster_spacing import cluster_spacing, ensure_spacing_collection
 from dd.cluster_typography import (
@@ -83,8 +86,17 @@ def release_clustering_lock(conn: sqlite3.Connection) -> None:
 def mark_default_bindings(conn: sqlite3.Connection, file_id: int) -> int:
     """Mark CSS-default typography values as intentionally unbound.
 
-    letterSpacing: 0 and lineHeight: AUTO are browser defaults, not design
-    decisions. Marking them prevents false negatives in coverage reporting.
+    letterSpacing: 0, lineHeight: AUTO, and paragraphSpacing: 0 are
+    browser/Figma defaults, not design decisions. Marking them
+    prevents false negatives in coverage reporting.
+
+    P3b (Phase E C2 fix): added paragraphSpacing=0 to the default
+    set. `_cluster_simple_dimension` skips numeric zero in its
+    census, so without this, default paragraph spacing stays as a
+    coverage false negative. Codex P3b design review note:
+    "Use a numeric-safe predicate (CAST AS REAL) — letterSpacing's
+    LIKE '%0.0%' is wrong here because the binding may be stored as
+    {"value": 0, ...} JSON or a bare 0; numeric coercion handles both."
 
     Returns:
         Number of bindings marked.
@@ -96,6 +108,8 @@ def mark_default_bindings(conn: sqlite3.Connection, file_id: int) -> int:
              AND (
                  (property = 'letterSpacing' AND resolved_value LIKE '%0.0%')
                  OR (property = 'lineHeight' AND resolved_value LIKE '%AUTO%')
+                 OR (property = 'paragraphSpacing'
+                     AND CAST(resolved_value AS REAL) = 0)
              )
              AND node_id IN (
                  SELECT n.id FROM nodes n
@@ -240,6 +254,37 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
             except Exception as e:
                 errors.append(f"LetterSpacing clustering: {e!s}")
 
+        # 2c. ParagraphSpacing — P3b (Phase E C2 fix). Sibling of
+        # letterSpacing; shares the typography collection. Codex P3b
+        # design review (2026-04-25): paragraphSpacing is a text-axis
+        # sibling, sharing type_coll_id is the better semantic fit.
+        # Naming caveat: _cluster_simple_dimension produces names
+        # like `paragraphSpacing.v8`, not `type.*` — if downstream
+        # naming consistency matters, a wrapper is needed; today the
+        # mixed-prefix names are acceptable (cluster_letter_spacing
+        # also produces non-`type.*` names).
+        if type_coll_id is not None:
+            try:
+                ps_result = cluster_paragraph_spacing(
+                    conn, file_id, type_coll_id, type_mode_id,
+                )
+                if ps_result['tokens_created'] > 0:
+                    print(
+                        f"[Clustering] ParagraphSpacing: "
+                        f"{ps_result['tokens_created']} tokens, "
+                        f"{ps_result['bindings_updated']} bindings"
+                    )
+                    results_by_type['typography']['tokens_created'] = (
+                        results_by_type['typography'].get('tokens_created', 0)
+                        + ps_result['tokens_created']
+                    )
+                    results_by_type['typography']['bindings_updated'] = (
+                        results_by_type['typography'].get('bindings_updated', 0)
+                        + ps_result['bindings_updated']
+                    )
+            except Exception as e:
+                errors.append(f"ParagraphSpacing clustering: {e!s}")
+
         # 3. Spacing
         if spacing_coll_id is not None:
             try:
@@ -287,7 +332,30 @@ def run_clustering(conn: sqlite3.Connection, file_id: int, color_threshold: floa
             errors.append(f"Opacity clustering: {e!s}")
             results_by_type['opacity'] = {'tokens_created': 0, 'bindings_updated': 0}
 
-        # 7. Mark CSS defaults as intentionally unbound
+        # 7. StrokeWeight — P3b (Phase E C2 fix). The clusterer
+        # function existed at dd/cluster_misc.py:948 (commit
+        # 45f6b2d) but was never wired to the orchestrator. Phase E
+        # §2 found 6093 unbound `strokeWeight=1.0` bindings as a
+        # result. Own collection ('Stroke Weight') per Codex
+        # 2026-04-25: "border width is a real reusable visual
+        # token; mirror opacity/radius."
+        try:
+            sw_coll_id, sw_mode_id = ensure_stroke_weight_collection(conn, file_id)
+            sw_result = cluster_stroke_weight(conn, file_id, sw_coll_id, sw_mode_id)
+            results_by_type['stroke_weight'] = sw_result
+            if sw_result['tokens_created'] > 0:
+                print(
+                    f"[Clustering] StrokeWeight: "
+                    f"{sw_result['tokens_created']} tokens, "
+                    f"{sw_result['bindings_updated']} bindings"
+                )
+        except Exception as e:
+            errors.append(f"StrokeWeight clustering: {e!s}")
+            results_by_type['stroke_weight'] = {
+                'tokens_created': 0, 'bindings_updated': 0,
+            }
+
+        # 8. Mark CSS defaults as intentionally unbound
         try:
             defaults_marked = mark_default_bindings(conn, file_id)
             if defaults_marked > 0:

@@ -1,0 +1,46 @@
+// Stage 2 archetype — migrated from paywall.json.
+// Parser accepts unknown type keywords per grammar §2.7
+// fail-open policy.
+
+define paywall() {
+    header {
+        icon-button
+        text
+    }
+    heading
+    text
+    card {
+        heading
+        text
+        list {
+            list-item {
+                icon
+                text
+            }
+            list-item {
+                icon
+                text
+            }
+        }
+        button variant=primary
+    }
+    card {
+        heading
+        text
+        list {
+            list-item {
+                icon
+                text
+            }
+            list-item {
+                icon
+                text
+            }
+        }
+        button variant=secondary
+    }
+    card {
+        avatar
+        text
+    }
+}

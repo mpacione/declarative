@@ -109,7 +109,12 @@ def build_project_vocabulary(
         lines.append("")
         lines.append(
             "When outputting components, include a \"variant\" field with the "
-            "exact variant name from above when a specific variant applies."
+            "exact variant name from above when a specific variant applies. "
+            "PREFER project-native variant names from this list OVER the "
+            "generic semantic variants (primary/secondary/destructive/ghost) "
+            "— the project's own variants always beat the catalog defaults. "
+            "Use the generic semantic variants only when the project has no "
+            "matching named variant for the type."
         )
 
     # ── Section 2: CKR component_keys (ADR-008 Tier 2) ──────────────
@@ -161,12 +166,19 @@ SYSTEM_PROMPT = """You are a UI composition assistant. Given a natural language 
 
 Available component types (use ONLY these):
 
+Structural: frame
 Actions: button, icon_button, fab, button_group, menu, context_menu
 Selection & Input: checkbox, radio, toggle, toggle_group, select, combobox, date_picker, slider, segmented_control, text_input, textarea, search_input, stepper
 Content & Display: text, heading, link, image, icon, avatar, badge, list, list_item, table, skeleton
 Navigation: navigation_row, tabs, breadcrumbs, pagination, bottom_nav, drawer, header
 Feedback & Status: alert, toast, popover, tooltip, empty_state, file_upload
 Containment & Overlay: card, dialog, sheet, accordion
+
+`frame` is the neutral structural primitive. Use it for conceptual
+groupings — a section, a wrapper, a layout region that isn't itself a
+semantic component. Name frames meaningfully via the `id` field
+(e.g. `product-showcase-section`, `action-bar`). Do NOT use `card`
+as a wrapper; a `card` is a card, not a section.
 
 Output format — a JSON array:
 [
@@ -197,9 +209,31 @@ Notice:
 - `variant: "primary"` picks a named variant axis from the component
   catalog (see catalog variant_axes).
 
+## Variant-selection guidance (force-resolution)
+
+When the prompt implies a semantic force, pick the matching variant —
+don't default to `primary` or `secondary` for every button. This is
+what makes the same component TYPE produce DIFFERENT concrete output
+under different contexts (Alexander's force-resolution guard):
+
+- **destructive** actions (delete / remove / cancel account / wipe /
+  discard changes / force-logout) → `variant: "destructive"`. This
+  resolves to the danger/red palette. NEVER use `primary` or
+  `secondary` for destructive actions.
+- **primary calls-to-action** (sign up / log in / continue / save /
+  confirm / submit — the desired path forward) → `variant: "primary"`.
+- **secondary actions** (cancel a dialog without destruction / back /
+  alternative path) → `variant: "secondary"`.
+- **low-emphasis inline actions** (help / learn more / show details) →
+  `variant: "ghost"`.
+
+For `link`: use the default variant for standard links; `destructive`
+variant only for "Remove", "Delete account", etc. inline links.
+
 Rules:
 - Use ONLY the component types listed above
-- Group related items inside "card" containers
+- Use `frame` for conceptual groupings (sections, wrappers, layout
+  regions). Use `card` only when the result is actually a card.
 - Include a "header" at the top of most screens
 - Text content goes in props.text, labels in props.label
 - Keep it practical: 5-15 top-level components
@@ -433,16 +467,24 @@ def prompt_to_figma(
 def _build_mode3_registry(conn: sqlite3.Connection):
     """Assemble the Mode-3 provider cascade.
 
-    CorpusRetrievalProvider (priority 150) is always included — its
-    ``supports()`` gates on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally,
-    so when the flag is off it returns False and the registry falls
-    through to UniversalCatalogProvider (priority 10).
+    Priority-ordered cascade (highest first):
+    - CorpusRetrievalProvider (150) — full-subtree splice from a donor
+      screen. Gated on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally.
+    - ProjectCKRProvider (100) — project-native Mode-1 lookup against
+      the user's component_key_registry + variant_token_binding rows.
+      Stage 0 cleanup (docs/plan-authoring-loop.md §4.1): without this
+      the project's own components never win the cascade.
+    - UniversalCatalogProvider (10) — hand-authored universal defaults
+      (shadcn-flavoured) for cold-start / types the project hasn't
+      classified yet.
     """
     from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.project_ckr import ProjectCKRProvider
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import ProviderRegistry
 
     return ProviderRegistry(providers=[
         CorpusRetrievalProvider(conn=conn),
+        ProjectCKRProvider(conn=conn),
         UniversalCatalogProvider(),
     ])

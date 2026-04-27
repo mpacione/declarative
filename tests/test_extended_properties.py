@@ -543,6 +543,105 @@ class TestGradientEnrichment:
         assert "gradientTransform" in fills[0]
         assert fills[0]["gradientTransform"] == [[0, 1, 0], [1, 0, 0]]
 
+    def test_supplement_script_captures_stroke_gradient_transforms(self):
+        """The generated JS should also extract gradientTransform from
+        gradient strokes — needed for stroke-side rendering parity.
+
+        Pre-fix the supplement only enriched fills; gradient strokes
+        rendered with no transform got skipped at emission. Surfaced as
+        the screen-68 missing_asset DRIFT (Ellipse 58 with
+        GRADIENT_ANGULAR stroke).
+        """
+        from dd.extract_supplement import generate_supplement_script
+
+        script = generate_supplement_script(["100:1"])
+        # The script must read node.strokes the same way it reads
+        # node.fills — the Plugin API exposes gradientTransform on both.
+        assert "node.strokes" in script
+        # And there must be a stroke-side companion to entry.gt
+        assert "sgt" in script or "strokeGradientTransforms" in script
+
+    def test_apply_supplement_enriches_gradient_strokes(self):
+        """apply_supplement should merge gradientTransform into existing
+        strokes JSON the same way it does for fills."""
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+        import json
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        rest_strokes = json.dumps([{
+            "type": "GRADIENT_ANGULAR",
+            "gradientHandlePositions": [
+                {"x": 0.5, "y": 0.5}, {"x": 1, "y": 0.5}, {"x": 0.5, "y": 1}
+            ],
+            "gradientStops": [
+                {"color": {"r": 0.26, "g": 0.86, "b": 0.94, "a": 1}, "position": 0.17},
+                {"color": {"r": 0.81, "g": 0.37, "b": 0.93, "a": 1}, "position": 0.43},
+                {"color": {"r": 0.98, "g": 0.30, "b": 0.58, "a": 1}, "position": 0.63},
+                {"color": {"r": 0.98, "g": 0.96, "b": 0.60, "a": 1}, "position": 0.91},
+            ],
+        }])
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, is_semantic, visible, extracted_at, strokes) "
+            "VALUES (20, 1, '200:20', 'Ellipse 58', 'VECTOR', 1, 0, 1, 1, '2026-01-01', ?)",
+            (rest_strokes,),
+        )
+        conn.commit()
+
+        plugin_transform = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        supplement_data = {
+            "200:20": {
+                "sgt": [{
+                    "strokeIndex": 0,
+                    "gradientTransform": plugin_transform,
+                }],
+            }
+        }
+        apply_supplement(conn, supplement_data)
+
+        row = conn.execute("SELECT strokes FROM nodes WHERE id = 20").fetchone()
+        strokes = json.loads(row[0])
+        assert len(strokes) == 1
+        assert "gradientHandlePositions" in strokes[0], "REST stroke field preserved"
+        assert "gradientTransform" in strokes[0], "Plugin API stroke field added"
+        assert strokes[0]["gradientTransform"] == plugin_transform
+
+    def test_apply_supplement_preserves_solid_strokes(self):
+        """Solid strokes should not be modified by gradient enrichment."""
+        from dd.db import init_db
+        from dd.extract_supplement import apply_supplement
+        import json
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Test')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, '100:1', 'Screen', 428, 926)"
+        )
+        solid_strokes = json.dumps([{"type": "SOLID", "color": {"r": 0, "g": 0, "b": 0}}])
+        conn.execute(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, "
+            "depth, sort_order, is_semantic, visible, extracted_at, strokes) "
+            "VALUES (21, 1, '200:21', 'border', 'FRAME', 1, 0, 1, 1, '2026-01-01', ?)",
+            (solid_strokes,),
+        )
+        conn.commit()
+
+        # No stroke transforms to enrich
+        supplement_data = {"200:21": {"lp": "ABSOLUTE"}}
+        apply_supplement(conn, supplement_data)
+
+        row = conn.execute("SELECT strokes FROM nodes WHERE id = 21").fetchone()
+        strokes = json.loads(row[0])
+        assert strokes[0]["type"] == "SOLID"
+        assert "gradientTransform" not in strokes[0]
+
     def test_emit_fills_produces_gradient_output(self):
         """_emit_fills should emit gradient fills with gradientTransform."""
         from dd.renderers.figma import _emit_fills
@@ -563,6 +662,110 @@ class TestGradientEnrichment:
         assert "gradientTransform" in js
         assert "gradientStops" in js
         assert "0.1" in js  # opacity
+
+
+class TestEmitStrokesGradientAndImage:
+    """Verify _emit_strokes handles every stroke type that normalize_strokes
+    produces. Pre-fix only "solid" was handled — surfaced as the screen-68
+    missing_asset DRIFT (Ellipse 58 with GRADIENT_ANGULAR stroke rendered
+    as empty 0x0 vector because the stroke was silently dropped at all
+    three layers — normalize.py, ir.py, and renderers/figma.py).
+    """
+
+    def test_emit_solid_stroke_unchanged(self):
+        """Regression check: solid path still emits the paint array.
+        Post-A2.1: strokeWeight is the registry's responsibility,
+        emitted via the _UNIFORM template at the registry handler
+        site, not from _emit_strokes."""
+        from dd.renderers.figma import _emit_strokes
+
+        strokes = [{"type": "solid", "color": "#FF0000", "width": 2}]
+        lines, refs = _emit_strokes("v", "e", strokes, {})
+        assert any("strokes = [" in ln for ln in lines)
+        # Post-A2.1 (commit pending): see TestEmitStrokesPaintOnlyAfterSplit
+        # for the new strokeWeight-via-registry contract.
+
+    def test_emit_gradient_stroke_with_transform(self):
+        """Gradient stroke with gradientTransform emits a GRADIENT_*
+        paint in n.strokes. Post-A2.1: strokeWeight via registry."""
+        from dd.renderers.figma import _emit_strokes
+
+        strokes = [{
+            "type": "gradient-angular",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#FFFFFF", "position": 1.0},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "width": 8,
+        }]
+        lines, refs = _emit_strokes("v", "e", strokes, {})
+        assert len(lines) >= 1
+        joined = "\n".join(lines)
+        assert "GRADIENT_ANGULAR" in joined
+        assert "gradientTransform" in joined
+        assert "gradientStops" in joined
+        # Post-A2.1: strokeWeight not emitted from _emit_strokes
+
+    def test_emit_gradient_stroke_without_transform_skips_paint(self):
+        """Without gradientTransform, the gradient paint is skipped
+        (mirrors _emit_fills semantics — REST handlePositions can't
+        be converted reliably). Post-A2.1: strokeWeight emission
+        moved to the registry _UNIFORM path; _emit_strokes returns
+        nothing in this case (paint-only contract)."""
+        from dd.renderers.figma import _emit_strokes
+
+        strokes = [{
+            "type": "gradient-linear",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#FFFFFF", "position": 1.0},
+            ],
+            "width": 4,
+        }]
+        lines, refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        # No paint array (skipped due to missing transform)
+        assert "GRADIENT_LINEAR" not in joined
+        # Post-A2.1: NO strokeWeight either
+        assert "strokeWeight" not in joined
+
+    def test_emit_image_stroke(self):
+        """Image stroke emits IMAGE paint with imageHash."""
+        from dd.renderers.figma import _emit_strokes
+
+        strokes = [{
+            "type": "image",
+            "asset_hash": "abc123",
+            "scaleMode": "fill",
+            "width": 1,
+        }]
+        lines, refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        assert "IMAGE" in joined
+        assert "abc123" in joined
+
+    def test_gradient_stroke_no_n2_strokes_equals_empty(self):
+        """The screen-68 regression: post-fix, the generated script for a
+        gradient stroke with transform must NOT clear `n.strokes = []`.
+        That clearing was the visible symptom of the silent drop."""
+        from dd.renderers.figma import _emit_strokes
+
+        strokes = [{
+            "type": "gradient-angular",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#FFFFFF", "position": 1.0},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "width": 8,
+        }]
+        lines, _ = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        # The strokes array assignment must NOT be empty
+        assert "strokes = []" not in joined
+        # And it must contain the gradient paint
+        assert "GRADIENT_ANGULAR" in joined
 
 
 class TestTextAutoResizeExtraction:
@@ -596,3 +799,134 @@ class TestTextAutoResizeExtraction:
 
         row = conn.execute("SELECT text_auto_resize FROM nodes WHERE id = 10").fetchone()
         assert row[0] == "HEIGHT"
+
+
+class TestEmitStrokesPaintOnlyAfterSplit:
+    """A2.1 (forensic-audit-2 architectural followon): _emit_strokes
+    must emit the strokes paint array ONLY. strokeWeight is its own
+    registry property (property_registry.py:99) with its own
+    _UNIFORM emit template, and the registry path emits it
+    independently. Pre-split, _emit_strokes ALSO emitted strokeWeight
+    by extracting it from strokes[0].get("width") — duplicate
+    emission. Today's evidence in audit/sprint-final-.../scripts/24.js
+    shows e.g. "n3.strokeWeight = 2;" followed immediately by
+    "n3.strokeWeight = 2.0;" — duplicate emission is real.
+
+    Splitting matters for provenance gating (Backlog #1): the
+    renderer must be able to emit strokeWeight when only
+    STROKE_WEIGHT override exists (no STROKES override) and vice
+    versa. With strokeWeight coupled inside _emit_strokes,
+    independent gating is impossible.
+
+    Codex 5.5 review (2026-04-26, gpt-5.5 high reasoning):
+    "Split it. Do not add emit_paint/emit_weight flags. strokeWeight
+    is already a registry property; the bad part is _emit_strokes
+    emits it from strokes[0].width."
+    """
+
+    def test_emit_strokes_emits_paint_array_only(self):
+        """Solid stroke emits the paint array but NOT strokeWeight."""
+        from dd.renderers.figma import _emit_strokes
+        strokes = [{"type": "solid", "color": "#FF0000", "width": 2}]
+        lines, _refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        assert "v.strokes = [" in joined, "must emit paint array"
+        assert "strokeWeight" not in joined, (
+            "A2.1: _emit_strokes must NOT emit strokeWeight; that's "
+            "the registry's job via the _UNIFORM emit template."
+        )
+
+    def test_emit_strokes_no_strokeweight_for_gradient(self):
+        """Gradient stroke (with transform) emits paint but not weight."""
+        from dd.renderers.figma import _emit_strokes
+        strokes = [{
+            "type": "gradient-angular",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#FFFFFF", "position": 1.0},
+            ],
+            "gradientTransform": [[1, 0, 0], [0, 1, 0]],
+            "width": 8,
+        }]
+        lines, _refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        assert "GRADIENT_ANGULAR" in joined
+        assert "strokeWeight" not in joined, (
+            "A2.1: _emit_strokes must not emit strokeWeight even for gradient."
+        )
+
+    def test_emit_strokes_no_strokeweight_for_image(self):
+        """Image stroke also paint-only."""
+        from dd.renderers.figma import _emit_strokes
+        strokes = [{
+            "type": "image", "asset_hash": "abc", "scaleMode": "fill",
+            "width": 4,
+        }]
+        lines, _refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        assert "IMAGE" in joined
+        assert "strokeWeight" not in joined
+
+    def test_emit_strokes_no_strokeweight_when_paints_skipped(self):
+        """Gradient without transform: paint skipped (degraded
+        intermediate). Pre-split this still emitted strokeWeight
+        as the only output. Post-split, strokeWeight is the
+        registry's responsibility; _emit_strokes emits NOTHING
+        when no paint can be formed."""
+        from dd.renderers.figma import _emit_strokes
+        strokes = [{
+            "type": "gradient-linear",
+            "stops": [
+                {"color": "#000000", "position": 0.0},
+                {"color": "#FFFFFF", "position": 1.0},
+            ],
+            "width": 4,
+        }]
+        lines, _refs = _emit_strokes("v", "e", strokes, {})
+        joined = "\n".join(lines)
+        assert "GRADIENT_LINEAR" not in joined
+        assert "strokeWeight" not in joined, (
+            "A2.1: when no paint emits, _emit_strokes returns nothing; "
+            "strokeWeight is registry-driven."
+        )
+
+    def test_strokeweight_still_emitted_by_registry_path(self):
+        """Regression guard: the SAME visual passed to the registry
+        emit_from_registry path must still emit strokeWeight as
+        `n.strokeWeight = 2`. The emission MOVED from _emit_strokes
+        to the registry handler (_UNIFORM template); it didn't
+        disappear."""
+        from dd.renderers.figma import _emit_visual
+        visual = {
+            "strokes": [{"type": "solid", "color": "#FF0000"}],
+            "strokeWeight": 2,
+        }
+        lines, _refs = _emit_visual("v", "e", visual, {}, node_type="RECTANGLE")
+        joined = "\n".join(lines)
+        # Both must emit through emit_from_registry's dispatch
+        assert "v.strokes = [" in joined
+        assert "v.strokeWeight = 2" in joined, (
+            "Regression: registry path must still emit strokeWeight; "
+            "it MOVED from _emit_strokes to the _UNIFORM template, "
+            "not disappeared."
+        )
+
+    def test_no_duplicate_strokeweight_emission(self):
+        """Headline: end-to-end emit_visual with strokes + strokeWeight
+        must produce strokeWeight EXACTLY ONCE in the generated lines.
+        Pre-split this fired twice (once from _emit_strokes, once from
+        registry _UNIFORM). The duplicate emission was idempotent but
+        wasted JS; bigger problem is it blocked per-property
+        provenance gating."""
+        from dd.renderers.figma import _emit_visual
+        visual = {
+            "strokes": [{"type": "solid", "color": "#FF0000"}],
+            "strokeWeight": 2,
+        }
+        lines, _refs = _emit_visual("v", "e", visual, {}, node_type="RECTANGLE")
+        joined = "\n".join(lines)
+        count = joined.count("v.strokeWeight =")
+        assert count == 1, (
+            f"A2.1 split contract: strokeWeight must emit exactly "
+            f"ONCE, got {count} occurrences:\n{joined}"
+        )

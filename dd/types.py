@@ -75,16 +75,35 @@ class DTCGType(str, enum.Enum):
 
 
 class ComponentCategory(str, enum.Enum):
-    """Intent-based categories for canonical UI component types."""
+    """Intent-based categories for canonical UI component types.
+
+    The six intent categories (actions / selection / content / navigation /
+    feedback / containment) describe what a component *does* for the
+    user. The seventh category, STRUCTURAL, is distinct — it holds
+    neutral layout containers like ``frame`` that the author composes
+    with but that aren't themselves semantic components. Classifier
+    and recognition heuristics don't apply to structural entries —
+    they're author-supplied structure, not patterns to be recognised.
+    See docs/plan-authoring-loop.md Stage 0.1.
+    """
     ACTIONS = "actions"
     SELECTION_AND_INPUT = "selection_and_input"
     CONTENT_AND_DISPLAY = "content_and_display"
     NAVIGATION = "navigation"
     FEEDBACK_AND_STATUS = "feedback_and_status"
     CONTAINMENT_AND_OVERLAY = "containment_and_overlay"
+    STRUCTURAL = "structural"
 
 
 VALID_CATEGORIES: frozenset[str] = frozenset(c.value for c in ComponentCategory)
+
+# Intent categories — everything the classifier and recognition
+# heuristics reason about. ``structural`` is excluded because
+# structural entries (frames) are author-supplied containers, not
+# classifier targets.
+SEMANTIC_CATEGORIES: frozenset[str] = frozenset(
+    c.value for c in ComponentCategory if c is not ComponentCategory.STRUCTURAL
+)
 
 
 class ClassificationSource(str, enum.Enum):

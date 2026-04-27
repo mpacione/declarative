@@ -382,3 +382,192 @@ def test_cluster_effects(mock_db_effects):
     similar_binding = cursor.fetchone()
     assert similar_binding is not None
     assert 0.8 <= similar_binding['confidence'] < 1.0  # Merged with lower confidence
+
+
+# ============================================================================
+# F6.1: bucketed naming with usage-rank tiebreaker
+# ============================================================================
+
+
+def _f61_seed_radius_db(rows: list[tuple[str, int]]) -> sqlite3.Connection:
+    """Seed an in-memory DB with radius bindings: rows = [(value, count), ...]."""
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'f', 'f.fig')")
+    conn.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'S', 100, 100)"
+    )
+    binding_id = 1
+    node_id = 1
+    for value, count in rows:
+        for _ in range(count):
+            conn.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+                "VALUES (?, 1, ?, ?, 'RECTANGLE', 0, ?)",
+                (node_id, f"r{node_id}", f"R{node_id}", node_id),
+            )
+            conn.execute(
+                "INSERT INTO node_token_bindings "
+                "(id, node_id, property, raw_value, resolved_value, binding_status) "
+                "VALUES (?, ?, 'cornerRadius', ?, ?, 'unbound')",
+                (binding_id, node_id, value, value),
+            )
+            binding_id += 1
+            node_id += 1
+    conn.commit()
+    return conn
+
+
+def test_f61_radius_split_high_usage_keeps_bare_name():
+    """F6.1 test 1: 1.0 (high usage) and 0.75 (low usage) split.
+
+    Expected:
+      - Both 1.0 and 0.75 land in the same rounded bucket (round=1).
+      - 1.0 (1474 usages) gets the bare ``radius.xs`` name.
+      - 0.75 (6 usages) gets ``radius.xs.2``.
+      - 2/4/12/100 keep their respective expected names from t-shirt mapping.
+    """
+    from dd.cluster_misc import cluster_radius, ensure_radius_collection
+
+    conn = _f61_seed_radius_db([
+        ("1.0", 1474),
+        ("0.75", 6),
+        ("2.0", 8),
+        ("4.0", 805),
+        ("12.0", 132),
+        ("100.0", 2),
+    ])
+    coll, mode = ensure_radius_collection(conn, 1)
+    cluster_radius(conn, 1, coll, mode)
+
+    by_name = dict(conn.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id "
+        "WHERE t.collection_id = ?",
+        (coll,),
+    ).fetchall())
+
+    # High-usage 1.0 keeps the bare name; low-usage 0.75 gets .2.
+    assert by_name["radius.xs"] == "1.0"
+    assert by_name["radius.xs.2"] == "0.75"
+    # Other buckets keep their normal t-shirt names.
+    assert by_name["radius.sm"] == "2.0"
+    assert by_name["radius.md"] == "4.0"
+    assert by_name["radius.lg"] == "12.0"
+    assert by_name["radius.xl"] == "100.0"
+
+
+def test_f61_radius_determinism_across_db_orders():
+    """F6.1 test 2: same logical inputs in different insert orders → same names."""
+    from dd.cluster_misc import cluster_radius, ensure_radius_collection
+
+    rows_a = [("1.0", 50), ("0.75", 5), ("4.0", 30), ("12.0", 10)]
+    rows_b = [("12.0", 10), ("4.0", 30), ("0.75", 5), ("1.0", 50)]
+
+    conn_a = _f61_seed_radius_db(rows_a)
+    conn_b = _f61_seed_radius_db(rows_b)
+    cluster_radius(conn_a, 1, *ensure_radius_collection(conn_a, 1))
+    cluster_radius(conn_b, 1, *ensure_radius_collection(conn_b, 1))
+
+    map_a = dict(conn_a.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id"
+    ).fetchall())
+    map_b = dict(conn_b.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id"
+    ).fetchall())
+
+    assert map_a == map_b
+
+
+def test_f61_radius_tiebreak_equal_usage_lower_value_first():
+    """F6.1 test 3: equal usage_count → lower numeric value gets bare name."""
+    from dd.cluster_misc import cluster_radius, ensure_radius_collection
+
+    conn = _f61_seed_radius_db([
+        ("1.5", 10),  # rounds to 2
+        ("1.7", 10),  # rounds to 2 (same bucket); same usage
+        ("4.0", 30),
+    ])
+    coll, mode = ensure_radius_collection(conn, 1)
+    cluster_radius(conn, 1, coll, mode)
+
+    by_name = dict(conn.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id"
+    ).fetchall())
+
+    # Tie on usage → lower numeric value (1.5) keeps bare name.
+    # Buckets: round(1.5)=2, round(1.7)=2 (same), round(4)=4.
+    # Two buckets total. propose_radius_name uses ['sm','md','lg'] for
+    # ≤3 buckets; sorted ascending by bucket key, idx 0 = bucket 2 →
+    # 'radius.sm', idx 1 = bucket 4 → 'radius.md'.
+    assert by_name["radius.sm"] == "1.5"
+    assert by_name["radius.sm.2"] == "1.7"
+    assert by_name["radius.md"] == "4.0"
+
+
+def test_f61_effects_split_close_composites_same_bucket():
+    """F6.1 test 4: two composites with very-close geometry → same bucket.
+
+    The bucket key rounds geometry, so radius=23.9 and radius=24.0 fall in
+    the same bucket. Highest-usage gets bare name, secondary gets .2.
+    """
+    from dd.cluster_misc import cluster_effects, ensure_effects_collection
+
+    conn = init_db(":memory:")
+    conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'f', 'f.fig')")
+    conn.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 's1', 'S', 100, 100)"
+    )
+    # Composite A: radius=24.0 high-usage (3 nodes); Composite B: radius=23.9 low-usage (1 node).
+    # Composite C: clearly different bucket radius=8 (1 node).
+    composite_specs = [
+        # (radius, color, usage_count, base_node_id)
+        ("24.0", "#000000FF", 3, 1),
+        ("23.9", "#000000FF", 1, 4),
+        ("8.0", "#000000FF", 1, 5),
+    ]
+    nid = 1
+    bid = 1
+    for radius, color, count, _ in composite_specs:
+        for _ in range(count):
+            conn.execute(
+                "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+                "VALUES (?, 1, ?, ?, 'RECTANGLE', 0, ?)",
+                (nid, f"r{nid}", f"R{nid}", nid),
+            )
+            for field, val in [
+                ("color", color),
+                ("radius", radius),
+                ("offsetX", "0"),
+                ("offsetY", "0"),
+                ("spread", "0"),
+            ]:
+                conn.execute(
+                    "INSERT INTO node_token_bindings "
+                    "(id, node_id, property, raw_value, resolved_value, binding_status) "
+                    "VALUES (?, ?, ?, ?, ?, 'unbound')",
+                    (bid, nid, f"effect.0.{field}", val, val),
+                )
+                bid += 1
+            nid += 1
+    conn.commit()
+
+    coll, mode = ensure_effects_collection(conn, 1)
+    cluster_effects(conn, 1, coll, mode)
+
+    names = {row['name']: row['resolved_value'] for row in conn.execute(
+        "SELECT t.name, tv.resolved_value FROM tokens t "
+        "JOIN token_values tv ON t.id = tv.token_id WHERE t.name LIKE 'shadow.%.radius'"
+    ).fetchall()}
+
+    # Two buckets: round(8)=8 and round(24)=24. Sort ascending by radius:
+    # idx 0=8 ('shadow.sm'), idx 1=24 ('shadow.md') with 2 buckets total
+    # propose_effect_name(2 buckets) returns sm, md (3-or-fewer t-shirt path).
+    # Within bucket 24: 24.0 (3 usages) bare, 23.9 (1) gets .2.
+    assert names["shadow.sm.radius"] == "8.0"
+    assert names["shadow.md.radius"] == "24.0"
+    assert names["shadow.md.2.radius"] == "23.9"

@@ -29,6 +29,90 @@ from dd.visual import (
 # Text element types that use figma.createText()
 _TEXT_TYPES = frozenset({"text", "heading", "link"})
 
+
+# The Missing-Component wireframe placeholder helper — injected into the
+# preamble when any Phase 1 node emits a `_missingComponentPlaceholder`
+# call (i.e. Mode 1 fell back for at least one INSTANCE).
+#
+# Shared between the dict-IR renderer (`generate_figma_script` below) and
+# the markup-native renderer (`dd.render_figma_ast.render_figma_preamble`)
+# so both paths emit byte-identical placeholder blocks. At M6 cutover the
+# dict-IR path is deleted and this constant relocates to
+# `dd.render_figma_ast`.
+MISSING_COMPONENT_PLACEHOLDER_BLOCK = (
+    "// Missing-component wireframe placeholder: emitted when a Mode 1\n"
+    "// createInstance falls back (deleted/unpublished/stripped component).\n"
+    "// Architectural-style diagonal hatching inside a bordered frame.\n"
+    "//\n"
+    "// Design notes:\n"
+    "// - Hatch: parallel 45° lines, ~12px apart, mid-grey. This is the\n"
+    "//   standard convention in architectural/engineering drawings for\n"
+    "//   'unfilled / to be specified' regions. Reads clearly as a\n"
+    "//   placeholder at any aspect ratio, scales nicely.\n"
+    "// - Mid-grey (0.5) on strokes/text so the wireframe stays visible\n"
+    "//   even if downstream DB overrides clobber the frame fill.\n"
+    "// - Hatch is skipped when the frame is tiny (< 40x40) — pattern\n"
+    "//   just looks like noise at icon sizes.\n"
+    "// - Name label appears only when the frame is >= 64x32.\n"
+    "// - setPluginData('__ph','1') marks the returned frame so the\n"
+    "//   caller can gate subsequent visual-property writes (the DB's\n"
+    "//   overrides for the real component shouldn't be applied to the\n"
+    "//   placeholder).\n"
+    "const _MIN_LABEL_W = 64, _MIN_LABEL_H = 32;\n"
+    "const _MIN_HATCH = 40;\n"
+    "const _HATCH_STRIDE = 12;\n"
+    "function _missingComponentPlaceholder(name, w, h, eid) {\n"
+    "  __errors.push({kind:\"component_missing\", eid, name, w, h});\n"
+    "  const f = figma.createFrame();\n"
+    "  f.resize(w || 24, h || 24);\n"
+    "  f.fills = [];\n"
+    "  f.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
+    "  f.strokeWeight = 1;\n"
+    "  f.clipsContent = true;\n"
+    "  try { f.setPluginData('__ph', '1'); } catch (__e) {}\n"
+    "  const actualW = f.width, actualH = f.height;\n"
+    "  // Diagonal hatch pattern, clipped by frame bounds.\n"
+    "  // Skipped at tiny sizes (icon-sized placeholders look like noise).\n"
+    "  if (actualW >= _MIN_HATCH && actualH >= _MIN_HATCH) {\n"
+    "    const total = actualW + actualH;\n"
+    "    const lineLen = total * 1.5;  // long enough to always span the frame at 45°\n"
+    "    for (let offset = -actualH; offset <= actualW + actualH; offset += _HATCH_STRIDE) {\n"
+    "      const ln = figma.createLine();\n"
+    "      // Subtle opacity so stacked placeholders (e.g. overlay over\n"
+    "      // modal over background) don't compound into an opaque\n"
+    "      // mesh. 15% reads as 'placeholder texture' without\n"
+    "      // competing with any real content that overlays it.\n"
+    "      ln.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}, opacity:0.15}];\n"
+    "      ln.strokeWeight = 1;\n"
+    "      ln.resize(lineLen, 0);\n"
+    "      // Plugin API rotation: +45 is visually CCW (up-right).\n"
+    "      // Line starts at (offset, actualH) on or below the frame's\n"
+    "      // bottom edge and goes up-right, clipped to the frame.\n"
+    "      ln.rotation = 45;\n"
+    "      ln.x = offset;\n"
+    "      ln.y = actualH;\n"
+    "      f.appendChild(ln);\n"
+    "    }\n"
+    "  }\n"
+    "  if (actualW >= _MIN_LABEL_W && actualH >= _MIN_LABEL_H && name) {\n"
+    "    try {\n"
+    "      const t = figma.createText();\n"
+    "      t.fontName = {family:\"Inter\", style:\"Regular\"};\n"
+    "      t.fontSize = 10;\n"
+    "      t.characters = String(name);\n"
+    "      t.x = 4; t.y = 4;\n"
+    "      t.fills = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
+    "      f.appendChild(t);\n"
+    "    } catch (__e) {}\n"
+    "  }\n"
+    "  return f;\n"
+    "}\n"
+    "// Helper to gate a setter on whether the target is a placeholder.\n"
+    "// Used to prevent DB visual overrides (fills/strokes/effects) from\n"
+    "// clobbering the placeholder's wireframe appearance.\n"
+    "function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }"
+)
+
 # Container types that should fill parent width in vertical auto-layout.
 # These are full-width components that span the screen in real designs.
 
@@ -185,8 +269,18 @@ def collect_fonts(
             resolved_family, _ = resolve_style_value(family, tokens)
             family = resolved_family if resolved_family and isinstance(resolved_family, str) else "Inter"
 
+        # Capture the IR-resolved family BEFORE DB override. We emit
+        # BOTH variants to the manifest when they disagree — the
+        # subsequent `fontName = {...}` setter in the generated
+        # script reads from the IR style (resolved tokens), while
+        # legacy DB-driven paths use the DB font_family. Tier D F1
+        # fix: loading both keeps set_fontName from hitting an
+        # unloaded font regardless of which path the emitter takes.
+        ir_family = family
+
         # DB fallback for family and weight
         db_font_style = None
+        db_family: Any = None
         if db_visuals is not None:
             nid = node_id_map.get(eid)
             if nid:
@@ -196,6 +290,7 @@ def collect_fonts(
                     db_fam = font.get("font_family")
                     if db_fam:
                         family = db_fam
+                        db_family = db_fam
                 if weight is None:
                     weight = font.get("font_weight")
                 db_font_style = font.get("font_style")
@@ -215,6 +310,20 @@ def collect_fonts(
         if key not in seen:
             seen.add(key)
             result.append(key)
+
+        # Belt-and-suspenders for Mode-3 mismatches: when the IR
+        # style's resolved family differs from the DB-sourced one
+        # (synthetic visuals in build_template_visuals can have
+        # diverging data), also emit the IR variant with the
+        # weight-derived style so both preloads are in the manifest.
+        if db_family and ir_family and ir_family != db_family:
+            ir_style = normalize_font_style(
+                ir_family, font_weight_to_style(weight),
+            )
+            ir_key = (ir_family, ir_style)
+            if ir_key not in seen:
+                seen.add(ir_key)
+                result.append(ir_key)
 
     return result
 
@@ -252,10 +361,32 @@ def _emit_override_op(
         return ""
 
     if prop_name == "characters":
+        # F11.1: wrap the load+write pair in try/catch — when the
+        # current font is unavailable in this Figma session (e.g. paid
+        # commercial font like Akkurat-Bold the user hasn't licensed),
+        # loadFontAsync REJECTS and the next-line write throws. Without
+        # the catch, the throw propagates past the outer findOne block's
+        # try/finally (finally doesn't catch) and aborts the rest of
+        # Phase 1 — observed Phase D 2026-04-25 sweep: 17 of 44 HGB
+        # screens halted at the first instance whose master used
+        # Akkurat, so only 1 of N IR elements rendered. Guard mirrors
+        # the same shape applied to other text-prop writes in F11.
+        # F12: emit the rendered node's id as `node_id` so per-eid
+        # attribution survives the catch (Phase D visual-diff showed
+        # text_set_failed without node attribution makes it hard to
+        # map a "Rooms" instead of "Travel Request" symptom back to
+        # the offending DB override row).
         return (
             f'if ({target_var}.type === "TEXT") {{ '
+            f'try {{ '
             f'await figma.loadFontAsync({target_var}.fontName); '
-            f'{target_var}.characters = "{_escape_js(value)}"; }}'
+            f'{target_var}.characters = "{_escape_js(value)}"; '
+            f'}} catch (__e) {{ '
+            f'__errors.push({{kind:"text_set_failed", '
+            f'property:"characters", '
+            f'node_id:{target_var}.id, name:{target_var}.name, '
+            f'error: String(__e && __e.message || __e)}}); '
+            f'}} }}'
         )
     if prop_name == "instance_swap":
         comp_expr = node_id_vars.get(value, f'await figma.getNodeByIdAsync("{_escape_js(value)}")')
@@ -298,8 +429,59 @@ def _emit_override_op(
     from dd.property_registry import by_figma_name
     prop = by_figma_name(prop_name)
     if prop:
+        # Font-identity members (fontFamily/fontWeight/fontStyle) are
+        # virtual: TEXT nodes have no .fontFamily / .fontWeight setter,
+        # only a composed .fontName = {family, style}. Setting any of
+        # them directly throws "object is not extensible". The composed
+        # write is emitted upstream in `_emit_override_tree` via
+        # `_compose_font_identity_op`; if a stray font-identity prop
+        # reaches this path it means composition was skipped, so emit
+        # nothing (the no-op is safer than a guaranteed throw).
+        if prop_name in _FONT_IDENTITY_PROPS:
+            return ""
         formatted = format_js_value(value, prop.value_type)
         op = f"{target_var}.{prop.figma_name} = {formatted};"
+        # F11: text-property writes (letterSpacing, fontSize, etc.) on
+        # TEXT nodes require the node's CURRENT fontName to be loaded —
+        # not the family in the preamble's preload list, which only
+        # covers fonts the spec walks (Mode-2 elements). Mode-1 instance
+        # children inherit fonts from the master component (often a
+        # team-library import), and those fonts aren't in the preload
+        # list. Without this guard, the first override write throws
+        # "Cannot write to node with unloaded font 'X'".
+        # `figma.mixed` skip handles runs of mixed fonts in a TEXT node
+        # (Plugin API returns the sentinel; loadFontAsync rejects it).
+        if prop.category == "text":
+            # Codex F11 review: wrap the inner load+assign in try/catch
+            # too. loadFontAsync can reject (font genuinely unavailable
+            # in this Figma session — happens when a master uses a paid
+            # commercial font the user hasn't licensed). Without the
+            # catch, the throw would propagate up past the outer block's
+            # try/finally and abort the rest of the override stream for
+            # this instance. Mode-2's analogous path uses `_guarded_op`
+            # at figma.py:2558 — same shape, just per-op rather than
+            # per-block. `figma.mixed` skip avoids passing the sentinel
+            # to loadFontAsync (which rejects it).
+            esc_prop = _escape_js(prop_name)
+            # F12: include node_id + name so per-eid attribution
+            # survives the catch (Phase D Codex review found the
+            # F11.1 catches dropped attribution).
+            op = (
+                f'if ({target_var}.type === "TEXT") {{ '
+                f'try {{ '
+                f'if ({target_var}.fontName !== figma.mixed) {{ '
+                f'await figma.loadFontAsync({target_var}.fontName); }} '
+                f'{op} '
+                f'}} catch (__e) {{ '
+                f'__errors.push({{kind:"text_set_failed", '
+                f'property:"{esc_prop}", '
+                f'node_id:{target_var}.id, name:{target_var}.name, '
+                f'error: String(__e && __e.message || __e)}}); '
+                f'}} }}'
+            )
+            # _gate_if_not_placeholder for self-target writes still
+            # applies — wrap the whole guarded block.
+            return _gate_if_not_placeholder(op, target_var) if is_self else op
         # Gate self-target writes on runtime placeholder check. When the
         # instance fell back to our wireframe placeholder (missing source
         # component), these DB-sourced visual properties would otherwise
@@ -307,6 +489,96 @@ def _emit_override_op(
         # turns the placeholder into a giant black box).
         return _gate_if_not_placeholder(op, target_var) if is_self else op
     return ""
+
+
+# F11: virtual font-identity properties on TEXT nodes. These don't map
+# to direct setters; they compose into `.fontName = {family, style}`.
+# `_compose_font_identity_op` extracts them from a properties list and
+# emits a single composed write (with the new font preloaded).
+_FONT_IDENTITY_PROPS = frozenset({"fontFamily", "fontStyle", "fontWeight"})
+
+
+def _compose_font_identity_op(
+    properties: list[dict[str, Any]],
+    target_var: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Pull fontFamily/fontStyle/fontWeight from properties, emit a
+    composed fontName write, and return (op, remaining_properties).
+
+    Returns ("", properties_unchanged) if none of the three are present.
+
+    The composed write reads the current `_c.fontName` for any half not
+    overridden so the result is a complete {family, style} pair. This
+    matches the Mode-2 emission contract (`_emit_text_props`) which
+    always writes a complete fontName, and avoids the bug where the
+    Mode-1 override emitter passed `_c.fontFamily = "DM Sans"` (no such
+    setter on TEXT nodes — throws "object is not extensible").
+
+    `figma.mixed` is handled inline: when the node has a mixed font
+    run, fall back to {Inter, Regular} as the structural anchor and
+    let the override family/style fill in.
+    """
+    family_prop: dict[str, Any] | None = None
+    style_prop: dict[str, Any] | None = None
+    weight_prop: dict[str, Any] | None = None
+    remaining: list[dict[str, Any]] = []
+    for ov in properties:
+        name = ov.get("property")
+        if name == "fontFamily":
+            family_prop = ov
+        elif name == "fontStyle":
+            style_prop = ov
+        elif name == "fontWeight":
+            weight_prop = ov
+        else:
+            remaining.append(ov)
+    if family_prop is None and style_prop is None and weight_prop is None:
+        return "", properties
+
+    family_js = (
+        f'"{_escape_js(str(family_prop["value"]))}"' if family_prop else "__cur.family"
+    )
+    if style_prop is not None:
+        style_js = f'"{_escape_js(str(style_prop["value"]))}"'
+    elif weight_prop is not None:
+        # Convert numeric weight → Figma style name (e.g. 700 → "Bold").
+        # Use the supplied family for normalization when available
+        # (Inter "Semi Bold" vs SF Pro "Semibold"). When family is also
+        # an override, normalize against the override family; otherwise
+        # against the current family — but we don't know the current
+        # family at compile time, so fall back to the unnormalized
+        # weight→style. Most weights (Regular/Bold/Medium) are stable
+        # across families anyway; Semi Bold is the documented edge case.
+        family_for_norm = (
+            str(family_prop["value"]) if family_prop else "Inter"
+        )
+        derived_style = normalize_font_style(
+            family_for_norm,
+            font_weight_to_style(weight_prop["value"]),
+        )
+        style_js = f'"{_escape_js(derived_style)}"'
+    else:
+        style_js = "__cur.style"
+
+    # Emit the composed write. Self-gating (placeholder check) is
+    # handled by the caller (`_emit_override_tree`); this function
+    # produces the bare op.
+    # F12: include node_id + name in the catch so per-eid attribution
+    # survives.
+    op = (
+        f'if ({target_var}.type === "TEXT") {{ '
+        f'const __cur = ({target_var}.fontName !== figma.mixed) '
+        f'? {target_var}.fontName : {{family: "Inter", style: "Regular"}}; '
+        f'const __new = {{family: {family_js}, style: {style_js}}}; '
+        f'try {{ await figma.loadFontAsync(__new); '
+        f'{target_var}.fontName = __new; }} '
+        f'catch (__e) {{ __errors.push({{kind:"text_set_failed", '
+        f'family: __new.family, style: __new.style, '
+        f'node_id:{target_var}.id, name:{target_var}.name, '
+        f'error: String(__e && __e.message || __e)}}); }} '
+        f'}}'
+    )
+    return op, remaining
 
 
 def _gate_if_not_placeholder(op: str, var: str) -> str:
@@ -360,8 +632,20 @@ def _emit_override_tree(
             op = _emit_override_op(ov, instance_var, node_id_vars, instance_var, deferred_lines)
             if op:
                 lines.append(op)
+        # F11: compose virtual font-identity overrides (fontFamily /
+        # fontStyle / fontWeight) into a single fontName write before
+        # iterating per-prop. INSTANCE root nodes are non-text so the
+        # composer is a no-op here, but apply the same shape for symmetry
+        # — keeps the compose path unconditional.
+        font_op, properties_remain = _compose_font_identity_op(
+            properties, instance_var,
+        )
+        if font_op:
+            lines.append(
+                _gate_if_not_placeholder(font_op, instance_var)
+            )
         # Self property overrides — apply directly to instance variable
-        for prop in properties:
+        for prop in properties_remain:
             op = _emit_override_op(prop, instance_var, node_id_vars, instance_var, deferred_lines)
             if op:
                 lines.append(op)
@@ -377,24 +661,58 @@ def _emit_override_tree(
             op = _emit_override_op(ov, "_c", node_id_vars, instance_var, deferred_lines)
             if op:
                 ops.append(op)
-        for prop in properties:
+        # F11: compose font identity overrides into a single fontName
+        # write so we don't emit `_c.fontFamily = "X"` (no such setter
+        # on TEXT nodes — throws "object is not extensible") and so the
+        # NEW font is loaded before the write.
+        font_op, properties_remain = _compose_font_identity_op(
+            properties, "_c",
+        )
+        if font_op:
+            ops.append(font_op)
+        for prop in properties_remain:
             op = _emit_override_op(prop, "_c", node_id_vars, instance_var, deferred_lines)
             if op:
                 ops.append(op)
 
         if ops:
+            # Toggle `figma.skipInvisibleInstanceChildren` off around the
+            # findOne block. The preamble flips the perf flag on
+            # globally (dd/render_figma_ast.py:148) — that flag also
+            # makes findOne / findAll skip every master-default-hidden
+            # descendant, so override application against hidden slots
+            # silently no-ops without this scoped toggle. Try/finally
+            # guards Codex's risk: if an exception lands inside the
+            # block (e.g. unsupported setter on this Figma build), the
+            # flag is still restored so downstream walks aren't
+            # corrupted by a stuck-off perf flag. See
+            # tests/test_override_toggle_skipinvisible.py for the
+            # contract.
             if len(ops) == 1:
                 lines.append(
-                    f'{{ const _c = {find_expr}; '
-                    f"if (_c) {{ {ops[0]} }} }}"
+                    "figma.skipInvisibleInstanceChildren = false; "
+                    "try { "
+                    f"const _c = {find_expr}; "
+                    f"if (_c) {{ {ops[0]} }} "
+                    "} finally { "
+                    "figma.skipInvisibleInstanceChildren = true; "
+                    "}"
                 )
             else:
                 lines.append(
-                    f'{{ const _c = {find_expr}; if (_c) {{'
+                    "figma.skipInvisibleInstanceChildren = false;"
                 )
+                lines.append("try {")
+                lines.append(f"  const _c = {find_expr};")
+                lines.append("  if (_c) {")
                 for op in ops:
-                    lines.append(f"  {op}")
-                lines.append("} }")
+                    lines.append(f"    {op}")
+                lines.append("  }")
+                lines.append("} finally {")
+                lines.append(
+                    "  figma.skipInvisibleInstanceChildren = true;"
+                )
+                lines.append("}")
 
     # Recurse into children (guaranteed to come after parent)
     for child in node.get("children", []):
@@ -549,10 +867,21 @@ _CORNER_MAP = {
 def _emit_corner_radius_figma(
     var: str, eid: str, value: Any, tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit cornerRadius — uniform (number) or per-corner (dict)."""
+    """Emit cornerRadius — uniform (number) or per-corner (dict).
+
+    Surfaced by A5 verifier comparator on the post-sprint Nouns
+    sweep: 26 cornerradius_mismatch errors on FRAME nodes where
+    the IR carried e.g. 10.927369... and the rendered value was
+    10. Pre-fix the renderer truncated to int via ``int(value)``,
+    losing the fractional component. This is a real renderer
+    fidelity bug (sub-pixel cornerRadius is a real Figma value;
+    Figma's Plugin API accepts floats). Emit the value as-is so
+    floats round-trip. Per-corner dict path was already correct
+    (no int cast on the individual corners).
+    """
     lines: list[str] = []
     if isinstance(value, (int, float)):
-        lines.append(f"{var}.cornerRadius = {int(value)};")
+        lines.append(f"{var}.cornerRadius = {value};")
     elif isinstance(value, dict):
         for corner_key, figma_prop in _CORNER_MAP.items():
             lines.append(f"{var}.{figma_prop} = {value.get(corner_key, 0)};")
@@ -1013,7 +1342,10 @@ def generate_figma_script(
         #   2. instance figma_node_id (from DB, INSTANCE node) → getMainComponentAsync → createInstance
         #      (handles unpublished/local components that importComponentByKeyAsync rejects;
         #       also covers fresh DBs where CKR hasn't been built yet)
-        #   3. Fall through to Mode 2 (createFrame) if no usable ID
+        #   3. component_key (Mode-3 prompt path) → importComponentByKeyAsync → createInstance
+        #      (used when component_templates resolves a key but CKR.figma_node_id is null;
+        #       e.g. fresh extracted DBs without a CKR build pass — F1)
+        #   4. Fall through to Mode 2 (createFrame) if no usable ID
         #
         # ADR-007 Session A: the gate now also reaches path 2 when only
         # `instance_figma_node_id` + `node_type='INSTANCE'` are populated.
@@ -1073,6 +1405,25 @@ def generate_figma_script(
                     f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"create_instance_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
                     f'}})();'
                 )
+            elif component_key:
+                # F1: component-key-only Mode-1 path. Twin of the
+                # AST-renderer branch in dd/render_figma_ast.py — needed
+                # because Mode-3 composition resolves a key from
+                # component_templates without an upstream
+                # component_key_registry pass having populated figma_ids.
+                # `_emit_composition_children` already uses this exact API
+                # (`importComponentByKeyAsync`) for keyed children — adding
+                # it at the top-level keeps the two emission sites
+                # consistent.
+                id_lit = _escape_js(component_key)
+                phase1_lines.append(
+                    f'const {var} = await (async () => {{ '
+                    f'try {{ const __master = await figma.importComponentByKeyAsync("{id_lit}"); '
+                    f'if (!__master) {{ __errors.push({{eid:"{eid_lit}", kind:"missing_component_key", id:"{id_lit}"}}); return {fallback_js}; }} '
+                    f'return __master.createInstance(); }} '
+                    f'catch (__e) {{ __errors.push({{eid:"{eid_lit}", kind:"import_component_failed", id:"{id_lit}", error: String(__e && __e.message || __e)}}); return {fallback_js}; }} '
+                    f'}})();'
+                )
             else:
                 use_mode1 = False
 
@@ -1102,13 +1453,17 @@ def generate_figma_script(
                     f'_t.characters = "{_escape_js(subtitle_override)}"; }} }}'
                 )
 
-            hidden_children = raw_visual.get("hidden_children", []) if (db_visuals is not None and raw_visual) else []
-            for hc in hidden_children:
-                hname = _escape_js(hc["name"])
-                phase1_lines.append(
-                    f'{{ const _h = {var}.findOne(n => n.name === "{hname}"); '
-                    f"if (_h) _h.visible = false; }}"
-                )
+            # PR-1: the legacy `hidden_children` name-based emitter
+            # was deleted here. The dict-IR renderer does NOT consume
+            # the markup-native resolver (it doesn't walk an AST), so
+            # callers that still exercise this codepath must accept
+            # that descendant hides inside instances rely solely on
+            # `override_tree`'s `instance_overrides`-sourced entries.
+            # This codepath is used only by legacy parity tests
+            # (tests/test_option_b_parity.py skipped per M6(b));
+            # production renders through `generate_screen` →
+            # `render_figma_ast.render_figma`, which gets the full
+            # unified resolver.
 
             # Instance overrides via override tree. The tree encodes
             # dependency ordering: pre-order traversal ensures swaps
@@ -1440,7 +1795,15 @@ def generate_figma_script(
             continue
 
         parent_var = var_map[resolved_parent_eid]
-        phase2_lines.append(f"{parent_var}.appendChild({var});")
+        # Per-op guard (Tier E F3 follow-up): naked appendChild
+        # cascades — a single throw aborts every subsequent op
+        # AND the final root attach. Createframe/etc auto-parent
+        # to currentPage, so un-re-parented nodes end up flat at
+        # page root — user-visible "no nesting hierarchy."
+        phase2_lines.append(_guarded_op(
+            f"{parent_var}.appendChild({var});",
+            eid, "append_child_failed",
+        ))
 
         # ADR-007 follow-up: emit text .characters BEFORE layoutSizing.
         # A later FILL sibling evaluating its share of remaining space
@@ -1472,8 +1835,34 @@ def generate_figma_script(
 
         parent_direction = spec.get("elements", {}).get(resolved_parent_eid, {}).get("layout", {}).get("direction", "")
         parent_is_autolayout = parent_direction in ("horizontal", "vertical")
-        if parent_is_autolayout:
-            elem_sizing = element.get("layout", {}).get("sizing", {})
+
+        # Item 1 of the 13-item burn-down (Codex round-13/14):
+        # layoutSizing emission is no longer gated only on
+        # parent_is_autolayout. Per the Plugin API docs, layoutSizing
+        # applies to: auto-layout frames (HUG valid), auto-layout
+        # children (FILL valid), and text nodes (HUG valid via
+        # textAutoResize). Pre-fix the renderer skipped emission
+        # entirely for auto-layout frames whose parent isn't
+        # auto-layout — they defaulted to FIXED, surfacing 2,992
+        # mismatches across three corpora in Sprint 2 C11. The fix
+        # splits emission concerns:
+        #
+        #   emit_layout_sizing  = parent_is_AL or self_is_AL_frame or is_text
+        #   emit_explicit_position = not parent_is_AL  (parent's flow
+        #                                               handles it
+        #                                               otherwise)
+        #   emit_resize         = node not auto-layout, OR axes are
+        #                         FIXED (Codex round-14: avoid blanket
+        #                         resize() on HUG axes — locks them
+        #                         to fixed)
+        elem_layout_dir = element.get("layout", {}).get("direction", "")
+        node_is_autolayout_frame = elem_layout_dir in ("horizontal", "vertical")
+        emit_layout_sizing = (
+            parent_is_autolayout or node_is_autolayout_frame or is_text
+        )
+        elem_sizing = element.get("layout", {}).get("sizing", {})
+
+        if emit_layout_sizing:
             db_sizing_h = None
             db_sizing_v = None
             text_auto_resize = None
@@ -1487,13 +1876,47 @@ def generate_figma_script(
             sizing_h, sizing_v = _resolve_layout_sizing(
                 elem_sizing, db_sizing_h, db_sizing_v,
                 text_auto_resize, is_text, etype,
+                parent_is_autolayout=parent_is_autolayout,
+                node_is_autolayout_frame=node_is_autolayout_frame,
             )
+            # Codex round-14: emit numeric resize FIRST for axes that
+            # resolve to FIXED, so layoutSizing HUG/FILL on the OTHER
+            # axis isn't clobbered. resize() locks an axis to fixed;
+            # mixed-axis case (one HUG one FIXED) needs the FIXED axis
+            # set first via resize then HUG axis via layoutSizing.
+            pw = elem_sizing.get("widthPixels")
+            ph = elem_sizing.get("heightPixels")
+            sh_is_fixed = (sizing_h or "").upper() == "FIXED"
+            sv_is_fixed = (sizing_v or "").upper() == "FIXED"
+            if (sh_is_fixed and sv_is_fixed) and (
+                pw is not None and ph is not None
+            ):
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({round(pw, 2)}, {round(ph, 2)});",
+                    eid, "resize_failed",
+                ))
+            elif sh_is_fixed and pw is not None:
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({round(pw, 2)}, {var}.height);",
+                    eid, "resize_failed",
+                ))
+            elif sv_is_fixed and ph is not None:
+                phase3_lines.append(_guarded_op(
+                    f"{var}.resize({var}.width, {round(ph, 2)});",
+                    eid, "resize_failed",
+                ))
             if sizing_h:
                 figma_h = _SIZING_MAP.get(sizing_h, sizing_h.upper())
-                phase2_lines.append(f'{var}.layoutSizingHorizontal = "{figma_h}";')
+                phase2_lines.append(_guarded_op(
+                    f'{var}.layoutSizingHorizontal = "{figma_h}";',
+                    eid, "layout_sizing_failed",
+                ))
             if sizing_v:
                 figma_v = _SIZING_MAP.get(sizing_v, sizing_v.upper())
-                phase2_lines.append(f'{var}.layoutSizingVertical = "{figma_v}";')
+                phase2_lines.append(_guarded_op(
+                    f'{var}.layoutSizingVertical = "{figma_v}";',
+                    eid, "layout_sizing_failed",
+                ))
             # Now that the text has content + layoutSizing-determined
             # width, apply the DB's textAutoResize mode (e.g. "HEIGHT")
             # to lock the width. Doing this earlier would have locked
@@ -1502,10 +1925,9 @@ def generate_figma_script(
                 mode = text_autoresize_deferred[eid]
                 phase2_lines.append(f'{var}.textAutoResize = "{mode}";')
         else:
-            # Non-auto-layout parent: use pixel dimensions for resize
-            # and position. layoutSizing is irrelevant here — the node's
-            # size comes from explicit dimensions, not parent negotiation.
-            elem_sizing = element.get("layout", {}).get("sizing", {})
+            # Neither parent nor self auto-layout, and not text:
+            # explicit pixel resize (current behavior, no layoutSizing
+            # to consider).
             pw = elem_sizing.get("widthPixels")
             ph = elem_sizing.get("heightPixels")
             if pw is not None and ph is not None:
@@ -1520,6 +1942,13 @@ def generate_figma_script(
                 phase3_lines.append(_guarded_op(
                     f"{var}.resize({var}.width, {round(ph, 2)});", eid, "resize_failed",
                 ))
+
+        # Item 1: position emission moved out of the else branch —
+        # auto-layout-frame nodes whose parent isn't auto-layout still
+        # need explicit .x/.y because parent flow doesn't position them.
+        # Skip when parent IS auto-layout (flow handles position) OR
+        # when a relativeTransform is being emitted later.
+        if not parent_is_autolayout:
             # Skip .x/.y when a full relativeTransform will be emitted
             # below — the matrix includes translation, and scalar .x/.y
             # setters write the SAME translation column, which is then
@@ -1569,21 +1998,39 @@ def generate_figma_script(
 
     # Root element → page
     if root_id in var_map:
+        # Per-op guard (Tier E F3 follow-up): THIS IS THE CRITICAL
+        # ATTACH. If any earlier Phase-2 op threw, naked attach
+        # would itself cascade-abort and leave every Mode-1
+        # auto-parented node flat on the page root. Guarded, we at
+        # least know structurally whether attach succeeded from
+        # __errors.
         if page_name:
             escaped_name = _escape_js(page_name)
             phase2_lines.append(
                 f'let _page = figma.root.children.find(p => p.type === "PAGE" && p.name === "{escaped_name}");'
             )
             phase2_lines.append(f"if (!_page) {{ _page = figma.createPage(); _page.name = \"{escaped_name}\"; }}")
-            phase2_lines.append(f"_page.appendChild({var_map[root_id]});")
+            phase2_lines.append(_guarded_op(
+                f"_page.appendChild({var_map[root_id]});",
+                root_id, "root_append_failed",
+            ))
             phase2_lines.append(f"await figma.setCurrentPageAsync(_page);")
         else:
-            phase2_lines.append(f"_rootPage.appendChild({var_map[root_id]});")
+            phase2_lines.append(_guarded_op(
+                f"_rootPage.appendChild({var_map[root_id]});",
+                root_id, "root_append_failed",
+            ))
 
         if canvas_position is not None:
             cx, cy = canvas_position
-            phase2_lines.append(f"{var_map[root_id]}.x = {cx};")
-            phase2_lines.append(f"{var_map[root_id]}.y = {cy};")
+            phase2_lines.append(_guarded_op(
+                f"{var_map[root_id]}.x = {cx};",
+                root_id, "position_failed",
+            ))
+            phase2_lines.append(_guarded_op(
+                f"{var_map[root_id]}.y = {cy};",
+                root_id, "position_failed",
+            ))
 
     # Emit deferred GROUP creation — inner groups first (reverse BFS order)
     for group_eid in reversed(list(group_deferred)):
@@ -1733,79 +2180,7 @@ def generate_figma_script(
     # "appendChild" keywords that static tests search for.
     uses_placeholder = any("_missingComponentPlaceholder" in ln for ln in lines)
     if uses_placeholder:
-        preamble[placeholder_slot_index] = (
-            "// Missing-component wireframe placeholder: emitted when a Mode 1\n"
-            "// createInstance falls back (deleted/unpublished/stripped component).\n"
-            "// Architectural-style diagonal hatching inside a bordered frame.\n"
-            "//\n"
-            "// Design notes:\n"
-            "// - Hatch: parallel 45° lines, ~12px apart, mid-grey. This is the\n"
-            "//   standard convention in architectural/engineering drawings for\n"
-            "//   'unfilled / to be specified' regions. Reads clearly as a\n"
-            "//   placeholder at any aspect ratio, scales nicely.\n"
-            "// - Mid-grey (0.5) on strokes/text so the wireframe stays visible\n"
-            "//   even if downstream DB overrides clobber the frame fill.\n"
-            "// - Hatch is skipped when the frame is tiny (< 40x40) — pattern\n"
-            "//   just looks like noise at icon sizes.\n"
-            "// - Name label appears only when the frame is >= 64x32.\n"
-            "// - setPluginData('__ph','1') marks the returned frame so the\n"
-            "//   caller can gate subsequent visual-property writes (the DB's\n"
-            "//   overrides for the real component shouldn't be applied to the\n"
-            "//   placeholder).\n"
-            "const _MIN_LABEL_W = 64, _MIN_LABEL_H = 32;\n"
-            "const _MIN_HATCH = 40;\n"
-            "const _HATCH_STRIDE = 12;\n"
-            "function _missingComponentPlaceholder(name, w, h, eid) {\n"
-            "  __errors.push({kind:\"component_missing\", eid, name, w, h});\n"
-            "  const f = figma.createFrame();\n"
-            "  f.resize(w || 24, h || 24);\n"
-            "  f.fills = [];\n"
-            "  f.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
-            "  f.strokeWeight = 1;\n"
-            "  f.clipsContent = true;\n"
-            "  try { f.setPluginData('__ph', '1'); } catch (__e) {}\n"
-            "  const actualW = f.width, actualH = f.height;\n"
-            "  // Diagonal hatch pattern, clipped by frame bounds.\n"
-            "  // Skipped at tiny sizes (icon-sized placeholders look like noise).\n"
-            "  if (actualW >= _MIN_HATCH && actualH >= _MIN_HATCH) {\n"
-            "    const total = actualW + actualH;\n"
-            "    const lineLen = total * 1.5;  // long enough to always span the frame at 45°\n"
-            "    for (let offset = -actualH; offset <= actualW + actualH; offset += _HATCH_STRIDE) {\n"
-            "      const ln = figma.createLine();\n"
-            "      // Subtle opacity so stacked placeholders (e.g. overlay over\n"
-            "      // modal over background) don't compound into an opaque\n"
-            "      // mesh. 15% reads as 'placeholder texture' without\n"
-            "      // competing with any real content that overlays it.\n"
-            "      ln.strokes = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}, opacity:0.15}];\n"
-            "      ln.strokeWeight = 1;\n"
-            "      ln.resize(lineLen, 0);\n"
-            "      // Plugin API rotation: +45 is visually CCW (up-right).\n"
-            "      // Line starts at (offset, actualH) on or below the frame's\n"
-            "      // bottom edge and goes up-right, clipped to the frame.\n"
-            "      ln.rotation = 45;\n"
-            "      ln.x = offset;\n"
-            "      ln.y = actualH;\n"
-            "      f.appendChild(ln);\n"
-            "    }\n"
-            "  }\n"
-            "  if (actualW >= _MIN_LABEL_W && actualH >= _MIN_LABEL_H && name) {\n"
-            "    try {\n"
-            "      const t = figma.createText();\n"
-            "      t.fontName = {family:\"Inter\", style:\"Regular\"};\n"
-            "      t.fontSize = 10;\n"
-            "      t.characters = String(name);\n"
-            "      t.x = 4; t.y = 4;\n"
-            "      t.fills = [{type:\"SOLID\", color:{r:0.5,g:0.5,b:0.5}}];\n"
-            "      f.appendChild(t);\n"
-            "    } catch (__e) {}\n"
-            "  }\n"
-            "  return f;\n"
-            "}\n"
-            "// Helper to gate a setter on whether the target is a placeholder.\n"
-            "// Used to prevent DB visual overrides (fills/strokes/effects) from\n"
-            "// clobbering the placeholder's wireframe appearance.\n"
-            "function _isPh(n) { try { return n.getPluginData('__ph') === '1'; } catch (__e) { return false; } }"
-        )
+        preamble[placeholder_slot_index] = MISSING_COMPONENT_PLACEHOLDER_BLOCK
         # Rebuild the combined script with the updated preamble
         lines = preamble + lines[len(preamble):]
 
@@ -1835,6 +2210,178 @@ def _walk_elements(spec: dict[str, Any]) -> list[tuple[str, dict, str | None]]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# A2.2: per-property dispatch for `_emit_layout()`
+# ---------------------------------------------------------------------------
+# Forensic-audit-2 found that the original `_emit_layout()` bundled all
+# auto-layout container properties into one emission, which blocked
+# per-property provenance gating (Backlog #1). Codex 5.5 review:
+# "Lower semantic layout names → Figma names via dispatch table, then
+# emit per-property through registry capability gates. Use a small
+# dispatch table rather than many bespoke functions."
+#
+# Each entry is a dict (data, not callables) describing one property:
+#   semantic_key     — the IR key on `layout` (or path tuple for padding)
+#   figma_name       — Plugin API property name (matches registry)
+#   format_kind      — value formatter selector:
+#                        "direction"  : map via _DIRECTION_MAP, quoted enum
+#                        "alignment"  : map via _ALIGNMENT_MAP w/ upper()
+#                                       fallback, quoted enum
+#                        "wrap"       : passthrough quoted enum, skip
+#                                       NO_WRAP (Plugin API default)
+#                        "number"     : raw numeric, supports tokens
+#   error_kind       — `_guarded_op` failure tag
+#   token_ref_label  — semantic label for the (eid, label, token) tuple
+#                      (preserves pre-split labels like "padding.top",
+#                      not the figma_name; downstream consumers compare
+#                      on the semantic label)
+#   phase            — "pre_resize" or "post_resize"; pre-split, alignment
+#                      props ran AFTER resize. Preserve that order.
+#
+# The dispatch is the future hook for Backlog #1 per-property provenance
+# gating: each entry's figma_name maps cleanly to `_overrides`.
+_LAYOUT_DISPATCH: tuple[dict[str, Any], ...] = (
+    {
+        "semantic_key": "direction",
+        "figma_name": "layoutMode",
+        "format_kind": "direction",
+        "error_kind": "layout_mode_failed",
+        "token_ref_label": "layoutMode",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "wrap",
+        "figma_name": "layoutWrap",
+        "format_kind": "wrap",
+        "error_kind": "layout_wrap_failed",
+        "token_ref_label": "layoutWrap",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "gap",
+        "figma_name": "itemSpacing",
+        "format_kind": "number",
+        "error_kind": "item_spacing_failed",
+        "token_ref_label": "itemSpacing",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "counterAxisGap",
+        "figma_name": "counterAxisSpacing",
+        "format_kind": "number",
+        "error_kind": "counter_axis_spacing_failed",
+        "token_ref_label": "counterAxisSpacing",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "top"),
+        "figma_name": "paddingTop",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.top",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "right"),
+        "figma_name": "paddingRight",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.right",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "bottom"),
+        "figma_name": "paddingBottom",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.bottom",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "left"),
+        "figma_name": "paddingLeft",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.left",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "mainAxisAlignment",
+        "figma_name": "primaryAxisAlignItems",
+        "format_kind": "alignment",
+        "error_kind": "primary_axis_align_failed",
+        "token_ref_label": "primaryAxisAlignItems",
+        "phase": "post_resize",
+    },
+    {
+        "semantic_key": "crossAxisAlignment",
+        "figma_name": "counterAxisAlignItems",
+        "format_kind": "alignment",
+        "error_kind": "counter_axis_align_failed",
+        "token_ref_label": "counterAxisAlignItems",
+        "phase": "post_resize",
+    },
+)
+
+
+def _extract_layout_value(layout: dict[str, Any], semantic_key: Any) -> Any:
+    """Pull the raw value for a dispatch entry from the IR `layout` dict.
+
+    `semantic_key` is either a flat string (e.g. "gap") or a path tuple
+    (e.g. ("padding", "top")) for nested values. Returns the raw value or
+    None if absent.
+    """
+    if isinstance(semantic_key, tuple):
+        cur: Any = layout
+        for part in semantic_key:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(part)
+            if cur is None:
+                return None
+        return cur
+    return layout.get(semantic_key)
+
+
+def _format_layout_value(
+    raw_value: Any, format_kind: str,
+) -> tuple[str | None, bool]:
+    """Convert a raw IR value into a JS literal for the dispatch entry.
+
+    Returns (formatted_str, is_emittable). is_emittable=False means the
+    raw value resolved to a default-skip case (e.g. NO_WRAP, unknown
+    direction enum, falsy alignment string) and the line MUST NOT emit
+    even if a token ref still appended.
+    """
+    if format_kind == "direction":
+        figma_dir = _DIRECTION_MAP.get(raw_value)
+        if not figma_dir:
+            return (None, False)
+        return (f'"{figma_dir}"', True)
+    if format_kind == "alignment":
+        # Falsy alignment string is gated upstream; map known enums via
+        # _ALIGNMENT_MAP, fall back to upper() for unknown values
+        # (preserves pre-split behaviour for forward-compat enums).
+        if not raw_value:
+            return (None, False)
+        mapped = _ALIGNMENT_MAP.get(raw_value, str(raw_value).upper())
+        return (f'"{mapped}"', True)
+    if format_kind == "wrap":
+        # NO_WRAP is the Plugin API default; pre-split skipped emit on
+        # both falsy values and the explicit default. Preserve that.
+        if not raw_value or raw_value == "NO_WRAP":
+            return (None, False)
+        return (f'"{raw_value}"', True)
+    if format_kind == "number":
+        # Raw number passthrough. resolve_style_value already returned
+        # the resolved scalar; format with str() to mirror the original
+        # f"{resolved}" interpolation (handles int + float identically).
+        if raw_value is None:
+            return (None, False)
+        return (f"{raw_value}", True)
+    return (None, False)
+
+
 def _emit_layout(
     var: str, eid: str, layout: dict[str, Any], tokens: dict[str, Any],
     text_auto_resize: str | None = None,
@@ -1862,48 +2409,85 @@ def _emit_layout(
     IR never has layout.direction set on leaf nodes so this preserves
     existing behaviour for the extraction path. Synthetic-generation
     callers must pass etype to get the gate.
+
+    A2.2 (forensic-audit-2 architectural followon, 2026-04-26):
+    Auto-layout container properties go through the per-property
+    `_LAYOUT_DISPATCH` table — each entry independently extracted,
+    capability-gated, formatted, and emitted. Pre-split this function
+    bundled all properties into a single `not is_leaf` block, which
+    blocked Backlog #1 (per-property provenance gating: emit padding
+    when only PADDING override exists, not coupled to itemSpacing).
+
+    The leaf-type pre-gate is preserved as defense-in-depth: the IR-to-
+    Figma-type bridge has gaps for `star`, `polygon`, `image` (they
+    default to FRAME via `ir_to_figma_type`, where `is_capable` would
+    erroneously return True). Fixing the bridge widens the blast radius
+    of A2.2 to other code paths (`_emit_visual` capability gating); kept
+    as a separate follow-up.
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26):
+    "Lower semantic layout names → Figma names via dispatch table, then
+    emit per-property through registry capability gates. Don't drag
+    resize() into the layout gate (different ordering + parent context
+    semantics). Use a small dispatch table rather than many bespoke
+    functions."
     """
+    from dd.property_registry import is_capable
+
     lines: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
+    # Defense-in-depth: leaf etypes (text, rectangle, ...) skip the
+    # auto-layout dispatch entirely. Per-property capability gates below
+    # are the new precision mechanism for non-leaf etypes; the pre-gate
+    # backstops the bridge gap for star/polygon/image (see docstring).
     is_leaf = etype in _LEAF_TYPES if etype is not None else False
+    figma_node_type = ir_to_figma_type(etype) if etype is not None else None
 
-    if not is_leaf:
-        direction = layout.get("direction", "")
-        figma_dir = _DIRECTION_MAP.get(direction)
-        if figma_dir:
-            lines.append(f'{var}.layoutMode = "{figma_dir}";')
-
-        wrap = layout.get("wrap")
-        if wrap and wrap != "NO_WRAP":
-            lines.append(f'{var}.layoutWrap = "{wrap}";')
-
-        gap_val = layout.get("gap")
-        if gap_val is not None:
-            resolved, token_name = resolve_style_value(gap_val, tokens)
-            if resolved is not None:
-                lines.append(f"{var}.itemSpacing = {resolved};")
+    # Every op below was NAKED before Tier E-followup. A single
+    # "object is not extensible" throw (auto-layout prop on a
+    # non-auto-layout node type) used to abort the whole outer
+    # try/catch, cascading through Phase 1 + Phase 2 and leaving
+    # the screen orphaned from the page. All guarded now so one
+    # bad op produces one __errors entry; neighbours still run.
+    def _emit_dispatch_entries(phase: str) -> None:
+        if is_leaf:
+            return
+        for entry in _LAYOUT_DISPATCH:
+            if entry["phase"] != phase:
+                continue
+            figma_name = entry["figma_name"]
+            # Per-property capability gate — registry is authoritative.
+            # Skipped when figma_node_type is None (legacy caller path:
+            # preserves pre-A2.2 "emit everything" back-compat).
+            if figma_node_type is not None and not is_capable(
+                figma_name, "figma", figma_node_type,
+            ):
+                continue
+            raw_value = _extract_layout_value(layout, entry["semantic_key"])
+            if raw_value is None:
+                continue
+            # Token resolution only meaningful for tokenizable formats
+            # (number for now; direction/alignment/wrap are enum strings
+            # that don't pass through the token resolver in the pre-split
+            # code either).
+            format_kind = entry["format_kind"]
+            if format_kind == "number":
+                resolved, token_name = resolve_style_value(raw_value, tokens)
+            else:
+                resolved, token_name = raw_value, None
+            formatted, is_emittable = _format_layout_value(
+                resolved, format_kind,
+            )
+            if is_emittable and formatted is not None:
+                lines.append(_guarded_op(
+                    f"{var}.{figma_name} = {formatted};",
+                    eid, entry["error_kind"],
+                ))
             if token_name:
-                refs.append((eid, "itemSpacing", token_name))
+                refs.append((eid, entry["token_ref_label"], token_name))
 
-        cas_val = layout.get("counterAxisGap")
-        if cas_val is not None:
-            resolved, token_name = resolve_style_value(cas_val, tokens)
-            if resolved is not None:
-                lines.append(f"{var}.counterAxisSpacing = {resolved};")
-            if token_name:
-                refs.append((eid, "counterAxisSpacing", token_name))
-
-        padding = layout.get("padding", {})
-        for side in ("top", "right", "bottom", "left"):
-            val = padding.get(side)
-            if val is not None:
-                resolved, token_name = resolve_style_value(val, tokens)
-                figma_prop = f"padding{side.capitalize()}"
-                if resolved is not None:
-                    lines.append(f"{var}.{figma_prop} = {resolved};")
-                if token_name:
-                    refs.append((eid, f"padding.{side}", token_name))
+    _emit_dispatch_entries("pre_resize")
 
     sizing = layout.get("sizing", {})
     # layoutSizing is NOT emitted here. It's a parent-context-dependent
@@ -1945,22 +2529,23 @@ def _emit_layout(
         rw = None
         rh = None
     if rw is not None and rh is not None:
-        lines.append(f"{var}.resize({rw}, {rh});")
+        lines.append(_guarded_op(
+            f"{var}.resize({rw}, {rh});", eid, "resize_failed",
+        ))
     elif rw is not None:
-        lines.append(f"{var}.resize({rw}, {var}.height);")
+        lines.append(_guarded_op(
+            f"{var}.resize({rw}, {var}.height);",
+            eid, "resize_failed",
+        ))
     elif rh is not None:
-        lines.append(f"{var}.resize({var}.width, {rh});")
+        lines.append(_guarded_op(
+            f"{var}.resize({var}.width, {rh});",
+            eid, "resize_failed",
+        ))
 
-    if not is_leaf:
-        main_align = layout.get("mainAxisAlignment")
-        if main_align:
-            mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
-            lines.append(f'{var}.primaryAxisAlignItems = "{mapped}";')
-
-        cross_align = layout.get("crossAxisAlignment")
-        if cross_align:
-            mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
-            lines.append(f'{var}.counterAxisAlignItems = "{mapped}";')
+    # Alignment props ran AFTER resize() in pre-split code — preserve
+    # that ordering via the dispatch entry's `phase` field.
+    _emit_dispatch_entries("post_resize")
 
     # Position is NOT emitted here — it must be set AFTER appendChild
     # because Figma interprets x/y as parent-relative only when the
@@ -2043,45 +2628,52 @@ def _emit_vector_paths(
         lines.append(f"{var}.vectorPaths = [{path_entries}];")
 
 
-def _emit_fills(
-    var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
+def _format_paint_array(
+    paints_in: list[dict[str, Any]],
+    eid: str,
+    tokens: dict[str, Any],
+    binding_prefix: str,
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma fills array from IR normalized fills.
+    """Shared paint formatter for both fills and strokes.
 
-    Handles SOLID and GRADIENT_* types. Gradient emission requires
-    gradientTransform (Plugin API format) — stored by supplement extraction.
-    If gradientTransform is missing, the gradient is skipped (REST API
-    handlePositions cannot be used directly by the Plugin API).
+    Returns a pair of (paint_js_strs, token_refs). Each paint_js_str is a
+    single Figma Plugin API Paint object (SOLID / GRADIENT_* / IMAGE).
+    Token-binding property paths use ``binding_prefix`` so the same logic
+    serves "fill.{i}.color" and "stroke.{i}.color" alike.
+
+    Gradients without ``gradientTransform`` are skipped (mirrors the
+    pre-fix fill behavior — REST handlePositions cannot be reliably
+    converted to Plugin API transforms; supplement extraction populates
+    the correct value). For strokes this is a degraded intermediate
+    until the supplement extractor is extended to enrich strokes.
     """
-    paints: list[str] = []
+    paint_strs: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
-    for i, fill in enumerate(fills):
-        fill_type = fill.get("type", "")
+    for i, paint in enumerate(paints_in):
+        paint_type = paint.get("type", "")
 
-        if fill_type == "solid":
-            color_val = fill.get("color", "")
+        if paint_type == "solid":
+            color_val = paint.get("color", "")
             resolved, token_name = resolve_style_value(color_val, tokens)
             if resolved and isinstance(resolved, str) and resolved.startswith("#"):
                 rgb = hex_to_figma_rgba(resolved)
-                paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
-                opacity = fill.get("opacity")
+                base = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}'
+                opacity = paint.get("opacity")
                 if opacity is not None and opacity < 1.0:
-                    paint = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}, opacity: {opacity}}}'
-                paints.append(paint)
+                    base = f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}, opacity: {opacity}}}'
+                paint_strs.append(base)
             if token_name:
-                refs.append((eid, f"fill.{i}.color", token_name))
+                refs.append((eid, f"{binding_prefix}.{i}.color", token_name))
 
-        elif fill_type in _GRADIENT_EMIT_MAP:
-            gradient_transform = fill.get("gradientTransform")
+        elif paint_type in _GRADIENT_EMIT_MAP:
+            gradient_transform = paint.get("gradientTransform")
             if not gradient_transform:
-                # No Plugin API transform — REST handlePositions can't be
-                # converted reliably. Skip the gradient entirely rather
-                # than emitting a wrong matrix. Supplement extraction
-                # populates the correct transform from the Plugin API.
+                # See docstring — skip gradients lacking Plugin API
+                # transform rather than emitting a wrong matrix.
                 continue
-            figma_type = _GRADIENT_EMIT_MAP[fill_type]
-            stops = fill.get("stops", [])
+            figma_type = _GRADIENT_EMIT_MAP[paint_type]
+            stops = paint.get("stops", [])
             stop_strs = []
             for j, stop in enumerate(stops):
                 color_val = stop.get("color", "#000000")
@@ -2092,79 +2684,122 @@ def _emit_fills(
                         f'{{color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]},a:{rgb["a"]}}}, position: {stop.get("position", 0)}}}'
                     )
                 if token_name:
-                    refs.append((eid, f"fill.{i}.gradient.stop.{j}.color", token_name))
+                    refs.append((
+                        eid,
+                        f"{binding_prefix}.{i}.gradient.stop.{j}.color",
+                        token_name,
+                    ))
 
             if stop_strs:
                 gt = gradient_transform
-                opacity = fill.get("opacity")
-                opacity_str = f", opacity: {opacity}" if opacity is not None and opacity < 1.0 else ""
-                paints.append(
+                opacity = paint.get("opacity")
+                opacity_str = (
+                    f", opacity: {opacity}"
+                    if opacity is not None and opacity < 1.0 else ""
+                )
+                paint_strs.append(
                     f'{{type: "{figma_type}", '
                     f'gradientTransform: [[{gt[0][0]},{gt[0][1]},{gt[0][2]}],[{gt[1][0]},{gt[1][1]},{gt[1][2]}]], '
                     f'gradientStops: [{", ".join(stop_strs)}]'
                     f'{opacity_str}}}'
                 )
 
-        elif fill_type == "image":
-            asset_hash = fill.get("asset_hash")
+        elif paint_type == "image":
+            asset_hash = paint.get("asset_hash")
             if asset_hash:
-                scale_mode = fill.get("scaleMode", "fill").upper()
-                image_transform = fill.get("imageTransform")
+                scale_mode = paint.get("scaleMode", "fill").upper()
+                image_transform = paint.get("imageTransform")
                 # REST API uses STRETCH; Plugin API needs CROP when
-                # imageTransform is present (crop/zoom), FILL otherwise
+                # imageTransform is present (crop/zoom), FILL otherwise.
+                # For strokes, scaleMode behavior is the same per
+                # Figma Plugin API (Paint union is shared across
+                # fills/strokes).
                 if scale_mode == "STRETCH":
                     scale_mode = "CROP" if image_transform else "FILL"
-                opacity = fill.get("opacity")
-                opacity_str = f', opacity: {opacity}' if opacity is not None and opacity < 1.0 else ""
+                opacity = paint.get("opacity")
+                opacity_str = (
+                    f', opacity: {opacity}'
+                    if opacity is not None and opacity < 1.0 else ""
+                )
                 transform_str = ""
                 if image_transform:
                     r0 = image_transform[0]
                     r1 = image_transform[1]
                     transform_str = f", imageTransform: [[{r0[0]},{r0[1]},{r0[2]}],[{r1[0]},{r1[1]},{r1[2]}]]"
-                paints.append(
+                paint_strs.append(
                     f'{{type: "IMAGE", scaleMode: "{scale_mode}", '
                     f'imageHash: "{_escape_js(asset_hash)}"{transform_str}{opacity_str}}}'
                 )
 
-    if paints:
-        paints_str = ", ".join(paints)
-        return ([f"{var}.fills = [{paints_str}];"], refs)
+    return paint_strs, refs
 
+
+def _emit_fills(
+    var: str, eid: str, fills: list[dict[str, Any]], tokens: dict[str, Any],
+) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """Emit Figma fills array from IR normalized fills.
+
+    Handles SOLID, GRADIENT_*, and IMAGE types via the shared
+    ``_format_paint_array`` helper.
+    """
+    paint_strs, refs = _format_paint_array(fills, eid, tokens, "fill")
+    if paint_strs:
+        return ([f"{var}.fills = [{', '.join(paint_strs)}];"], refs)
     return ([], refs)
 
 
 def _emit_strokes(
     var: str, eid: str, strokes: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma strokes array from IR normalized strokes."""
-    paints: list[str] = []
-    refs: list[tuple[str, str, str]] = []
+    """Emit Figma strokes paint array — paint-only.
 
-    for i, stroke in enumerate(strokes):
-        if stroke.get("type") != "solid":
-            continue
-        color_val = stroke.get("color", "")
-        resolved, token_name = resolve_style_value(color_val, tokens)
-        if resolved and isinstance(resolved, str) and resolved.startswith("#"):
-            rgb = hex_to_figma_rgba(resolved)
-            paints.append(f'{{type: "SOLID", color: {{r:{rgb["r"]},g:{rgb["g"]},b:{rgb["b"]}}}}}')
-        if token_name:
-            refs.append((eid, f"stroke.{i}.color", token_name))
+    Handles SOLID, GRADIENT_*, and IMAGE types via the shared
+    ``_format_paint_array`` helper.
+
+    A2.1 (forensic-audit-2 architectural followon, 2026-04-26):
+    PAINT-ONLY. ``strokeWeight`` is its own registry property
+    (``dd/property_registry.py:99``) with its own ``_UNIFORM`` emit
+    template, so the registry-driven path emits it independently
+    via ``emit_from_registry``. Pre-split, this function ALSO
+    emitted ``n.strokeWeight = ...`` extracted from
+    ``strokes[0].get("width")`` — duplicate emission. Evidence in
+    audit/sprint-final-.../scripts/24.js: ``n3.strokeWeight = 2;``
+    immediately followed by ``n3.strokeWeight = 2.0;`` (the
+    duplicate; idempotent but blocked per-property provenance
+    gating in Backlog #1).
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26):
+    "Split it. Do not add emit_paint/emit_weight flags. strokeWeight
+    is already a registry property; the bad part is _emit_strokes
+    emits it from strokes[0].width."
+
+    Pre-fix this function only handled SOLID and silently dropped
+    gradient and image strokes — a three-layer drop alongside
+    ``dd/normalize.py:normalize_stroke`` and ``dd/ir.py:normalize_strokes``.
+    Surfaced as the screen-68 missing_asset DRIFT.
+    """
+    paint_strs, refs = _format_paint_array(strokes, eid, tokens, "stroke")
 
     lines: list[str] = []
-    if paints:
-        lines.append(f'{var}.strokes = [{", ".join(paints)}];')
-    width = strokes[0].get("width") if strokes else None
-    if width is not None:
-        lines.append(f"{var}.strokeWeight = {width};")
-
+    if paint_strs:
+        lines.append(f'{var}.strokes = [{", ".join(paint_strs)}];')
+    # strokeWeight emission moved to the registry _UNIFORM path —
+    # see emit_from_registry dispatch on the strokeWeight property.
     return (lines, refs)
 
 
 def _emit_effects(
     var: str, eid: str, effects: list[dict[str, Any]], tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit Figma effects array from IR normalized effects."""
+    """Emit Figma effects array from IR normalized effects.
+
+    Token-binding refs are emitted for the color *and* every sub-property
+    token in ``effect["_token_refs"]`` (set by ``dd/ir.py:normalize_effects``).
+    Pre-fix only the color ref was emitted, silently dropping spread / blur
+    radius / offsetX / offsetY token bindings — making cluster-validator
+    axis coverage misleading and breaking shadow.lg.spread / shadow.lg.radius
+    style propagation.
+    """
     effect_objs: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
@@ -2194,6 +2829,17 @@ def _emit_effects(
             radius = effect.get("radius", 0)
             figma_type = "LAYER_BLUR" if effect_type == "layer-blur" else "BACKGROUND_BLUR"
             effect_objs.append(f'{{type: "{figma_type}", visible: true, radius: {radius}}}')
+
+        # Propagate sub-property token refs (spread / radius / offsetX /
+        # offsetY) collected by normalize_effects. Applies to every effect
+        # type that supports them (DROP_SHADOW + INNER_SHADOW today; the
+        # blur effects only carry radius). Done outside the type branch
+        # so future effect types pick this up automatically.
+        sub_refs = effect.get("_token_refs", {})
+        if isinstance(sub_refs, dict):
+            for sub_prop, sub_token in sub_refs.items():
+                if sub_token:
+                    refs.append((eid, f"effect.{i}.{sub_prop}", sub_token))
 
     lines: list[str] = []
     if effect_objs:
@@ -2266,11 +2912,25 @@ def _emit_text_props(
     else:
         lines.append(fontname_stmt)
 
+    # A2.3 (forensic-audit-2 architectural followon, 2026-04-26):
+    # each text prop write is guarded individually. Pre-fix only
+    # fontName was guarded; a throw on fontSize cascaded through
+    # the rest of this function and was only caught by the
+    # surrounding _guard_naked_prop_lines (losing per-op
+    # attribution). Codex 5.5 review chose option (c): "guard each
+    # text op individually; characters always scheduled in Phase 3;
+    # per-op fail-open."
+    def _emit_text_op(stmt: str) -> None:
+        if eid:
+            lines.append(_guarded_op(stmt, eid, "text_set_failed"))
+        else:
+            lines.append(stmt)
+
     font_size = _resolve_text_value(
         style.get("fontSize"), db_font.get("font_size"), tokens,
     )
     if font_size is not None:
-        lines.append(f"{var}.fontSize = {font_size};")
+        _emit_text_op(f"{var}.fontSize = {font_size};")
 
     # Note: text .characters is NOT emitted here. It's set in Phase 3
     # (Hydrate) after the node is appended to its container, so text
@@ -2279,19 +2939,19 @@ def _emit_text_props(
 
     text_align_h = db_font.get("text_align")
     if text_align_h:
-        lines.append(f'{var}.textAlignHorizontal = "{text_align_h}";')
+        _emit_text_op(f'{var}.textAlignHorizontal = "{text_align_h}";')
 
     text_align_v = db_font.get("text_align_v")
     if text_align_v:
-        lines.append(f'{var}.textAlignVertical = "{text_align_v}";')
+        _emit_text_op(f'{var}.textAlignVertical = "{text_align_v}";')
 
     text_decoration = db_font.get("text_decoration")
     if text_decoration:
-        lines.append(f'{var}.textDecoration = "{text_decoration}";')
+        _emit_text_op(f'{var}.textDecoration = "{text_decoration}";')
 
     text_case = db_font.get("text_case")
     if text_case:
-        lines.append(f'{var}.textCase = "{text_case}";')
+        _emit_text_op(f'{var}.textCase = "{text_case}";')
 
     # leadingTrim controls whether the text bounding box includes full
     # line-height padding (NONE, default) or trims to cap-height
@@ -2303,7 +2963,7 @@ def _emit_text_props(
     # Skip emission when "NONE" (Figma's default — redundant).
     leading_trim = db_font.get("leading_trim")
     if leading_trim and leading_trim != "NONE":
-        lines.append(f'{var}.leadingTrim = "{leading_trim}";')
+        _emit_text_op(f'{var}.leadingTrim = "{leading_trim}";')
 
     line_height = db_font.get("line_height")
     if line_height is not None:
@@ -2316,7 +2976,9 @@ def _emit_text_props(
             lh = line_height
         if isinstance(lh, dict) and "value" in lh:
             unit = lh.get("unit", "PIXELS")
-            lines.append(f'{var}.lineHeight = {{value: {lh["value"]}, unit: "{unit}"}};')
+            _emit_text_op(
+                f'{var}.lineHeight = {{value: {lh["value"]}, unit: "{unit}"}};'
+            )
 
     letter_spacing = db_font.get("letter_spacing")
     if letter_spacing is not None:
@@ -2329,19 +2991,40 @@ def _emit_text_props(
             ls = letter_spacing
         if isinstance(ls, dict) and "value" in ls:
             unit = ls.get("unit", "PIXELS")
-            lines.append(f'{var}.letterSpacing = {{value: {ls["value"]}, unit: "{unit}"}};')
+            _emit_text_op(
+                f'{var}.letterSpacing = {{value: {ls["value"]}, unit: "{unit}"}};'
+            )
 
     paragraph_spacing = db_font.get("paragraph_spacing")
     if paragraph_spacing is not None:
-        lines.append(f"{var}.paragraphSpacing = {paragraph_spacing};")
+        _emit_text_op(f"{var}.paragraphSpacing = {paragraph_spacing};")
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
+def generate_screen(
+    conn: sqlite3.Connection, screen_id: int,
+    *,
+    canvas_position: Optional[tuple[float, float]] = None,
+    page_name: Optional[str] = None,
+) -> dict[str, Any]:
     """Generate a Figma creation manifest for a classified screen.
+
+    Post-M6 canonical path: dict-IR spec → markup-native Option B
+    walker (``dd.render_figma_ast.render_figma``). The Option A
+    decompressor branch (``via_markup=True``) and the ``--via-markup``
+    CLI flag were deleted at M6 per
+    ``docs/decisions/v0.3-option-b-cutover.md``; the 204/204 parity
+    sweep at M4 validated the walker against every Dank screen.
+
+    The spec-building step (``generate_ir``) remains as internal
+    plumbing through M6(b); it feeds both the compressor
+    (``compress_to_l3_with_maps``) and the ``_spec_elements`` shim
+    inside ``render_figma``. M6(b) eliminates both by rewriting
+    ``derive_markup`` to consume the DB directly and migrating the
+    renderer's intrinsic-property emission AST-native.
 
     Returns dict with:
       structure_script: JS string for figma_execute (Phase A — creates nodes)
@@ -2352,7 +3035,11 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     from dd.ir import generate_ir, query_screen_visuals
     from dd.rebind_prompt import query_token_variables
 
-    ir_result = generate_ir(conn, screen_id)
+    # Semantic IR with system chrome preserved — per
+    # feedback_system_chrome_is_design.md.
+    ir_result = generate_ir(
+        conn, screen_id, semantic=True, filter_chrome=False,
+    )
     spec = ir_result["spec"]
     visuals = query_screen_visuals(conn, screen_id)
 
@@ -2371,15 +3058,51 @@ def generate_screen(conn: sqlite3.Connection, screen_id: int) -> dict[str, Any]:
     else:
         ckr_built = False
 
-    script, token_refs = generate_figma_script(
-        spec, db_visuals=visuals, ckr_built=ckr_built,
+    # Markup-native Option B walker. Render path keeps the
+    # synthetic screen wrapper — Figma's native canvas has a
+    # screen-1/frame-1 double-frame shape that the baseline renderer
+    # preserved and the verifier expects. ``collapse_wrapper=False``
+    # matches M4 pixel-parity against baseline;
+    # ``collapse_wrapper=True`` is for grammar + round-trip tests
+    # only.
+    #
+    # PR-1 Stage 2: use the resolver-bearing entry point so that
+    # descendant-visibility PathOverrides (Source A instance_overrides
+    # + Source B DB-visible=0) lower through the backend-neutral
+    # markup path into id-based `findOne(n => n.id.endsWith(";<fig>"))`
+    # writes. The pre-PR-1 entry point (`compress_to_l3_with_maps`)
+    # silently discarded the resolver side-car, so the markup-
+    # PathOverride emitter in render_figma_ast never fired in
+    # production and every descendant hide came from the brittle
+    # `hidden_children` name-based path instead.
+    from dd.compress_l3 import _compress_to_l3_impl
+    from dd.render_figma_ast import render_figma
+    (
+        doc, _eid_nid, nid_map, spec_key_map, original_name_map,
+        descendant_visibility_resolver,
+    ) = _compress_to_l3_impl(
+        spec, conn, screen_id=screen_id,
+        collapse_wrapper=False,
+    )
+    fonts = collect_fonts(spec, db_visuals=visuals)
+    script, token_refs = render_figma(
+        doc, conn, nid_map,
+        fonts=fonts,
+        spec_key_map=spec_key_map,
+        original_name_map=original_name_map,
+        db_visuals=visuals, ckr_built=ckr_built,
+        canvas_position=canvas_position,
+        page_name=page_name,
+        _spec_elements=spec["elements"],
+        _spec_tokens=spec.get("tokens", {}),
+        descendant_visibility_resolver=descendant_visibility_resolver,
     )
 
     return {
         "structure_script": script,
         "token_refs": token_refs,
         "token_variables": query_token_variables(conn),
-        "element_count": ir_result["element_count"],
+        "element_count": len(spec.get("elements", {})),
         "token_count": ir_result["token_count"],
     }
 

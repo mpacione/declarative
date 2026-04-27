@@ -503,3 +503,116 @@ class TestRegistryCompleteness:
         assert len(PROPERTIES) >= 52, (
             f"Expected at least 52 properties, got {len(PROPERTIES)}"
         )
+
+
+class TestVisualBuilderParity:
+    """Regression guard for forensic-audit-2 finding 8-12 (P1).
+
+    The verifier-side ``dd/ir.py:_build_visual`` was hardcoded to
+    fills/strokes/effects pre-P1 while the renderer-side
+    ``dd/visual.py:build_visual_from_db`` iterates the registry. P1
+    closed that gap by delegating ``_build_visual`` to
+    ``build_visual_from_db`` + filtering to category=='visual' props.
+
+    This test pins the post-P1 contract: any visual property the
+    registry declares as renderable on the figma backend MUST be
+    carried by the verifier-side IR builder. Adding a new visual
+    prop to ``PROPERTIES`` without it appearing in ``_build_visual``
+    is a regression toward the silent-drift class P1 closed.
+
+    Visual props that ``_build_visual`` intentionally does NOT carry
+    may be listed in ``_BUILD_VISUAL_DEFERRED`` with a written
+    rationale. Adding entries silently is a code smell.
+
+    Codex review note: this test pins "is the prop in
+    element['visual']", NOT "does the verifier compare it." Several
+    carried props (strokeWeight, strokeAlign, dashPattern,
+    clipsContent, cornerSmoothing, arcData) are present in the IR
+    but not yet wired through verify_figma comparators. Closing
+    those gaps is separate follow-on work.
+    """
+
+    # Visual props that ``_build_visual`` intentionally does NOT
+    # carry into ``element["visual"]``. Each entry must include a
+    # comment explaining why.
+    _BUILD_VISUAL_DEFERRED: dict[str, str] = {
+        # Boolean operations are deferred-materialized; the marker
+        # itself isn't a directly-verified property — the bool_op's
+        # visual props (fills/strokes/effects) are replayed
+        # post-figma.union per P2.
+        "booleanOperation": (
+            "deferred-materialization marker, not a directly verified "
+            "property"
+        ),
+    }
+
+    def test_build_visual_carries_all_renderable_visual_props(self):
+        """Every ``category=='visual'`` property the registry declares
+        as emittable on the figma backend MUST be carried by
+        ``_build_visual`` when the source node has a non-default
+        value for that property.
+
+        Pre-P1 (commit 93b3d14): _build_visual was hardcoded to
+        fills/strokes/effects only — the others (opacity,
+        blendMode, rotation, isMask, cornerRadius) silently passed
+        through verification. This test prevents regression to that
+        state.
+        """
+        import json as _json
+        from dd.ir import _build_visual
+
+        # Build the expected visual-key set from the registry.
+        expected_visual_keys: set[str] = set()
+        fixture_node: dict = {}
+        for prop in PROPERTIES:
+            if prop.category != "visual":
+                continue
+            if prop.figma_name in self._BUILD_VISUAL_DEFERRED:
+                continue
+            if not prop.db_column:
+                continue
+            expected_visual_keys.add(prop.figma_name)
+            # Synthesize a value distinct from default so build_visual_from_db
+            # doesn't skip-emit it. The complex-normalize keys
+            # (fills/strokes/effects/cornerRadius) are populated separately
+            # via JSON columns in their own tests; skip synthesis here.
+            if prop.figma_name in {
+                "fills", "strokes", "effects", "cornerRadius",
+            }:
+                continue
+            # Synthesize a value that survives _apply_db_transform.
+            # JSON columns need a parseable JSON literal; everything
+            # else just needs a non-default value.
+            needs_json = bool(getattr(prop, "needs_json", False))
+            if needs_json:
+                # Codex review: use json.dumps not hand-written JSON.
+                # JSON-valid + non-default + parses cleanly via
+                # _apply_db_transform. Array form covers dashPattern;
+                # arcData also accepts an array shape from json.loads.
+                fixture_node[prop.db_column] = _json.dumps(["non-default"])
+            elif prop.default_value is None:
+                fixture_node[prop.db_column] = "non-default"
+            elif isinstance(prop.default_value, bool):
+                fixture_node[prop.db_column] = not prop.default_value
+            elif isinstance(prop.default_value, (int, float)):
+                fixture_node[prop.db_column] = prop.default_value + 1
+            else:
+                fixture_node[prop.db_column] = "ALT_VALUE"
+
+        visual = _build_visual(fixture_node, bindings=[])
+
+        # Assert every non-complex visual prop the registry carries is
+        # present. fills/strokes/effects/cornerRadius go through their
+        # own complex-normalize paths (tested in test_ir.py against
+        # JSON-shaped DB columns); allow them to be absent on a
+        # synthetic fixture that doesn't populate those columns.
+        non_complex = expected_visual_keys - {
+            "fills", "strokes", "effects", "cornerRadius",
+        }
+        present = set(visual.keys())
+        missing = non_complex - present
+        assert not missing, (
+            f"P1 regression: _build_visual is missing visual props "
+            f"that build_visual_from_db carries: {sorted(missing)}. "
+            f"Check the category filter in dd/ir.py:_build_visual."
+        )

@@ -32,8 +32,92 @@ WALK_WRAPPER = ROOT.parent / "render_test" / "walk_ref.js"
 # 9223-9231 on startup depending on what's already bound.
 BRIDGE_PORT_DEFAULT = "9228"
 GENERATE_TIMEOUT = 60
-WALK_TIMEOUT = 180
+# Python-side subprocess timeout for node walk_ref.js. Matched to
+# walk_ref.js's watchdog (BRIDGE_TIMEOUT_MS default 300s + 10s
+# connect tail + 10s Python-subprocess slack). Bumped 180 → 320 on
+# 2026-04-22 alongside walk_ref.js's 170 → 300 raise — the 170s
+# bridge timeout was OURS, not Figma's; Phase 1 perf + slot-inlined
+# renders on iPad-sized screens legitimately need more headroom.
+#
+# Phase E #5 follow-on (2026-04-26): bumped 320 → 600 for
+# cumulative-bridge-load resilience. Phase E sweep observed
+# screen 78 timing out at 905s — bridge was still running, our
+# subprocess killed it. Codex 2026-04-26 review: "ship timeout
+# hierarchy alignment + observability + bounded warmup."
+#
+# Timeout hierarchy (innermost → outermost) when WALK_TIMEOUT=600:
+#   bridge/proxy_execute: 580s (BRIDGE_TIMEOUT_MS env, set by
+#     sweep.py to WALK_TIMEOUT - 20)
+#   JS watchdog: 590s (BRIDGE_TIMEOUT_MS + 10s)
+#   Python subprocess: 600s
+# Bridge fires first, JS watchdog next, Python subprocess last —
+# so subprocess errors are clean rather than mid-flight kills.
+WALK_TIMEOUT = 600
+# Headroom between Python subprocess timeout and the bridge timeout.
+# Ensures the bridge has a chance to respond with a structured
+# failure before the subprocess is killed.
+WALK_BRIDGE_HEADROOM = 20
 VERIFY_TIMEOUT = 30
+
+
+def _bridge_warmup(port: str, timeout_s: float = 10.0) -> None:
+    """Phase E #5 follow-on: open a WebSocket to the bridge and send
+    a tiny no-op proxy_execute, absorbing first-call latency before
+    the sweep proper starts.
+
+    Strictly non-blocking — any error (no node, no ws, bridge not
+    running, tiny script fails) is logged and ignored. Worst case
+    the sweep starts as if we hadn't warmed up; the warmup never
+    fails the sweep.
+    """
+    import os
+    warmup_script = (
+        # A tiny eval that always succeeds — get the file name.
+        # Avoids any state mutation (no createX, no setCurrentPage).
+        # Wraps in a try because some bridge versions don't expose
+        # figma.root.name directly under proxy_execute.
+        "try { return { ok: true, name: figma.root.name || '' }; } "
+        "catch (e) { return { ok: true, err: String(e) }; }"
+    )
+    try:
+        import json as _json
+        # Reuse walk_ref.js's WebSocket client by calling it via
+        # node with a tiny ad-hoc script. Cheaper to use the same
+        # `ws` module than to launch a fresh JS file.
+        node_script = (
+            f"const WebSocket = require('ws');"
+            f"const ws = new WebSocket('ws://localhost:{port}');"
+            f"const id = 'warmup_' + Date.now();"
+            f"const code = {_json.dumps(warmup_script)};"
+            f"const t = setTimeout(() => {{ ws.close(); process.exit(2); }}, "
+            f"{int(timeout_s * 1000)});"
+            f"ws.on('open', () => ws.send("
+            f"JSON.stringify({{type:'PROXY_EXECUTE', id, code, "
+            f"timeout: {int((timeout_s - 1) * 1000)}}})));"
+            f"ws.on('message', (d) => {{"
+            f"const m = JSON.parse(d.toString());"
+            f"if (m.type === 'PROXY_EXECUTE_RESULT' && m.id === id) {{"
+            f"clearTimeout(t); ws.close(); process.exit(0); }} }});"
+            f"ws.on('error', (e) => {{ clearTimeout(t); process.exit(3); }});"
+        )
+        env = {**os.environ}
+        result = subprocess.run(
+            ["node", "-e", node_script],
+            timeout=timeout_s + 2,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if result.returncode == 0:
+            print(f"[warmup] bridge probe ok (port {port})", flush=True)
+        else:
+            print(
+                f"[warmup] bridge probe failed code={result.returncode} "
+                f"(non-blocking; sweep continues)",
+                flush=True,
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"[warmup] skipped: {e!r} (non-blocking)", flush=True)
 
 
 def list_app_screens(db: Path) -> list[tuple[int, str]]:
@@ -47,10 +131,24 @@ def list_app_screens(db: Path) -> list[tuple[int, str]]:
     return rows
 
 
-def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
+def run_step(
+    cmd: list[str],
+    timeout: int,
+    label: str,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    """Run a subprocess with timeout. ``env`` is merged into os.environ
+    (None = inherit unchanged). Phase E #5 follow-on adds env so the
+    walk path can inject BRIDGE_TIMEOUT_MS for the timeout hierarchy.
+    """
     try:
+        merged_env = None
+        if env is not None:
+            import os
+            merged_env = {**os.environ, **env}
         p = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
+            cmd, capture_output=True, text=True,
+            timeout=timeout, env=merged_env,
         )
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
@@ -59,10 +157,28 @@ def run_step(cmd: list[str], timeout: int, label: str) -> tuple[int, str, str]:
         return 125, "", f"EXCEPTION in {label}: {e!r}"
 
 
-def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
-    script_p = SCRIPTS / f"{sid}.js"
-    walk_p = WALKS / f"{sid}.json"
-    report_p = REPORTS / f"{sid}.json"
+def process_screen(
+    sid: int, name: str, skip_existing: bool, port: str, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
+) -> dict:
+    """Render + walk + verify one screen.
+
+    `grid`: optional (row, col) tuple to lay the rendered root at a
+    fixed grid cell on the Generated Test page. Pairs with
+    `--keep-existing` so multiple sweep runs can share the page
+    without overlapping. None means single-screen mode (clears the
+    page on each render — the legacy default).
+    """
+    # Post-M6 canonical path: Option B markup-native renderer.
+    if db_path is None:
+        db_path = DB_PATH
+    scripts_dir = SCRIPTS
+    walks_dir = WALKS
+    reports_dir = REPORTS
+    script_p = scripts_dir / f"{sid}.js"
+    walk_p = walks_dir / f"{sid}.json"
+    report_p = reports_dir / f"{sid}.json"
 
     row = {
         "screen_id": sid,
@@ -77,6 +193,34 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
         "error_count": 0,
         "ir_node_count": None,
         "rendered_node_count": None,
+        # F12a: walk-side runtime errors recorded by the render
+        # script's per-op try/catch handlers (text_set_failed,
+        # font_load_failed, component_missing, etc.). The structural
+        # verifier's `error_count` only sees missing_child / extra_child
+        # / shape drift — runtime visual-fidelity failures live here.
+        # Kept separate so callers can distinguish "structurally clean
+        # render" (error_count=0 + runtime_error_count=0) from "renders
+        # but with visual gaps" (error_count=0 + runtime_error_count>0).
+        "runtime_error_count": 0,
+        "runtime_error_kinds": {},
+        # P4 (Phase E Pattern 2 fix): diagnostic categorization of
+        # runtime errors. Same data as runtime_error_kinds, but
+        # grouped into ~10 categories for readability. The aggregate
+        # summary uses these to render "1015 runtime errors:
+        # 600 font_health / 268 escaped_artifact / ..." — a much
+        # more actionable shape than 31 raw kinds in a flat list.
+        "runtime_error_categories": {},
+        # Phase E #5 follow-on (2026-04-26): per-screen timing
+        # metrics so future audits can distinguish bridge-load
+        # classes (genuine slow render vs transient close vs Python
+        # subprocess kill). elapsed_ms is the WALK-stage time only;
+        # walk_timed_out is True when the subprocess hit
+        # WALK_TIMEOUT (Python kill); walk_failure_class names the
+        # failure shape (e.g. "subprocess_timeout", "bridge_error",
+        # "exception").
+        "elapsed_ms": 0,
+        "walk_timed_out": False,
+        "walk_failure_class": None,
         "failure": None,
     }
 
@@ -84,16 +228,17 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
     if skip_existing and script_p.exists() and script_p.stat().st_size > 0:
         row["generate_ok"] = True
     else:
+        gen_cmd = [
+            "python3", "-m", "dd", "generate",
+            "--db", str(db_path), "--screen", str(sid),
+        ]
         code, out, err = run_step(
-            [
-                "python3", "-m", "dd", "generate",
-                "--db", str(DB_PATH), "--screen", str(sid),
-            ],
+            gen_cmd,
             GENERATE_TIMEOUT,
             "generate",
         )
         if code != 0 or not out.strip():
-            (SCRIPTS / f"{sid}.stderr").write_text(err)
+            (scripts_dir / f"{sid}.stderr").write_text(err)
             row["failure"] = f"generate exit={code}: {err[:300]}"
             return row
         script_p.write_text(out)
@@ -104,16 +249,55 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
     if skip_existing and walk_p.exists() and walk_p.stat().st_size > 0:
         row["walk_ok"] = True
     else:
+        # F12d: when grid is set, ask walk_ref.js to keep existing
+        # children on the Generated Test page and tile this render
+        # into the requested cell. Otherwise default behavior (clear
+        # then render) — single-screen probe / non-sweep callers.
+        walk_cmd = [
+            "node", str(WALK_WRAPPER),
+            str(script_p), str(walk_p), port,
+        ]
+        if grid is not None:
+            walk_cmd.extend([
+                "--keep-existing",
+                f"--grid-pos={grid[0]},{grid[1]}",
+            ])
+        # Phase E #5 follow-on: align timeout hierarchy. Bridge fires
+        # first (BRIDGE_TIMEOUT_MS), JS watchdog next (+10s),
+        # subprocess last (+ another headroom). This way subprocess
+        # kills are clean rather than mid-flight: bridge has a chance
+        # to respond with a structured failure before the subprocess
+        # is killed.
+        walk_env = {
+            "BRIDGE_TIMEOUT_MS": str(
+                (WALK_TIMEOUT - WALK_BRIDGE_HEADROOM) * 1000,
+            ),
+        }
+        walk_t0 = time.time()
         code, out, err = run_step(
-            [
-                "node", str(WALK_WRAPPER),
-                str(script_p), str(walk_p), port,
-            ],
+            walk_cmd,
             WALK_TIMEOUT,
             "walk",
+            env=walk_env,
         )
+        row["elapsed_ms"] = int((time.time() - walk_t0) * 1000)
+        # Phase E #5 follow-on: classify the failure shape so future
+        # audits can distinguish bridge-load classes.
+        if code == 124:
+            row["walk_timed_out"] = True
+            row["walk_failure_class"] = "subprocess_timeout"
+        elif code != 0:
+            err_text = (err or out or "").lower()
+            if "timeout" in err_text or "watchdog" in err_text:
+                row["walk_failure_class"] = "bridge_timeout"
+            elif "websocket" in err_text or "ws" in err_text:
+                row["walk_failure_class"] = "websocket_error"
+            elif "bridge execution failed" in err_text:
+                row["walk_failure_class"] = "bridge_error"
+            else:
+                row["walk_failure_class"] = "other"
         if code != 0 or not walk_p.exists():
-            (WALKS / f"{sid}.err").write_text((err or out)[:4000])
+            (walks_dir / f"{sid}.err").write_text((err or out)[:4000])
             row["failure"] = f"walk exit={code}: {(err or out)[:300]}"
             return row
         row["walk_ok"] = True
@@ -123,7 +307,7 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
     code, out, err = run_step(
         [
             "python3", "-m", "dd", "verify",
-            "--db", str(DB_PATH), "--screen", str(sid),
+            "--db", str(db_path), "--screen", str(sid),
             "--rendered-ref", str(walk_p), "--json",
         ],
         VERIFY_TIMEOUT,
@@ -144,12 +328,158 @@ def process_screen(sid: int, name: str, skip_existing: bool, port: str) -> dict:
 
     row["verify_ok"] = True
     row["is_parity"] = report["is_parity"]
+    # P1 (Phase E Pattern 2 fix): the verifier's `is_parity` is now
+    # strict (structural OK AND zero runtime errors). Pull
+    # `is_structural_parity` too so callers that ONLY want shape
+    # signal (e.g. fidelity scoring) can opt in. Old artefacts
+    # without this field default to mirroring is_parity for
+    # backwards compatibility.
+    row["is_structural_parity"] = report.get(
+        "is_structural_parity", report["is_parity"],
+    )
     row["parity_ratio"] = report["parity_ratio"]
     row["ir_node_count"] = report["ir_node_count"]
     row["rendered_node_count"] = report["rendered_node_count"]
     row["error_kinds"] = [e["kind"] for e in report["errors"]]
     row["error_count"] = len(report["errors"])
+    # F12a: pull walk-side runtime error counts that the verifier now
+    # surfaces in its --json payload. Older verifier versions lacked
+    # these keys; default to 0/{} when absent so existing artefact
+    # readers don't break.
+    row["runtime_error_count"] = report.get("runtime_error_count", 0)
+    row["runtime_error_kinds"] = report.get("runtime_error_kinds", {})
+    # P4: also pull categories. Older verifier versions don't emit
+    # this; default to {} for backwards compat with existing artefacts.
+    row["runtime_error_categories"] = report.get(
+        "runtime_error_categories", {},
+    )
     return row
+
+
+# Backlog #4 (forensic-audit-2 architectural sprint, 2026-04-26):
+# kind classes that benefit from retry vs not. Real-bug verifier
+# mismatches surfaced by P1/A1.3/A5 don't resolve on rerun (same
+# data, same diff, same drift). Retry only when the failure is
+# bridge-load class.
+_TRANSIENT_VERIFIER_KINDS: frozenset[str] = frozenset()  # currently none
+_TRANSIENT_RUNTIME_KINDS: frozenset[str] = frozenset({
+    "missing_component_node",
+    "missing_instance_node",
+    "component_missing",
+    "create_instance_failed",
+    "ckr_unbuilt",
+    "prefetch_failed",
+    "no_main_component",
+    "import_component_failed",
+})
+
+
+def _is_likely_transient_failure(row: dict) -> bool:
+    """Decide whether to retry a DRIFT row.
+
+    Returns True when the row's failures are likely bridge-load
+    transients (missing_component_node, etc. — the original retry
+    motivation per feedback_sweep_transient_timeouts.md). Returns
+    False when ALL surfaced kinds are deterministic verifier
+    mismatches (fill_mismatch, opacity_mismatch, etc. — the
+    classes P1/A1.3/A5 added) that won't change on rerun.
+
+    Conservative defaults:
+    - walk_ok=False → True (outright walk failure is the canonical
+      transient case)
+    - empty error info on a DRIFT row → True (unknown cause; safer
+      to retry once)
+    - any transient kind in the row → True (might fix the verifier
+      mismatches as a downstream effect)
+    - all kinds are real-bug verifier mismatches → False
+    """
+    # Outright walk failure — always retry.
+    if row.get("walk_ok") is False:
+        return True
+    if row.get("walk_failure_class"):
+        return True
+
+    error_kinds = list(row.get("error_kinds") or [])
+    runtime_kinds = dict(row.get("runtime_error_kinds") or {})
+
+    # Empty error info on a DRIFT row → unknown; retry conservatively.
+    if not error_kinds and not runtime_kinds:
+        return True
+
+    # Any transient kind in the runtime channel → retry (it may
+    # cascade-fix the verifier mismatches once the bridge load
+    # subsides).
+    for kind in runtime_kinds:
+        if kind in _TRANSIENT_RUNTIME_KINDS:
+            return True
+
+    # Any transient kind in the verifier channel → retry. (Currently
+    # none, but the structure is in place for future kinds.)
+    for kind in error_kinds:
+        if kind in _TRANSIENT_VERIFIER_KINDS:
+            return True
+
+    # All kinds are real-bug verifier mismatches → no retry.
+    return False
+
+
+def process_screen_with_retry(
+    sid: int, name: str, skip_existing: bool, port: str,
+    max_retries: int = 2, retry_backoff: float = 1.0, db_path: Path = None,
+    *,
+    grid: tuple[int, int] | None = None,
+) -> dict:
+    """Wrap ``process_screen`` with per-screen retry on transient failures.
+
+    Per ``feedback_sweep_transient_timeouts.md``: the bridge accumulates
+    load during a sweep; mid-sweep `getNodeByIdAsync` calls can silently
+    return null, producing missing_component_node + component_missing
+    errors that resolve cleanly on a fresh retry. Same for outright walk
+    timeouts on iPad-sized screens.
+
+    Backlog #4 (forensic-audit-2 architectural sprint, 2026-04-26):
+    after P1+A1.3+A5 added real-bug verifier comparators, DRIFT
+    screens started including deterministic mismatches that don't
+    resolve on retry. Retry now consults
+    ``_is_likely_transient_failure`` to skip retrying real-bug
+    DRIFT (saves wall time without losing transient recovery).
+    Sweep elapsed dropped 8x (260s → 2060s pre-fix; ~260s
+    post-fix expected).
+
+    Retry policy:
+    - Generate failures NEVER retry (deterministic; usually a real bug).
+    - Walk-failure (script timeout, bridge error) DOES retry — these are
+      pure transients on the bridge side.
+    - Verify success but is_parity=False with TRANSIENT kinds DOES
+      retry — the prefetch-returned-null class.
+    - Verify success but is_parity=False with REAL-BUG kinds (verifier
+      mismatches only) DOES NOT retry — same data, same diff, no
+      benefit.
+    - is_parity=True is the success case; return immediately.
+
+    Backoff is exponential capped at 10s: 1s, 2s, 4s.
+    """
+    last_row: dict = {}
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            sleep_s = min(retry_backoff * (2 ** (attempt - 1)), 10.0)
+            time.sleep(sleep_s)
+        # Don't reuse failed artefacts on retry — regenerate everything.
+        skip = skip_existing if attempt == 0 else False
+        row = process_screen(sid, name, skip, port, db_path=db_path, grid=grid)
+        row["attempt"] = attempt + 1
+        last_row = row
+        if row.get("is_parity") is True:
+            return row
+        # Don't retry generate failures
+        if row.get("generate_ok") is False:
+            return row
+        # Backlog #4: don't retry real-bug DRIFT (verifier mismatches
+        # only, no transient kinds in the row). Retry was tuned for
+        # bridge-load transients; real-bug DRIFT just wastes time.
+        if not _is_likely_transient_failure(row):
+            return row
+    return last_row
 
 
 def summarize(rows: list[dict]) -> dict:
@@ -157,18 +487,123 @@ def summarize(rows: list[dict]) -> dict:
     for r in rows:
         kinds.update(r.get("error_kinds") or [])
 
+    # F12a: aggregate walk-side runtime errors across screens. These are
+    # visual-fidelity failures (text_set_failed, font_load_failed,
+    # component_missing, etc.) that the structural verifier doesn't see.
+    # The "screens with runtime errors" count is the load-bearing visual-
+    # fidelity headline — if it's >0 you have visual gaps even when
+    # is_parity_true == total.
+    runtime_kinds = Counter()
+    # P4: parallel category counter. Same data, different grain — when
+    # the headline says "1015 runtime errors", the categories tell you
+    # at a glance which axes to investigate (font_health vs
+    # instance_materialization vs escaped_artifact).
+    runtime_categories = Counter()
+    screens_with_runtime_errors = 0
+    total_runtime_errors = 0
+    for r in rows:
+        rk = r.get("runtime_error_kinds") or {}
+        if rk:
+            screens_with_runtime_errors += 1
+        for k, v in rk.items():
+            runtime_kinds[k] += v
+        total_runtime_errors += r.get("runtime_error_count", 0)
+        rc = r.get("runtime_error_categories") or {}
+        for cat, count in rc.items():
+            runtime_categories[cat] += count
+
     total = len(rows)
+    # P1: structural-parity count — tree shape matches IR, ignores
+    # runtime errors. The pre-Phase-E meaning of "is_parity_true."
+    structural_parity_true = sum(
+        1 for r in rows if r.get("is_structural_parity") is True
+    )
+    # P1: strict-parity count — structural OK AND zero runtime errors.
+    # The new (post-Phase-E) meaning of "is_parity_true."
     parity_true = sum(1 for r in rows if r.get("is_parity") is True)
+    # `is_parity_true_clean` is now redundant with `is_parity_true`
+    # (both mean "structural + runtime clean"), but kept for backward-
+    # compat with older artefact readers / dashboards that key off it.
+    parity_true_clean = parity_true
     walk_failed = sum(1 for r in rows if r.get("walk_ok") is False and r.get("generate_ok"))
     generate_failed = sum(1 for r in rows if r.get("generate_ok") is False)
 
+    retried = sum(1 for r in rows if r.get("attempt", 1) > 1)
+    retried_recovered = sum(
+        1 for r in rows
+        if r.get("attempt", 1) > 1 and r.get("is_parity") is True
+    )
+
+    # Phase E #5 follow-on: bridge-load metrics. Gives the next audit
+    # a quick distinction between "subprocess hit our timeout" and
+    # "bridge reported error."
+    walk_timed_out_count = sum(
+        1 for r in rows if r.get("walk_timed_out") is True
+    )
+    walk_failure_classes = Counter()
+    elapsed_ms_values: list[int] = []
+    for r in rows:
+        cls = r.get("walk_failure_class")
+        if cls:
+            walk_failure_classes[cls] += 1
+        em = r.get("elapsed_ms", 0)
+        if isinstance(em, int) and em > 0:
+            elapsed_ms_values.append(em)
+    elapsed_ms_p50 = (
+        sorted(elapsed_ms_values)[len(elapsed_ms_values) // 2]
+        if elapsed_ms_values
+        else 0
+    )
+    elapsed_ms_p95 = (
+        sorted(elapsed_ms_values)[int(len(elapsed_ms_values) * 0.95)]
+        if elapsed_ms_values
+        else 0
+    )
+    elapsed_ms_max = max(elapsed_ms_values) if elapsed_ms_values else 0
+
     return {
         "total": total,
+        # P1: HEADLINE strict-parity number. Cuts visual-fidelity gaps
+        # OUT — a screen with structural parity but runtime errors no
+        # longer counts here.
         "is_parity_true": parity_true,
+        # P1: NEW field for the structural-only signal. Useful for
+        # callers that want "did the renderer produce the right
+        # tree?" independent of "did all runtime ops land cleanly?"
+        # (e.g. fidelity scoring uses structural ratio.)
+        "is_structural_parity_true": structural_parity_true,
+        # Backward-compat alias for is_parity_true (same definition
+        # now). Older dashboards keyed on `is_parity_true_clean`
+        # for "fully clean" — still resolves correctly.
+        "is_parity_true_clean": parity_true_clean,
         "is_parity_false": total - parity_true - walk_failed - generate_failed,
         "generate_failed": generate_failed,
         "walk_failed": walk_failed,
+        "retried": retried,
+        "retried_recovered": retried_recovered,
         "error_kinds": dict(kinds.most_common()),
+        # F12a: walk-side runtime errors, aggregated across screens.
+        "screens_with_runtime_errors": screens_with_runtime_errors,
+        "total_runtime_errors": total_runtime_errors,
+        "runtime_error_kinds": dict(runtime_kinds.most_common()),
+        # P4: same data grouped into ~10 diagnostic categories. The
+        # headline aggregate the user actually wants when scanning a
+        # 67-screen sweep summary — "60% of runtime errors are
+        # font_health → fix at the font layer" is a much more
+        # actionable read than scrolling 31 raw kinds.
+        "runtime_error_categories": dict(runtime_categories.most_common()),
+        # Phase E #5 follow-on: bridge-load metrics for cumulative
+        # diagnostics. p50/p95/max walk elapsed_ms and the failure-
+        # class distribution. The next audit can distinguish:
+        # subprocess_timeout (Python kill — we hit OUR limit),
+        # bridge_timeout (Figma side), websocket_error (transient
+        # close), bridge_error (proxy_execute returned failure),
+        # other.
+        "walk_timed_out_count": walk_timed_out_count,
+        "walk_failure_classes": dict(walk_failure_classes.most_common()),
+        "walk_elapsed_ms_p50": elapsed_ms_p50,
+        "walk_elapsed_ms_p95": elapsed_ms_p95,
+        "walk_elapsed_ms_max": elapsed_ms_max,
         "per_screen": rows,
     }
 
@@ -182,38 +617,124 @@ def main() -> int:
                     help="Start at this screen id (for resume)")
     ap.add_argument("--port", default=BRIDGE_PORT_DEFAULT,
                     help="Desktop Bridge WebSocket port")
+    ap.add_argument("--max-retries", type=int, default=2,
+                    help="Per-screen retry count on transient failures "
+                    "(walk timeout, missing-component drift). "
+                    "Default 2 (3 attempts total). Set 0 to disable.")
+    ap.add_argument("--retry-backoff", type=float, default=1.0,
+                    help="Initial backoff seconds before retry "
+                    "(doubles each attempt, capped at 10s).")
+    ap.add_argument("--db", default=None,
+                    help=f"Path to SQLite database. Default: {DB_PATH}")
+    ap.add_argument("--out-dir", default=None,
+                    help=f"Output dir for scripts/walks/reports/summary.json. "
+                    f"Default: {ROOT}")
+    ap.add_argument("--grid", action="store_true",
+                    help="F12d sweep mode: lay rendered screens out in a "
+                    "grid on the Generated Test page (don't clear between "
+                    "renders). Each screen goes to a fixed cell so multiple "
+                    "screens persist for visual review. Width determined "
+                    "by --grid-cols.")
+    ap.add_argument("--grid-cols", type=int, default=6,
+                    help="Number of columns in --grid mode. Default 6 "
+                    "(comfortable for 1440-wide desktop screens).")
     args = ap.parse_args()
 
+    # Resolve db_path with default fallback (backward compatible)
+    db_path = Path(args.db).resolve() if args.db else DB_PATH
+    if not db_path.exists():
+        print(f"Error: DB not found at {db_path}", file=sys.stderr)
+        return 1
+
+    # Resolve output dir; allows running multiple sweeps against different DBs
+    # without overwriting artefacts. Defaults preserve existing behavior.
+    out_root = Path(args.out_dir).resolve() if args.out_dir else ROOT
+    scripts_dir = out_root / "scripts"
+    walks_dir = out_root / "walks"
+    reports_dir = out_root / "reports"
+
+    # Override module-level constants for this run so process_screen uses them.
+    # (process_screen reads SCRIPTS/WALKS/REPORTS by module reference; this
+    # is the smallest backwards-compatible way to redirect output.)
+    global SCRIPTS, WALKS, REPORTS
+    SCRIPTS = scripts_dir
+    WALKS = walks_dir
+    REPORTS = reports_dir
+
+    # Post-M6: single render path; single artefact layout.
     for p in (SCRIPTS, WALKS, REPORTS):
         p.mkdir(parents=True, exist_ok=True)
 
-    screens = list_app_screens(DB_PATH)
+    screens = list_app_screens(db_path)
     if args.since:
         screens = [(sid, n) for sid, n in screens if sid >= args.since]
     if args.limit:
         screens = screens[: args.limit]
 
+    grid_msg = (
+        f", grid={args.grid_cols}-cols (renders persist for visual review)"
+        if args.grid else ""
+    )
     print(
-        f"Sweeping {len(screens)} app_screens "
-        f"(skip_existing={args.skip_existing}, port={args.port})",
+        f"Sweeping {len(screens)} app_screens from {db_path.name} "
+        f"(skip_existing={args.skip_existing}, port={args.port}, "
+        f"out={out_root}{grid_msg})",
         flush=True,
     )
+    # Phase E #5 follow-on (2026-04-26): bounded bridge warmup. The
+    # first WebSocket connect to the Desktop Bridge after the sweep
+    # process starts can be 5-10s slower than steady-state (cold
+    # plugin, fresh handshake). Per Codex review, run a cheap probe
+    # at sweep start to absorb that latency before measuring per-
+    # screen times. Strictly non-blocking: any failure logs and
+    # moves on (warmup is an optimization, not a precondition).
+    _bridge_warmup(args.port)
+
     rows: list[dict] = []
     t0 = time.time()
     for i, (sid, name) in enumerate(screens, 1):
         t1 = time.time()
-        row = process_screen(sid, name, args.skip_existing, args.port)
-        elapsed = time.time() - t1
-        status = (
-            "PARITY" if row["is_parity"] is True
-            else "FAIL" if row.get("failure")
-            else "DRIFT"
+        # F12d: compute (row, col) for this screen if --grid is set.
+        # Sweep order is the iteration index (i-1), so grid layout
+        # mirrors the screen-id order: row = i // cols, col = i % cols.
+        grid: tuple[int, int] | None = None
+        if args.grid:
+            grid_idx = i - 1
+            grid = (grid_idx // args.grid_cols, grid_idx % args.grid_cols)
+        row = process_screen_with_retry(
+            sid, name, args.skip_existing, args.port,
+            max_retries=args.max_retries,
+            retry_backoff=args.retry_backoff,
+            db_path=db_path,
+            grid=grid,
         )
+        elapsed = time.time() - t1
+        # P1 + F12a: status semantics, post-Phase-E:
+        #   PARITY  = strict parity (structural OK + 0 runtime errors)
+        #   PARITY+ = structural OK but runtime errors present
+        #             (visual-fidelity gap; pre-P1 this was just PARITY)
+        #   DRIFT   = structural drift (tree shape doesn't match IR)
+        #   FAIL    = generate or walk failed entirely
+        if row["is_parity"] is True:
+            # Strict parity: structural OK AND 0 runtime errors.
+            status = "PARITY"
+        elif row.get("is_structural_parity") is True:
+            # Structural OK but runtime errors break strict parity.
+            status = "PARITY+"
+        elif row.get("failure"):
+            status = "FAIL"
+        else:
+            status = "DRIFT"
+        attempt_marker = (
+            f" (try {row.get('attempt', 1)})" if row.get("attempt", 1) > 1 else ""
+        )
+        rt_count = row.get("runtime_error_count", 0)
+        rt_part = f" rt={rt_count}" if rt_count else ""
         print(
-            f"[{i}/{len(screens)}] screen={sid:3d} {status:6s} "
+            f"[{i}/{len(screens)}] screen={sid:3d} {status:7s}{attempt_marker} "
             f"t={elapsed:5.1f}s "
             f"parity={row.get('parity_ratio')} "
-            f"errs={row.get('error_count')} "
+            f"errs={row.get('error_count')}{rt_part} "
             f"{'kinds=' + ','.join(row['error_kinds'][:3]) if row['error_kinds'] else ''} "
             f"{('FAIL=' + row['failure'][:120]) if row.get('failure') else ''}",
             flush=True,
@@ -222,18 +743,54 @@ def main() -> int:
 
     summary = summarize(rows)
     summary["elapsed_s"] = round(time.time() - t0, 1)
-    (ROOT / "summary.json").write_text(json.dumps(summary, indent=2))
+    summary["db_path"] = str(db_path)
+    (out_root / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== SUMMARY ===")
-    print(f"total:            {summary['total']}")
-    print(f"is_parity=True:   {summary['is_parity_true']}")
-    print(f"is_parity=False:  {summary['is_parity_false']}")
-    print(f"generate_failed:  {summary['generate_failed']}")
-    print(f"walk_failed:      {summary['walk_failed']}")
+    print(f"total:                       {summary['total']}")
+    # P1: structural parity is the tree-shape signal; strict parity
+    # adds the runtime-clean requirement on top. The two-line split
+    # makes both visible at a glance.
+    structural_t = summary.get("is_structural_parity_true", summary["is_parity_true"])
+    strict_t = summary["is_parity_true"]
+    structural_only = structural_t - strict_t
+    print(f"is_structural_parity=True:   {structural_t}  (tree shape matches IR)")
+    print(f"  ├─ strict (PARITY):        {strict_t}  (also 0 runtime errors)")
+    print(f"  └─ runtime errs (PARITY+): {structural_only}  (visual-fidelity gap)")
+    print(f"is_parity=False (DRIFT):     {summary['is_parity_false']}  (structural drift)")
+    print(f"generate_failed:             {summary['generate_failed']}")
+    print(f"walk_failed:                 {summary['walk_failed']}")
+    print(
+        f"retried:          {summary['retried']} "
+        f"(recovered to PARITY: {summary['retried_recovered']})"
+    )
     print(f"elapsed:          {summary['elapsed_s']}s")
-    print("\nerror_kinds:")
-    for kind, ct in summary["error_kinds"].items():
-        print(f"  {kind:30s}  {ct}")
+    print("\nerror_kinds (structural — verifier-reported):")
+    if summary["error_kinds"]:
+        for kind, ct in summary["error_kinds"].items():
+            print(f"  {kind:30s}  {ct}")
+    else:
+        print("  (none)")
+    # F12a: walk-side runtime errors aggregated. "0 in N screens" means
+    # the renderer never had to record-and-continue; that's the cleanest
+    # visual-fidelity headline.
+    print(
+        f"\nruntime_errors:   {summary.get('total_runtime_errors', 0)} "
+        f"across {summary.get('screens_with_runtime_errors', 0)} screens "
+        f"(visual-fidelity channel — F11.1 catch-and-continue)"
+    )
+    # P4: categories first (the actionable axis), then raw kinds (the
+    # sharp signal for debugging a specific class).
+    rt_cats = summary.get("runtime_error_categories") or {}
+    if rt_cats:
+        print("  by category:")
+        for cat, ct in rt_cats.items():
+            print(f"    {cat:30s}  {ct}")
+    rt_kinds = summary.get("runtime_error_kinds") or {}
+    if rt_kinds:
+        print("  by raw kind:")
+        for kind, ct in rt_kinds.items():
+            print(f"    {kind:30s}  {ct}")
     return 0
 
 

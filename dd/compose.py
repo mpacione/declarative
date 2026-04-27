@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from typing import Any
 
-from dd.renderers.figma import generate_figma_script
+from dd.composition.providers.universal import UNIVERSAL_COMPONENT_TYPES
+from dd.compress_l3 import compress_to_l3_with_maps
+from dd.render_figma_ast import render_figma
+from dd.renderers.figma import collect_fonts
 from dd.templates import query_templates
 
 _DIRECTION_MAP = {
@@ -30,6 +34,119 @@ _SIZING_MAP = {
     "HUG": "hug",
     "FIXED": "fixed",
 }
+
+
+def _semantic_type(element: dict[str, Any]) -> str:
+    """Return the element's semantic type (role-first, with type fallback).
+
+    Compose reads "semantic type" for template lookup / type counting /
+    warning emission. Post-Stage-1 DB-sourced IR has ``role`` (semantic
+    classifier label) and ``type`` (structural primitive) split; Mode 3
+    LLM-generated IR still uses the conflated ``type`` only. This
+    helper handles both shapes by reading role-first then falling
+    through to type.
+
+    See docs/plan-type-role-split.md §4 Stage 3a.
+    """
+    return element.get("role") or element.get("type", "")
+
+
+def _ckr_is_built(conn: sqlite3.Connection) -> bool:
+    """Return True iff `component_key_registry` exists and has rows.
+
+    Shared by `generate_from_prompt` and `dd.renderers.figma.
+    generate_screen`; both pipelines gate Mode-1 instance resolution
+    on CKR presence and need the same boolean to set the
+    `ckr_built` kwarg on the renderer.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='component_key_registry'"
+    ).fetchone()
+    if not exists:
+        return False
+    row = conn.execute(
+        "SELECT COUNT(*) FROM component_key_registry"
+    ).fetchone()
+    return bool(row and row[0] > 0)
+
+
+_COMPONENT_KEY_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _resolve_component_keys(
+    spec: dict[str, Any],
+    conn: sqlite3.Connection | None,
+    warnings: list[str],
+) -> None:
+    """Normalise IR ``component_key`` values to real CKR hex keys.
+
+    F9: the LLM is told (per ``dd/prompt_parser.py:65``) it may emit
+    ``"component_key": "<name>"`` using names from the
+    ``component_key_registry`` vocabulary block. The renderer's import
+    branch (``dd/render_figma_ast.py:1079``) calls
+    ``figma.importComponentByKeyAsync(<arg>)`` verbatim — Figma rejects
+    a name like ``"buttons/button with icon"`` and the script falls
+    through to ``_missingComponentPlaceholder()``.
+
+    This pre-pass walks ``spec["elements"]`` (after ``compose_screen``,
+    before ``build_template_visuals``) and rewrites every
+    ``component_key`` field so it is either:
+
+    1. A real CKR hex key (preserved from a Mode-1 instance template,
+       or substituted from a CKR name lookup);
+    2. Removed, with a warning added to the ``warnings`` list when
+       the value can't be resolved.
+
+    The lookup is DB-driven only: no hardcoded names. When ``conn`` is
+    ``None`` or the CKR table doesn't exist, the function is a no-op
+    (all values pass through untouched) — matches the
+    ``build_template_visuals`` no-conn fallback.
+    """
+    if conn is None:
+        return
+    try:
+        ckr_rows = conn.execute(
+            "SELECT component_key, name, figma_node_id "
+            "FROM component_key_registry"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return
+
+    valid_keys: set[str] = set()
+    key_by_name: dict[str, str] = {}
+    for row in ckr_rows:
+        component_key = row[0]
+        name = row[1]
+        if component_key:
+            valid_keys.add(component_key)
+        if name and component_key:
+            key_by_name[name] = component_key
+
+    elements = spec.get("elements", {})
+    for eid, element in elements.items():
+        if not isinstance(element, dict):
+            continue
+        value = element.get("component_key")
+        if value is None:
+            continue
+        if value in valid_keys:
+            continue
+        if value in key_by_name:
+            element["component_key"] = key_by_name[value]
+            continue
+        if _COMPONENT_KEY_RE.match(value):
+            element.pop("component_key", None)
+            warnings.append(
+                f"unknown component_key (looks like a hex key but not in CKR): "
+                f"{value!r} on element {eid!r}"
+            )
+            continue
+        element.pop("component_key", None)
+        warnings.append(
+            f"unresolved component_key (neither CKR name nor valid hex key): "
+            f"{value!r} on element {eid!r}"
+        )
 
 
 def _pick_best_template(
@@ -60,6 +177,7 @@ def compose_screen(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]] | None = None,
     registry: Any | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     """Build a CompositionSpec from a list of component descriptions.
 
@@ -81,7 +199,25 @@ def compose_screen(
     type_counters: dict[str, int] = {}
     elements: dict[str, dict[str, Any]] = {}
 
-    def _allocate_id(comp_type: str) -> str:
+    def _allocate_id(comp_type: str, preferred_eid: str | None = None) -> str:
+        """Allocate an eid for a new element.
+
+        Stage 0.4: when the planner supplied a ``preferred_eid`` (a
+        named entity like ``product-showcase-section``), honour it so
+        the LLM's own ontology survives into downstream addressing
+        (edit grammar, drift check, session log). Falls back to the
+        counter form when the preferred eid is missing, non-string,
+        whitespace-only, or already taken — callers rely on compose
+        never crashing on a duplicate, even though Stage 0.6's drift
+        check is expected to surface duplicate-eid as KIND_PLAN_DRIFT
+        before composition runs.
+        """
+        if (
+            isinstance(preferred_eid, str)
+            and preferred_eid.strip()
+            and preferred_eid not in elements
+        ):
+            return preferred_eid
         type_counters[comp_type] = type_counters.get(comp_type, 0) + 1
         return f"{comp_type}-{type_counters[comp_type]}"
 
@@ -173,7 +309,7 @@ def compose_screen(
             return spliced_eid
 
         comp_type = comp["type"]
-        eid = _allocate_id(comp_type)
+        eid = _allocate_id(comp_type, preferred_eid=comp.get("eid"))
 
         element: dict[str, Any] = {"type": comp_type}
 
@@ -218,16 +354,69 @@ def compose_screen(
         if children:
             child_ids = [_build_element(child) for child in children]
             element["children"] = child_ids
-        elif not component_key and not _mode3_disabled():
+            elements[eid] = element
+            return eid
+        elif (
+            not component_key
+            and not _mode3_disabled()
+            and comp_type not in _LEAF_TYPES_FOR_HOIST
+        ):
             # Mode-3 fall-through: synthesise children when the LLM
-            # provided none. Template-to-parent merge already happened
-            # above via _apply_template_to_parent.
-            synthetic_ids = _mode3_synthesise_children(
+            # provided none AND the parent type can legitimately host
+            # children. Tier D.3 F4 gate: leaf types (button, icon,
+            # switch, chip, etc.) resolve Mode-1 to INSTANCE — their
+            # internal structure comes from the library master and
+            # they can't host added children (Figma Plugin API
+            # rejects `instance.appendChild`). If Mode-3 synthesises
+            # a text child here, Phase 2 would throw and cascade
+            # (F3). Template-to-parent merge already happened above
+            # via _apply_template_to_parent; leaf types get their
+            # visible text via props.text instead.
+            synthetic_by_pos = _mode3_synthesise_children(
                 comp_type, variant, props or {}, elements, _allocate_id,
                 parent_element=None,
             )
-            if synthetic_ids:
-                element["children"] = synthetic_ids
+            external_top = synthetic_by_pos.get("top") or []
+            external_bottom = synthetic_by_pos.get("bottom") or []
+            internal_ids: list[str] = []
+            for pos, ids in synthetic_by_pos.items():
+                if pos in ("top", "bottom"):
+                    continue
+                internal_ids.extend(ids)
+            if internal_ids:
+                element["children"] = internal_ids
+
+            # Label-hoist (per docs/research/scorer-calibration-and-
+            # som-fidelity.md §6.1): slots declared with position="top"
+            # or "bottom" are EXTERNAL siblings, not internal children.
+            # SoM surfaced the bug — text_input was rendering as a
+            # container of stacked text labels because we lumped the
+            # `label` slot as internal. Fix: wrap the parent in an
+            # outer vertical frame when external positions are present.
+            if external_top or external_bottom:
+                elements[eid] = element
+                wrapper_eid = _allocate_id("frame")
+                wrapper_children: list[str] = []
+                wrapper_children.extend(external_top)
+                wrapper_children.append(eid)
+                wrapper_children.extend(external_bottom)
+                wrapper_layout: dict[str, Any] = {
+                    "direction": "vertical",
+                    "sizing": {"width": "fill", "height": "hug"},
+                    "gap": 4,
+                }
+                wrapper: dict[str, Any] = {
+                    "type": "frame",
+                    "layout": wrapper_layout,
+                    "children": wrapper_children,
+                    "_label_hoist": {
+                        "parent_type": comp_type,
+                        "external_top": list(external_top),
+                        "external_bottom": list(external_bottom),
+                    },
+                }
+                elements[wrapper_eid] = wrapper
+                return wrapper_eid
 
         elements[eid] = element
         return eid
@@ -303,10 +492,30 @@ def compose_screen(
 
     # ADR-008 Mode-3 v0.1: seed the spec tokens dict with shadcn-flavoured
     # literal fallbacks so token refs in PresentationTemplates resolve
-    # at emit time. A real project token cascade replaces this in v0.2.
+    # at emit time.
+    #
+    # Phase E #1 fix (2026-04-26): project-token overlay. Pre-fix every
+    # Mode-3 card got white-on-white (universal shadcn defaults) even
+    # when the project had clustered surface colors. Post-fix the
+    # project's most-bound surface/border/radius/spacing tokens win
+    # for the universal-template refs they map to (per
+    # dd/composition/project_tokens.py:_SELECTORS); shadcn defaults
+    # fill the gaps for any universal token the project doesn't have.
+    # Codex 2026-04-26 (gpt-5.5): "compose-time alias overlay; keep
+    # universal templates emitting stable refs. Do not touch
+    # resolve_style_value (intentionally exact flat lookup); do not
+    # make providers project-aware."
     seeded_tokens: dict[str, Any] = {}
     if not _mode3_disabled():
+        # Universal first (shadcn defaults — the safety net).
         seeded_tokens.update(_UNIVERSAL_MODE3_TOKENS)
+        # Project tokens win for any universal name they cover.
+        if conn is not None:
+            from dd.composition.project_tokens import (
+                build_project_token_overlay,
+            )
+            project_overlay = build_project_token_overlay(conn)
+            seeded_tokens.update(project_overlay)
 
     return {
         "version": "1.0",
@@ -410,6 +619,21 @@ _TEXT_SLOT_PROP_ALIASES: tuple[str, ...] = (
     "text", "label", "title", "headline", "placeholder", "message", "description",
 )
 
+# Some alias props are semantically positional — they should not fill
+# a slot at an incompatible position. Without this, an LLM emitting
+# ``text_input {props: {placeholder: "Search..."}}`` (no label) would
+# see the "placeholder" alias swallowed by the label slot (position=top)
+# because it's first in slot-declaration order. Surfaced by SoM coverage
+# test 2026-04-21.
+#
+# Keyed on the alias prop name. Value is the set of slot positions the
+# alias is allowed to fill. Aliases absent from this map match any
+# position (preserving prior behavior for generic aliases like "text").
+_ALIAS_POSITION_WHITELIST: dict[str, frozenset[str]] = {
+    "placeholder": frozenset({"fill", "start", "end", "_default"}),
+    "helper": frozenset({"bottom"}),
+}
+
 
 # ---------------------------------------------------------------------------
 # Mode-3 universal token seed (ADR-008 v0.1)
@@ -432,7 +656,7 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "space.card.padding_y": 16,
     "space.card.gap": 12,
     "space.generic.padding_x": 12,
-    "space.generic.padding_y": 12,
+    "space.generic.padding_y": 8,
     "space.generic.gap": 8,
     "space.dialog.padding_x": 24,
     "space.dialog.padding_y": 24,
@@ -442,8 +666,6 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
     "space.list_item.padding_x": 16,
     "space.list_item.padding_y": 12,
     "space.list_item.gap": 12,
-    "space.generic.padding_x": 12,
-    "space.generic.padding_y": 8,
     # Radii
     "radius.button": 8,
     "radius.input": 8,
@@ -571,9 +793,9 @@ _UNIVERSAL_MODE3_TOKENS: dict[str, Any] = {
 def _default_provider_registry():
     """Lazy-built default registry for Mode-3 synthesis.
 
-    Only the universal provider is wired in v0.1. Project CKR and
-    ingested providers join the registry once their DB wiring is in
-    place in the generate-prompt code path (which has a DB connection).
+    Only the universal provider is wired in v0.1. Project CKR joins
+    the registry once its DB wiring is in place in the
+    generate-prompt code path (which has a DB connection).
     """
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import build_registry_from_env
@@ -582,18 +804,28 @@ def _default_provider_registry():
 
 
 def _build_default_mode3_registry(conn: sqlite3.Connection):
-    """Build the default Mode-3 cascade with corpus retrieval.
+    """Build the default Mode-3 cascade with the full provider stack.
 
-    Always includes CorpusRetrievalProvider — its ``supports()`` gates
-    on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally, so when the flag is
-    off the provider quietly falls through to UniversalCatalogProvider.
+    Priority-ordered cascade (highest first):
+    - CorpusRetrievalProvider (150) — full-subtree splice from a donor
+      screen. Gated on ``DD_ENABLE_CORPUS_RETRIEVAL`` internally, so
+      when the flag is off the provider falls through.
+    - ProjectCKRProvider (100) — project-native Mode-1 lookup against
+      component_key_registry + variant_token_binding. Stage 0 cleanup
+      (docs/plan-authoring-loop.md §4.1): the mirror of
+      ``dd.prompt_parser._build_mode3_registry``. Keep both sites in
+      sync; otherwise ``generate_from_prompt`` direct callers get a
+      weaker cascade than ``prompt_to_figma``.
+    - UniversalCatalogProvider (10) — hand-authored universal defaults.
     """
     from dd.composition.providers.corpus_retrieval import CorpusRetrievalProvider
+    from dd.composition.providers.project_ckr import ProjectCKRProvider
     from dd.composition.providers.universal import UniversalCatalogProvider
     from dd.composition.registry import build_registry_from_env
 
     return build_registry_from_env([
         CorpusRetrievalProvider(conn=conn),
+        ProjectCKRProvider(conn=conn),
         UniversalCatalogProvider(),
     ])
 
@@ -721,6 +953,38 @@ def _apply_template_to_parent(
         if key in style and key not in parent_style:
             parent_style[key] = style[key]
 
+    # A3.2 — silent-default-leak fix
+    # (audit/architectural-flow-matrix-20260426.md, Pattern A). The
+    # property registry knows how to emit ``opacity``,
+    # ``strokeWeight``, ``strokeAlign``, and ``dashPattern`` from a
+    # ``visual`` dict, but the IR-style overlay above only handles
+    # fill/stroke/cornerRadius — it has no path for these scalars.
+    # Forward them directly from ``template.style`` into
+    # ``element["visual"]`` so ``emit_from_registry`` picks them up.
+    #
+    # Setdefault-only: if ``element["visual"]`` already carries a
+    # value (e.g. from ``_apply_retrieved_root_visual`` splicing a
+    # corpus subtree), the template's default must not clobber the
+    # corpus-real value.
+    #
+    # We avoid creating an empty visual dict on elements that the
+    # template doesn't contribute to (Codex 5.5 caveat). The visual
+    # dict is the corpus-retrieval signal in ``build_template_visuals``
+    # — creating an empty dict here would falsely route every
+    # template-only element through the corpus-visual path.
+    #
+    # Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26): "seed
+    # element['visual'] directly. Do not widen the existing
+    # parent_style allowlist — render_figma_ast only overlays fill /
+    # stroke / radius from style. For opacity / strokeWeight /
+    # strokeAlign / dashPattern, seed element['visual']."
+    visual_keys = ("opacity", "strokeWeight", "strokeAlign", "dashPattern")
+    if any(key in style for key in visual_keys):
+        parent_visual = element.setdefault("visual", {})
+        for key in visual_keys:
+            if key in style and key not in parent_visual:
+                parent_visual[key] = style[key]
+
 
 def _mode3_synthesise_children(
     comp_type: str,
@@ -729,14 +993,24 @@ def _mode3_synthesise_children(
     elements: dict[str, dict[str, Any]],
     allocate_id,
     parent_element: dict[str, Any] | None = None,
-) -> list[str]:
+) -> dict[str, list[str]]:
     """Produce synthetic child IR eids for a parent that has no LLM
-    children.
+    children, partitioned by slot position.
+
+    Returns a dict keyed on slot ``position`` ("top", "bottom", "start",
+    "end", "fill", or "_default" when unset). Each value is the list of
+    synthesised eids for that position.
+
+    Label-hoist contract (2026-04-21): positions "top" and "bottom" are
+    EXTERNAL siblings of the parent (label above / helper below in an
+    outer wrapper frame). Positions "fill", "start", "end", "_default"
+    stay as INTERNAL children of the parent. The caller (``_build_element``)
+    is responsible for wrapping when external children are present.
 
     Walks the resolved ``PresentationTemplate``'s slot grammar; for
     each text-typed slot with a matching prop in ``props`` (directly by
     slot name or via the ``_TEXT_SLOT_PROP_ALIASES`` fallbacks), allocates
-    a text-child IR element and returns its eid.
+    a text-child IR element and routes it into the position bucket.
 
     Historically this also applied the template to the parent element
     — that merge is now factored out into
@@ -744,20 +1018,22 @@ def _mode3_synthesise_children(
     ``_build_element`` (H1). The ``parent_element`` kwarg is retained
     for API compat but no longer applies template layout/style.
     """
+    by_position: dict[str, list[str]] = {}
     registry = _default_provider_registry()
     template, _errors = registry.resolve(comp_type, variant, {})
     if template is None:
-        return []
+        return by_position
 
     if not template.slots:
-        return []
+        return by_position
 
-    child_ids: list[str] = []
     consumed_props: set[str] = set()
 
     for slot_name, slot_spec in template.slots.items():
         if not _slot_accepts_text(slot_spec):
             continue
+
+        slot_position = getattr(slot_spec, "position", None) or "_default"
 
         value: str | None = None
         if slot_name in props and slot_name not in consumed_props and props[slot_name]:
@@ -766,6 +1042,14 @@ def _mode3_synthesise_children(
         else:
             for alias in _TEXT_SLOT_PROP_ALIASES:
                 if alias in consumed_props:
+                    continue
+                # Positional aliases (placeholder, helper) refuse to fill
+                # slots at incompatible positions — otherwise
+                # `{placeholder: "Search..."}` with no label would land the
+                # placeholder in the label slot (position=top) because it's
+                # first in declaration order. Surfaced 2026-04-21 by SoM.
+                whitelist = _ALIAS_POSITION_WHITELIST.get(alias)
+                if whitelist is not None and slot_position not in whitelist:
                     continue
                 if alias in props and props[alias]:
                     value = str(props[alias])
@@ -794,6 +1078,7 @@ def _mode3_synthesise_children(
             child_style.setdefault("fill", fg_ref)
 
         child_eid = allocate_id("text")
+        position = getattr(slot_spec, "position", None) or "_default"
         child: dict[str, Any] = {
             "type": "text",
             "props": {"text": str(value)},
@@ -802,15 +1087,16 @@ def _mode3_synthesise_children(
                 "parent_type": comp_type,
                 "parent_variant": variant,
                 "slot": slot_name,
+                "position": position,
                 "provider": template.provider,
             },
         }
         if child_style:
             child["style"] = child_style
         elements[child_eid] = child
-        child_ids.append(child_eid)
+        by_position.setdefault(position, []).append(child_eid)
 
-    return child_ids
+    return by_position
 
 
 def _slot_accepts_text(slot_spec) -> bool:
@@ -929,15 +1215,26 @@ def build_template_visuals(
     but component_figma_id stays None, so Mode-1 falls through to
     a placeholder).
     """
-    ckr_by_name: dict[str, str] = {}
+    # F9: post-`_resolve_component_keys`, IR `component_key` values are
+    # always real CKR hex keys (or None). Look up `figma_node_id` by
+    # `component_key`, not by `name` (the original lookup was wrong
+    # against the F9-normalised IR — a hex key never matched a name).
+    # ``ckr_figma_id_by_key`` only contains rows where figma_node_id is
+    # populated, so on a fresh-extracted DB (figma_node_id all NULL)
+    # this stays empty and the renderer's component_key import branch
+    # carries the load.
+    ckr_figma_id_by_key: dict[str, str] = {}
     if conn is not None:
         try:
             ckr_rows = conn.execute(
-                "SELECT name, figma_node_id FROM component_key_registry"
+                "SELECT component_key, figma_node_id "
+                "FROM component_key_registry"
             ).fetchall()
-            ckr_by_name = {row[0]: row[1] for row in ckr_rows if row[0] and row[1]}
+            ckr_figma_id_by_key = {
+                row[0]: row[1] for row in ckr_rows if row[0] and row[1]
+            }
         except sqlite3.OperationalError:
-            ckr_by_name = {}
+            ckr_figma_id_by_key = {}
 
     node_id_map: dict[str, int] = {}
     visuals: dict[int, dict[str, Any]] = {}
@@ -946,7 +1243,7 @@ def build_template_visuals(
         synthetic_nid = -(idx + 1)
         node_id_map[eid] = synthetic_nid
 
-        comp_type = element.get("type", "")
+        comp_type = _semantic_type(element)
         variant = element.get("variant")
         tmpl_list = templates.get(comp_type)
         tmpl = _pick_best_template(tmpl_list, variant=variant)
@@ -970,18 +1267,36 @@ def build_template_visuals(
 
         # Resolve Mode-1 identity with the IR element taking precedence
         # over the old component_templates row when both are present.
+        # F9 guarantees ir_component_key is either None or a real CKR
+        # hex key (any LLM-emitted CKR name was already substituted by
+        # _resolve_component_keys, and unresolved values were dropped
+        # with a warning).
         ir_component_key = element.get("component_key")
         resolved_component_key = ir_component_key or (tmpl.get("component_key") if tmpl else None)
         resolved_component_figma_id = tmpl.get("component_figma_id") if tmpl else None
-        if ir_component_key and ir_component_key in ckr_by_name:
-            resolved_component_figma_id = ckr_by_name[ir_component_key]
+        if ir_component_key and ir_component_key in ckr_figma_id_by_key:
+            resolved_component_figma_id = ckr_figma_id_by_key[ir_component_key]
 
         # v0.2 retrieval: when compose spliced a real DB subtree into
         # this element (via CorpusRetrievalProvider), element["visual"]
         # carries DB-native fills/strokes/effects/corner_radius/etc.
         # Prefer those over template lookup so the renderer paints with
         # real round-trip visuals instead of token refs.
-        corpus_visual = element.get("visual") if isinstance(element, dict) else None
+        #
+        # A3.2 (2026-04-26): the discriminator was previously
+        # ``if element.get("visual"):`` (truthiness). After A3.2,
+        # ``_apply_template_to_parent`` may seed ``element["visual"]``
+        # with template defaults (opacity / strokeWeight / etc.), so
+        # truthiness conflates "real corpus splice" with "template-only
+        # element with defaults." Use the corpus-only marker
+        # ``_corpus_source_node_id`` (set by
+        # ``_apply_retrieved_root_visual`` and ``_splice_subtree``) as
+        # the proper discriminator.
+        is_corpus_spliced = (
+            isinstance(element, dict)
+            and element.get("_corpus_source_node_id") is not None
+        )
+        corpus_visual = element.get("visual") if is_corpus_spliced else None
         if corpus_visual:
             visual_entry = {
                 "fills": corpus_visual.get("fills"),
@@ -1057,7 +1372,7 @@ def compare_generated_vs_ground_truth(
     elements = spec.get("elements", {})
     gen_types: dict[str, int] = {}
     for element in elements.values():
-        etype = element.get("type", "")
+        etype = _semantic_type(element)
         if etype == "screen":
             continue
         gen_types[etype] = gen_types.get(etype, 0) + 1
@@ -1174,7 +1489,7 @@ def resolve_type_aliases(
     available_types = set(templates.keys())
 
     def _resolve(comp: dict[str, Any]) -> dict[str, Any]:
-        comp_type = comp.get("type", "")
+        comp_type = _semantic_type(comp)
         resolved = dict(comp)
 
         if comp_type not in available_types:
@@ -1221,33 +1536,155 @@ def resolve_type_aliases(
     return [_resolve(comp) for comp in components]
 
 
+# Types that resolve Mode-1 to INSTANCE and therefore can't host
+# children in the Figma Plugin API (F4 from
+# `docs/learnings-tier-b-failure-modes.md`). A child under one of
+# these produces an `appendChild: Cannot move node` throw in Phase
+# 2 of the render script (F2 — cascading).
+#
+# TODO(Tier E.3): derive from component_type_catalog.resolution_mode
+# instead of hardcoding; see note in dd/fidelity_score.py
+# LEAF_TYPES.
+_LEAF_TYPES_FOR_HOIST: frozenset[str] = frozenset({
+    "button", "icon_button", "icon", "chip",
+    "switch", "toggle", "checkbox", "radio",
+    "link", "badge",
+    "text", "heading",      # already leaves in the renderer
+    "avatar",
+})
+
+# Prop slot names we hoist children's text into, keyed on the
+# parent LEAF type. `text` is the universal slot; some parents
+# might use a different slot in the future.
+_HOIST_TEXT_PROP = "text"
+
+
+def _hoist_children_into_props(
+    comp: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    """Recursively hoist text content out of children of LEAF-typed
+    parents into ``props.text``.
+
+    Tier D.3 F4 fix. When the LLM emits ``{type: button, children:
+    [{type: text, props: {text: "Sign in"}}]}``, we rewrite to
+    ``{type: button, props: {text: "Sign in"}, children: []}``
+    before compose+render. Otherwise Phase 2 emits
+    ``instance.appendChild(text_node)`` which Figma rejects.
+
+    Returns ``(hoisted_comp, n_hoists_applied)``. The count is for
+    diagnostics + metrics; 0 means no change.
+    """
+    hoisted_count = 0
+    ctype = comp.get("type") or ""
+    children = comp.get("children") or []
+
+    if ctype in _LEAF_TYPES_FOR_HOIST and children:
+        props = dict(comp.get("props") or {})
+        # Find the first text-bearing child and pull its text.
+        for child in children:
+            if _HOIST_TEXT_PROP in props:
+                break
+            ch_props = child.get("props") or {}
+            if child.get("type") in ("text", "heading", "link"):
+                t = ch_props.get("text") or ""
+                if t:
+                    props[_HOIST_TEXT_PROP] = t
+                    break
+        # Drop children entirely — the leaf type can't host them.
+        new_comp = dict(comp)
+        new_comp["children"] = []
+        if props:
+            new_comp["props"] = props
+        hoisted_count += 1
+        return new_comp, hoisted_count
+
+    # Recurse into non-leaf parents' children.
+    if children:
+        new_children: list[dict[str, Any]] = []
+        total = 0
+        for child in children:
+            hoisted_child, n = _hoist_children_into_props(child)
+            new_children.append(hoisted_child)
+            total += n
+        if total:
+            new_comp = dict(comp)
+            new_comp["children"] = new_children
+            hoisted_count += total
+            return new_comp, hoisted_count
+
+    return comp, 0
+
+
 def validate_components(
     components: list[dict[str, Any]],
     templates: dict[str, list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Validate LLM-output components against available templates.
 
-    Resolves type aliases first, then checks remaining unsupported types.
-    Returns (components, warnings). Warnings list types that have
-    no template and will render as empty frames.
+    Resolves type aliases first, runs the F4 hoist pass (leaf-type
+    parents lose their children; first text-bearing child's text is
+    hoisted into ``props.text``), then checks remaining unsupported
+    types. Returns (components, warnings).
     """
     resolved = resolve_type_aliases(components, templates)
+
+    # Tier D.3 F4: hoist children from leaf-type parents. Must run
+    # BEFORE the template-availability check so hoisted components
+    # don't get flagged for types they no longer reference.
+    hoisted: list[dict[str, Any]] = []
+    total_hoists = 0
+    for comp in resolved:
+        new_comp, n = _hoist_children_into_props(comp)
+        hoisted.append(new_comp)
+        total_hoists += n
+
     available_types = set(templates.keys())
+    # Universal text types are emitted via createText() and don't need
+    # a component_templates row; warning about them as "missing template"
+    # was misleading. Same for `frame`, which is the documented
+    # universal structural primitive (per SYSTEM_PROMPT in prompt_parser).
+    #
+    # Phase E #7 fix (2026-04-26): also union in
+    # UNIVERSAL_COMPONENT_TYPES — the 28 types the universal catalog
+    # provider renders via _BUILDERS (image, card, button, dialog,
+    # tooltip, popover, etc.). Pre-fix the warning fired for these
+    # whenever the project DB hadn't accumulated component_templates
+    # rows for them, even though they render correctly via the
+    # universal provider's hand-authored templates. Audit's #5 finding
+    # ("templateless types → defaults") was a noisy signal not a real
+    # render failure. Codex 2026-04-26 (gpt-5.5): "the warning's
+    # predicate is answering the wrong question. It currently means
+    # 'not in project DB templates,' but the message claims 'will
+    # render empty/badly.' For _BACKBONE types, that claim is false."
+    _UNIVERSAL_TYPES = (
+        frozenset({"text", "heading", "link", "frame"})
+        | UNIVERSAL_COMPONENT_TYPES
+    )
     warnings: list[str] = []
 
     def _check(comp: dict[str, Any]) -> None:
-        comp_type = comp.get("type", "")
-        if comp_type and comp_type not in available_types:
+        comp_type = _semantic_type(comp)
+        if (
+            comp_type
+            and comp_type not in available_types
+            and comp_type not in _UNIVERSAL_TYPES
+        ):
             warnings.append(
                 f"Type '{comp_type}' has no template in this project — will render as empty frame"
             )
         for child in comp.get("children", []):
             _check(child)
 
-    for comp in resolved:
+    for comp in hoisted:
         _check(comp)
 
-    return resolved, warnings
+    if total_hoists:
+        warnings.append(
+            f"Hoisted {total_hoists} leaf-type-parent child subtree(s) "
+            f"into `props.text` (F4 — leaf types can't host children)."
+        )
+
+    return hoisted, warnings
 
 
 def generate_from_prompt(
@@ -1258,9 +1695,11 @@ def generate_from_prompt(
 ) -> dict[str, Any]:
     """Generate Figma JS from a component list using templates.
 
-    Orchestrates: query_templates → validate → compose_screen → build_template_visuals
-    → generate_figma_script. Returns dict with structure_script and metadata.
-    When page_name is provided, the script creates a new Figma page.
+    Orchestrates: query_templates → validate → compose_screen →
+    build_template_visuals → compress_to_l3 → render_figma (markup-
+    native Option B path; see docs/decisions/v0.3-option-b-cutover.md).
+    Returns dict with structure_script and metadata. When page_name is
+    provided, the script creates a new Figma page.
 
     ``registry`` is an optional :class:`ProviderRegistry` for Mode-3
     composition — pass one from callers that have a DB connection
@@ -1275,11 +1714,48 @@ def generate_from_prompt(
     # the same provider stack as prompt_to_figma. Corpus retrieval
     # remains flag-gated inside the provider itself.
     effective_registry = registry if registry is not None else _build_default_mode3_registry(conn)
-    spec = compose_screen(components, templates=templates, registry=effective_registry)
+    spec = compose_screen(
+        components,
+        templates=templates,
+        registry=effective_registry,
+        conn=conn,
+    )
+    # F9: normalise IR-level component_key values BEFORE any downstream
+    # consumer reads them. The LLM is intentionally told it may emit
+    # CKR *names* (e.g. "buttons/button with icon") in lieu of hex keys
+    # (per dd/prompt_parser.py:65,204). Without this pass, those names
+    # leak through compose → build_template_visuals → render and end up
+    # as the literal arg to ``figma.importComponentByKeyAsync(...)``,
+    # which Figma rejects → 100% of name-emitted instances degrade to
+    # _missingComponentPlaceholder. Lookup is DB-driven (no hardcoded
+    # names); see _resolve_component_keys for the four-rule contract.
+    _resolve_component_keys(spec, conn, warnings)
     # Pass conn through so build_template_visuals can resolve IR-level
     # component_key refs against component_key_registry (ADR-008 Mode-3).
     visuals = build_template_visuals(spec, templates, conn=conn)
-    script, token_refs = generate_figma_script(spec, db_visuals=visuals, page_name=page_name)
+
+    # CKR gate for the Option B preamble — mirrors
+    # `dd.renderers.figma.generate_screen`. When CKR isn't built, the
+    # walker emits a structured `CKR_NOT_BUILT` diagnostic so
+    # downstream Mode-1 degradations trace back to the root cause
+    # instead of appearing as mysterious placeholder wireframes.
+    ckr_built = _ckr_is_built(conn)
+
+    doc, _eid_nid, nid_map, spec_key_map, original_name_map = (
+        compress_to_l3_with_maps(spec, conn, collapse_wrapper=False)
+    )
+    fonts = collect_fonts(spec, db_visuals=visuals)
+    script, token_refs = render_figma(
+        doc, conn, nid_map,
+        fonts=fonts,
+        spec_key_map=spec_key_map,
+        original_name_map=original_name_map,
+        db_visuals=visuals,
+        ckr_built=ckr_built,
+        page_name=page_name,
+        _spec_elements=spec["elements"],
+        _spec_tokens=spec.get("tokens", {}),
+    )
     template_rebind_entries = collect_template_rebind_entries(spec, visuals)
 
     return {

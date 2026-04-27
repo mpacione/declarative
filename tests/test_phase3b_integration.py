@@ -70,17 +70,29 @@ class TestSlotAssignment:
     """Verify slot children are assigned to named slots."""
 
     def test_header_has_named_slots(self, dank_db):
+        """Header exposes ≥3 named slots. Exact names are LLM-derived
+        via M7.0.b Step 2 (formerly {left, center, right} when hand-
+        seeded; now {leading_content, center_content, trailing_content}
+        from the Haiku labeller). Test the invariant, not the names.
+        """
         sem = generate_ir(dank_db, screen_id=PHONE_SCREEN, semantic=True)
         spec = sem["spec"]
 
-        headers = [el for el in spec["elements"].values() if el.get("type") == "header"]
+        # Type/role split: "header" is a semantic role, not a structural
+        # primitive. See docs/plan-type-role-split.md.
+        headers = [
+            el for el in spec["elements"].values()
+            if el.get("role") == "header"
+        ]
         assert len(headers) >= 1, "Expected at least one header element"
 
         header = headers[0]
         assert "slots" in header, "Header should have slots"
-        assert "left" in header["slots"]
-        assert "center" in header["slots"]
-        assert "right" in header["slots"]
+        slot_names = list(header["slots"].keys())
+        assert len(slot_names) >= 3, (
+            f"header should have ≥3 slots, got {slot_names}"
+        )
+        assert all(isinstance(n, str) and n for n in slot_names)
 
     def test_slot_children_not_in_children_list(self, dank_db):
         sem = generate_ir(dank_db, screen_id=PHONE_SCREEN, semantic=True)

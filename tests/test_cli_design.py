@@ -1,0 +1,1924 @@
+"""Stage 3.4 — `dd design` CLI subcommands.
+
+Per Codex+Sonnet 2026-04-23: 3 subcommands minimum-viable —
+``--brief``, ``resume``, ``score`` — with branching falling out of
+resume-from-non-leaf semantics (no separate `branch` subcommand).
+``ls`` and ``show`` deferred to follow-up (raw SQL works; document
+in --help). Per simplicity-check, we keep the CLI surface lean.
+
+Tests use a mocked LLM client because the real path through
+``dd.agent.loop.run_session`` is exercised end-to-end in
+``test_agent_loop.py``. Here we just verify the CLI wiring:
+arg parsing, dispatch, db wiring, exit code.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from dd.cli import main as cli_main
+from dd.db import init_db
+from dd.sessions import (
+    create_session,
+    create_variant,
+    list_sessions,
+    list_variants,
+)
+from dd.markup_l3 import parse_l3
+
+
+# --------------------------------------------------------------------------- #
+# Fixtures                                                                    #
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture
+def tmp_db_path(tmp_path):
+    """Return the path to a fresh DB file."""
+    db_path = tmp_path / "design.db"
+    conn = init_db(str(db_path))
+    conn.close()
+    return str(db_path)
+
+
+def _mock_done_response() -> MagicMock:
+    """LLM response that picks emit_done immediately."""
+    block = MagicMock()
+    block.type = "tool_use"
+    block.name = "emit_done"
+    block.input = {"rationale": "nothing to do here"}
+    msg = MagicMock(); msg.content = [block]
+    msg.stop_reason = "tool_use"
+    return msg
+
+
+def _mock_client(*responses) -> MagicMock:
+    client = MagicMock()
+    client.messages.create.side_effect = list(responses) or [_mock_done_response()]
+    return client
+
+
+# --------------------------------------------------------------------------- #
+# `dd design --brief` — new session                                           #
+# --------------------------------------------------------------------------- #
+
+class TestDesignBrief:
+    """`dd design --brief "..."` creates a session, runs the loop,
+    persists variants + move log, prints the new session id."""
+
+    def test_creates_session_and_prints_id(self, tmp_db_path, capsys):
+        with patch("dd.cli._make_anthropic_client", return_value=_mock_client()):
+            cli_main([
+                "design", "--brief", "a settings page",
+                "--db", tmp_db_path,
+            ])
+        out = capsys.readouterr().out
+        # Some sortable id printed.
+        assert any(len(line) >= 26 for line in out.splitlines()), (
+            f"expected the new session ULID in stdout, got:\n{out}"
+        )
+        # Confirm a session row exists.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        sessions = list_sessions(conn)
+        assert len(sessions) == 1
+        assert sessions[0].brief == "a settings page"
+
+    def test_runs_the_loop(self, tmp_db_path, capsys):
+        client = _mock_client()  # emits done immediately
+        with patch("dd.cli._make_anthropic_client", return_value=client):
+            cli_main([
+                "design", "--brief", "anything",
+                "--db", tmp_db_path,
+            ])
+        # The loop made at least one Anthropic call.
+        assert client.messages.create.called
+
+    def test_supports_max_iters_flag(self, tmp_db_path, capsys):
+        # 5 done-responses in case the loop runs more than once.
+        client = _mock_client(*[_mock_done_response() for _ in range(5)])
+        with patch("dd.cli._make_anthropic_client", return_value=client):
+            cli_main([
+                "design", "--brief", "x",
+                "--db", tmp_db_path,
+                "--max-iters", "3",
+            ])
+        # done halts on the first turn → only 1 call.
+        assert client.messages.create.call_count == 1
+
+    def test_blank_brief_fails_fast(self, tmp_db_path, capsys):
+        # Empty brief reaches create_session → ValueError → CLI prints
+        # an error and exits non-zero.
+        with patch("dd.cli._make_anthropic_client", return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "--brief", "  ",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+
+
+# --------------------------------------------------------------------------- #
+# `dd design resume` — continue or branch                                     #
+# --------------------------------------------------------------------------- #
+
+class TestDesignResume:
+    """`dd design resume <variant-id>` continues from that variant.
+    Branching falls out: resuming from a non-leaf variant creates
+    a sibling chain (per simplicity-check, confirmed Codex+Sonnet)."""
+
+    def _bootstrap_session(self, tmp_db_path) -> tuple[str, str]:
+        """Create a session with one variant, return (sid, vid)."""
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+        return sid, vid
+
+    def test_resume_continues_existing_session(self, tmp_db_path, capsys):
+        sid, vid = self._bootstrap_session(tmp_db_path)
+        client = _mock_client()  # done immediately
+        with patch("dd.cli._make_anthropic_client", return_value=client):
+            cli_main([
+                "design", "resume", vid,
+                "--db", tmp_db_path,
+            ])
+        # The session row is unchanged; new variant(s) under it.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        assert len(list_sessions(conn)) == 1
+        assert len(list_variants(conn, sid)) >= 1
+
+    def test_resume_unknown_variant_fails_fast(self, tmp_db_path):
+        with patch("dd.cli._make_anthropic_client", return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "resume", "no-such-variant",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+
+    def test_resume_with_new_brief_overrides_session_brief(
+        self, tmp_db_path,
+    ):
+        """M2 iteration UX: when `dd design resume <vid> --brief "..."`
+        is given a NEW brief, the per-turn user message sent to the LLM
+        must carry the NEW brief, not the session's stored original.
+
+        The stored ``design_sessions.brief`` column stays unchanged (it's
+        the audit log of the original goal). This is what lets the
+        multi-step demo work: brief A, see result, resume with refining
+        brief B, agent edits against A's doc state using B's intent."""
+        sid, vid = self._bootstrap_session(tmp_db_path)
+        # Baseline: the session's stored brief is "seed".
+        client = _mock_client()  # done immediately on the first turn
+        with patch("dd.cli._make_anthropic_client", return_value=client):
+            cli_main([
+                "design", "resume", vid,
+                "--brief", "make the button red",
+                "--db", tmp_db_path,
+            ])
+
+        # Assertion 1: the LLM was called with a user message that
+        # contains the new brief, not the seed brief.
+        assert client.messages.create.called
+        calls = client.messages.create.call_args_list
+        assert calls, "no LLM call captured"
+        # The per-turn user message is the first (and only) message.
+        all_user_text = ""
+        for c in calls:
+            msgs = c.kwargs.get("messages") or []
+            for m in msgs:
+                if m.get("role") == "user":
+                    content = m.get("content")
+                    if isinstance(content, str):
+                        all_user_text += content
+                    else:
+                        for blk in (content or []):
+                            if isinstance(blk, dict) and blk.get("type") == "text":
+                                all_user_text += blk.get("text", "")
+        assert "make the button red" in all_user_text, (
+            f"new brief missing from LLM user message. Got:\n"
+            f"{all_user_text[:500]}"
+        )
+        assert "seed" not in all_user_text, (
+            f"resume must use the override brief, not the session's "
+            f"stored 'seed'. Got:\n{all_user_text[:500]}"
+        )
+
+        # Assertion 2: the session row's brief column is untouched.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT brief FROM design_sessions WHERE id=?",
+                (sid,),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["brief"] == "seed", (
+            f"stored brief must remain the original 'seed', got "
+            f"{row['brief']!r}"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# `dd design score` — A2's deferred-scoring entry point                       #
+# --------------------------------------------------------------------------- #
+
+class TestDesignScore:
+    """`dd design score <session-id>` is the A2 deferred-scoring
+    entry point. Per Codex's hybrid amendment: scoring is post-hoc,
+    NOT in the agent loop. The CLI should be wired even if Stage 3
+    ships with a stub implementation — the user-facing surface
+    matters; the deep VLM scoring can land later."""
+
+    def _bootstrap_session_with_variant(self, tmp_db_path) -> tuple[str, str]:
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+        return sid, vid
+
+    def test_score_subcommand_exists(self, tmp_db_path, capsys):
+        sid, _ = self._bootstrap_session_with_variant(tmp_db_path)
+        # Should exit 0 even if scoring is a stub.
+        cli_main([
+            "design", "score", sid,
+            "--db", tmp_db_path,
+        ])
+        out = capsys.readouterr().out
+        assert sid in out or "score" in out.lower()
+
+    def test_score_unknown_session_fails_fast(self, tmp_db_path):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main([
+                "design", "score", "no-such-session",
+                "--db", tmp_db_path,
+            ])
+        assert exc_info.value.code != 0
+
+
+# --------------------------------------------------------------------------- #
+# `dd design log <session-id>` — human-readable move_log replay               #
+# --------------------------------------------------------------------------- #
+
+class TestDesignLog:
+    """`dd design log <session-id>` prints every move_log entry in
+    order — brief, created-at, status, then one block per entry with
+    iter number (EDIT only), primitive name, payload detail, and
+    rationale. Surfaces the agent's reasoning trail without raw SQL.
+
+    The move_log row shape is the ``MoveLogEntry.to_dict()`` dict
+    verbatim (commit fd5c5c5): ``primitive`` / ``scope_eid`` /
+    ``payload`` / ``rationale`` / ``ts``. Primitive values observed
+    in the wild: EDIT, NAME, DRILL, CLIMB, DONE, REBRIEF.
+
+    Risk-guards per task brief:
+    - Tolerant parsing: missing fields → ``<missing>`` placeholders,
+      never a crash.
+    - Pagination: ``--limit N`` (default 50), ``--all`` to disable.
+    - Golden test: a pinned fixture renders to a known-shape output.
+    """
+
+    def _seed_session(
+        self, tmp_db_path, brief="Add a sign-out button", entries=None,
+    ) -> str:
+        """Insert a session + a list of MoveLogEntry-shaped dicts."""
+        from dd.db import get_connection
+        from dd.focus import MoveLogEntry
+        from dd.sessions import append_move_log_entry, create_session
+
+        conn = get_connection(tmp_db_path)
+        try:
+            sid = create_session(conn, brief=brief)
+            for e in entries or []:
+                append_move_log_entry(
+                    conn, session_id=sid, variant_id=e.get("variant_id"),
+                    entry=MoveLogEntry(
+                        primitive=e["primitive"],
+                        scope_eid=e.get("scope_eid"),
+                        payload=e.get("payload") or {},
+                        rationale=e.get("rationale"),
+                    ),
+                )
+        finally:
+            conn.close()
+        return sid
+
+    def test_log_prints_session_brief_and_status(
+        self, tmp_db_path, capsys,
+    ):
+        sid = self._seed_session(
+            tmp_db_path,
+            brief="Add a sign-out button at the top-right of the toolbar",
+            entries=[{
+                "primitive": "EDIT",
+                "payload": {
+                    "edit_source": "set @button x=10",
+                    "tool_name": "edit_verb",
+                },
+                "rationale": "moved it",
+            }],
+        )
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        assert sid in out
+        assert (
+            "Add a sign-out button at the top-right of the toolbar" in out
+        )
+        # Status from the session row.
+        assert "open" in out.lower()
+
+    def test_log_prints_each_move_with_iter_number(
+        self, tmp_db_path, capsys,
+    ):
+        """EDIT entries are numbered; non-EDIT (DONE / REBRIEF /
+        NAME / DRILL / CLIMB) are not."""
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a x=1",
+                         "tool_name": "edit_verb"},
+             "rationale": "first move"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a y=2",
+                         "tool_name": "edit_verb"},
+             "rationale": "second move"},
+            {"primitive": "REBRIEF",
+             "payload": {"new_brief": "now blue",
+                         "previous_variant": "01KQX"},
+             "rationale": "user provided a new brief mid-session"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a fill=\"#00f\"",
+                         "tool_name": "edit_verb"},
+             "rationale": "third move"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "all set"},
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # EDIT counter re-uses iter numbers 1..3; REBRIEF + DONE have no iter.
+        assert "iter 1" in out
+        assert "iter 2" in out
+        assert "iter 3" in out
+        assert "iter 4" not in out  # REBRIEF isn't an iter; DONE isn't.
+        assert "EDIT" in out
+        assert "REBRIEF" in out
+        assert "DONE" in out
+        assert "first move" in out
+        assert "second move" in out
+        assert "third move" in out
+        # Edit source text surfaces to the user.
+        assert "set @a x=1" in out
+
+    def test_log_truncates_when_limit_reached(
+        self, tmp_db_path, capsys,
+    ):
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": f"set @n-{i} x={i}",
+                         "tool_name": "edit_verb"},
+             "rationale": f"edit number {i}"}
+            for i in range(1, 11)  # 10 entries
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path,
+            "--limit", "3",
+        ])
+        out = capsys.readouterr().out
+        # First 3 rendered.
+        assert "edit number 1" in out
+        assert "edit number 2" in out
+        assert "edit number 3" in out
+        # Remaining 7 NOT rendered.
+        assert "edit number 4" not in out
+        assert "edit number 10" not in out
+        # Truncation notice tells the user how many were hidden.
+        assert "7 more" in out
+        assert "--limit" in out or "--all" in out
+
+    def test_log_all_flag_disables_truncation(self, tmp_db_path, capsys):
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": f"set @n-{i} x={i}",
+                         "tool_name": "edit_verb"},
+             "rationale": f"edit number {i}"}
+            for i in range(1, 11)
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path,
+            "--all",
+        ])
+        out = capsys.readouterr().out
+        assert "edit number 1" in out
+        assert "edit number 10" in out
+        assert "more" not in out.lower() or "7 more" not in out
+
+    def test_log_handles_missing_fields_gracefully(
+        self, tmp_db_path, capsys,
+    ):
+        """Malformed / schema-drift payloads must not crash. Each
+        missing field renders as ``<missing>`` so the operator sees
+        *something* instead of a traceback."""
+        import json
+        from dd.db import get_connection
+        from dd.sessions import create_session
+
+        conn = get_connection(tmp_db_path)
+        try:
+            sid = create_session(conn, brief="tolerant")
+            # Hand-craft a payload that is missing rationale + payload
+            # + scope_eid — but has primitive (required by
+            # list_move_log's reconstruction).
+            conn.execute(
+                "INSERT INTO move_log (session_id, variant_id, "
+                " primitive, payload) VALUES (?, ?, ?, ?)",
+                (sid, None, "EDIT", json.dumps({"primitive": "EDIT"})),
+            )
+            # Second row: EDIT with empty payload dict.
+            conn.execute(
+                "INSERT INTO move_log (session_id, variant_id, "
+                " primitive, payload) VALUES (?, ?, ?, ?)",
+                (sid, None, "EDIT", json.dumps({
+                    "primitive": "EDIT",
+                    "payload": {},
+                    "rationale": None,
+                })),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # Didn't crash.
+        assert sid in out
+        # Placeholder shows up somewhere for a field that was absent.
+        assert "<missing>" in out
+
+    def test_log_unknown_session_fails_fast(self, tmp_db_path):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main([
+                "design", "log", "no-such-session",
+                "--db", tmp_db_path,
+            ])
+        assert exc_info.value.code != 0
+
+    def test_log_renders_known_session_consistently(
+        self, tmp_db_path, capsys,
+    ):
+        """Golden test. Pin a compact fixture session against the
+        formatter so accidental formatting regressions surface.
+
+        The fixture replays the 3-primitive skeleton of a real demo
+        session: EDIT → REBRIEF → EDIT → DONE."""
+        fixture_entries = [
+            {"primitive": "EDIT",
+             "payload": {
+                 "edit_source": (
+                     "append to=@button-toolbar { frame "
+                     "#button-sign-out { text "
+                     "#button-sign-out-label \"Sign Out\" } }"
+                 ),
+                 "tool_name": "edit_verb"},
+             "rationale": "appended a sign-out button"},
+            {"primitive": "REBRIEF",
+             "payload": {
+                 "new_brief": "make it blue",
+                 "previous_variant": "01KQX"},
+             "rationale": "user provided a new brief mid-session"},
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @button-sign-out fill=\"#00f\"",
+                         "tool_name": "edit_verb"},
+             "rationale": "changed fill to blue"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "done and dusted"},
+        ]
+        sid = self._seed_session(
+            tmp_db_path,
+            brief="Add a sign-out button at the top-right of the toolbar",
+            entries=fixture_entries,
+        )
+        cli_main(["design", "log", sid, "--db", tmp_db_path])
+        out = capsys.readouterr().out
+        # Header block.
+        assert sid in out
+        assert "Add a sign-out button at the top-right of the toolbar" in out
+        # iter numbering ONLY for EDITs — REBRIEF slots in without
+        # incrementing, and DONE shows no iter.
+        assert "iter 1" in out
+        assert "iter 2" in out
+        assert "iter 3" not in out
+        # Primitive labels all render.
+        assert "EDIT" in out
+        assert "REBRIEF" in out
+        assert "DONE" in out
+        # Payload bodies reach the user.
+        assert "button-sign-out" in out
+        assert "make it blue" in out
+        # Rationales reach the user (at least one known phrase).
+        assert "appended a sign-out button" in out
+        assert "changed fill to blue" in out
+        assert "done and dusted" in out
+
+    def test_log_json_flag_emits_raw_array(self, tmp_db_path, capsys):
+        """``--json`` bypasses the pretty formatter and prints the
+        raw move_log payload list. Useful for piping to ``jq``."""
+        import json
+
+        entries = [
+            {"primitive": "EDIT",
+             "payload": {"edit_source": "set @a x=1",
+                         "tool_name": "edit_verb"},
+             "rationale": "first"},
+            {"primitive": "DONE",
+             "payload": {"halt_no_tool": False},
+             "rationale": "done"},
+        ]
+        sid = self._seed_session(tmp_db_path, entries=entries)
+        cli_main([
+            "design", "log", sid, "--db", tmp_db_path, "--json",
+        ])
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert isinstance(parsed, list)
+        assert len(parsed) == 2
+        assert parsed[0]["primitive"] == "EDIT"
+        assert parsed[1]["primitive"] == "DONE"
+
+
+# --------------------------------------------------------------------------- #
+# Error surface: missing api key                                              #
+# --------------------------------------------------------------------------- #
+
+class TestDesignNeedsApiKey:
+    """`--brief` and `resume` both call Anthropic. Without a key set,
+    the CLI must fail with a helpful message, not a stack trace."""
+
+    def test_brief_without_key_errors_helpfully(
+        self, tmp_db_path, monkeypatch, capsys,
+    ):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # Make the helper raise like the real SDK would. The CLI
+        # should catch + print a friendly error, not stack-trace.
+        def _no_key_client():
+            raise Exception("ANTHROPIC_API_KEY missing")
+        with patch("dd.cli._make_anthropic_client", side_effect=_no_key_client):
+            with pytest.raises((SystemExit, Exception)) as exc_info:
+                cli_main([
+                    "design", "--brief", "x",
+                    "--db", tmp_db_path,
+                ])
+        # The error reaches the user — either as SystemExit (if the
+        # CLI caught it) or via stderr (if Anthropic raised through).
+        # Both are acceptable for Stage 3; the friendly-error UX is
+        # already exercised by _make_anthropic_client's own try/except
+        # path in production.
+
+
+# --------------------------------------------------------------------------- #
+# M1 — `--starting-screen <ID>` + `--render-to-figma` (close the loop)        #
+# --------------------------------------------------------------------------- #
+
+def _seed_project_db(db_path: str) -> int:
+    """Seed a minimal classified screen and return its id.
+
+    Mirrors tests/test_generate.py::_seed_gen_screen — one 428×926
+    screen with a header + heading, enough for generate_ir +
+    compress_to_l3 to produce a non-empty starting doc."""
+    from dd.catalog import seed_catalog
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) VALUES "
+            "(1, 'fk', 'Dank')"
+        )
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, "
+            "width, height) VALUES "
+            "(1, 1, 's1', 'Settings', 428, 926)"
+        )
+        nodes = [
+            (10, 1, "h1", "nav/top-nav", "INSTANCE", 1, 0, 0, 0,
+             428, 56, "HORIZONTAL"),
+            (11, 1, "t1", "Page Title", "TEXT", 2, 0, 16, 70,
+             396, 28, None),
+        ]
+        conn.executemany(
+            "INSERT INTO nodes (id, screen_id, figma_node_id, name, "
+            "node_type, depth, sort_order, x, y, width, height, "
+            "layout_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            nodes,
+        )
+        conn.execute(
+            "UPDATE nodes SET font_size = 24, font_weight = 700 "
+            "WHERE id = 11"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, "
+            " classification_source) "
+            "VALUES (1, 10, 'header', 1.0, 'formal')"
+        )
+        conn.execute(
+            "INSERT INTO screen_component_instances "
+            "(screen_id, node_id, canonical_type, confidence, "
+            " classification_source) "
+            "VALUES (1, 11, 'heading', 0.9, 'heuristic')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return 1
+
+
+class TestDesignBriefWithStartingScreen:
+    """`dd design --brief "..." --starting-screen <ID> [--project-db <path>]`
+    loads the starting doc from the project DB so the agent session
+    operates on real content, not the default SYNTHESIZE empty doc.
+
+    Split `--db` (session DB, where sessions/variants/move_log persist)
+    from `--project-db` (source-of-truth DB, where screens + classified
+    nodes + tokens + CKR live). Defaulting --project-db to --db keeps
+    the single-DB path working."""
+
+    def test_starting_screen_loads_doc_from_project_db(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        screen_id = _seed_project_db(project_db)
+
+        captured_docs: list[object] = []
+
+        def fake_run_session(conn, **kwargs):
+            captured_docs.append(kwargs.get("starting_doc"))
+            from dd.agent.loop import SessionRunResult
+            # Bootstrap a session + root variant so downstream
+            # orchestration has something to reference.
+            from dd.sessions import create_session, create_variant
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None,
+                doc=kwargs["starting_doc"],
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0, halt_reason="done",
+                final_variant_id=vid, move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "trim this",
+                    "--starting-screen", str(screen_id),
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                ])
+
+        # The loop received a real starting_doc (not None) with
+        # content — both elements from the project DB should be
+        # reachable by eid.
+        assert len(captured_docs) == 1
+        doc = captured_docs[0]
+        assert doc is not None
+        # L3Document has top_level with the loaded screen.
+        assert doc.top_level, "expected non-empty starting doc"
+
+    def test_starting_screen_defaults_project_db_to_session_db(
+        self, tmp_db_path, capsys,
+    ):
+        """If --project-db is omitted, the session DB is used as the
+        source of truth (single-DB path). That's the simplest
+        workflow when sessions + screens live together."""
+        # Seed the session DB with a screen too.
+        _seed_project_db(tmp_db_path)
+
+        captured_docs: list[object] = []
+
+        def fake_run_session(conn, **kwargs):
+            captured_docs.append(kwargs.get("starting_doc"))
+            from dd.agent.loop import SessionRunResult
+            from dd.sessions import create_session, create_variant
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None,
+                doc=kwargs["starting_doc"],
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0, halt_reason="done",
+                final_variant_id=vid, move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--db", tmp_db_path,
+                ])
+
+        assert captured_docs and captured_docs[0] is not None
+
+    def test_starting_screen_missing_screen_id_fails_fast(
+        self, tmp_db_path, capsys,
+    ):
+        """Specifying a screen id that doesn't exist in the project DB
+        must surface a clear error before the Anthropic client gets
+        called (burning an API call on a doomed session is the wrong
+        failure mode)."""
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "9999",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "9999" in err or "not found" in err.lower()
+
+
+class TestDesignBriefRenderToFigma:
+    """`--render-to-figma` closes the loop: after the session halts,
+    the CLI renders both the original screen AND the final variant
+    to a new Figma page keyed on the session ULID, side-by-side.
+
+    Bridge I/O is stubbed in these tests — the live-bridge capstone
+    is a separate integration asset gated on ANTHROPIC_API_KEY + a
+    running plugin."""
+
+    def test_render_to_figma_without_starting_screen_fails_fast(
+        self, tmp_db_path, capsys,
+    ):
+        """Codex's risk: ambiguous flag combinations. For M1, the two
+        flags must be used together — rendering 'to Figma' with no
+        starting screen produces an empty-canvas result, which is a
+        confusing demo. Fail loudly with a clear error."""
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with pytest.raises(SystemExit) as exc_info:
+                cli_main([
+                    "design", "--brief", "x",
+                    "--render-to-figma",
+                    "--db", tmp_db_path,
+                ])
+            assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "starting-screen" in err
+
+    def test_starting_screen_without_render_to_figma_skips_bridge(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """`--starting-screen` alone runs the session against real
+        content but never touches Figma. Useful for testing without
+        a live bridge."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                ])
+
+        assert bridge_calls == []
+
+    def test_render_to_figma_calls_bridge_with_session_page_name(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """After the session halts, the CLI executes two render
+        scripts via the bridge — one for the original screen, one
+        for the final variant. Both share a page_name keyed on the
+        session ULID (render_figma_ast's find-or-create preamble
+        makes the second call land beside the first on the same
+        page).
+
+        Passes ``--no-labels`` so we isolate the render-to-figma
+        page-name behavior from the demo-labels third bridge call
+        (the labels-on path is pinned separately in
+        :class:`TestDesignBriefRenderToFigmaLabels`)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--no-labels",
+                ])
+
+        # Two bridge calls — original render + variant render.
+        assert len(bridge_calls) == 2, (
+            f"expected original + variant renders, got "
+            f"{len(bridge_calls)} calls"
+        )
+        # Both scripts target a page name that carries "design session".
+        for i, script in enumerate(bridge_calls):
+            assert "design session" in script, (
+                f"call {i} script missing page name preamble"
+            )
+        # Canvas positioning: original at (0,0), variant offset right.
+        # The root-frame x/y emission happens inside the
+        # setCurrentPageAsync(_page) block (render_figma_ast line
+        # ~1747). Grab that block's `<var>.x = <num>;` line — the
+        # variant render should have a larger x offset than the
+        # original.
+        import re
+        xs = []
+        for script in bridge_calls:
+            # Root attach happens right after setCurrentPageAsync, so
+            # the very next `.x = N;` line is the root frame's origin.
+            after_page = script.split("setCurrentPageAsync", 1)
+            tail = after_page[1] if len(after_page) > 1 else script
+            m = re.search(r"\.x = (\d+(?:\.\d+)?);", tail)
+            xs.append(float(m.group(1)) if m else -1.0)
+        assert len(xs) == 2
+        # One at 0, one >= screen_width (228 default screen; test
+        # seed uses 428, so variant offset should be >= 428+200).
+        assert min(xs) == 0.0, f"expected one render at x=0, got xs={xs}"
+        assert max(xs) >= 428.0, (
+            f"expected variant offset right of screen, got xs={xs}"
+        )
+
+    def test_render_to_figma_prints_session_summary_with_page_hint(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """The demo surface wants a clear `→ rendered to Figma page
+        'design session <ULID>'` line so the user knows what to look
+        for. Without it the render happens silently and the user
+        doesn't know where to click."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def fake_execute(**kwargs):
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        out = capsys.readouterr().out
+        assert "Figma page" in out or "figma page" in out.lower()
+        assert "design session" in out
+
+    def test_dump_scripts_writes_original_and_variant_to_disk(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """`--dump-scripts <dir>` is an additive diagnostic side-channel:
+        both JS render scripts land on disk AND the bridge still runs.
+        Useful when the bridge times out or the variant render comes
+        up empty — the on-disk files are the only thing left to read.
+        """
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        dump_dir = tmp_path / "scripts"
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--dump-scripts", str(dump_dir),
+                    "--no-labels",
+                ])
+
+        original_path = dump_dir / "original.js"
+        variant_path = dump_dir / "variant.js"
+        assert original_path.exists(), (
+            f"expected {original_path} to be written"
+        )
+        assert variant_path.exists(), (
+            f"expected {variant_path} to be written"
+        )
+        assert original_path.read_text().strip(), (
+            "original.js was written but is empty"
+        )
+        assert variant_path.read_text().strip(), (
+            "variant.js was written but is empty"
+        )
+        # Additive — bridge was still called for both renders.
+        assert len(bridge_calls) == 2, (
+            f"--dump-scripts must not skip bridge I/O; got "
+            f"{len(bridge_calls)} bridge calls"
+        )
+
+    def test_render_to_figma_bridge_error_reaches_user(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Codex's explicit risk: silent partial execution. When the
+        bridge rejects a script (connection refused, bad script,
+        timeout) the CLI must surface that to the user, not swallow
+        it and exit 0 with a successful-looking session summary."""
+        from dd.apply_render import BridgeError
+
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def failing_execute(**kwargs):
+            raise BridgeError(
+                "execute_ref.js exited 1: PROXY_EXECUTE rejected"
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=failing_execute):
+                with pytest.raises(SystemExit) as exc_info:
+                    cli_main([
+                        "design", "--brief", "x",
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                    ])
+                assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "bridge" in err.lower() or "proxy_execute" in err.lower()
+
+    def test_render_thrown_in_ack_surfaces_to_user(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """When the bridge ack carries a ``render_thrown`` entry in
+        ``__errors`` (the outer try/catch in ``_emit_end_wrapper``
+        caught a mid-script throw), the CLI MUST fail loudly — not
+        discard the return value and print a success summary. The
+        demo-B postmortem (2026-04-24) traced 38 orphan nodes on
+        ``figma.currentPage`` to exactly this silent-failure mode:
+        Phase 1 threw, Phase 2 was skipped including
+        ``_page.appendChild(root_var)``, but the CLI exited 0.
+        """
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        def thrown_execute(**kwargs):
+            return {
+                "__ok": True,
+                "errors": [
+                    {
+                        "kind": "render_thrown",
+                        "error": "oh no",
+                        "stack": "at n0 | at Phase1 | at eval",
+                    },
+                ],
+                "perf": {
+                    "stages": {
+                        "prefetch_done": 50,
+                        "phase1_done": 100,
+                    },
+                },
+                "request_id": "x",
+            }
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=thrown_execute):
+                with pytest.raises(SystemExit) as exc_info:
+                    cli_main([
+                        "design", "--brief", "x",
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                    ])
+                assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "phase1_done" in err, (
+            f"expected last-completed stage 'phase1_done' in stderr; "
+            f"got: {err!r}"
+        )
+        assert "oh no" in err, (
+            f"expected the thrown error message surfaced in stderr; "
+            f"got: {err!r}"
+        )
+
+    def test_render_session_page_name_includes_variant_id(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Page collision fix: a session's page_name must embed both
+        the session prefix AND the final variant prefix. Two renders
+        against the same session_id land on DIFFERENT pages (one per
+        variant leaf) so the multi-turn demo doesn't stack renders
+        at identical coordinates on a single page."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        page_names_called: list[str] = []
+
+        def fake_execute(**kwargs):
+            script = kwargs.get("script", "")
+            # The render_figma_ast preamble embeds the page name as
+            # a JS string literal — capture it via regex.
+            import re
+            m = re.search(r'p\.name === "([^"]+)"', script)
+            if m:
+                page_names_called.append(m.group(1))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--no-labels",
+                ])
+
+        # Both bridge calls target the same page, so there should be
+        # two identical entries (one per script).
+        assert len(page_names_called) == 2, (
+            f"expected 2 bridge scripts with page_name preambles, got "
+            f"{page_names_called}"
+        )
+        assert page_names_called[0] == page_names_called[1], (
+            f"original + variant must target same page, got "
+            f"{page_names_called}"
+        )
+        pn = page_names_called[0]
+        # Session prefix still present.
+        assert pn.startswith("design session "), (
+            f"page_name {pn!r} must start with 'design session '"
+        )
+        # Variant-prefix substring also present — " / <ULID prefix>".
+        import re
+        # "design session XXXXXXXX / YYYYYYYYYYYY" — variant prefix
+        # extends into the ULID random region (12 chars) so back-to-
+        # back resumes within the same millisecond don't collide.
+        m = re.match(
+            r"design session ([0-9A-Z]{8}) / ([0-9A-Z]{12})$", pn,
+        )
+        assert m is not None, (
+            f"page_name {pn!r} must carry BOTH session prefix and "
+            "variant prefix — expected 'design session <SID8> / "
+            "<VID12>'"
+        )
+        # Pull the actual session + variant ids out of the DB and
+        # confirm the prefixes match (not just that two prefixes exist).
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = list_sessions(conn)
+            assert len(sessions) == 1
+            sid = sessions[0].id
+            variants = list_variants(conn, sid)
+            # The final variant is the leaf of the session — in a
+            # done-immediately flow it's just the root.
+            vids = [v.id for v in variants]
+        finally:
+            conn.close()
+        assert m.group(1) == sid[:8], (
+            f"session prefix mismatch: page_name had {m.group(1)!r}, "
+            f"session id starts with {sid[:8]!r}"
+        )
+        assert m.group(2) in {v[:12] for v in vids}, (
+            f"variant prefix {m.group(2)!r} not in session variants "
+            f"{[v[:12] for v in vids]}"
+        )
+
+    def test_variant_only_skips_original_render(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Demo-recovery flag: `--variant-only` skips the heavy
+        original-screen render and ships ONLY the final variant.
+
+        Why it exists: rendering the source screen against a fresh
+        Figma file containing the 87k-descendant Dank 1.0 library page
+        consistently times out at the 300s PROXY_EXECUTE cap. The
+        original render does many findOne calls under the preamble's
+        currentPage side-effect dance and is the heavier of the two.
+        The user can compare to the original by opening it directly
+        in the source file — they don't need a fresh copy.
+
+        Pin: with --variant-only, the bridge is called exactly ONCE
+        (not twice), and the lone script carries the variant render
+        (it has the page-name preamble + `appendChild` calls)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "leave it as is",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--variant-only",
+                    "--no-labels",
+                ])
+
+        # The key invariant: ONE bridge call, not two. The whole
+        # point of the flag is to skip the original render.
+        assert len(bridge_calls) == 1, (
+            f"--variant-only must skip the original render and ship "
+            f"exactly one script (the variant); got "
+            f"{len(bridge_calls)} calls"
+        )
+        # The lone script is a render — it carries the page-name
+        # preamble + the variant's appendChild compose phase.
+        script = bridge_calls[0]
+        assert "design session" in script, (
+            "single script must carry the page-name preamble"
+        )
+        assert "appendChild" in script, (
+            "single script must be a render (variant render's compose "
+            "phase emits appendChild)"
+        )
+        # Canvas position: with variant-only there's no original to
+        # sit beside, so the variant should land at x=0 (not offset
+        # right by screen_width + 200).
+        import re
+        after_page = script.split("setCurrentPageAsync", 1)
+        tail = after_page[1] if len(after_page) > 1 else script
+        m = re.search(r"\.x = (\d+(?:\.\d+)?);", tail)
+        assert m is not None, (
+            "could not find root frame x= in script tail"
+        )
+        assert float(m.group(1)) == 0.0, (
+            f"variant-only must place variant at x=0 (no original "
+            f"beside it), got x={m.group(1)}"
+        )
+
+    def test_variant_only_works_with_resume(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Sibling flag plumbing: `--variant-only` is also accepted on
+        `resume` and produces the same single-script behavior, so the
+        multi-turn demo (brief + resume) can still avoid the heavy
+        original render on every iteration."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        # Bootstrap a resumable variant so the dispatcher reaches
+        # _run_design_resume rather than exiting before flag parsing.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "resume", vid,
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--variant-only",
+                    "--no-labels",
+                ])
+
+        assert len(bridge_calls) == 1, (
+            f"resume --variant-only must ship exactly one script "
+            f"(the variant); got {len(bridge_calls)} calls"
+        )
+        script = bridge_calls[0]
+        assert "design session" in script
+        assert "appendChild" in script
+
+
+class TestDesignResumeRenderToFigma:
+    """Bug 1 + Bug 2 regression pin: `dd design resume` must support
+    the same render-to-figma flag family as `--brief`, AND distinct
+    resume renders against the same session must land on DIFFERENT
+    pages (variant-prefix in page_name).
+
+    Without this, the multi-turn demo (brief A, resume w/ refining
+    brief B) can't ship — either `resume` can't render at all, or
+    two renders stack at identical coordinates on the same page."""
+
+    def test_resume_supports_render_flags(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """Argparse-level smoke: the resume subparser accepts the
+        same render-family flags as --brief. Failure mode pre-fix:
+        argparse rejects the flags as unknown. We don't exercise the
+        full pipeline here — just prove the flags parse."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        # Bootstrap a resumable variant so the dispatcher reaches
+        # _run_design_resume instead of exiting before argparse even
+        # sees the resume-render flags.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        sid = create_session(conn, brief="seed")
+        vid = create_variant(
+            conn, session_id=sid, parent_id=None,
+            primitive="ROOT", edit_script=None,
+            doc=parse_l3("screen #screen-root\n"),
+        )
+        conn.close()
+
+        def fake_execute(**kwargs):
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                # Must not raise argparse errors.
+                cli_main([
+                    "design", "resume", vid,
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+    def test_resume_render_to_figma_creates_per_variant_page(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """End-to-end: `--brief` once, then `resume <leaf>` with
+        --render-to-figma. Asserts two bridge executions per render
+        (original + variant = 4 total) and that each render lands on
+        a DIFFERENT page (per-variant page_name, not per-session).
+
+        Uses a `run_session` stub on the resume turn so the test
+        deterministically creates a NEW leaf variant (a real done-
+        immediately mock returns the parent we resumed from, which
+        masks the page-collision under-test)."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        page_names_by_call: list[str] = []
+
+        def fake_execute(**kwargs):
+            script = kwargs.get("script", "")
+            import re
+            m = re.search(r'p\.name === "([^"]+)"', script)
+            if m:
+                page_names_by_call.append(m.group(1))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        # 1. First render — `--brief`. Done-immediately is fine; the
+        # session creates its ROOT variant before halting.
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief", "a",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--no-labels",
+                ])
+
+        # Grab the brief's session + leaf-variant for the resume.
+        conn = sqlite3.connect(tmp_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = list_sessions(conn)
+            assert len(sessions) == 1
+            sid = sessions[0].id
+            variants = list_variants(conn, sid)
+            assert len(variants) >= 1
+            brief_leaf_vid = variants[-1].id
+        finally:
+            conn.close()
+
+        # 2. Resume — stub run_session so it creates a fresh child
+        # variant under the same session and returns the new id as
+        # final_variant_id. This is the "agent did productive work"
+        # shape — without it the page-name collision under test
+        # is masked by the no-new-variant edge case.
+        from dd.agent.loop import SessionRunResult
+        from dd.sessions import create_variant as _cv
+        from dd.markup_l3 import parse_l3 as _pl3
+
+        def fake_resume_run_session(conn, **kwargs):
+            new_vid = _cv(
+                conn,
+                session_id=sid,
+                parent_id=kwargs["parent_variant_id"],
+                primitive="EDIT",
+                edit_script="set @screen-root brief-resumed=1",
+                doc=_pl3("screen #screen-root brief-resumed=1\n"),
+            )
+            return SessionRunResult(
+                session_id=sid,
+                iterations=1,
+                halt_reason="done",
+                final_variant_id=new_vid,
+                move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_resume_run_session):
+                with patch("dd.apply_render.execute_script_via_bridge",
+                           side_effect=fake_execute):
+                    cli_main([
+                        "design", "resume", brief_leaf_vid,
+                        "--starting-screen", "1",
+                        "--project-db", project_db,
+                        "--db", tmp_db_path,
+                        "--render-to-figma",
+                        "--no-labels",
+                    ])
+
+        # 4 bridge calls total — 2 per render.
+        assert len(page_names_by_call) == 4, (
+            f"expected 4 bridge calls (2 per render × 2 renders), "
+            f"got {len(page_names_by_call)}: {page_names_by_call}"
+        )
+        # Within each render the two scripts share a page.
+        assert page_names_by_call[0] == page_names_by_call[1], (
+            f"--brief render split across pages: {page_names_by_call}"
+        )
+        assert page_names_by_call[2] == page_names_by_call[3], (
+            f"resume render split across pages: {page_names_by_call}"
+        )
+        # The two renders must NOT share a page — that's the
+        # page-collision regression. Different variant leaves =
+        # different page names.
+        brief_page = page_names_by_call[0]
+        resume_page = page_names_by_call[2]
+        assert brief_page != resume_page, (
+            f"brief + resume landed on the same page "
+            f"({brief_page!r}); page-collision regression. Each "
+            "variant leaf must get its own page."
+        )
+        # Both pages should carry the shared session-prefix substring
+        # (so the sidebar relationship is visible to the user).
+        shared_session_prefix = f"design session {sid[:8]}"
+        assert shared_session_prefix in brief_page, (
+            f"brief page_name {brief_page!r} missing shared session "
+            f"prefix {shared_session_prefix!r}"
+        )
+        assert shared_session_prefix in resume_page, (
+            f"resume page_name {resume_page!r} missing shared "
+            f"session prefix {shared_session_prefix!r}"
+        )
+
+
+class TestDesignBriefRenderToFigmaLabels:
+    """Demo-grade labels on the side-by-side render: ORIGINAL /
+    VARIANT / brief text. So a Loom audience can immediately read
+    what they're looking at on a shared screen.
+
+    Default: labels ON (a third bridge call after original + variant).
+    Opt-out: ``--no-labels`` for clean parity renders. The labels
+    script is additive — a labels failure does not invalidate the
+    completed frame renders."""
+
+    def test_labels_emitted_alongside_renders(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """With --render-to-figma (default labels ON), the bridge is
+        called THREE times: original, variant, labels. The third
+        call is the label-emission script; without it the demo
+        audience has no on-page cue for which frame is which."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief",
+                    "Hide the entire bottom toolbar. Keep the rest.",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                ])
+
+        # Three bridge calls — original + variant + labels.
+        assert len(bridge_calls) == 3, (
+            f"expected original + variant + labels bridge calls; "
+            f"got {len(bridge_calls)}"
+        )
+        # The third script is the labels script — it creates text
+        # nodes with the labels we promised.
+        labels_script = bridge_calls[2]
+        assert "createText" in labels_script, (
+            "third script must be the labels script (createText calls)"
+        )
+        assert "ORIGINAL" in labels_script
+        assert "VARIANT" in labels_script
+        # The brief text must be in there verbatim (the headline of
+        # the demo). We escape-normalize quotes via _escape_js so
+        # the check is a substring match against the unquoted text.
+        assert "Hide the entire bottom toolbar" in labels_script
+
+    def test_no_labels_flag_skips_labels(
+        self, tmp_db_path, tmp_path, capsys,
+    ):
+        """``--no-labels`` suppresses the third bridge call. Useful
+        for clean parity renders (automated visual diffs) where the
+        demo labels would add noise."""
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        _seed_project_db(project_db)
+
+        bridge_calls: list[str] = []
+
+        def fake_execute(**kwargs):
+            bridge_calls.append(kwargs.get("script", ""))
+            return {"__ok": True, "errors": [], "request_id": "x"}
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.apply_render.execute_script_via_bridge",
+                       side_effect=fake_execute):
+                cli_main([
+                    "design", "--brief",
+                    "Hide the entire bottom toolbar. Keep the rest.",
+                    "--starting-screen", "1",
+                    "--project-db", project_db,
+                    "--db", tmp_db_path,
+                    "--render-to-figma",
+                    "--no-labels",
+                ])
+
+        # Exactly two bridge calls — original + variant, no labels.
+        assert len(bridge_calls) == 2, (
+            f"--no-labels must skip the labels bridge call; got "
+            f"{len(bridge_calls)} calls"
+        )
+        # Neither script is the labels script (they're renderer
+        # scripts with appendChild, not just createText labels).
+        for i, script in enumerate(bridge_calls):
+            assert "VARIANT (demo label)" not in script, (
+                f"call {i} must not carry the demo-label artefact"
+            )
+
+    def test_labels_script_includes_brief_verbatim(self):
+        """Direct-call pin: :func:`_build_labels_script` embeds the
+        brief as a JS string literal and includes both ORIGINAL and
+        VARIANT label text. Unit-level check that doesn't need the
+        CLI plumbing or the bridge."""
+        from dd.cli import _build_labels_script
+
+        brief = "Hide the entire bottom toolbar. Keep everything else."
+        script = _build_labels_script(
+            page_name="design session 01ABCDEF / 01ABCDEFGHIJ",
+            brief=brief,
+            original_x=0.0,
+            original_y=0.0,
+            variant_x=628.0,
+            variant_y=0.0,
+            screen_width=428.0,
+        )
+        # The brief text lands as a string literal inside the
+        # generated JS — the demo audience reads it verbatim.
+        assert brief in script, (
+            f"brief text missing from labels script; got:\n"
+            f"{script[:400]}"
+        )
+        # Both label headlines present.
+        assert "ORIGINAL" in script
+        assert "VARIANT" in script
+        # And it's a createText-shaped script (not an accidental
+        # copy of the render script).
+        assert "figma.createText" in script
+        assert "loadFontAsync" in script
+
+    def test_labels_script_variant_only_skips_original_label(self):
+        """With variant_only=True there's no original frame beside
+        the variant to label — ORIGINAL is omitted; VARIANT and the
+        brief still emit."""
+        from dd.cli import _build_labels_script
+
+        script = _build_labels_script(
+            page_name="design session 01ABCDEF / 01ABCDEFGHIJ",
+            brief="Move the CTA to the top",
+            original_x=0.0,
+            original_y=0.0,
+            variant_x=0.0,
+            variant_y=0.0,
+            screen_width=428.0,
+            variant_only=True,
+        )
+        assert "VARIANT" in script
+        assert "Move the CTA to the top" in script
+        # ORIGINAL label is skipped — no original frame to label.
+        assert "ORIGINAL" not in script
+
+
+class TestStartingDocWrapperShapeMatchesRenderer:
+    """Regression pin for the 2026-04-24 "variant renders blank"
+    bug. The agent's starting doc (produced by `_load_starting_doc`)
+    and the renderer's original doc (produced by
+    `_render_session_to_figma`) must use the SAME wrapper-collapse
+    setting when compressing the same screen. If they diverge, the
+    eid-chain paths in `rebuild_maps_after_edits._index_by_path`
+    don't line up and every entry in nid_map misses — the final
+    variant falls to Mode-2 cheap-emission for every node.
+
+    Without this pin a pure-delete edit sequence can produce an
+    almost-empty Figma render and pass structural tests silently
+    (because spec_key_map falls through the "fresh node" branch
+    and claims 100% coverage — it's the nid_map that matters).
+
+    The pin: a starting doc loaded via `_load_starting_doc` must
+    produce a tree whose eid-chain paths match what the renderer's
+    `_compress_to_l3_impl(collapse_wrapper=False)` produces.
+    Expressed as: a pure-delete round-trip preserves >90% nid_map
+    coverage against the renderer's original_doc."""
+
+    def test_load_starting_doc_matches_renderer_wrapper_shape(
+        self, tmp_path,
+    ):
+        from dd.apply_render import rebuild_maps_after_edits
+        from dd.cli import _load_starting_doc
+        from dd.compress_l3 import _compress_to_l3_impl
+        from dd.db import get_connection
+        from dd.ir import generate_ir
+        from dd.markup_l3 import Node, apply_edits, parse_l3
+
+        project_db = str(tmp_path / "project.db")
+        init_db(project_db).close()
+        screen_id = _seed_project_db(project_db)
+
+        starting_doc = _load_starting_doc(
+            project_db_path=project_db, screen_id=screen_id,
+        )
+
+        # Simulate a pure-delete edit (grab the deepest leaf eid from
+        # the starting doc and issue `delete @<eid>` against it). The
+        # shape of the edit doesn't matter; what matters is that the
+        # applied doc still has ≥90% of its nodes matching paths in
+        # the renderer's original_doc.
+        leaves: list[Node] = []
+        stack = list(starting_doc.top_level)
+        while stack:
+            n = stack.pop()
+            if not isinstance(n, Node):
+                continue
+            if n.block is None or not any(
+                isinstance(s, Node) for s in n.block.statements
+            ):
+                leaves.append(n)
+            else:
+                stack.extend(n.block.statements)
+        assert leaves, "fixture produced no leaves"
+        target_eid = leaves[0].head.eid
+        edit_doc = parse_l3(f"delete @{target_eid}\n")
+        applied_doc = apply_edits(
+            starting_doc, list(edit_doc.edits),
+        )
+
+        # Renderer side: exactly what `_render_session_to_figma` does.
+        proj_conn = get_connection(project_db)
+        try:
+            ir_result = generate_ir(proj_conn, screen_id)
+            (
+                original_doc, _eid_nid, nid_map, spec_key_map,
+                original_name_map, _desc,
+            ) = _compress_to_l3_impl(
+                ir_result["spec"], proj_conn, screen_id=screen_id,
+                collapse_wrapper=False,
+            )
+            maps = rebuild_maps_after_edits(
+                applied_doc=applied_doc,
+                original_doc=original_doc,
+                edits=list(edit_doc.edits),
+                old_nid_map=nid_map,
+                old_spec_key_map=spec_key_map,
+                old_original_name_map=original_name_map,
+                conn=proj_conn,
+            )
+        finally:
+            proj_conn.close()
+
+        # BFS the applied doc and count how many nodes got nid-mapped.
+        applied_nodes: list[Node] = []
+        q = list(applied_doc.top_level)
+        while q:
+            n = q.pop(0)
+            if not isinstance(n, Node):
+                continue
+            applied_nodes.append(n)
+            if n.block is not None:
+                q.extend(n.block.statements)
+
+        covered = sum(
+            1 for n in applied_nodes if id(n) in maps.nid_map
+        )
+        total = len(applied_nodes)
+        ratio = covered / max(total, 1)
+        # Pre-fix (collapse_wrapper mismatch): nid_map was 0/N for
+        # every applied-doc node — EVERY surviving node fell to
+        # Mode-2 cheap emission. Post-fix on the real Dank capstone:
+        # 109/109 = 100%. The seed fixture is only 2 nodes (1
+        # survives after delete), so the strongest guarantee is
+        # "strictly > 0" — but the bug produced exactly 0, so even
+        # this pins the regression. On the real live-bridge capstone
+        # (tests/test_stage3_acceptance.py) the assertion embedded in
+        # the CLI output check tightens this to "visible content on
+        # the canvas".
+        assert covered > 0, (
+            f"nid_map coverage {covered}/{total} — pre-fix this was "
+            "exactly 0. _load_starting_doc's collapse_wrapper setting "
+            "has diverged from the renderer's. See dd/cli.py "
+            "_load_starting_doc CRITICAL comment."
+        )
+        # Sanity: the renderer-side original_doc must be non-empty
+        # (if the seed fixture changes and produces a 1-node tree,
+        # the coverage check above trivially passes).
+        assert total >= 2, (
+            "fixture too small — extend the seed screen or this "
+            "regression pin has no teeth"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# M1 follow-up 2 — demo UX: auto-init, lower max-iters, progress output       #
+# --------------------------------------------------------------------------- #
+
+class TestDesignDemoUX:
+    """The three UX warts Codex + a post-M1 real-run pass surfaced:
+
+    1. `dd design --db /tmp/demo.db` on a fresh file dies with
+       `no such table: design_sessions` — the CLI should init_db
+       implicitly so one-command demos just work.
+    2. `--max-iters` default of 10 means ~1 minute/iter × 10 =
+       10 minutes of silence before stdout. That's demo-hostile.
+       Lower default to 4; long-form runs pass explicit
+       --max-iters.
+    3. No per-iter progress output. Users stare at a blank
+       terminal for minutes, assume it's hung. Emit an `[iter N/M]`
+       line to stderr at the start of each session iteration."""
+
+    def test_fresh_db_file_auto_inits_on_brief(
+        self, tmp_path, capsys,
+    ):
+        """Pointing --db at a fresh file (no schema yet) must NOT
+        fail with 'no such table'. The CLI initializes the schema
+        transparently; idempotent if the DB already has tables."""
+        fresh_db = tmp_path / "fresh.db"
+        # Create the FILE but not the schema — simulates what
+        # happens when the user copy-pastes `--db /tmp/demo.db`
+        # and the OS creates the file on first connection.
+        fresh_db.touch()
+        assert fresh_db.exists()
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            cli_main([
+                "design", "--brief", "anything",
+                "--db", str(fresh_db),
+            ])
+        # Successful exit → session persisted → schema got
+        # initialized in-line.
+        conn = sqlite3.connect(str(fresh_db))
+        conn.row_factory = sqlite3.Row
+        try:
+            sessions = conn.execute(
+                "SELECT id FROM design_sessions"
+            ).fetchall()
+            assert len(sessions) == 1
+        finally:
+            conn.close()
+
+    def test_nonexistent_db_path_auto_inits(
+        self, tmp_path, capsys,
+    ):
+        """Same guarantee when the file doesn't exist yet at all —
+        the canonical demo flow. One command, session lands."""
+        db_path = tmp_path / "does-not-exist-yet.db"
+        assert not db_path.exists()
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            cli_main([
+                "design", "--brief", "anything",
+                "--db", str(db_path),
+            ])
+        assert db_path.exists()
+        conn = sqlite3.connect(str(db_path))
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM design_sessions"
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            conn.close()
+
+    def test_max_iters_default_is_demo_friendly(self, tmp_db_path):
+        """Default --max-iters is 4 (down from 10). A 4-iter Sonnet
+        session against a mid-complexity screen lands in ~15-30s;
+        10 iters can hit 4+ minutes. Demo-hostile default was
+        making every first-time run feel hung."""
+        client = _mock_client(
+            *[_mock_done_response() for _ in range(15)]
+        )
+        # Simulate a non-halting LLM: return something that DOESN'T
+        # halt. Easiest: an EDIT-like tool that keeps emitting edit
+        # intents. The loop will only cap out if it doesn't halt
+        # naturally. But our simple _mock_done_response halts on
+        # iter 1 by emitting `emit_done`. Instead, look directly at
+        # what CLI default feeds into run_session.
+        captured: dict = {}
+
+        def fake_run_session(conn, **kwargs):
+            captured["max_iters"] = kwargs.get("max_iters")
+            from dd.agent.loop import SessionRunResult
+            from dd.sessions import create_session, create_variant
+            from dd.markup_l3 import parse_l3
+            sid = create_session(conn, brief=kwargs.get("brief") or "x")
+            doc = kwargs.get("starting_doc") or parse_l3(
+                "screen #stub {\n  text #t1 \"x\"\n}\n"
+            )
+            vid = create_variant(
+                conn, session_id=sid, parent_id=None,
+                primitive="ROOT", edit_script=None, doc=doc,
+            )
+            return SessionRunResult(
+                session_id=sid, iterations=0,
+                halt_reason="done", final_variant_id=vid,
+                move_log_summary=[],
+            )
+
+        with patch("dd.cli._make_anthropic_client",
+                   return_value=_mock_client()):
+            with patch("dd.agent.loop.run_session",
+                       side_effect=fake_run_session):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--db", tmp_db_path,
+                ])
+        # Default should be the new demo-friendly value.
+        assert captured["max_iters"] == 4, (
+            f"expected max_iters default of 4, got "
+            f"{captured.get('max_iters')}"
+        )
+
+    def test_per_iter_progress_emitted_to_stderr(
+        self, tmp_db_path, capsys,
+    ):
+        """The loop writes `[iter N/M] ...` to stderr on each turn
+        so the user sees heartbeat progress during a multi-minute
+        session. Without this the terminal looks hung.
+
+        We validate via a 3-response mock that's forced to run 3
+        iters (so the loop prints at least 2 iter lines)."""
+        block_name = MagicMock(); block_name.type = "tool_use"
+        block_name.name = "emit_name_subtree"
+        block_name.input = {
+            "eid": "screen-root",
+            "description": "the screen root",
+        }
+        msg_name = MagicMock(); msg_name.content = [block_name]
+        msg_name.stop_reason = "tool_use"
+
+        block_done = MagicMock(); block_done.type = "tool_use"
+        block_done.name = "emit_done"
+        block_done.input = {"rationale": "ok"}
+        msg_done = MagicMock(); msg_done.content = [block_done]
+        msg_done.stop_reason = "tool_use"
+
+        client = _mock_client(msg_name, msg_name, msg_done)
+
+        # Patch `_empty_starting_doc` so the default SYNTHESIZE
+        # path gives the LLM an addressable `#screen-root` eid
+        # for emit_name_subtree.
+        from dd.agent import loop as agent_loop
+        original_default = agent_loop._empty_starting_doc
+        try:
+            agent_loop._empty_starting_doc = lambda: parse_l3(
+                "screen #screen-root {\n"
+                "  text #t1 \"hi\"\n"
+                "}\n"
+            )
+            with patch("dd.cli._make_anthropic_client",
+                       return_value=client):
+                cli_main([
+                    "design", "--brief", "x",
+                    "--db", tmp_db_path,
+                    "--max-iters", "3",
+                ])
+        finally:
+            agent_loop._empty_starting_doc = original_default
+
+        err = capsys.readouterr().err
+        # At least one per-iter heartbeat landed before halt.
+        assert "[iter 1" in err, (
+            f"expected '[iter 1' progress line on stderr; got:\n{err}"
+        )

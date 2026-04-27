@@ -39,21 +39,29 @@ class ProjectCKRProvider:
     def _bindings_for(
         self, catalog_type: str, variant: str | None,
     ) -> list[dict[str, Any]]:
-        """Fetch variant_token_binding rows for a (type, variant) pair."""
-        if variant is not None:
-            rows = self.conn.execute(
-                "SELECT slot, token_id, literal_value, confidence, source "
-                "FROM variant_token_binding "
-                "WHERE catalog_type = ? AND variant = ?",
-                (catalog_type, variant),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT slot, token_id, literal_value, confidence, source "
-                "FROM variant_token_binding "
-                "WHERE catalog_type = ?",
-                (catalog_type,),
-            ).fetchall()
+        """Fetch variant_token_binding rows for a (type, variant) pair.
+
+        Returns an empty list when the table doesn't exist — matches
+        the tolerant gate in :meth:`supports`, so ``resolve`` paths
+        that reached this point via the CKR branch don't fail hard.
+        """
+        try:
+            if variant is not None:
+                rows = self.conn.execute(
+                    "SELECT slot, token_id, literal_value, confidence, source "
+                    "FROM variant_token_binding "
+                    "WHERE catalog_type = ? AND variant = ?",
+                    (catalog_type, variant),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT slot, token_id, literal_value, confidence, source "
+                    "FROM variant_token_binding "
+                    "WHERE catalog_type = ?",
+                    (catalog_type,),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
         return [
             {"slot": r[0], "token_id": r[1], "literal_value": r[2], "confidence": r[3], "source": r[4]}
             for r in rows
@@ -70,22 +78,39 @@ class ProjectCKRProvider:
         template. The ``resolve`` path may still fall back to a minimal
         shape plus a ``KIND_VARIANT_BINDING_MISSING`` entry when the
         binding isn't populated yet.
-        """
-        binding_count = self.conn.execute(
-            "SELECT COUNT(*) FROM variant_token_binding "
-            "WHERE catalog_type = ?",
-            (catalog_type,),
-        ).fetchone()[0]
-        if binding_count > 0:
-            return True
 
-        # CKR entry whose name namespace matches the catalog type.
-        ckr_count = self.conn.execute(
-            "SELECT COUNT(*) FROM component_key_registry "
-            "WHERE name LIKE ? OR name = ?",
-            (f"{catalog_type}/%", catalog_type),
-        ).fetchone()[0]
-        return ckr_count > 0
+        Either backing table may be missing on fresh-install DBs
+        (``component_key_registry`` is created by an extraction step;
+        ``variant_token_binding`` by cluster_variants). Treat absence
+        as "this provider has nothing to contribute" — not as an
+        error — so this provider can participate in the default
+        cascade without tripping the callers of ``generate_from_prompt``
+        on a bare test DB. The alternative (raising sqlite3.
+        OperationalError) would force every caller of the Mode-3
+        registry to construct a full-extraction DB just to compose.
+        """
+        try:
+            binding_count = self.conn.execute(
+                "SELECT COUNT(*) FROM variant_token_binding "
+                "WHERE catalog_type = ?",
+                (catalog_type,),
+            ).fetchone()[0]
+            if binding_count > 0:
+                return True
+        except sqlite3.OperationalError:
+            # variant_token_binding table doesn't exist yet. Fall
+            # through to the CKR check, which may itself be absent.
+            pass
+
+        try:
+            ckr_count = self.conn.execute(
+                "SELECT COUNT(*) FROM component_key_registry "
+                "WHERE name LIKE ? OR name = ?",
+                (f"{catalog_type}/%", catalog_type),
+            ).fetchone()[0]
+            return ckr_count > 0
+        except sqlite3.OperationalError:
+            return False
 
     def resolve(
         self,
@@ -95,19 +120,32 @@ class ProjectCKRProvider:
     ) -> PresentationTemplate | None:
         """Return a project-native template (or ``None`` if no match).
 
-        Populates ``context["__errors__"]`` — when present — with a
-        ``KIND_VARIANT_BINDING_MISSING`` entry if the pair has a
-        ``supports()``-true claim but no binding row. Callers are
-        expected to collect those errors from the context dict.
+        A4 (architectural sprint, 2026-04-26): when no
+        ``variant_token_binding`` rows exist for the
+        ``(catalog_type, variant)`` pair, this provider returns
+        ``None`` so the provider chain falls through to
+        ingested / universal — which have a complete template
+        shape. Pre-A4 the provider returned a fallback template
+        with empty bindings, blocking the chain and rendering
+        components with universal defaults that pretended to be
+        project-native.
+
+        Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26):
+        "ProjectCKR has no project-native template for
+        `button/primary`, so it should not win the cascade. Let
+        Universal/Ingested resolve the complete shape."
+
+        Diagnostic still fires: ``KIND_VARIANT_BINDING_MISSING``
+        is appended to ``context["__errors__"]`` when the bindings
+        query returns empty. That's the audit trail for telling
+        you "you asked for a project variant we don't have
+        data for."
         """
         bindings = self._bindings_for(catalog_type, variant)
-        errors_sink = context.setdefault("__errors__", []) if isinstance(context, dict) else []
-
-        slots_style: dict[str, Any] = {}
-        for binding in bindings:
-            value = binding.get("literal_value")
-            if value is not None:
-                slots_style[binding["slot"]] = value
+        errors_sink = (
+            context.setdefault("__errors__", [])
+            if isinstance(context, dict) else []
+        )
 
         if not bindings:
             errors_sink.append(
@@ -124,6 +162,14 @@ class ProjectCKRProvider:
                     },
                 )
             )
+            # A4: return None so the provider chain falls through.
+            return None
+
+        slots_style: dict[str, Any] = {}
+        for binding in bindings:
+            value = binding.get("literal_value")
+            if value is not None:
+                slots_style[binding["slot"]] = value
 
         return PresentationTemplate(
             catalog_type=catalog_type,
@@ -133,5 +179,5 @@ class ProjectCKRProvider:
             slots={
                 "label": SlotSpec(allowed=["text"], required=False, position="fill"),
             },
-            style=slots_style or {"fill": "{color.surface.default}"},
+            style=slots_style,
         )

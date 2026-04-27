@@ -40,3 +40,44 @@ run_extraction_with_mcp.py
 
 # Node (bridge runner deps live here; ws is installed via `npm install`)
 node_modules/
+
+# Session-scratch + experiment artefacts (regenerable)
+tmp/
+render_batch/scripts-grid/
+render_batch/walks-grid/
+render_batch/m7_bakeoff_*.md
+render_batch/m7_bakeoff_*.jsonl
+render_batch/som_adjudication*.jsonl
+render_batch/proposed_types.jsonl
+
+# DB auto-backups from migrations (regenerable; keep latest *.declarative.db only)
+*.declarative.pre-*.bak.db
+*.declarative.pre-*.bak.db-shm
+*.declarative.pre-*.bak.db-wal
+
+# Claude Code agent metadata (per-machine)
+.claude/
+
+# Scratch + runtime artifacts
+.coverage
+tmp/
+*.db-shm
+*.db-wal
+
+# Archived snapshots (kept out of primary listing but not gitignored — explicitly tracked)
+# See archive/README.md for what's here and why
+
+# Audit / sweep / forensic outputs — bulk data is regenerable.
+# Already-tracked summary files (REPORT.md, RESULTS.md, summary.json,
+# sweep.stdout.txt, etc.) under audit/ stay tracked because git
+# doesn't untrack on .gitignore add. New audit runs are entirely
+# untracked. Use `git add -f <path>` to selectively track new
+# summaries.
+audit/
+
+# Local scratch + DB snapshots (regenerable; large)
+archive/db-snapshots/
+archive/scratch/
+
+# Sandboxed fix worktrees (per-session JS scratch, not load-bearing)
+fixes/

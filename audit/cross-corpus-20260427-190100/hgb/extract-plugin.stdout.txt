@@ -1,0 +1,10 @@
+Unified plugin extract: 44 app screens (port 9225, batch 10, collect_component_key=False)
+
+Done: 40550 nodes touched
+  supplement : lp=0  ck=0  grid=0  overrides=6999
+  properties : mask=1  bool_op=83  corner_sm=0  arc=81
+  sizing     : lsh=20275  lsv=20275  tar=7904  fst=7851  lw=8917
+  transforms : rt=20275  ot=0  w/h=20275  vp=2686
+  vector-geo : fill=1397  stroke=1656
+  asset store: 2885 content-addressed SVG paths
+EXIT=0

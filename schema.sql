@@ -143,7 +143,8 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
     aliases                 TEXT,                        -- JSON array of alternate names
     category                TEXT NOT NULL CHECK(category IN (
         'actions','selection_and_input','content_and_display',
-        'navigation','feedback_and_status','containment_and_overlay'
+        'navigation','feedback_and_status','containment_and_overlay',
+        'structural'
     )),
     behavioral_description  TEXT,                        -- One-sentence description
     prop_definitions        TEXT,                        -- JSON: typed property specs
@@ -152,6 +153,9 @@ CREATE TABLE IF NOT EXISTS component_type_catalog (
     recognition_heuristics  TEXT,                        -- JSON: structural patterns for classification
     related_types           TEXT,                        -- JSON array of related canonical names
     variant_axes            TEXT,                        -- JSON: {axis_name: {values: [...]}} — state/tone/density/variant etc.
+    clay_equivalent         TEXT,                        -- Google Research CLAY taxonomy name (migration 016)
+    aria_role               TEXT,                        -- W3C WAI-ARIA widget/document role (migration 016)
+    disambiguation_notes    TEXT,                        -- "NOT a <neighbor> because..." prompt cues (migration 016)
     created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -191,6 +195,7 @@ CREATE TABLE components (
     category        TEXT,                        -- button, input, nav, card, modal, icon, layout, chrome
     variant_properties TEXT,                     -- JSON: ["size","style","state"] — the axes (denormalized, see variant_axes for structured)
     composition_hint TEXT,                       -- JSON: structured recipe — see Component Model section
+    canonical_type  TEXT,                        -- Migration 018: type from component_type_catalog (set by M7.0.b backfill)
     extracted_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(file_id, figma_node_id)
 );
@@ -452,6 +457,14 @@ CREATE TABLE nodes (
 
     -- Component reference (extended)
     component_key   TEXT,                        -- Figma component key for importComponentByKeyAsync
+    component_figma_id TEXT,                     -- Figma node id of master component (Migration 024). For INSTANCE nodes, this is `getMainComponentAsync().id` — the master's local node id, distinct from `component_key` which is the published key. Used by `dd/templates.py::build_component_key_registry` to populate CKR.figma_node_id without needing to walk the Components page.
+
+    -- Classifier-assigned semantic role. Denormalized mirror of
+    -- screen_component_instances.canonical_type kept in sync at
+    -- classifier commit time. IR build reads this directly to avoid
+    -- the SCI join. See docs/plan-type-role-split.md. Nullable:
+    -- unclassified nodes keep role=NULL.
+    role            TEXT,                        -- Migration 021
 
     -- Plugin-API-only fields (REST cannot round-trip these)
     relative_transform TEXT,                     -- JSON [[a,b,e],[c,d,f]] parent-local affine matrix
@@ -537,12 +550,57 @@ CREATE TABLE IF NOT EXISTS screen_component_instances (
     vision_type           TEXT,                        -- vision classifier result
     vision_agrees         INTEGER,                     -- 1=agree, 0=disagree with structural
     flagged_for_review    INTEGER DEFAULT 0,           -- 1=needs human review
+    llm_reason            TEXT,                        -- M7.0.a: LLM text stage's one-sentence evidence (renamed from classification_reason in migration 014)
+    vision_reason         TEXT,                        -- M7.0.a: legacy (pre-three-source) vision reason
+    -- M7.0.a three-source architecture (migrations 013 + 015). Every
+    -- node gets three independent verdicts: LLM text, vision per-screen,
+    -- vision cross-screen. `canonical_type` above becomes the
+    -- COMPUTED consensus, not the primary signal. `consensus_method`
+    -- records which rule branch chose it (unanimous, majority,
+    -- any_unsure, three_way_disagreement). `llm_type` + `llm_confidence`
+    -- preserve the LLM's original verdict so rule-v2 iteration can
+    -- recompute consensus from raw sources WITHOUT re-classification.
+    llm_type              TEXT,
+    llm_confidence        REAL,
+    vision_ps_type        TEXT,
+    vision_ps_confidence  REAL,
+    vision_ps_reason      TEXT,
+    vision_cs_type        TEXT,
+    vision_cs_confidence  REAL,
+    vision_cs_reason      TEXT,
+    vision_cs_evidence_json TEXT,
+    vision_som_type       TEXT,
+    vision_som_confidence REAL,
+    vision_som_reason     TEXT,
+    consensus_method      TEXT,
     created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     UNIQUE(screen_id, node_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sci_screen ON screen_component_instances(screen_id);
 CREATE INDEX IF NOT EXISTS idx_sci_type ON screen_component_instances(canonical_type);
+
+-- M7.0.a Tier 1.5 review workflow. One row per human decision —
+-- additive + reversible. The consensus view (added in a later step)
+-- joins against the latest review to produce the final
+-- canonical_type. Decisions include audit rows from
+-- `dd classify-audit` on unflagged agreements.
+CREATE TABLE IF NOT EXISTS classification_reviews (
+    id                      INTEGER PRIMARY KEY,
+    sci_id                  INTEGER NOT NULL REFERENCES screen_component_instances(id) ON DELETE CASCADE,
+    decided_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    decided_by              TEXT NOT NULL DEFAULT 'human',
+    decision_type           TEXT NOT NULL CHECK(decision_type IN (
+        'accept_source', 'override', 'unsure', 'skip', 'audit'
+    )),
+    decision_canonical_type TEXT,
+    source_accepted         TEXT CHECK(source_accepted IN (
+        'llm', 'vision_ps', 'vision_cs', 'formal', 'heuristic'
+    )),
+    notes                   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_sci ON classification_reviews(sci_id);
 
 -- Screen-level skeleton: abstract structural arrangement after classification.
 CREATE TABLE IF NOT EXISTS screen_skeletons (
@@ -988,3 +1046,62 @@ WHERE run_at = (SELECT MAX(run_at) FROM export_validations)
 GROUP BY check_name, severity
 ORDER BY
     CASE severity WHEN 'error' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END;
+
+-- ============================================================================
+-- Stage 3 — design sessions (migration 023)
+-- ============================================================================
+-- Session persistence + branching for the agent authoring loop. See
+-- docs/plan-authoring-loop.md §3.1 + Codex+Sonnet 2026-04-23 picks
+-- (Option 3 hybrid + keep move_log).
+
+CREATE TABLE IF NOT EXISTS design_sessions (
+    id          TEXT PRIMARY KEY,
+    brief       TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open' CHECK(status IN (
+        'open', 'closed', 'archived'
+    )),
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_sessions_status
+    ON design_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_design_sessions_created_at
+    ON design_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS variants (
+    id           TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL REFERENCES design_sessions(id),
+    parent_id    TEXT REFERENCES variants(id),
+    primitive    TEXT,
+    edit_script  TEXT,
+    markup_blob  TEXT,
+    scores       TEXT,
+    status       TEXT DEFAULT 'open' CHECK(status IN (
+        'open', 'pruned', 'promoted', 'frontier'
+    )),
+    notes        TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_variants_session_id
+    ON variants(session_id);
+CREATE INDEX IF NOT EXISTS idx_variants_parent_id
+    ON variants(parent_id);
+CREATE INDEX IF NOT EXISTS idx_variants_status
+    ON variants(status);
+
+CREATE TABLE IF NOT EXISTS move_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT NOT NULL REFERENCES design_sessions(id),
+    variant_id   TEXT REFERENCES variants(id),
+    primitive    TEXT NOT NULL,
+    payload      TEXT,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_move_log_session_id
+    ON move_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_move_log_variant_id
+    ON move_log(variant_id);
+CREATE INDEX IF NOT EXISTS idx_move_log_created_at
+    ON move_log(created_at);

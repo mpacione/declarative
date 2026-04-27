@@ -32,6 +32,12 @@ class CatalogEntry(TypedDict, total=False):
     # Consumed by the Mode-3 composition providers + LLM vocabulary
     # builder. Optional — types without enum-able variants omit it.
     variant_axes: dict[str, Any] | None
+    # Classifier v2.1 normalization (migration 016). Read by the
+    # classifier prompt builder to disambiguate near-neighbor types
+    # and by dataset-export callers for ecosystem alignment.
+    clay_equivalent: str | None        # Google Research CLAY taxonomy
+    aria_role: str | None              # W3C WAI-ARIA role
+    disambiguation_notes: str | None   # "NOT a <neighbor> because..."
 
 
 # ---------------------------------------------------------------------------
@@ -729,12 +735,1584 @@ CATALOG_ENTRIES: tuple[CatalogEntry, ...] = (
             "size": {"values": ["md", "lg"], "default": "md"},
         },
     },
+    # ── Design-tool primitives (classifier v2.1) ─────────────────────────
+    {
+        "canonical_name": "control_point",
+        "aliases": ["handle", "control-handle", "vector-handle", "manipulator"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Design-tool manipulation handle — small circular or "
+            "square marker that lets a user drag, resize, or rotate "
+            "another element. Appears in editors (Figma, Sketch, "
+            "design systems' canvas surfaces) attached to selection "
+            "bounding boxes or vector control points."
+        ),
+        "prop_definitions": {"shape": "enum:circle|square"},
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": ["tiny_circle_or_square", "attached_to_selection_edge"],
+            "typical_size_range": [6, 14],
+        },
+        "related_types": ["icon"],
+    },
+    {
+        "canonical_name": "chip",
+        "aliases": ["tag", "pill", "badge_interactive", "filter_chip", "choice_chip"],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Compact interactive label representing a choice, filter, "
+            "or category. Typically pill-shaped with a short text, "
+            "optional leading icon, and often a trailing close button. "
+            "Tappable to toggle selection or dismiss. Distinct from "
+            "`badge` (passive status display) and `button` (action "
+            "trigger, usually larger + labeled)."
+        ),
+        "prop_definitions": {"label": "text", "variant": "enum:filter|choice|input", "removable": "boolean", "selected": "boolean"},
+        "slot_definitions": {"label": {"allowed": ["text"], "required": True, "position": "fill", "quantity": "single"}, "icon": {"allowed": ["icon"], "required": False, "position": "start"}, "dismiss": {"allowed": ["icon_button"], "required": False, "position": "end"}},
+        "semantic_role": "option",
+        "recognition_heuristics": {"patterns": ["pill_shape_with_short_text", "rounded_rect_small_label"], "typical_height_range": [24, 36]},
+        "related_types": ["badge", "button", "toggle"],
+        "aria_role": "option",
+        "disambiguation_notes": (
+            "Chip vs `badge`: chip is tappable (interactive); badge is a "
+            "passive status/count indicator. Chip vs `button`: chip is "
+            "compact and represents a selection state; button triggers "
+            "an action."
+        ),
+    },
+    {
+        "canonical_name": "carousel",
+        "aliases": ["slider_gallery", "image_carousel", "pager", "swipeable_gallery"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Horizontally-scrolling sequence of content panels — images, "
+            "cards, or hero slides — that the user pages through with "
+            "swipe/drag gestures. Often paired with a `pager_indicator` "
+            "showing current position. Distinct from `list` (vertical, "
+            "unbounded scroll) and `tabs` (discrete category nav, not "
+            "swipeable content flow)."
+        ),
+        "prop_definitions": {"item_count": "integer", "autoplay": "boolean", "loop": "boolean"},
+        "slot_definitions": {"items": {"allowed": ["any"], "required": True, "position": "fill", "quantity": "multiple"}, "indicator": {"allowed": ["pager_indicator"], "required": False, "position": "below"}},
+        "semantic_role": "region",
+        "recognition_heuristics": {"patterns": ["horizontal_scroll_gallery", "equal_width_items_in_row"], "layout": "horizontal"},
+        "related_types": ["pager_indicator", "list", "tabs"],
+    },
+    {
+        "canonical_name": "pager_indicator",
+        "aliases": ["page_dots", "carousel_indicator", "step_indicator_dots", "pagination_dots"],
+        "category": "navigation",
+        "behavioral_description": (
+            "Row of small dots, lines, or pills indicating position within "
+            "a `carousel` or multi-step flow. Current page's indicator "
+            "is visually emphasized (filled, larger, different color). "
+            "Tappable indicators double as navigation; decorative-only "
+            "indicators still belong here."
+        ),
+        "prop_definitions": {"count": "integer", "current": "integer"},
+        "slot_definitions": {},
+        "semantic_role": "tablist",
+        "recognition_heuristics": {"patterns": ["row_of_small_dots", "2-10_small_circles_horizontally_aligned"], "typical_count_range": [2, 10], "typical_size_range": [4, 12]},
+        "related_types": ["carousel", "stepper", "tabs"],
+        "disambiguation_notes": (
+            "NOT `tabs` — pager_indicator has no text labels and indexes "
+            "a continuous content sequence. NOT `radio_group` — the "
+            "user doesn't 'pick one', the indicator reflects where "
+            "they are in a flow."
+        ),
+    },
+    {
+        "canonical_name": "chart",
+        "aliases": ["graph", "data_viz", "bar_chart", "line_chart", "pie_chart", "donut_chart"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Data visualization rendering — bar chart, line chart, pie/"
+            "donut, sparkline, area chart, etc. Distinct from `image` "
+            "(any raster) because the compiler should preserve data-"
+            "binding metadata rather than treat the node as a static "
+            "asset."
+        ),
+        "prop_definitions": {"chart_type": "enum:bar|line|pie|donut|area|scatter|sparkline", "data": "object", "axes_visible": "boolean"},
+        "slot_definitions": {"title": {"allowed": ["heading", "text"], "required": False, "position": "top"}, "legend": {"allowed": ["list", "container"], "required": False, "position": "side"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["repeating_vertical_or_horizontal_bars", "connected_line_plot", "circular_segmented_wheel", "axis_labels_visible"], "has_numeric_labels": True},
+        "related_types": ["image", "progress"],
+        "disambiguation_notes": (
+            "Chart vs `image`: chart has geometric structure (axes, bars, "
+            "arcs, data labels) that the compiler should preserve as "
+            "structured data. Chart vs `progress`: progress is a single "
+            "scalar bar; chart shows multi-valued comparison."
+        ),
+    },
+    {
+        "canonical_name": "rating",
+        "aliases": ["star_rating", "stars", "rating_display", "review_score"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Visual score display — typically a row of star glyphs "
+            "(filled/half/empty) representing a numeric rating. Can be "
+            "interactive (user taps to set rating) or read-only (shows "
+            "an average / fixed score). Sometimes paired with a numeric "
+            "score + count like '4.5 ★ (1,234 reviews)'."
+        ),
+        "prop_definitions": {"value": "number", "max": "integer", "interactive": "boolean", "show_count": "boolean"},
+        "slot_definitions": {"stars": {"allowed": ["icon"], "required": True, "position": "fill", "quantity": "multiple"}, "label": {"allowed": ["text"], "required": False, "position": "after"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["row_of_3_to_5_star_icons", "stars_with_numeric_label_after"], "typical_count_range": [3, 5]},
+        "related_types": ["icon", "progress"],
+        "aria_role": "img",
+    },
+    {
+        "canonical_name": "video_player",
+        "aliases": ["video", "player", "media_player", "video_embed"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Embedded video viewport with playback controls. Typically "
+            "a rectangular frame showing a video poster or frame, with "
+            "overlaid play/pause button, progress bar, duration text, "
+            "and optional volume / fullscreen icons. Distinct from "
+            "`image` because the compiler needs to emit a video "
+            "element, not an <img>."
+        ),
+        "prop_definitions": {"autoplay": "boolean", "loop": "boolean", "muted": "boolean", "controls_visible": "boolean", "duration": "text"},
+        "slot_definitions": {"poster": {"allowed": ["image"], "required": False, "position": "fill"}, "controls": {"allowed": ["container", "button", "progress"], "required": False, "position": "overlay_bottom"}},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["large_rect_with_centered_play_button", "rect_with_progress_bar_at_bottom", "duration_text_overlay"], "typical_aspect_ratio": "16:9"},
+        "related_types": ["image"],
+        "disambiguation_notes": (
+            "Video_player vs `image`: video_player has an interactive "
+            "playback affordance (play triangle, progress bar). A static "
+            "video still/thumbnail with NO controls is just an `image`."
+        ),
+    },
+    {
+        "canonical_name": "grabber",
+        "aliases": ["drag_handle", "pull_handle", "bottom_sheet_handle", "resize_handle"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Small horizontal or vertical bar used as a drag-handle "
+            "affordance, most commonly at the top of a bottom sheet / "
+            "drawer / modal to signal that the user can drag to dismiss "
+            "or resize. Usually 32-48px wide, 4-6px tall, rounded, low-"
+            "contrast fill."
+        ),
+        "prop_definitions": {"orientation": "enum:horizontal|vertical"},
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {"patterns": ["small_thin_rounded_rect_centered_at_top_of_sheet", "aspect_ratio_5_to_10_to_1"], "typical_size_range": [24, 48], "position": "top_center_of_sheet"},
+        "related_types": ["divider", "control_point", "sheet", "drawer"],
+        "disambiguation_notes": (
+            "Grabber vs `divider`: grabber is centered on a sheet/"
+            "drawer top edge and signals a drag affordance; divider is "
+            "a full-width separator between content blocks. Grabber vs "
+            "`control_point`: grabber is sheet-specific; control_point "
+            "is a generic vector/selection handle."
+        ),
+    },
+    {
+        "canonical_name": "sidebar",
+        "aliases": [
+            "side_panel", "nav_rail", "split_nav_primary",
+            "inspector_sidebar", "rail", "navigation_sidebar",
+        ],
+        "category": "navigation",
+        "behavioral_description": (
+            "Persistent side-anchored navigation / inspector column, "
+            "typically on iPad or desktop split-view layouts. Stays "
+            "visible while the user interacts with the main canvas or "
+            "content area. May list top-level destinations (navigation "
+            "sidebar) or current-selection inspector sections "
+            "(inspector sidebar). Distinct from `drawer`, which slides "
+            "in over content and dismisses."
+        ),
+        "prop_definitions": {
+            "variant": "enum:navigation|inspector|split_primary",
+            "collapsible": "boolean",
+        },
+        "slot_definitions": {
+            "items": {
+                "allowed": [
+                    "list_item", "button", "toggle", "divider",
+                    "heading",
+                ],
+                "required": False,
+                "multiple": True,
+                "position": "fill",
+            },
+        },
+        "semantic_role": "complementary",
+        "recognition_heuristics": {
+            "patterns": [
+                "tall_narrow_column_anchored_to_edge",
+                "persistent_alongside_canvas",
+                "vertical_list_of_destinations_or_sections",
+            ],
+            "position": "leading_or_trailing_edge",
+            "typical_width_range": [200, 400],
+        },
+        "related_types": [
+            "drawer", "tabs", "navigation_row", "bottom_nav",
+        ],
+        "disambiguation_notes": (
+            "sidebar is persistent; drawer slides in and dismisses. "
+            "sidebar is vertical; navigation_row is horizontal. On iPad "
+            "split-view layouts the LEFT column (NavigationSplitView "
+            "primary) is sidebar. Inspector panels on the right edge "
+            "of design tools are also sidebar (variant=inspector)."
+        ),
+    },
+    {
+        "canonical_name": "toolbar",
+        "aliases": [
+            "action_bar", "command_bar", "contextual_toolbar",
+            "top_toolbar", "floating_toolbar", "canvas_toolbar",
+        ],
+        "category": "actions",
+        "behavioral_description": (
+            "Contextual row (or column) of task-specific action buttons "
+            "attached to the current view or canvas — NOT a page-level "
+            "navigation bar. May include toggles, selects, chips, and "
+            "dividers. Mounted to an edge (top / bottom / leading / "
+            "trailing) of the active content, sometimes floating above "
+            "it. iPad editors typically have multiple toolbars around "
+            "the canvas."
+        ),
+        "prop_definitions": {
+            "orientation": "enum:horizontal|vertical",
+            "position": (
+                "enum:top|bottom|leading|trailing|floating"
+            ),
+            "has_overflow_menu": "boolean",
+        },
+        "slot_definitions": {
+            "actions": {
+                "allowed": [
+                    "button", "icon_button", "toggle", "select",
+                    "chip", "divider",
+                ],
+                "required": True,
+                "multiple": True,
+                "position": "fill",
+            },
+        },
+        "semantic_role": "toolbar",
+        "recognition_heuristics": {
+            "patterns": [
+                "row_or_column_of_buttons",
+                "attached_to_content_edge",
+                "mixed_control_types_beyond_buttons",
+            ],
+        },
+        "related_types": [
+            "header", "button_group", "bottom_nav", "navigation_row",
+        ],
+        "disambiguation_notes": (
+            "header is page chrome with title + navigation; toolbar is "
+            "command-centric contextual actions. button_group is "
+            "peer-only (2+ buttons at the same level); toolbar may "
+            "include toggles, selects, dividers, chips. If there's a "
+            "mix of control types, it's a toolbar."
+        ),
+    },
+    {
+        "canonical_name": "bottom_sheet",
+        "aliases": [
+            "modal_sheet", "pull_up_sheet", "half_sheet",
+            "action_sheet_container", "bottom_drawer",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Modal overlay anchored to the bottom (and usually left + "
+            "right) edges, sliding up to reveal supplementary content "
+            "or settings. Typically includes a `grabber` handle at the "
+            "top and is draggable to resize / dismiss. Multiple detent "
+            "heights are common (small / medium / large). Distinct "
+            "from generic `sheet` (platform-neutral full-modal) and "
+            "`drawer` (side-anchored slide-in)."
+        ),
+        "prop_definitions": {
+            "detents": "array",
+            "has_grabber": "boolean",
+        },
+        "slot_definitions": {
+            "header": {
+                "allowed": ["heading", "text", "grabber"],
+                "required": False,
+                "position": "top",
+            },
+            "body": {
+                "allowed": ["any"],
+                "required": True,
+                "position": "fill",
+            },
+            "footer": {
+                "allowed": ["button", "button_group"],
+                "required": False,
+                "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "rounded_top_corners",
+                "anchored_to_bottom_edge",
+                "grabber_at_top",
+                "scrim_over_rest_of_screen",
+            ],
+        },
+        "related_types": ["sheet", "drawer", "dialog", "grabber"],
+        "disambiguation_notes": (
+            "sheet is generic / full-modal; bottom_sheet is "
+            "specifically edge-anchored with the grabber-drag pattern. "
+            "drawer is side-anchored (leading / trailing). If the "
+            "overlay fills the full screen, it's `sheet` or `dialog`; "
+            "if it hugs the bottom with rounded top corners + grabber, "
+            "it's `bottom_sheet`."
+        ),
+    },
+    {
+        "canonical_name": "color_picker",
+        "aliases": [
+            "color_chooser", "color_panel", "rgba_picker",
+            "color_input", "hsv_picker",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Composite input for picking a color — typically a wheel "
+            "or saturation-value square + hue / alpha / saturation "
+            "sliders + hex / RGB / RGBA input fields, optionally with "
+            "a recent-colors row and preset palette of color_swatches. "
+            "Classify the WHOLE composite widget as color_picker; "
+            "individual sliders inside are slots, not separate marks."
+        ),
+        "prop_definitions": {
+            "model": "enum:rgb|hsv|hsl|rgba",
+            "show_alpha": "boolean",
+            "show_hex_input": "boolean",
+            "show_recent": "boolean",
+        },
+        "slot_definitions": {
+            "surface": {
+                "allowed": ["image"], "required": False, "position": "top",
+            },
+            "sliders": {
+                "allowed": ["slider"], "required": False, "multiple": True,
+            },
+            "inputs": {
+                "allowed": ["text_input", "number_input"],
+                "required": False, "multiple": True,
+            },
+            "palette": {
+                "allowed": ["color_swatch"],
+                "required": False, "multiple": True,
+            },
+        },
+        "semantic_role": "group",
+        "recognition_heuristics": {
+            "patterns": [
+                "wheel_or_square_saturation_area",
+                "hue_slider_below_surface",
+                "hex_text_input",
+                "recent_swatch_row",
+            ],
+        },
+        "related_types": [
+            "slider", "color_swatch", "chip", "eyedropper",
+        ],
+        "disambiguation_notes": (
+            "color_swatch is a single color cell; color_picker is the "
+            "composite widget. Don't classify a color_picker as slider "
+            "even if you see sliders — they're slots inside. A flat "
+            "palette without a wheel / hex input is a row of "
+            "color_swatches, not a color_picker."
+        ),
+    },
+    {
+        "canonical_name": "color_swatch",
+        "aliases": [
+            "color_chip", "palette_swatch", "color_cell",
+            "color_tile", "paint_chip",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Small filled square, circle, or rounded shape representing "
+            "ONE selectable color in a palette or recent-colors row. "
+            "Tappable to apply that color. Often carries a selection "
+            "ring / checkmark when active. Distinct from `chip` — a "
+            "chip has a text label; color_swatch is a pure color cell."
+        ),
+        "prop_definitions": {
+            "shape": "enum:square|circle|rounded",
+            "selected": "boolean",
+            "show_check": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "option",
+        "recognition_heuristics": {
+            "patterns": [
+                "small_filled_shape_no_label",
+                "uniform_palette_grid",
+                "selected_ring_or_check_indicator",
+            ],
+            "typical_size_range": [16, 48],
+        },
+        "related_types": ["chip", "button", "color_picker", "toggle"],
+        "disambiguation_notes": (
+            "chip has a text label; color_swatch is pure color. "
+            "button has a visible control surface or label; "
+            "color_swatch IS the color. A palette of 6-30 uniform "
+            "colored tiles is a set of color_swatches, not a "
+            "button_group."
+        ),
+    },
+    {
+        "canonical_name": "ruler",
+        "aliases": [
+            "canvas_ruler", "measurement_ruler", "ruler_track",
+            "rotation_dial", "measure_track", "angle_dial",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Graduated tick track along a canvas edge or overlaid on "
+            "the canvas, showing measurements (pixels, points, "
+            "inches, degrees) OR serving as a fine-adjust dial "
+            "(rotation angle, crop rotation). Read-only for edge "
+            "rulers; draggable for dial variants. Design-tool "
+            "specific — appears in image editors, canvas tools, crop "
+            "interfaces."
+        ),
+        "prop_definitions": {
+            "orientation": "enum:horizontal|vertical|radial",
+            "unit": "enum:px|pt|in|cm|mm|deg",
+            "show_current_value": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "regular_tick_marks",
+                "graduated_major_minor_ticks",
+                "floating_near_canvas_edge",
+                "rotation_dial_with_degree_labels",
+            ],
+        },
+        "related_types": ["divider", "slider", "control_box"],
+        "disambiguation_notes": (
+            "divider separates content; ruler has tick marks and "
+            "measurements. slider has a thumb and a continuous value; "
+            "ruler is read-only OR dial-style. A horizontal track of "
+            "evenly spaced ticks with numeric labels (0, 10, 20, ...) "
+            "is a ruler."
+        ),
+    },
+    {
+        "canonical_name": "stepper_input",
+        "aliases": [
+            "numeric_stepper", "plus_minus_control",
+            "quantity_stepper", "number_stepper", "nudger",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "Compact numeric increment / decrement control — typically "
+            "`[-] N [+]` with a central value and flanking buttons. "
+            "Common in inspector panels (font size, stroke width, "
+            "rotation angle, opacity) and quantity selectors. Apple "
+            "HIG calls this 'stepper'. Named stepper_input here to "
+            "avoid colliding with the existing `stepper` (flow "
+            "progress indicator)."
+        ),
+        "prop_definitions": {
+            "min": "number",
+            "max": "number",
+            "step": "number",
+            "value": "number",
+            "wrap": "boolean",
+        },
+        "slot_definitions": {
+            "decrement": {
+                "allowed": ["icon_button"],
+                "required": True, "position": "start",
+            },
+            "value": {
+                "allowed": ["text", "number_input"],
+                "required": True, "position": "fill",
+            },
+            "increment": {
+                "allowed": ["icon_button"],
+                "required": True, "position": "end",
+            },
+        },
+        "semantic_role": "spinbutton",
+        "recognition_heuristics": {
+            "patterns": [
+                "minus_button_number_plus_button",
+                "three_segment_horizontal",
+                "inside_inspector_row",
+            ],
+            "typical_width_range": [80, 200],
+        },
+        "related_types": [
+            "number_input", "slider", "button_group", "stepper",
+        ],
+        "disambiguation_notes": (
+            "number_input is a typeable text field with optional "
+            "arrows; stepper_input is +/- button-driven with no "
+            "text entry (or limited). slider is continuous drag; "
+            "stepper_input is discrete. The existing `stepper` is "
+            "a MULTI-STEP PROGRESS INDICATOR (checkout flow), not "
+            "this numeric control."
+        ),
+    },
+    {
+        "canonical_name": "banner",
+        "aliases": [
+            "inline_alert_banner", "announcement_banner",
+            "system_banner", "notice", "info_strip",
+            "notification_banner",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Full-width persistent notice strip, usually at the top "
+            "of a screen or container. Used for warnings (offline, "
+            "quota exceeded, payment required), promotions (upsell), "
+            "or system state. Stays visible until explicitly dismissed "
+            "or the state clears. Distinct from `alert` (inline "
+            "section-scoped), `toast` (transient auto-dismiss), and "
+            "`snackbar` (transient with action)."
+        ),
+        "prop_definitions": {
+            "variant": "enum:info|warning|error|success|promotional",
+            "dismissable": "boolean",
+            "has_action": "boolean",
+        },
+        "slot_definitions": {
+            "icon": {
+                "allowed": ["icon"],
+                "required": False, "position": "start",
+            },
+            "message": {
+                "allowed": ["text", "heading"],
+                "required": True, "position": "fill",
+            },
+            "action": {
+                "allowed": ["button", "link"],
+                "required": False, "position": "end",
+            },
+            "dismiss": {
+                "allowed": ["icon_button"],
+                "required": False, "position": "trailing",
+            },
+        },
+        "semantic_role": "status",
+        "recognition_heuristics": {
+            "patterns": [
+                "full_width_strip",
+                "top_of_screen_or_container",
+                "colored_background_semantic",
+                "dismiss_x_right",
+            ],
+        },
+        "related_types": ["alert", "toast", "snackbar"],
+        "disambiguation_notes": (
+            "alert is inline to a form / section; banner spans full "
+            "width at top. toast is transient; banner persists. "
+            "snackbar is transient with an action (Undo); banner "
+            "persists until dismissed."
+        ),
+    },
+    {
+        "canonical_name": "snackbar",
+        "aliases": ["action_toast", "snack", "feedback_bar"],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Transient bottom-anchored strip with a short message AND "
+            "1-2 inline actions (commonly Undo, Retry). Dismisses on "
+            "timeout or when the action is tapped. Distinct from "
+            "`toast` (no action slot) and `banner` (persistent, "
+            "top-anchored, full-width)."
+        ),
+        "prop_definitions": {
+            "duration_ms": "number",
+            "has_action": "boolean",
+        },
+        "slot_definitions": {
+            "message": {
+                "allowed": ["text"], "required": True,
+                "position": "fill",
+            },
+            "action": {
+                "allowed": ["button", "link"],
+                "required": False, "position": "end",
+            },
+        },
+        "semantic_role": "status",
+        "recognition_heuristics": {
+            "patterns": [
+                "bottom_anchored_pill_or_rounded_rect",
+                "action_button_on_right",
+                "text_plus_single_action",
+            ],
+        },
+        "related_types": ["toast", "banner", "alert"],
+        "disambiguation_notes": (
+            "toast has no action slot; snackbar has Undo / Retry. "
+            "banner is persistent; snackbar auto-dismisses. If the "
+            "strip has a button on the right (not just a close X), "
+            "it's a snackbar."
+        ),
+    },
+    {
+        "canonical_name": "action_sheet",
+        "aliases": [
+            "ios_action_sheet", "confirmation_sheet", "choice_sheet",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Modal list of 3-5 confirming / destructive choices "
+            "presented as a vertical stack of full-width buttons "
+            "(often floating or bottom-anchored), typically with a "
+            "separated Cancel button at the bottom. iOS HIG pattern — "
+            "a 'commit a decision' modal."
+        ),
+        "prop_definitions": {
+            "has_cancel": "boolean",
+            "destructive_action": "boolean",
+        },
+        "slot_definitions": {
+            "title": {
+                "allowed": ["heading", "text"],
+                "required": False, "position": "top",
+            },
+            "actions": {
+                "allowed": ["button"],
+                "required": True, "multiple": True,
+                "position": "fill",
+            },
+            "cancel": {
+                "allowed": ["button"],
+                "required": False, "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "vertical_stack_of_full_width_buttons",
+                "cancel_button_separated_at_bottom",
+                "floating_or_bottom_anchored_modal",
+            ],
+        },
+        "related_types": ["dialog", "bottom_sheet", "menu"],
+        "disambiguation_notes": (
+            "dialog has body copy + a horizontal footer button row; "
+            "action_sheet is a vertical stack of full-width buttons "
+            "where each button IS the content. menu is trigger-"
+            "anchored and general-purpose; action_sheet is modal and "
+            "decision-specific. bottom_sheet is generic content; "
+            "action_sheet is choice-specific."
+        ),
+    },
+    {
+        "canonical_name": "progress_ring",
+        "aliases": [
+            "circular_progress", "ring_progress", "donut_progress",
+            "activity_ring",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Circular progress indicator that fills an arc "
+            "(determinate 0-100%) or spins continuously "
+            "(indeterminate). Often with a centre label showing "
+            "percent or elapsed time. Distinct from linear `progress` "
+            "(bar) and `spinner` (indeterminate-only, no value)."
+        ),
+        "prop_definitions": {
+            "determinate": "boolean",
+            "value": "number",
+            "max": "number",
+            "show_label": "boolean",
+            "thickness": "number",
+        },
+        "slot_definitions": {
+            "label": {
+                "allowed": ["text", "heading"],
+                "required": False, "position": "center",
+            },
+        },
+        "semantic_role": "progressbar",
+        "recognition_heuristics": {
+            "patterns": [
+                "circular_arc_partial_fill",
+                "donut_shape",
+                "center_label_optional",
+            ],
+        },
+        "related_types": ["progress", "spinner"],
+        "disambiguation_notes": (
+            "progress is linear; progress_ring is circular. spinner "
+            "is indeterminate-only with no percent. An arc / donut "
+            "with a visible fill percentage is progress_ring."
+        ),
+    },
+    {
+        "canonical_name": "eyedropper",
+        "aliases": [
+            "color_picker_tool", "sample_color_button",
+            "pipette", "color_sampler",
+        ],
+        "category": "actions",
+        "behavioral_description": (
+            "Tool-mode button that, when activated, puts the UI into "
+            "a colour-sampling mode — cursor becomes a pipette and "
+            "the next tap samples a pixel's colour from the canvas / "
+            "image. Near a color_picker or color_swatch palette. "
+            "Distinct from a generic `icon_button` because it "
+            "triggers a sticky tool-mode state rather than a "
+            "one-shot action."
+        ),
+        "prop_definitions": {
+            "active": "boolean",
+        },
+        "slot_definitions": {},
+        "semantic_role": "button",
+        "recognition_heuristics": {
+            "patterns": [
+                "pipette_or_dropper_icon",
+                "near_color_picker_or_swatch_palette",
+                "tool_mode_indicator_when_active",
+            ],
+        },
+        "related_types": [
+            "icon_button", "color_picker", "color_swatch",
+        ],
+        "disambiguation_notes": (
+            "icon_button fires once on tap; eyedropper enters a "
+            "sticky tool-mode. Near color UI, a pipette-shaped icon "
+            "is an eyedropper, not a generic icon_button."
+        ),
+    },
+    {
+        "canonical_name": "edit_menu",
+        "aliases": [
+            "text_selection_menu", "callout_bar",
+            "selection_popover", "text_action_bar",
+        ],
+        "category": "containment_and_overlay",
+        "behavioral_description": (
+            "Small horizontal pill of text-editing actions (Copy / "
+            "Paste / Look Up / Translate / Share / Cut) appearing "
+            "anchored to a text selection or insertion point. iOS "
+            "HIG 'edit menu' pattern — usually dark background, "
+            "rounded pill, 3-6 actions, with an arrow pointer at "
+            "the bottom."
+        ),
+        "prop_definitions": {},
+        "slot_definitions": {
+            "actions": {
+                "allowed": ["button", "icon_button"],
+                "required": True, "multiple": True,
+                "position": "fill",
+            },
+            "overflow": {
+                "allowed": ["icon_button"],
+                "required": False, "position": "end",
+            },
+        },
+        "semantic_role": "menu",
+        "recognition_heuristics": {
+            "patterns": [
+                "dark_rounded_pill",
+                "anchored_above_text_selection",
+                "three_to_six_actions_horizontal",
+                "arrow_pointing_down_to_selection",
+            ],
+        },
+        "related_types": ["menu", "tooltip", "popover", "toolbar"],
+        "disambiguation_notes": (
+            "menu is trigger-anchored and vertical; edit_menu is "
+            "selection-anchored and horizontal. tooltip is "
+            "informational and non-interactive; edit_menu is "
+            "actionable. popover is a general contextual container; "
+            "edit_menu is specifically for text editing."
+        ),
+    },
+    {
+        "canonical_name": "keyboard",
+        "aliases": [
+            "on_screen_keyboard", "virtual_keyboard",
+            "soft_keyboard", "ime", "keypad",
+        ],
+        "category": "selection_and_input",
+        "behavioral_description": (
+            "On-screen software keyboard for text entry. Typically 3-5 "
+            "rows of keys with uniform shape + size, a wide spacebar in "
+            "the bottom row, and modifier keys (shift, delete, return, "
+            "numbers toggle, dictation, emoji) flanking the alphabet. "
+            "Appears when a text_input / textarea gains focus or when "
+            "explicitly invoked via a keyboard toggle. Distinct from "
+            "`button_group` — a keyboard is a structured text-entry "
+            "device where the rows and spacebar are diagnostic."
+        ),
+        "prop_definitions": {
+            "variant": "enum:qwerty|numeric|emoji|symbols|dvorak",
+            "layout": "enum:default|email|url|dictation|numeric_pad",
+        },
+        "slot_definitions": {},
+        "semantic_role": "group",
+        "recognition_heuristics": {
+            "patterns": [
+                "three_to_five_rows_of_keys",
+                "wide_spacebar_bottom_row",
+                "return_key_right_end",
+                "uniform_key_shape",
+                "modifier_keys_outer_columns",
+            ],
+            "position": "bottom_of_screen",
+            "typical_height_range": [200, 400],
+        },
+        "related_types": ["button_group", "text_input", "textarea"],
+        "disambiguation_notes": (
+            "keyboard has ≥ 3 rows of uniform keys and a wide spacebar; "
+            "button_group is an arbitrary cluster of labeled buttons "
+            "without the row/spacebar structure. A single row of 8+ "
+            "small keys is still a keyboard row, not a button_group. "
+            "Classify the whole widget as `keyboard`; individual rows "
+            "classified alone are also `keyboard` (not button_group)."
+        ),
+    },
+    {
+        "canonical_name": "control_box",
+        "aliases": [
+            "bounding_box", "selection_box", "transform_box",
+            "crop_box", "marching_ants",
+        ],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Rectangular selection / transform widget drawn around an "
+            "image, shape, or canvas element in an editor. The box is "
+            "the outline showing what's selected; corner and midpoint "
+            "`control_point` handles on the edges do the resize / "
+            "rotate. Shown only while an element is selected or being "
+            "transformed. Distinct from `control_point` (the individual "
+            "handle) — control_box is the WHOLE widget."
+        ),
+        "prop_definitions": {
+            "show_rotation_handle": "boolean",
+            "show_midpoint_handles": "boolean",
+            "dashed": "boolean",
+        },
+        "slot_definitions": {
+            "handles": {
+                "allowed": ["control_point"],
+                "required": False,
+                "multiple": True,
+                "position": "edge",
+            },
+        },
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "rect_outline_with_corner_handles",
+                "surrounds_image_or_shape",
+                "dashed_or_solid_border",
+            ],
+            "has_corner_handles": True,
+        },
+        "related_types": ["control_point", "image"],
+        "disambiguation_notes": (
+            "control_box is the whole bounding widget (outline + "
+            "handles); control_point is one handle. A rectangular "
+            "outline with 4-8 small filled squares at its corners / "
+            "midpoints is control_box. A single small filled square "
+            "by itself, attached to an edge, is control_point."
+        ),
+    },
+    {
+        "canonical_name": "text_cursor",
+        "aliases": [
+            "caret", "ibeam_cursor", "text_caret", "insertion_point",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "Vertical line indicating the current insertion point in a "
+            "focused text_input or textarea. Thin (1-2px wide), height "
+            "matches the line box, blinks in live apps. Always inside a "
+            "text field, always vertical-line-shaped. Distinct from "
+            "`mouse_cursor`, which is the system pointer icon (arrow, "
+            "ibeam, resize, grab, etc.) indicating where input lands."
+        ),
+        "prop_definitions": {"visible": "boolean"},
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "thin_vertical_line",
+                "inside_text_input_bounds",
+                "matches_line_height",
+            ],
+            "typical_size_range": [1, 3],
+        },
+        "related_types": ["mouse_cursor", "text_input", "textarea"],
+        "disambiguation_notes": (
+            "text_cursor is a vertical-line insertion indicator inside "
+            "a text field. mouse_cursor is the system input pointer "
+            "(arrow, ibeam, resize). The ibeam mouse_cursor shape LOOKS "
+            "like a text_cursor but lives outside text fields; a real "
+            "text_cursor is always inside text_input or textarea bounds."
+        ),
+    },
+    {
+        "canonical_name": "magnifier",
+        "aliases": ["loupe", "zoom_bubble", "picker_zoom", "tooltip_magnifier", "tooltip_zoom"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Floating bubble that shows a magnified view of the content "
+            "below. Appears during fine-adjustment operations such as "
+            "image cropping, text cursor placement, colour picking, or "
+            "precision dragging. Usually circular or rounded-rect, with "
+            "a crosshair or centred indicator, and often a small arrow "
+            "pointing to the exact pixel being inspected. Non-interactive "
+            "itself — it tracks the user's input position."
+        ),
+        "prop_definitions": {
+            "shape": "enum:circle|rect",
+            "zoom_level": "number",
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "circular_zoom_bubble",
+                "rounded_rect_loupe",
+                "offset_above_cursor_or_finger",
+                "shows_zoomed_content",
+            ],
+            "has_arrow_pointer": True,
+        },
+        "related_types": ["tooltip", "popover", "control_point"],
+        "disambiguation_notes": (
+            "Magnifier shows a zoomed copy of the content below it; "
+            "tooltip shows an explanatory text label. A 'picker-zoom' or "
+            "'tooltip_magnifier' is the magnifier variant used in colour "
+            "pickers and crop tools. If the bubble contains pixels from "
+            "the canvas (zoomed), it's `magnifier`; if it contains text "
+            "explaining a control, it's `tooltip`."
+        ),
+    },
+    {
+        "canonical_name": "mouse_cursor",
+        "aliases": ["cursor", "pointer", "caret", "text_cursor", "ibeam"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Visible cursor / pointer icon indicating input position on "
+            "a canvas. Design tools render these to mock up interaction "
+            "states — arrow, I-beam, crosshair, resize arrows, grab "
+            "hand, etc. A mouse_cursor is a system affordance, not a "
+            "tappable control. It has no hit-test; it visualises where "
+            "input WILL land, not what responds to tap."
+        ),
+        "prop_definitions": {
+            "variant": (
+                "enum:arrow|ibeam|crosshair|resize|move|text|hand|default"
+            ),
+        },
+        "slot_definitions": {},
+        "semantic_role": "img",
+        "recognition_heuristics": {
+            "patterns": [
+                "arrow_cursor_shape",
+                "ibeam_text_cursor",
+                "double_headed_resize_arrow",
+                "crosshair",
+                "grab_hand",
+            ],
+            "typical_size_range": [12, 32],
+        },
+        "related_types": ["control_point", "icon"],
+        "disambiguation_notes": (
+            "mouse_cursor vs `icon`: mouse_cursor is a system-rendered "
+            "input affordance (arrow, ibeam, resize, etc); icon is a "
+            "UI glyph that belongs to a button or label. mouse_cursor "
+            "vs `control_point`: mouse_cursor moves with the pointer; "
+            "control_point is attached to a bounding-box corner and "
+            "drags to resize."
+        ),
+    },
+    {
+        "canonical_name": "coach_mark",
+        "aliases": [
+            "onboarding_callout", "spotlight", "feature_discovery",
+            "tour_step", "walkthrough_step",
+        ],
+        "category": "feedback_and_status",
+        "behavioral_description": (
+            "One-shot onboarding callout that highlights a specific "
+            "feature. Typically a dark scrim over the rest of the UI "
+            "with a spotlight cutout around the target element, plus a "
+            "floating explanatory label (title + body) and an action "
+            "button (Next / Got it / Skip). Used in first-use flows or "
+            "feature-discovery tours. Non-persistent — dismisses on tap."
+        ),
+        "prop_definitions": {
+            "title": "text",
+            "body": "text",
+            "variant": "enum:spotlight|arrow|tour_step",
+        },
+        "slot_definitions": {
+            "title": {
+                "allowed": ["heading", "text"], "required": False,
+                "position": "top", "quantity": "single",
+            },
+            "body": {
+                "allowed": ["text"], "required": True,
+                "position": "fill", "quantity": "single",
+            },
+            "action": {
+                "allowed": ["button"], "required": False,
+                "position": "bottom",
+            },
+        },
+        "semantic_role": "dialog",
+        "recognition_heuristics": {
+            "patterns": [
+                "dark_overlay_with_spotlight_cutout",
+                "arrow_pointing_to_feature",
+                "next_or_gotit_button",
+            ],
+            "has_backdrop": True,
+        },
+        "related_types": ["tooltip", "popover", "dialog"],
+        "disambiguation_notes": (
+            "coach_mark is an onboarding callout with scrim + spotlight "
+            "cutout targeting a specific feature; tooltip is a per-"
+            "element hover hint; popover is an anchored contextual menu; "
+            "dialog is a centred modal requiring decision. A 'Next' or "
+            "'Got it' action button + a dark scrim with a cut-out ring "
+            "is the diagnostic signal for coach_mark."
+        ),
+    },
+    # ── Structural (1) ────────────────────────────────────────────────────
+    # Stage 0.1: `frame` is the *neutral* structural primitive — the LLM
+    # uses it to express conceptual groupings (section / wrapper /
+    # layout) that aren't semantic components. It's a grammar
+    # TypeKeyword (spec §2.7) already handled by parser / compressor /
+    # renderer. Keeping it out of the semantic catalog meant the
+    # planner had no neutral wrapper, collapsing every intermediate
+    # grouping onto `card` (Defect A of docs/plan-authoring-loop.md).
+    #
+    # Deliberately minimal: no behavioral_description (frames don't
+    # recognize — they're author-created structure), no
+    # recognition_heuristics (nothing to learn), no variant_axes
+    # (pure layout container). Classifier code and
+    # cluster_variants.py should skip `category="structural"` entries
+    # — they're not candidates for per-variant token binding.
+    {
+        "canonical_name": "frame",
+        # Phase E #6 fix (2026-04-26): `container` removed from frame's
+        # aliases. The two are semantically distinct in the runtime:
+        #   `frame` = explicit structural primitive (the grammar
+        #     TypeKeyword the LLM uses for author-created layout)
+        #   `container` = classifier fallback for grouping nodes with
+        #     insufficient identity (heuristic + LLM emit it directly;
+        #     special-cased in compose, classify_v2, fidelity_score)
+        # Pre-fix container appeared as both an alias of frame AND a
+        # first-class canonical via _CATALOG_ENRICHMENTS["container"];
+        # the enrichment was DEAD because there was no canonical
+        # `container` entry to merge into. Codex 2026-04-26 review:
+        # "the codebase already treats container as a real semantic
+        # bucket, not merely an alias for frame... keeping container
+        # as an alias of frame is the actual inconsistency."
+        "aliases": ["wrapper", "section", "group", "stack", "row"],
+        "category": "structural",
+        "prop_definitions": {
+            "layout": "enum:vertical|horizontal|absolute",
+        },
+        "slot_definitions": {
+            "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"},
+        },
+    },
+    # Phase E #6 fix (2026-04-26): `container` is now a first-class
+    # CatalogEntry, not an alias of `frame`. The
+    # _CATALOG_ENRICHMENTS["container"] dict at line ~2184 (clay
+    # equivalent + disambiguation_notes) merges into this base entry
+    # via _enriched() — pre-fix that enrichment was dead because no
+    # canonical entry existed for it to merge into.
+    #
+    # Semantic distinction from `frame`: `container` is the
+    # *classifier-fallback* type — emitted by:
+    #   - dd/classify_rules.py:232 (heuristic generic-frame rule)
+    #   - dd/classify_llm.py + dd/classify_v2.py (sentinel for
+    #     "structural grouping, no specific identity")
+    #   - dd/compose.py:1448 (Mode-3 emits when no slot identity)
+    #   - dd/fidelity_score.py:566 (special-typed scoring bucket)
+    # The renderer maps container → FRAME (dd/renderers/figma.py:940)
+    # because container has no Figma-native primitive of its own;
+    # that's a render-time concern, not a taxonomy one.
+    {
+        "canonical_name": "container",
+        "aliases": [],
+        "category": "structural",
+        "prop_definitions": {
+            "layout": "enum:vertical|horizontal|absolute",
+        },
+        "slot_definitions": {
+            "_default": {"allowed": ["any"], "position": "fill", "quantity": "multiple"},
+        },
+    },
+    {
+        "canonical_name": "not_ui",
+        "aliases": ["non_ui", "decorative", "artifact", "exclude"],
+        "category": "content_and_display",
+        "behavioral_description": (
+            "Explicit non-UI marker — a frame / instance that exists in "
+            "the Figma file but is NOT a semantic UI component. "
+            "Examples: design-tool artifacts, decorative background "
+            "elements, empty layout wrappers reviewers have confirmed "
+            "carry no interactive or informational identity, test / "
+            "scratch frames left by the designer. Downstream synthesis "
+            "should exclude these from generated output rather than "
+            "try to render them as a component."
+        ),
+        "prop_definitions": {},
+        "slot_definitions": {},
+        "semantic_role": "none",
+        "recognition_heuristics": {
+            "patterns": ["human_confirmed_exclusion"],
+            "note": (
+                "This type is almost always set by a human reviewer via "
+                "the 'Not UI' button; automated classifiers should NOT "
+                "pick it — prefer `container` or `unsure` unless a "
+                "reviewer has explicitly confirmed exclusion."
+            ),
+        },
+        "disambiguation_notes": (
+            "NOT a `container` (which is a generic layout wrapper that "
+            "still renders). NOT `unsure` (which means 'I don't know "
+            "what this is'). `not_ui` means 'I know what this is — "
+            "it's not UI and should be excluded.'"
+        ),
+        "related_types": ["container", "unsure"],
+    },
 )
 
 
 # ---------------------------------------------------------------------------
 # Seeding
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Classifier v2.1 enrichments (migration 016)
+# ---------------------------------------------------------------------------
+# Maps canonical_name → enrichment dict. Merged into CATALOG_ENTRIES at
+# seed time. Keeps the prose + ecosystem-alignment metadata collected
+# in one reviewable block rather than scattered across 50+ entries.
+#
+# Prioritised for types most-often confused in the v1 corpus run:
+# tooltip (29 override hits), button (29), icon, divider, checkbox,
+# card, image, heading. Adding the `disambiguation_notes` is the big
+# prompt-quality lever — the classifier gets "NOT a dialog because..."
+# style cues that push it off wrong-neighbor picks.
+
+_CATALOG_ENRICHMENTS: dict[str, dict[str, Any]] = {
+    "button": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "aliases": ["btn", "cta", "previous", "next", "new folder",
+                    "Button"],
+        "disambiguation_notes": (
+            "NOT a `link` — buttons trigger actions, links navigate. "
+            "NOT an `icon_button` — icon_button is icon-only with no "
+            "visible text label. NOT a `fab` — fab is an elevated "
+            "floating primary action, usually circular. "
+            "If the node has a centered text label and a visible "
+            "shape (rect/pill), it's a button."
+        ),
+    },
+    "icon_button": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "aliases": ["icon_btn", "icon button", "iconbutton",
+                    "image_button"],
+        "disambiguation_notes": (
+            "NOT an `icon` — icon is the glyph itself; icon_button "
+            "is the tappable container around the glyph with a "
+            "hit-target (usually 32-48px square). NOT a `button` — "
+            "button has a visible text label. NOT a `fab` — fab is "
+            "elevated/floating, icon_button is flush. If the node "
+            "is a small square frame containing only a single icon "
+            "child with no label, classify icon_button."
+        ),
+    },
+    "fab": {
+        "clay_equivalent": "BUTTON",
+        "aria_role": "button",
+        "disambiguation_notes": (
+            "NOT a `button` — fab is visually prominent, usually "
+            "circular/pill with elevation, positioned floating "
+            "(bottom-right or bottom-center). Reserved for the "
+            "primary screen action."
+        ),
+    },
+    "icon": {
+        "clay_equivalent": "PICTOGRAM",
+        "aria_role": None,  # icons are usually aria-hidden
+        "aliases": ["glyph", "symbol", ".icons", "pictogram", "ico"],
+        "disambiguation_notes": (
+            "NOT an `icon_button` — icon is the glyph primitive "
+            "itself; icon_button is the tappable container wrapping "
+            "an icon. NOT an `image` — icons are symbolic/vector, "
+            "small (≤32px typically), convey meaning or affordance; "
+            "images are raster content. Decorative children like "
+            "3 ellipses, 2 chevrons, 4 dots in a tight layout are "
+            "a single `icon`, not a container of N things."
+        ),
+    },
+    "image": {
+        "clay_equivalent": "IMAGE",
+        "aria_role": "img",
+        "aliases": ["img", "photo", "picture", "image-box",
+                    "image_box"],
+        "disambiguation_notes": (
+            "NOT an `icon` — images are raster content (photos, "
+            "illustrations, screenshots), typically > 64px. "
+            "NOT a `card` — image holds a single graphic; card is "
+            "a bounded container with mixed content. NOT a "
+            "`skeleton` — skeleton is the loading placeholder; "
+            "image carries actual visual content."
+        ),
+    },
+    "divider": {
+        "clay_equivalent": None,
+        "aria_role": "separator",
+        "aliases": ["separator", "hr", "rule", "line", "vertical_rule",
+                    "horizontal_rule"],
+        "disambiguation_notes": (
+            "A thin line (width OR height ≤ ~4px) that visually "
+            "groups or separates content. NOT a `container` — "
+            "containers hold children; dividers have none. NOT an "
+            "`icon` — dividers are straight lines, not glyphs. "
+            "Aspect ratio is extreme (>20:1 for horizontal, <1:20 "
+            "for vertical)."
+        ),
+    },
+    "heading": {
+        "clay_equivalent": "LABEL",
+        "aria_role": "heading",
+        "aliases": ["title", "h1", "h2", "h3", "section-title"],
+        "disambiguation_notes": (
+            "NOT a `text` — heading carries structural weight; "
+            "font is larger (≥18px typically) and/or bolder than "
+            "body text. NOT a `label` — labels describe form "
+            "controls; headings organise content. Appears at the "
+            "top of a section or card."
+        ),
+    },
+    "text": {
+        "clay_equivalent": "TEXT",
+        "aria_role": None,
+        "aliases": ["body", "paragraph", "p", "text-content",
+                    "description", "copy"],
+        "disambiguation_notes": (
+            "NOT a `heading` — text is body-weight content "
+            "(typically 12-16px). NOT a `link` — links have hover/"
+            "pressed states and trigger navigation. NOT a `label` — "
+            "labels describe form controls specifically."
+        ),
+    },
+    "card": {
+        "clay_equivalent": "CARD_VIEW",
+        "aria_role": None,
+        "aliases": ["tile", "panel", "card-view"],
+        "disambiguation_notes": (
+            "NOT a `container` — cards have visible boundaries "
+            "(fill + stroke + radius typically) AND mixed content "
+            "(image + heading + actions). NOT a `dialog` — dialogs "
+            "are modal; cards are inline within a feed/grid. NOT a "
+            "`list_item` — list_items are row-oriented and usually "
+            "stack vertically without individual borders. A bounded "
+            "container with an image at top + heading + body text "
+            "is a card."
+        ),
+    },
+    "list_item": {
+        "clay_equivalent": "LIST_ITEM",
+        "aria_role": "listitem",
+        "aliases": ["row", "list-row", "item", "list_row"],
+        "disambiguation_notes": (
+            "NOT a `card` — list_items are row-oriented and stack "
+            "vertically; they share borders with siblings rather "
+            "than having individual cards. NOT a `button` — "
+            "list_items may be tappable but they carry content "
+            "(text + optional icon/image), not just an action."
+        ),
+    },
+    "checkbox": {
+        "clay_equivalent": "CHECK_BOX",
+        "aria_role": "checkbox",
+        "aliases": ["check", "check-box", "check_box"],
+        "disambiguation_notes": (
+            "NOT a `toggle` — checkboxes are square; toggles are "
+            "pill-shaped with a sliding knob. NOT a `radio` — "
+            "radios are circular and mutually exclusive within a "
+            "group. A square control with a check glyph (visible "
+            "or hidden) = checkbox."
+        ),
+    },
+    "radio": {
+        "clay_equivalent": "RADIO_BUTTON",
+        "aria_role": "radio",
+        "aliases": ["radiobutton", "radio_button"],
+        "disambiguation_notes": (
+            "NOT a `checkbox` — radios are circular (not square). "
+            "Radios come in groups where only one can be selected. "
+            "A single circular control with an inner dot = radio."
+        ),
+    },
+    "toggle": {
+        "clay_equivalent": "SWITCH",
+        "aria_role": "switch",
+        "aliases": ["switch", "on_off"],
+        "disambiguation_notes": (
+            "NOT a `checkbox` — toggles are pill-shaped with a "
+            "sliding knob (binary state). Apple-style: pill with "
+            "knob slid left/right. Material-style: rail with knob. "
+            "If the shape is a rounded pill with a circle inside, "
+            "it's a toggle."
+        ),
+    },
+    "tooltip": {
+        "clay_equivalent": None,
+        "aria_role": "tooltip",
+        "aliases": ["hint", "info_tip", "help-text", "helptip",
+                    "callout"],
+        "disambiguation_notes": (
+            "NOT a `dialog` — dialogs are modal and require user "
+            "action. NOT a `popover` — popovers hold interactive "
+            "content (buttons, forms); tooltips are text-only "
+            "annotations. NOT a `toast` — toasts are transient "
+            "notifications unanchored from content; tooltips point "
+            "at an anchor element (arrow or adjacent positioning). "
+            "Short-text floating annotations with an arrow or "
+            "nearby alignment to another element = tooltip."
+        ),
+    },
+    "toast": {
+        "clay_equivalent": None,
+        "aria_role": "status",
+        "aliases": ["snackbar", "notification"],
+        "disambiguation_notes": (
+            "NOT a `tooltip` — toasts appear without an anchor, "
+            "usually at screen edges. NOT an `alert` — alerts are "
+            "modal/blocking; toasts are transient (auto-dismiss). "
+            "Small floating bar with text + optional action button "
+            "= toast."
+        ),
+    },
+    "alert": {
+        "clay_equivalent": None,
+        "aria_role": "alert",
+        "aliases": ["banner", "notice", "flash"],
+        "disambiguation_notes": (
+            "NOT a `toast` — alerts are often persistent until "
+            "dismissed; toasts auto-expire. NOT a `dialog` — alerts "
+            "are inline banners; dialogs are modal overlays. "
+            "Horizontal bar with icon + message + optional "
+            "dismiss/action = alert."
+        ),
+    },
+    "dialog": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["modal", "dialog-box"],
+        "disambiguation_notes": (
+            "NOT a `sheet` — sheets slide up from the bottom; "
+            "dialogs are centered overlays. NOT a `popover` — "
+            "popovers anchor to a trigger element; dialogs "
+            "command focus. NOT a `card` — dialogs are modal and "
+            "block the background (overlay behind them)."
+        ),
+    },
+    "sheet": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["bottom_sheet", "action_sheet", "half_sheet"],
+        "disambiguation_notes": (
+            "NOT a `dialog` — sheets slide from an edge (usually "
+            "bottom); dialogs are centered. Rounded top corners + "
+            "bottom-pinned = bottom sheet. Can hold interactive "
+            "content (unlike tooltips)."
+        ),
+    },
+    "drawer": {
+        "clay_equivalent": "DRAWER",
+        "aria_role": "dialog",
+        "aliases": ["side_drawer", "nav_drawer"],
+        "disambiguation_notes": (
+            "NOT a `sheet` — drawers slide from a SIDE (left/right); "
+            "sheets slide from top/bottom. Typically holds "
+            "navigation links or settings."
+        ),
+    },
+    "popover": {
+        "clay_equivalent": None,
+        "aria_role": "dialog",
+        "aliases": ["flyout", "popup"],
+        "disambiguation_notes": (
+            "NOT a `tooltip` — popovers hold interactive content "
+            "(buttons, forms, lists); tooltips are text-only. "
+            "NOT a `dialog` — popovers anchor to a trigger element; "
+            "dialogs are unanchored modal overlays."
+        ),
+    },
+    "header": {
+        "clay_equivalent": "TOOLBAR",
+        "aria_role": "banner",
+        "aliases": ["top_bar", "app_bar", "nav_bar", "title_bar",
+                    "toolbar"],
+        "disambiguation_notes": (
+            "NOT a `bottom_nav` — headers sit at the TOP of the "
+            "viewport (y ≤ 100px typically); bottom_nav sits at "
+            "the bottom. Full-width frame containing title text + "
+            "nav controls (back/menu/action icons)."
+        ),
+    },
+    "bottom_nav": {
+        "clay_equivalent": "NAVIGATION_BAR",
+        "aria_role": "navigation",
+        "aliases": ["tab_bar", "bottom_bar", "tabbar"],
+        "disambiguation_notes": (
+            "NOT a `header` — bottom_nav sits at the BOTTOM (y near "
+            "screen height). NOT `tabs` — tabs usually sit below "
+            "a header; bottom_nav is the screen's primary "
+            "navigation. Full-width frame containing 3-5 icon+label "
+            "tab items."
+        ),
+    },
+    "tabs": {
+        "clay_equivalent": None,
+        "aria_role": "tablist",
+        "aliases": ["tab_bar", "segmented_tabs"],
+        "disambiguation_notes": (
+            "NOT `bottom_nav` — tabs switch content within a "
+            "screen; bottom_nav switches screens. Usually sits "
+            "below a header or at the top of a content area. "
+            "Horizontal row of text labels with an indicator under "
+            "the active one."
+        ),
+    },
+    "navigation_row": {
+        "clay_equivalent": None,
+        "aria_role": "navigation",
+        "aliases": ["nav_row", "nav-item", "drawer-row"],
+        "disambiguation_notes": (
+            "A single-row entry inside a navigation surface (side "
+            "drawer, settings list). Usually: leading icon + label "
+            "+ optional trailing chevron. NOT a `list_item` — "
+            "navigation_rows trigger route changes; list_items are "
+            "content."
+        ),
+    },
+    "breadcrumbs": {
+        "clay_equivalent": None,
+        "aria_role": "navigation",
+        "aliases": ["crumbs", "path", "breadcrumb"],
+        "disambiguation_notes": (
+            "A row of link-like text separated by chevrons or "
+            "slashes, showing the user's path through a hierarchy. "
+            "NOT `tabs` — breadcrumbs show HIERARCHY; tabs show "
+            "SIBLINGS."
+        ),
+    },
+    "container": {
+        "clay_equivalent": "CONTAINER",
+        "aria_role": None,
+        "disambiguation_notes": (
+            "FALLBACK only — a generic layout frame with no "
+            "specific component identity. Use `container` when the "
+            "node has NO distinctive name, sample text, child "
+            "pattern, or visual affordance. If the children "
+            "themselves are all buttons, say `button_group`; if "
+            "they're cards in a grid, say `list` or `card`; if the "
+            "name is distinctive (`grabber`, `wordmark`, "
+            "`filename`), use the specific type. `container` loses "
+            "information downstream — prefer anything specific."
+        ),
+    },
+    "skeleton": {
+        "clay_equivalent": None,
+        "aria_role": "status",
+        "aliases": ["loading_placeholder", "shimmer"],
+        "disambiguation_notes": (
+            "A loading placeholder — multiple identical empty "
+            "frames (no children, no text, same size) arranged in "
+            "a grid or list. NOT a `container` — skeletons have "
+            "the repetition pattern + empty-child signal. NOT "
+            "`image` — images carry actual content; skeletons are "
+            "placeholder rectangles awaiting data."
+        ),
+    },
+    "search_input": {
+        "clay_equivalent": "TEXT_INPUT",
+        "aria_role": "searchbox",
+        "aliases": ["search", "search_bar", "search-field"],
+        "disambiguation_notes": (
+            "NOT a `text_input` — search_input has a search icon "
+            "(magnifying glass) and usually auto-complete/suggest "
+            "affordances. Placeholder text often says 'Search...'."
+        ),
+    },
+    "text_input": {
+        "clay_equivalent": "TEXT_INPUT",
+        "aria_role": "textbox",
+        "aliases": ["input", "textfield", "text_field"],
+        "disambiguation_notes": (
+            "NOT a `search_input` — plain text input without a "
+            "search icon. Rectangular frame with optional label + "
+            "placeholder text + cursor."
+        ),
+    },
+    "spinner": {
+        "clay_equivalent": "SPINNER",
+        "aria_role": "progressbar",
+        "aliases": ["loader", "loading_indicator", "activity"],
+        "disambiguation_notes": (
+            "A circular/rotating loading indicator with no "
+            "determinate progress. NOT a `progress` bar — spinner "
+            "is indeterminate (shows activity, not completion %)."
+        ),
+    },
+    "progress": {
+        "clay_equivalent": "PROGRESS_BAR",
+        "aria_role": "progressbar",
+        "aliases": ["progress_bar", "progressbar", "loader-bar"],
+        "disambiguation_notes": (
+            "A determinate progress indicator — bar with a filled "
+            "portion showing completion. NOT a `spinner` — spinners "
+            "are indeterminate. NOT a `slider` — sliders are "
+            "interactive; progress is read-only status."
+        ),
+    },
+}
+
+
+def _enriched(entry: CatalogEntry) -> dict[str, Any]:
+    """Merge enrichments + base entry. Enrichments' `aliases` extend
+    the base entry's aliases (deduped); other enrichment keys
+    overwrite.
+    """
+    merged: dict[str, Any] = dict(entry)
+    enrich = _CATALOG_ENRICHMENTS.get(entry["canonical_name"], {})
+    for key, value in enrich.items():
+        if key == "aliases" and merged.get("aliases"):
+            existing = list(merged["aliases"])
+            for alias in value:
+                if alias not in existing:
+                    existing.append(alias)
+            merged["aliases"] = existing
+        else:
+            merged[key] = value
+    return merged
+
 
 def seed_catalog(conn: sqlite3.Connection) -> int:
     """Populate / reconcile ``component_type_catalog`` from CATALOG_ENTRIES.
@@ -751,7 +2329,8 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
     cursor = conn.cursor()
     inserted = 0
 
-    for entry in CATALOG_ENTRIES:
+    for base_entry in CATALOG_ENTRIES:
+        entry = _enriched(base_entry)
         insert_result = cursor.execute(
             "INSERT OR IGNORE INTO component_type_catalog "
             "(canonical_name, category) VALUES (?, ?)",
@@ -765,7 +2344,9 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
             "category = ?, aliases = ?, behavioral_description = ?, "
             "prop_definitions = ?, slot_definitions = ?, "
             "semantic_role = ?, recognition_heuristics = ?, "
-            "related_types = ?, variant_axes = ? "
+            "related_types = ?, variant_axes = ?, "
+            "clay_equivalent = ?, aria_role = ?, "
+            "disambiguation_notes = ? "
             "WHERE canonical_name = ?",
             (
                 entry["category"],
@@ -777,6 +2358,9 @@ def seed_catalog(conn: sqlite3.Connection) -> int:
                 json.dumps(entry.get("recognition_heuristics")) if entry.get("recognition_heuristics") else None,
                 json.dumps(entry.get("related_types")) if entry.get("related_types") else None,
                 json.dumps(entry.get("variant_axes")) if entry.get("variant_axes") else None,
+                entry.get("clay_equivalent"),
+                entry.get("aria_role"),
+                entry.get("disambiguation_notes"),
                 entry["canonical_name"],
             ),
         )

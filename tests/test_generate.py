@@ -1119,6 +1119,42 @@ class TestGenerateScreen:
         # Should produce a script (may be empty if no token refs match)
         assert isinstance(rebind_script, str)
 
+    def test_page_name_kwarg_lands_in_script(self, db: sqlite3.Connection):
+        """M1 of the Figma round-trip needs the caller to direct which
+        Figma page the render lands on — the generated script's preamble
+        must find-or-create that page by name. Without the kwarg the
+        render lands on whatever page currently happens to be
+        ``figma.currentPage``, which (per ``feedback_never_trust_current
+        page.md``) is unreliable after any async node lookup.
+
+        Side-by-side demo contract: two calls sharing the same
+        ``page_name`` land as siblings on one page. The find-or-create
+        branch in render_figma_ast is the emission gate for that
+        behavior."""
+        result = generate_screen(
+            db, screen_id=1,
+            page_name="design session 01ABC — demo",
+        )
+        script = result["structure_script"]
+        # The find-or-create preamble must reference the page name.
+        assert 'p.name === "design session 01ABC — demo"' in script
+        assert "figma.createPage()" in script
+
+    def test_no_page_name_stays_backward_compatible(
+        self, db: sqlite3.Connection,
+    ):
+        """Existing callers (sweep, dd generate, baseline parity) don't
+        pass page_name. The script then falls through to the legacy
+        ``_rootPage`` attach — no createPage, no find-by-name. Guards
+        against accidentally changing the 204/204 sweep's output."""
+        result = generate_screen(db, screen_id=1)
+        script = result["structure_script"]
+        # Legacy path: root attach via _rootPage (already implicitly
+        # the first page of the file).
+        assert "_rootPage.appendChild" in script
+        # Must NOT have created a new page.
+        assert "figma.createPage()" not in script
+
 
 class TestGenerateCLI:
     """Verify generate CLI command."""
@@ -1811,30 +1847,21 @@ class TestEmitVisualAdditiveProperties:
 
 
 class TestVisibilityOverrides:
-    """Verify Mode 1 instances emit visibility overrides for hidden children."""
+    """Verify Mode 1 instances emit visibility overrides for hidden children.
 
-    def test_mode1_hides_children(self):
-        spec = _make_spec({
-            "screen-1": {"type": "screen", "children": ["header-1"]},
-            "header-1": {"type": "header"},
-        })
-        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
-        db_visuals = {
-            -1: {"bindings": []},
-            -2: {
-                "component_key": "abc123",
-                "component_figma_id": "123:456",
-                "bindings": [],
-                "hidden_children": [
-                    {"name": "Title"},
-                    {"name": "Titles"},
-                ],
-            },
-        }
-        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert 'n.name === "Title"' in script
-        assert 'n.name === "Titles"' in script
-        assert ".visible = false" in script
+    PR-1 deleted the dict-IR renderer's `hidden_children` name-based
+    emitter (dd/renderers/figma.py:1214-1220). The legacy tests that
+    asserted the emitted `n.name === "..."` pattern
+    (``test_mode1_hides_children``, ``test_mode1_escapes_child_names``)
+    pinned that deleted shape and had no honest path-forward — the
+    unified resolver operates on the markup-IR path, not the dict-IR
+    path these tests exercised. They were removed; equivalent
+    id-based emission is covered by `tests/test_slot_visibility.py`
+    and `tests/test_hidden_children_unification.py`. The two
+    negative-assertion tests below remain because they still pin a
+    valid invariant (`no hidden_children → no .visible=false`) that
+    holds trivially after deletion.
+    """
 
     def test_mode1_no_visibility_when_all_visible(self):
         spec = _make_spec({
@@ -1862,24 +1889,6 @@ class TestVisibilityOverrides:
         }
         script, _ = generate_figma_script(spec, db_visuals=db_visuals)
         assert ".visible = false" not in script
-
-    def test_mode1_escapes_child_names(self):
-        spec = _make_spec({
-            "screen-1": {"type": "screen", "children": ["header-1"]},
-            "header-1": {"type": "header"},
-        })
-        spec["_node_id_map"] = {"screen-1": -1, "header-1": -2}
-        db_visuals = {
-            -1: {"bindings": []},
-            -2: {
-                "component_key": "abc123",
-                "component_figma_id": "123:456",
-                "bindings": [],
-                "hidden_children": [{"name": 'icon/back "test"'}],
-            },
-        }
-        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
-        assert 'icon/back \\"test\\"' in script
 
 
 class TestAbsolutePositioning:
@@ -2949,8 +2958,19 @@ class TestUnpublishedComponentFallback:
         assert "importComponentByKeyAsync" not in script
         assert "123:456" in script
 
-    def test_fallback_creates_frame_when_no_ids(self):
-        """When both component_figma_id and figma_node_id are missing, fall back to createFrame."""
+    def test_uses_component_key_when_no_figma_ids(self):
+        """When component_key is set but both figma ids are NULL, fall through
+        to importComponentByKeyAsync.
+
+        F1: prior to this fix, the renderer's gate accepted ``component_key``
+        but the emission body had no matching branch, so the script silently
+        degraded to ``createFrame()`` for every Mode-3 element whose key
+        couldn't be resolved upstream to a figma_id (the common case on
+        fresh extracted DBs without a CKR build pass). The legacy
+        ``_emit_composition_children`` already used this exact API for keyed
+        children — adding it at the top-level keeps the two emission sites
+        consistent.
+        """
         spec = _make_spec({
             "screen-1": {"type": "screen", "children": ["thing-1"]},
             "thing-1": {"type": "container"},
@@ -2960,6 +2980,33 @@ class TestUnpublishedComponentFallback:
             -1: {"bindings": []},
             -2: {
                 "component_key": "orphan_key",
+                "component_figma_id": None,
+                "figma_node_id": None,
+                "bindings": [],
+            },
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        assert 'importComponentByKeyAsync("orphan_key")' in script
+        # Falls back to placeholder on any failure mode (missing key,
+        # network error, etc.) — same null-safety contract as the other
+        # Mode-1 branches.
+        assert "_missingComponentPlaceholder" in script
+        assert "missing_component_key" in script
+        assert "getMainComponentAsync" not in script
+
+    def test_fallback_creates_frame_when_no_keys_at_all(self):
+        """With no component_key, no component_figma_id, and no
+        figma_node_id, the renderer must fall through to createFrame().
+        """
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["thing-1"]},
+            "thing-1": {"type": "container"},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "thing-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {
+                "component_key": None,
                 "component_figma_id": None,
                 "figma_node_id": None,
                 "bindings": [],
@@ -3327,9 +3374,14 @@ class TestResolveLayoutSizing:
 
     def test_db_value_takes_priority(self):
         from dd.visual import _resolve_layout_sizing
+        # Item 1 of the 13-item burn-down (Codex round-13): DB value
+        # is now validated against context. FILL requires auto-layout
+        # parent; HUG requires text or auto-layout frame. This test
+        # covers the valid-context case.
         h, v = _resolve_layout_sizing(
             elem_sizing={}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True, node_is_autolayout_frame=True,
         )
         assert h == "FILL"
         assert v == "HUG"
@@ -3381,11 +3433,14 @@ class TestResolveLayoutSizing:
         assert v == "fixed"
 
     def test_db_sizing_takes_priority_over_pixel_dimensions(self):
-        """Ground-truth DB sizing overrides pixel dimension defaults."""
+        """Ground-truth DB sizing overrides pixel dimension defaults
+        when valid in context (item 1 burn-down: parent_is_autolayout
+        + node_is_autolayout_frame thread through)."""
         from dd.visual import _resolve_layout_sizing
         h, v = _resolve_layout_sizing(
             elem_sizing={"width": 200, "height": 100}, db_sizing_h="FILL", db_sizing_v="HUG",
             text_auto_resize=None, is_text=False, etype="container",
+            parent_is_autolayout=True, node_is_autolayout_frame=True,
         )
         assert h == "FILL"
         assert v == "HUG"
@@ -3615,6 +3670,56 @@ class TestHexToFigmaRgba:
         assert len(lines) == 1
         js = lines[0]
         assert "a:0.251" in js or "a:0.25" in js
+
+    def test_emit_effects_propagates_subproperty_token_refs(self):
+        """Effect sub-property token refs (spread, blur, offsetX, offsetY)
+        should reach the renderer's refs output.
+
+        Pre-fix: dd/ir.py:197-203 collected these into entry["_token_refs"]
+        but dd/renderers/figma.py:_emit_effects only emitted the color ref
+        (line 2530), silently dropping spread/blur/offset token bindings.
+        Result: cluster validator never saw the binding, axis coverage
+        was misreported.
+        """
+        from dd.renderers.figma import _emit_effects
+
+        effects = [{
+            "type": "drop-shadow",
+            "color": "#00000040",
+            "offset": {"x": 0, "y": 4},
+            "blur": 8,
+            "spread": 1,
+            "_token_refs": {
+                "spread": "shadow.lg.spread",
+                "radius": "shadow.lg.blur",
+                "offsetY": "shadow.lg.offsetY",
+            },
+        }]
+        _, refs = _emit_effects("v", "e", effects, {})
+
+        ref_props = {(r[1], r[2]) for r in refs}
+        assert ("effect.0.spread", "shadow.lg.spread") in ref_props
+        assert ("effect.0.radius", "shadow.lg.blur") in ref_props
+        assert ("effect.0.offsetY", "shadow.lg.offsetY") in ref_props
+
+    def test_emit_effects_token_refs_handle_inner_shadow(self):
+        """Same propagation applies to inner-shadow effects."""
+        from dd.renderers.figma import _emit_effects
+
+        effects = [{
+            "type": "inner-shadow",
+            "color": "#00000080",
+            "offset": {"x": 1, "y": 2},
+            "blur": 4,
+            "spread": 0,
+            "_token_refs": {
+                "offsetX": "shadow.inner.offsetX",
+            },
+        }]
+        _, refs = _emit_effects("v", "e", effects, {})
+
+        ref_props = {(r[1], r[2]) for r in refs}
+        assert ("effect.0.offsetX", "shadow.inner.offsetX") in ref_props
 
 
 class TestEmitMissingVisualProperties:
@@ -5696,3 +5801,149 @@ class TestSessionB_PerOpGuards:
         assert any('"text-1"' in p for p in pushes), (
             "text_set_failed push must carry eid='text-1'"
         )
+
+
+class TestEmitTextPropsPerOpGuards:
+    """A2.3 (forensic-audit-2 architectural followon): each text-prop
+    write in _emit_text_props must be guarded individually so a
+    single throw doesn't abort the rest of the function (and Phase 1
+    of the node).
+
+    Pre-A2.3 only the ``fontName`` assignment was guarded with
+    _guarded_op; fontSize, textAlignHorizontal, textAlignVertical,
+    textDecoration, textCase, leadingTrim, lineHeight,
+    letterSpacing, paragraphSpacing were all naked. A throw on
+    fontSize cascaded through the rest of _emit_text_props
+    (silently dropping later prop writes) and was only caught by
+    the surrounding _guard_naked_prop_lines.
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26) chose
+    option (c): "guard each text op individually; characters
+    always scheduled in Phase 3; per-op fail-open behavior."
+    """
+
+    def _emit_with_text_node(self, db_visual: dict) -> str:
+        """Helper: render a screen with a single text node carrying
+        the provided db_visual fields."""
+        spec = _make_spec({
+            "screen-1": {"type": "screen", "children": ["t-1"]},
+            "t-1": {"type": "text", "props": {"text": "hi"}, "style": {}},
+        })
+        spec["_node_id_map"] = {"screen-1": -1, "t-1": -2}
+        db_visuals = {
+            -1: {"bindings": []},
+            -2: {**db_visual, "bindings": []},
+        }
+        script, _ = generate_figma_script(spec, db_visuals=db_visuals)
+        return script
+
+    def test_font_size_emission_guarded(self):
+        """fontSize write must be wrapped in try/catch that pushes
+        a structured kind on throw."""
+        script = self._emit_with_text_node({"font_size": 14})
+        # Find the line that emits fontSize. It must be inside a
+        # try/catch with a __errors.push.
+        # The simplest pin: the literal `fontSize = 14` should appear
+        # as part of a guarded statement (try { ... } catch).
+        assert "fontSize = 14" in script
+        # Find all lines containing "fontSize = " and confirm at
+        # least one is preceded by `try {`.
+        fs_idx = script.find("fontSize = 14")
+        assert fs_idx > 0
+        # Look backward up to 50 chars for `try {`
+        window = script[max(0, fs_idx - 50):fs_idx]
+        assert "try {" in window, (
+            f"A2.3: fontSize write must be guarded; preceding window: {window!r}"
+        )
+
+    def test_text_align_horizontal_guarded(self):
+        script = self._emit_with_text_node({"text_align": "CENTER"})
+        idx = script.find("textAlignHorizontal = ")
+        assert idx > 0
+        window = script[max(0, idx - 50):idx]
+        assert "try {" in window, (
+            f"A2.3: textAlignHorizontal write must be guarded"
+        )
+
+    def test_line_height_guarded(self):
+        import json as _json
+        script = self._emit_with_text_node({
+            "line_height": _json.dumps({"value": 24, "unit": "PIXELS"}),
+        })
+        idx = script.find("lineHeight = ")
+        assert idx > 0
+        window = script[max(0, idx - 60):idx]
+        assert "try {" in window, (
+            "A2.3: lineHeight write must be guarded"
+        )
+
+    def test_one_throw_does_not_abort_other_text_props(self):
+        """The headline contract: if fontSize throws (e.g. from a
+        bad value), the subsequent textAlign write must still
+        emit. Per-op guards mean each prop has independent
+        survival."""
+        # Build a node with multiple text props. Confirm each one
+        # appears as its own guarded statement in the script.
+        import json as _json
+        script = self._emit_with_text_node({
+            "font_size": 14,
+            "text_align": "CENTER",
+            "text_decoration": "UNDERLINE",
+            "line_height": _json.dumps({"value": 20, "unit": "PIXELS"}),
+        })
+        # Each prop name must appear after a `try {` on the SAME line
+        # (or the immediately-preceding line). Easiest way: count
+        # `try {` occurrences containing each of these props.
+        for prop in ("fontSize = ", "textAlignHorizontal = ",
+                     "textDecoration = ", "lineHeight = "):
+            idx = script.find(prop)
+            assert idx > 0, f"prop {prop!r} not in script"
+            window = script[max(0, idx - 60):idx]
+            assert "try {" in window, (
+                f"A2.3 contract: {prop!r} must be in its own try/catch; "
+                f"window before idx: {window!r}"
+            )
+
+
+class TestCornerRadiusFloatPrecision:
+    """A5 surfaced (and Backlog #4 sprint resolved) a renderer bug:
+    ``_emit_corner_radius_figma`` was truncating uniform cornerRadius
+    via ``int(value)``, losing fractional component. Sub-pixel
+    cornerRadius IS a real Figma value (e.g. 10.927... px on
+    auto-layout-derived corners); the Plugin API accepts floats.
+
+    Pre-fix: 26 cornerradius_mismatch errors on the post-sprint
+    Nouns sweep, all the same shape (IR=10.927..., rendered=10).
+    Post-fix: float emission round-trips.
+    """
+
+    def test_uniform_corner_radius_preserves_float(self):
+        from dd.renderers.figma import _emit_corner_radius_figma
+        lines, _ = _emit_corner_radius_figma(
+            "v", "e", 10.927369117736816, {},
+        )
+        assert len(lines) == 1
+        # The float must NOT be truncated to int.
+        assert "10.927" in lines[0], (
+            "A5 cornerRadius fidelity: float must round-trip; "
+            f"got: {lines[0]!r}"
+        )
+        # And specifically, no `int(...)` truncation.
+        assert "= 10;" not in lines[0]
+
+    def test_uniform_corner_radius_integer_unchanged(self):
+        """Regression: integer values still emit cleanly."""
+        from dd.renderers.figma import _emit_corner_radius_figma
+        lines, _ = _emit_corner_radius_figma("v", "e", 8, {})
+        assert lines == ["v.cornerRadius = 8;"]
+
+    def test_per_corner_dict_unchanged(self):
+        """Regression: the dict path was already correct (no int
+        cast on the individual corners). Per-corner keys are
+        the short form ``tl/tr/bl/br`` per ``_CORNER_MAP``."""
+        from dd.renderers.figma import _emit_corner_radius_figma
+        value = {"tl": 4.5, "tr": 8, "bl": 4.5, "br": 8}
+        lines, _ = _emit_corner_radius_figma("v", "e", value, {})
+        joined = "\n".join(lines)
+        assert "topLeftRadius = 4.5" in joined
+        assert "topRightRadius = 8" in joined

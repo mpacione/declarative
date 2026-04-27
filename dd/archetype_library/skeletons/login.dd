@@ -1,0 +1,24 @@
+// Stage 2 pilot — `login` archetype skeleton migrated from
+// `login.json` to dd markup per `docs/spec-dd-markup-grammar.md` §6.1.
+//
+// Uses the original JSON type names (`icon-button`, `text-input`,
+// `link`) — accepted by the parser's fail-open policy per §2.7
+// ("Parsers SHOULD warn on unknown type keywords but MUST NOT
+// hard-fail"). When the type registry later gains these as
+// first-class keywords, no markup changes required.
+
+define login() {
+    header {
+        icon-button
+        text
+    }
+    card {
+        heading
+        text
+        text-input
+        text-input
+        link
+        button variant=primary
+    }
+    button variant=secondary
+}

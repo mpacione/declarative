@@ -125,9 +125,10 @@ class TestComposeSplicesCorpusSubtree:
         spec = compose_screen(components, registry=registry)
 
         elements = spec["elements"]
-        # A card element exists in the spec (root spliced in)
+        # Type/role split: "card" is a semantic role, structural
+        # primitive is "frame". See docs/plan-type-role-split.md.
         card_elems = [
-            e for e in elements.values() if e.get("type") == "card"
+            e for e in elements.values() if e.get("role") == "card"
         ]
         assert len(card_elems) == 1
         card = card_elems[0]
@@ -162,13 +163,16 @@ class TestComposeSplicesCorpusSubtree:
         # Mode-3 output. When the LLM didn't supply text, the slot
         # ends up empty (caller is expected to fill it downstream).
         elements = spec["elements"]
+        # Type/role split: "card" is a semantic role, structural
+        # primitive is "frame". See docs/plan-type-role-split.md.
         card_eid = next(
-            eid for eid, e in elements.items() if e.get("type") == "card"
+            eid for eid, e in elements.items() if e.get("role") == "card"
         )
         card = elements[card_eid]
         assert len(card.get("children", [])) == 1
         child_eid = card["children"][0]
         child = elements[child_eid]
+        # child is a TEXT primitive with no extra role (role == type → elided)
         assert child["type"] == "text"
         assert child.get("props", {}).get("text") == ""  # DB "Original Title" stripped
 

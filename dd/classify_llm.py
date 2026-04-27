@@ -1,92 +1,510 @@
 """LLM classification for ambiguous nodes (T5 Phase 1b, Step 3).
 
-Uses Claude Haiku to classify nodes that formal matching and heuristics
-couldn't resolve. Targets depth-1 named FRAMEs and remaining INSTANCEs.
+Uses Claude Haiku with tool-use (structured output) to classify nodes
+that formal matching and heuristics couldn't resolve. The prompt
+embeds the full canonical-type catalog (with behavioral descriptions
+grouped by category) plus per-node context (parent classification,
+child-type distribution, sample text, CKR-registered name when the
+node has a component_key).
+
+M7.0.a uses this stage as the primary judgment-based classifier for
+the ~7K unclassified FRAME/INSTANCE/COMPONENT nodes that the formal
++ heuristic stages cannot resolve.
 """
 
+from __future__ import annotations
+
 import json
-import re
 import sqlite3
 from typing import Any
 
 from dd.catalog import get_catalog
-from dd.classify_rules import is_system_chrome, parse_component_name
+from dd.classify_rules import is_system_chrome
 
-_DEFAULT_LLM_CONFIDENCE = 0.7
+
 _LLM_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_LLM_CONFIDENCE = 0.7
+
+
+# Tool schema for structured classification output. Claude is
+# required (via tool_choice) to emit a JSON object matching this
+# schema — no free-text parsing, no regex rescue paths.
+CLASSIFY_TOOL_SCHEMA = {
+    "name": "classify_nodes",
+    "description": (
+        "Return a classification for every node in the batch. Each "
+        "entry names the canonical UI component type the node "
+        "represents, a calibrated confidence (0.0-1.0), and a one-"
+        "sentence evidence-based reason. Use `container` when the "
+        "node is a structural layout frame with no specific "
+        "component identity. Use `unsure` when the node's identity "
+        "cannot be determined from the provided information — do "
+        "NOT invent a classification to avoid this answer."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "classifications": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {"type": "integer"},
+                        "canonical_type": {"type": "string"},
+                        "confidence": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": (
+                                "One short sentence citing the signals "
+                                "that led to this classification "
+                                "(layout, text, parent, size, etc.). "
+                                "Evidence-based; no speculation."
+                            ),
+                        },
+                    },
+                    "required": [
+                        "node_id", "canonical_type",
+                        "confidence", "reason",
+                    ],
+                },
+            },
+        },
+        "required": ["classifications"],
+    },
+}
+
+
+# Catalog-adjacent sentinels that are always valid canonical types
+# even though they're not stored as rows in ``component_type_catalog``.
+# - container: generic layout frame with no specific identity.
+# - unsure: reviewer-visible "couldn't decide" signal.
+_CATALOG_SENTINEL_TYPES = ("container", "unsure")
+
+
+def build_canonical_type_enum(
+    catalog: list[dict[str, Any]],
+) -> list[str]:
+    """Return the full list of valid ``canonical_type`` values — every
+    catalog row's ``canonical_name`` plus ``container`` and ``unsure``.
+
+    Order-preserving dedup so the same catalog always produces an
+    identical enum (important for caching and response reproducibility
+    across runs). Missing / malformed entries are silently skipped.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for entry in catalog:
+        name = entry.get("canonical_name")
+        if isinstance(name, str) and name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    for sentinel in _CATALOG_SENTINEL_TYPES:
+        if sentinel not in seen:
+            seen.add(sentinel)
+            out.append(sentinel)
+    return out
+
+
+def build_classify_tool_schema(
+    catalog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return ``CLASSIFY_TOOL_SCHEMA`` with an ``enum`` constraint on
+    ``canonical_type`` built from the current catalog + sentinels.
+
+    Anthropic's tool-use constrained decoding (Nov 2025 GA) enforces
+    the schema at the token level — if we pass an enum, the model
+    physically cannot emit a value outside the allowed set. Drops
+    whole classes of free-text drift ("Button", "btn",
+    "action_button", etc.) and gives us one less validation layer to
+    maintain. Requires Sonnet 4.5+/Haiku 4.5+/Opus 4.6+.
+
+    Returns a fresh dict each call so callers can mutate without side
+    effects on the module-level constant.
+    """
+    enum = build_canonical_type_enum(catalog)
+    return {
+        "name": CLASSIFY_TOOL_SCHEMA["name"],
+        "description": CLASSIFY_TOOL_SCHEMA["description"],
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "classifications": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "node_id": {"type": "integer"},
+                            "canonical_type": {
+                                "type": "string",
+                                "enum": enum,
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "One short sentence citing the "
+                                    "signals that led to this "
+                                    "classification (layout, text, "
+                                    "parent, size, etc.). Evidence-"
+                                    "based; no speculation."
+                                ),
+                            },
+                        },
+                        "required": [
+                            "node_id", "canonical_type",
+                            "confidence", "reason",
+                        ],
+                    },
+                },
+            },
+            "required": ["classifications"],
+        },
+    }
+
+
+def _format_catalog_for_prompt(catalog: list[dict[str, Any]]) -> str:
+    """Render the catalog by category with one line per type.
+
+    Each entry gets: canonical_name + behavioral_description +
+    optional industry-standard aliases (CLAY/ARIA) for prompt
+    alignment with the model's training data + disambiguation_notes
+    ("NOT a <neighbor> because...") when present. The disambiguation
+    text is the largest prompt-quality lever from classifier v2.1 —
+    it pushes the model off wrong-neighbor picks on confusable
+    types like tooltip-vs-popover or icon-vs-icon_button.
+    """
+    by_cat: dict[str, list[dict[str, Any]]] = {}
+    for entry in catalog:
+        by_cat.setdefault(entry["category"], []).append(entry)
+    lines: list[str] = []
+    for cat in sorted(by_cat.keys()):
+        lines.append(f"\n**{cat}**")
+        for entry in sorted(by_cat[cat], key=lambda e: e["canonical_name"]):
+            desc = entry.get("behavioral_description") or "(no description)"
+            line = f"- `{entry['canonical_name']}` — {desc}"
+            # Industry-standard names the model was trained on.
+            std_aliases = []
+            if entry.get("clay_equivalent"):
+                std_aliases.append(f"CLAY:{entry['clay_equivalent']}")
+            if entry.get("aria_role"):
+                std_aliases.append(f"ARIA:{entry['aria_role']}")
+            if std_aliases:
+                line += f"  [{', '.join(std_aliases)}]"
+            lines.append(line)
+            # Disambiguation notes as an indented sub-line.
+            dis = entry.get("disambiguation_notes")
+            if dis:
+                lines.append(f"    • {dis}")
+    lines.append(
+        "- `container` — a structural layout frame with no specific "
+        "component identity. Use ONLY when no specific type fits."
+    )
+    lines.append(
+        "- `unsure` — identity cannot be determined from the provided "
+        "information. Prefer this over a low-confidence specific type."
+    )
+    return "\n".join(lines)
+
+
+def _describe_node(node: dict[str, Any]) -> str:
+    parts = [
+        f"- **node_id={node['node_id']}**",
+        f'name="{node["name"]}"',
+        f"type={node['node_type']}",
+        f"depth={node.get('depth', '?')}",
+    ]
+    w = int(node.get("width") or 0)
+    h = int(node.get("height") or 0)
+    parts.append(f"size={w}×{h}")
+    # Classifier v2.1 — geometric features. Aspect ratio + position
+    # encode priors (bottom_nav bottom-full-width, divider thin,
+    # icon small-square). Caller populates screen_width / screen_
+    # height on the candidate dict when these features should apply.
+    sw = node.get("screen_width") or 0
+    sh = node.get("screen_height") or 0
+    if w and h:
+        aspect = w / h if h else 0
+        parts.append(f"aspect={aspect:.2f}")
+    if sw and sh and w and h:
+        x = node.get("x") or 0
+        y = node.get("y") or 0
+        # Position as percent across the screen.
+        x_pct = (x / sw) * 100 if sw else 0
+        y_pct = (y / sh) * 100 if sh else 0
+        w_pct = (w / sw) * 100 if sw else 0
+        h_pct = (h / sh) * 100 if sh else 0
+        parts.append(
+            f"pos=({x_pct:.0f}%,{y_pct:.0f}%) "
+            f"size_vs_screen=({w_pct:.0f}%,{h_pct:.0f}%)"
+        )
+    if node.get("layout_mode"):
+        parts.append(f"layout={node['layout_mode']}")
+    total_children = node.get("total_children")
+    if total_children:
+        dist = node.get("child_type_dist") or {}
+        parts.append(
+            f"children={total_children} "
+            f"({', '.join(f'{k}:{v}' for k, v in dist.items())})"
+        )
+    if node.get("sample_text"):
+        t = str(node["sample_text"])[:60]
+        parts.append(f'sample_text="{t}"')
+    if node.get("parent_classified_as"):
+        parts.append(f"parent={node['parent_classified_as']}")
+    elif node.get("parent_name"):
+        parts.append(f'parent="{node["parent_name"]}"')
+    if node.get("component_key"):
+        if node.get("ckr_registered_name"):
+            parts.append(f'component_key="{node["ckr_registered_name"]}"')
+        else:
+            parts.append("component_key=(not in CKR)")
+    return ", ".join(parts)
 
 
 def build_classification_prompt(
     nodes: list[dict[str, Any]],
-    catalog_types: list[str],
+    catalog: list[dict[str, Any]],
+    screen_name: str,
+    screen_width: float,
+    screen_height: float,
+    skeleton_notation: str | None = None,
+    skeleton_type: str | None = None,
 ) -> str:
-    """Build a classification prompt for a batch of unclassified nodes.
+    """Render the full classification prompt.
 
-    Returns a prompt string asking the LLM to classify each node as one
-    of the catalog types or "container".
+    Compose: role framing + screen context + catalog with
+    descriptions + classification rules + per-node block. The LLM
+    is instructed to emit results via the ``classify_nodes`` tool —
+    free-text responses are rejected at the tool-use layer.
     """
-    type_list = ", ".join(catalog_types) + ", container"
+    skel_line = (
+        f"Screen skeleton: `{skeleton_notation}` "
+        f"({skeleton_type or 'untyped'})"
+        if skeleton_notation else
+        "Screen skeleton: (not yet extracted)"
+    )
+    catalog_block = _format_catalog_for_prompt(catalog)
+    node_descriptions = "\n".join(_describe_node(n) for n in nodes)
 
-    node_descriptions = []
-    for node in nodes:
-        desc = (
-            f"- node_id={node['node_id']}: name=\"{node['name']}\", "
-            f"type={node.get('node_type', '?')}, "
-            f"size={node.get('width', 0):.0f}x{node.get('height', 0):.0f}, "
-            f"layout={node.get('layout_mode', 'none')}, "
-            f"children={node.get('child_count', 0)}, "
-            f"y_position={node.get('y', 0):.0f} "
-            f"(screen: {node.get('screen_name', '?')} {node.get('screen_width', 0):.0f}x{node.get('screen_height', 0):.0f})"
+    return f"""You are classifying UI nodes from a Figma design file against a fixed catalog of canonical component types. This classification feeds a design-system compiler — accuracy matters, and "unsure" is a valid answer.
+
+## Screen context
+
+Screen: **{screen_name}** ({int(screen_width)}×{int(screen_height)})
+{skel_line}
+
+## Canonical types (pick exactly one per node)
+
+Use the behavioral description to disambiguate. The UI component that matches the *function* of the node wins, not the one that merely looks similar.
+{catalog_block}
+
+## Rules
+
+1. **Pick one canonical type per node.** `container` and `unsure` are valid; prefer a specific catalog type when the evidence is strong.
+
+2. **Layout-slot names default to `container`.** Frames named `Left`, `Right`, `Center`, `Titles`, `Frame 267`, `Group 4`, etc. are almost always pure layout wrappers — classify them as `container` unless their children carry unambiguous identity signal (e.g. children are all buttons → `button_group`; children form a clear nav row → `navigation_row`). Auto-generated names like `Frame NNN` / `Group NNN` should only pick a specific type when another signal (sample text, distinctive child pattern, strong parent context) overrides.
+
+3. **Wordmarks and logos → `image`.** A frame named `wordmark`, `logo`, `brand`, `logomark` is treated as an `image` — the compiler renders these as assets, not as editable text. They are NOT `heading`, `text`, `navigation_row`, or `icon_button`.
+
+4. **Empty-frame placeholders → `skeleton`.** Multiple identical empty frames (same size, same parent, no children, no sample_text) arranged in a grid or stack — often named `Frame 352`/`Skeleton`/`Loading` — are loading placeholders. Classify as `skeleton`. This is NOT a `dialog` or `drawer` — it's a placeholder pattern the renderer replaces at runtime.
+
+5. **Decorative-child pattern → `icon`.** A small frame with N identical decorative children (3 ellipses, 2 chevrons, 4 dots) in a tight layout is typically a single semantic glyph — classify as `icon`, not a `container` of N independent things.
+
+6. **Use parent/sibling context.** A node inside a `bottom_nav` is likely a `navigation_row`, not a button. A text-only node inside a `card` at the top is likely `heading`. A row of identical button-like instances is `button_group`.
+
+7. **Sample text is a strong signal.** "Sign in" → `button`. "Welcome back" → `heading`. "Forgot password?" → `link`. URL-like text (`chads.wtf`) → `search_input` or `text` depending on context.
+
+8. **Don't regress to `container` when specific evidence exists.** `container` is for *truly generic layout frames with no identity signals* — no sample_text, no distinctive children, no known pattern. If the node has ANY specific signal (distinctive name like `grabber` / `address`, characteristic children, sample text, known layout pattern), classify it specifically. A `button_group` is more useful downstream than a `container` with 3 button children. (But rule 2 still governs generic layout-slot names like `Left`/`Center`/`Frame NNN`.)
+
+9. **Confidence is calibrated and ANCHORED.**
+   - **0.95+ — unambiguous.** *Example:* frame named `CTA` with sample_text="Continue", parent=card — this is a `button` at 0.98.
+   - **0.85–0.94 — strong signal + one minor alternative.** *Example:* a frame with a single line of sentence-case text in the page body — very likely `text`, could arguably be `heading` at the smallest sizes, at 0.88.
+   - **0.75–0.84 — real evidence + plausible alternative.** *Example:* a small square frame named `icon` with one child — could be `icon` alone OR part of an `icon_button`; at 0.78.
+   - **Below 0.75 — prefer `unsure` with a reason.** Hedging with "container at 0.70" loses more information than an honest `unsure`.
+
+10. **Reasons are evidence-based.** One sentence citing the signals (layout, text, parent, size, child pattern). "Assumed to be a card" is bad; "Vertical auto-layout with image at top, heading, and action row" is good. "Structural grouping of controls" is weak — if the children are all buttons, say `button_group` and cite why.
+
+## Nodes to classify
+
+{node_descriptions}
+
+Return your classifications via the `classify_nodes` tool. Every node in the batch must appear in the response exactly once."""
+
+
+def _extract_classifications_from_response(response: Any) -> list[dict[str, Any]]:
+    """Extract the ``classifications`` array from a Claude tool-use
+    response. Returns an empty list when the expected tool_use
+    block is missing — caller logs + skips the batch, never
+    invents data to paper over a malformed reply.
+    """
+    if response is None or not getattr(response, "content", None):
+        return []
+    for block in response.content:
+        if getattr(block, "type", None) != "tool_use":
+            continue
+        if getattr(block, "name", None) != CLASSIFY_TOOL_SCHEMA["name"]:
+            continue
+        inp = getattr(block, "input", None)
+        if isinstance(inp, dict):
+            classifications = inp.get("classifications")
+            if isinstance(classifications, list):
+                return [c for c in classifications if isinstance(c, dict)]
+        return []
+    return []
+
+
+def _get_unclassified_for_llm(
+    conn: sqlite3.Connection, screen_id: int,
+    *, force_reclassify: bool = False,
+) -> list[dict[str, Any]]:
+    """Fetch unclassified FRAME/INSTANCE/COMPONENT nodes at depth
+    ≥1 on the given screen, enriched with the context the LLM
+    prompt needs: parent classification (if any), sibling/child
+    distribution, sample text, and the CKR-registered master name
+    when the node has a ``component_key``.
+
+    ``force_reclassify``: when True, drop the "sci row doesn't
+    exist yet" filter so every eligible node is returned regardless
+    of prior classification. Used by rerun flows to re-classify the
+    whole corpus against an updated catalog.
+    """
+    screen = conn.execute(
+        "SELECT name, width, height FROM screens WHERE id = ?",
+        (screen_id,),
+    ).fetchone()
+    if screen is None:
+        return []
+
+    # Full-screen filter (classifier v2): nodes at >=95% of the
+    # screen's viewport in BOTH dimensions are canvas/root
+    # containers, not classifiable UI components. They waste API
+    # calls and confuse the model. Size threshold is expressed in
+    # the SQL so the DB skips them before we materialise rows.
+    screen_w, screen_h = screen[1] or 0, screen[2] or 0
+    # Visibility handling (added 2026-04-20 after adjudicator showed
+    # 88% of "skip" judgments + 100% of "override" judgments hit
+    # effectively-invisible nodes). We do NOT exclude them — invisible
+    # design content is still content — but we tag each candidate
+    # with `visible_self` (the node's own flag) + `visible_effective`
+    # (false if self OR any ancestor is hidden). Downstream the crop
+    # path uses these tags to pick the right render strategy:
+    #   visible_effective=True  -> screen-level crop (existing)
+    #   self=True, eff=False    -> per-node Figma render (REST renders
+    #                               ancestor-hidden nodes standalone)
+    #   self=False              -> LLM-text only, no vision (Figma
+    #                               REST refuses to render self-hidden)
+    # Rerun mode: re-score nodes that are either unclassified OR
+    # previously LLM-classified. Formal / heuristic verdicts are
+    # deterministic rules (artboard → container etc.) that don't
+    # change with catalog expansion, so preserve them — don't let
+    # the LLM upsert overwrite them with classification_source='llm'.
+    sci_filter = (
+        "AND (sci.id IS NULL OR sci.classification_source = 'llm')"
+        if force_reclassify
+        else "AND sci.id IS NULL"
+    )
+    cursor = conn.execute(
+        f"""
+        WITH RECURSIVE invisible_subtree(id) AS (
+            SELECT id FROM nodes
+            WHERE screen_id = ? AND COALESCE(visible, 1) = 0
+            UNION ALL
+            SELECT n.id FROM nodes n
+            JOIN invisible_subtree inv ON n.parent_id = inv.id
+            WHERE n.screen_id = ?
         )
-        node_descriptions.append(desc)
+        SELECT n.id AS node_id, n.name, n.node_type, n.depth,
+               n.width, n.height, n.x, n.y, n.rotation, n.layout_mode,
+               n.parent_id, n.component_key,
+               COALESCE(n.visible, 1) AS visible_self,
+               CASE WHEN n.id IN (SELECT id FROM invisible_subtree)
+                    THEN 0 ELSE 1 END AS visible_effective
+        FROM nodes n
+        LEFT JOIN screen_component_instances sci
+          ON sci.node_id = n.id AND sci.screen_id = n.screen_id
+        WHERE n.screen_id = ?
+          AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT')
+          AND n.depth >= 1
+          {sci_filter}
+          AND NOT (
+            COALESCE(n.width, 0) >= ? * 0.95
+            AND COALESCE(n.height, 0) >= ? * 0.95
+          )
+        ORDER BY n.depth, n.sort_order
+        """,
+        (screen_id, screen_id, screen_id, screen_w, screen_h),
+    )
+    columns = [desc[0] for desc in cursor.description]
+    raw = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-    nodes_block = "\n".join(node_descriptions)
+    # Filter system chrome (iOS status bar, Safari chrome, keyboard
+    # keys, etc. — handled as design content but classified to
+    # `container` / skipped at the renderer layer, not here).
+    candidates = [r for r in raw if not is_system_chrome(r["name"])]
 
-    return f"""Classify each UI node into one of these canonical component types:
-{type_list}
+    # Enrich each candidate with parent classification + child
+    # distribution + sample text + CKR-registered name.
+    for r in candidates:
+        pid = r.get("parent_id")
+        if pid is not None:
+            pr = conn.execute(
+                "SELECT n.name, n.node_type, sci.canonical_type "
+                "FROM nodes n "
+                "LEFT JOIN screen_component_instances sci "
+                "  ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
+                "WHERE n.id = ?",
+                (pid,),
+            ).fetchone()
+            r["parent_name"] = pr[0] if pr else None
+            r["parent_type"] = pr[1] if pr else None
+            r["parent_classified_as"] = pr[2] if pr else None
+        else:
+            r["parent_name"] = r["parent_type"] = r["parent_classified_as"] = None
 
-Use "container" for structural layout frames that aren't a specific component.
+        children = conn.execute(
+            "SELECT node_type, COUNT(*) FROM nodes "
+            "WHERE parent_id = ? GROUP BY node_type",
+            (r["node_id"],),
+        ).fetchall()
+        r["child_type_dist"] = {k: v for k, v in children}
+        r["total_children"] = sum(v for _, v in children)
 
-Nodes to classify:
-{nodes_block}
+        text_child = conn.execute(
+            "SELECT text_content FROM nodes "
+            "WHERE parent_id = ? AND node_type = 'TEXT' "
+            "AND text_content IS NOT NULL AND text_content != '' "
+            "ORDER BY sort_order LIMIT 1",
+            (r["node_id"],),
+        ).fetchone()
+        r["sample_text"] = text_child[0] if text_child else None
 
-Respond with a JSON array. Each entry must have "node_id", "type", and "confidence" (0.0-1.0).
-Example: [{{"node_id": 1, "type": "card", "confidence": 0.85}}]"""
+        ck = r.get("component_key")
+        if ck:
+            ckr_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='component_key_registry'"
+            ).fetchone()
+            if ckr_exists:
+                ckr = conn.execute(
+                    "SELECT name FROM component_key_registry "
+                    "WHERE component_key = ?",
+                    (ck,),
+                ).fetchone()
+                r["ckr_registered_name"] = ckr[0] if ckr else None
+            else:
+                r["ckr_registered_name"] = None
+        else:
+            r["ckr_registered_name"] = None
 
-
-def parse_classification_response(response_text: str) -> list[dict[str, Any]]:
-    """Parse LLM response into classification results.
-
-    Handles raw JSON and JSON wrapped in markdown code blocks.
-    Returns list of dicts with node_id, type, confidence.
-    """
-    text = response_text.strip()
-
-    json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if json_match:
-        text = json_match.group(1).strip()
-
-    try:
-        parsed = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return []
-
-    if not isinstance(parsed, list):
-        return []
-
-    results = []
-    for entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        if "type" not in entry or "node_id" not in entry:
-            continue
-        results.append({
-            "node_id": entry["node_id"],
-            "type": entry["type"],
-            "confidence": entry.get("confidence", _DEFAULT_LLM_CONFIDENCE),
-        })
-
-    return results
+    return candidates
 
 
 def classify_llm(
@@ -94,51 +512,94 @@ def classify_llm(
     screen_id: int,
     client: Any,
 ) -> dict[str, Any]:
-    """Classify unclassified nodes using LLM.
+    """Classify unclassified nodes on one screen using Claude
+    Haiku with tool-use structured output.
 
-    Fetches unclassified FRAME/INSTANCE nodes at depth >= 1, builds a
-    prompt, calls the LLM, and inserts results with source='llm'.
+    Batches all unclassified candidates on the screen into one
+    call. Inserts results with ``classification_source='llm'``.
+    Missing tool_use blocks in the response → zero classifications
+    for the batch (logged by caller).
     """
-    unclassified = _get_unclassified_for_llm(conn, screen_id)
-    if not unclassified:
+    candidates = _get_unclassified_for_llm(conn, screen_id)
+    if not candidates:
         return {"classified": 0}
 
-    catalog_types = [e["canonical_name"] for e in get_catalog(conn)]
-    prompt = build_classification_prompt(unclassified, catalog_types)
+    catalog = get_catalog(conn)
+    screen = conn.execute(
+        "SELECT name, width, height FROM screens WHERE id = ?",
+        (screen_id,),
+    ).fetchone()
+    skeleton = conn.execute(
+        "SELECT skeleton_notation, skeleton_type FROM screen_skeletons "
+        "WHERE screen_id = ? LIMIT 1",
+        (screen_id,),
+    ).fetchone()
+    skel_notation = skeleton[0] if skeleton else None
+    skel_type = skeleton[1] if skeleton else None
 
+    prompt = build_classification_prompt(
+        nodes=candidates,
+        catalog=catalog,
+        screen_name=screen[0],
+        screen_width=screen[1] or 0,
+        screen_height=screen[2] or 0,
+        skeleton_notation=skel_notation,
+        skeleton_type=skel_type,
+    )
+
+    tool_schema = build_classify_tool_schema(catalog)
     response = client.messages.create(
         model=_LLM_MODEL,
-        max_tokens=2048,
+        max_tokens=4096,
+        tools=[tool_schema],
+        tool_choice={"type": "tool", "name": tool_schema["name"]},
         messages=[{"role": "user", "content": prompt}],
     )
-    response_text = response.content[0].text
-    results = parse_classification_response(response_text)
+    results = _extract_classifications_from_response(response)
 
-    node_id_set = {n["node_id"] for n in unclassified}
-    catalog_id_lookup = {e["canonical_name"]: e["id"] for e in get_catalog(conn)}
+    node_id_set = {n["node_id"] for n in candidates}
+    catalog_id_lookup = {e["canonical_name"]: e["id"] for e in catalog}
 
-    inserts = []
+    inserts: list[tuple[Any, ...]] = []
     for r in results:
-        nid = r["node_id"]
-        ctype = r["type"]
+        nid = r.get("node_id")
+        ctype = r.get("canonical_type")
+        confidence = r.get("confidence", _DEFAULT_LLM_CONFIDENCE)
+        reason = r.get("reason")
         if nid not in node_id_set:
+            continue
+        if not isinstance(ctype, str):
             continue
         if ctype == "container":
             catalog_id = None
+        elif ctype == "unsure":
+            # `unsure` classifications are recorded but with low
+            # confidence + `unsure` as the canonical_type — lets
+            # downstream vision / human passes pick them up.
+            catalog_id = None
         else:
             catalog_id = catalog_id_lookup.get(ctype)
-            if catalog_id is None and ctype != "container":
+            if catalog_id is None:
+                # Model invented a type not in the catalog —
+                # skip rather than corrupt the data.
                 continue
-
         inserts.append((
-            screen_id, nid, catalog_id, ctype, r["confidence"], "llm",
+            screen_id, nid, catalog_id, ctype,
+            float(confidence), "llm",
+            reason if isinstance(reason, str) else None,
+            # Preserve the LLM's primary verdict in llm_type +
+            # llm_confidence (migration 015). Consensus rewrites
+            # canonical_type; rule-v2 iteration reads llm_type.
+            ctype, float(confidence),
         ))
 
     if inserts:
         conn.executemany(
             "INSERT OR IGNORE INTO screen_component_instances "
-            "(screen_id, node_id, catalog_type_id, canonical_type, confidence, classification_source) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(screen_id, node_id, catalog_type_id, canonical_type, "
+            " confidence, classification_source, llm_reason, "
+            " llm_type, llm_confidence) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             inserts,
         )
         conn.commit()
@@ -146,42 +607,35 @@ def classify_llm(
     return {"classified": len(inserts)}
 
 
-def _get_unclassified_for_llm(
-    conn: sqlite3.Connection, screen_id: int
-) -> list[dict[str, Any]]:
-    """Fetch unclassified nodes suitable for LLM classification."""
-    screen = conn.execute(
-        "SELECT name, width, height FROM screens WHERE id = ?", (screen_id,)
-    ).fetchone()
-    if screen is None:
+# Back-compat shims: callers importing the old helpers continue to
+# work until M7.0.a lands and old test fixtures are retired.
+def parse_classification_response(response_text: str) -> list[dict[str, Any]]:
+    """Legacy text-parse entrypoint, preserved for test compatibility.
+
+    Accepts JSON arrays wrapped in optional code fences. Prefer the
+    tool-use path (``_extract_classifications_from_response``) for
+    new callers.
+    """
+    import re as _re
+    text = response_text.strip()
+    m = _re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, _re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
         return []
-
-    cursor = conn.execute(
-        "SELECT n.id as node_id, n.name, n.node_type, n.depth, "
-        "n.width, n.height, n.y, n.layout_mode, "
-        "(SELECT COUNT(*) FROM nodes c WHERE c.parent_id = n.id) as child_count "
-        "FROM nodes n "
-        "LEFT JOIN screen_component_instances sci "
-        "  ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
-        "WHERE n.screen_id = ? "
-        "  AND n.node_type IN ('FRAME', 'INSTANCE', 'COMPONENT') "
-        "  AND n.depth >= 1 "
-        "  AND sci.id IS NULL",
-        (screen_id,),
-    )
-    columns = [desc[0] for desc in cursor.description]
-    rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-    result = []
-    for row in rows:
-        if is_system_chrome(row["name"]):
+    if not isinstance(parsed, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
             continue
-        candidates = parse_component_name(row["name"])
-        if not candidates:
+        if "type" not in entry or "node_id" not in entry:
             continue
-        row["screen_name"] = screen[0]
-        row["screen_width"] = screen[1]
-        row["screen_height"] = screen[2]
-        result.append(row)
-
-    return result
+        out.append({
+            "node_id": entry["node_id"],
+            "type": entry["type"],
+            "confidence": entry.get("confidence", _DEFAULT_LLM_CONFIDENCE),
+        })
+    return out

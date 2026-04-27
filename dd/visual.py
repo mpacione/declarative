@@ -210,15 +210,23 @@ def _resolve_layout_sizing(
     text_auto_resize: str | None,
     is_text: bool,
     etype: str,
+    parent_is_autolayout: bool = False,
+    node_is_autolayout_frame: bool = False,
 ) -> tuple[str | None, str | None]:
     """Determine layoutSizing for an auto-layout child.
 
     Pure function — no side effects, no DB lookups, no emission.
-    Priority per axis: DB > text reconciliation > IR sizing > type heuristic.
+    Priority per axis: valid-DB > text reconciliation > IR sizing >
+    type heuristic.
 
     Returns (horizontal, vertical) as semantic lowercase strings
     ("fill", "hug", "fixed"), DB-native uppercase ("FILL", "HUG", "FIXED"),
     or None to skip. Renderers map to their platform's format.
+
+    Item 1 of the 13-item burn-down: DB values are validated against
+    parent context — see _resolve_one_axis. Invalid DB values fall
+    through to IR sizing (which the IR build canonicalizes for the
+    same context).
     """
     h = _resolve_one_axis(
         db_value=db_sizing_h,
@@ -227,6 +235,8 @@ def _resolve_layout_sizing(
         is_text=is_text,
         etype=etype,
         is_horizontal=True,
+        parent_is_autolayout=parent_is_autolayout,
+        node_is_autolayout_frame=node_is_autolayout_frame,
     )
     v = _resolve_one_axis(
         db_value=db_sizing_v,
@@ -235,8 +245,30 @@ def _resolve_layout_sizing(
         is_text=is_text,
         etype=etype,
         is_horizontal=False,
+        parent_is_autolayout=parent_is_autolayout,
+        node_is_autolayout_frame=node_is_autolayout_frame,
     )
     return h, v
+
+
+def _is_db_value_valid_for_context(
+    db_value: str | None,
+    is_text: bool,
+    parent_is_autolayout: bool,
+    node_is_autolayout_frame: bool,
+) -> bool:
+    """Check whether a DB layoutSizing value is renderable in this
+    context. Per Codex 5.5 round-12/13 lock + the Plugin API docs:
+
+    - ``FILL`` is renderable ONLY when parent is auto-layout
+    - ``HUG`` is renderable for: text nodes, auto-layout frames
+    - ``FIXED`` (and ``None``) are always valid
+    """
+    if db_value == "FILL":
+        return parent_is_autolayout
+    if db_value == "HUG":
+        return is_text or node_is_autolayout_frame
+    return True  # FIXED, None, or unknown — pass through
 
 
 def _resolve_one_axis(
@@ -246,6 +278,8 @@ def _resolve_one_axis(
     is_text: bool,
     etype: str,
     is_horizontal: bool,
+    parent_is_autolayout: bool = False,
+    node_is_autolayout_frame: bool = False,
 ) -> str | None:
     """Resolve layoutSizing for one axis.
 
@@ -255,8 +289,23 @@ def _resolve_one_axis(
     Ground-truth sizing comes from DB (extracted from Figma Plugin API).
     When DB has no value, pixel dimensions default to "fixed" (Figma's
     platform default for non-auto-layout children).
+
+    Item 1 of the 13-item burn-down (Codex round-13): the DB value
+    is now validated against parent context. ``FILL`` is valid only
+    when parent is auto-layout; ``HUG`` is valid for text or
+    auto-layout-frame nodes. If DB carries an invalid value, fall
+    through to ``ir_value`` (which has been canonicalized in the IR
+    build per item 1 main fix). Belt-and-suspenders: IR build
+    canonicalizes for IR consumers; resolve-pass defends against
+    stale-DB values reaching emission.
+
+    The ``parent_is_autolayout`` and ``node_is_autolayout_frame``
+    parameters default to False so existing callers keep working
+    until they're updated; new behavior is opt-in.
     """
-    if db_value:
+    if db_value and _is_db_value_valid_for_context(
+        db_value, is_text, parent_is_autolayout, node_is_autolayout_frame,
+    ):
         return db_value
     if text_override:
         return text_override

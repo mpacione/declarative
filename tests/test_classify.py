@@ -11,6 +11,7 @@ from dd.classify import (
     classify_formal,
     link_parent_instances,
     run_classification,
+    truncate_classifications,
 )
 from dd.classify_heuristics import classify_heuristics
 from dd.classify_rules import is_synthetic_node, is_system_chrome, parse_component_name
@@ -46,6 +47,25 @@ class TestClassificationSchema:
             "canonical_type", "confidence", "classification_source",
             "parent_instance_id", "slot_name",
             "vision_type", "vision_agrees", "flagged_for_review",
+            # M7.0.a additions: LLM + vision reasons persisted for
+            # spot-check / quality audit (Alexander force-resolution).
+            # `llm_reason` was renamed from `classification_reason` in
+            # migration 014 — the column only ever held the LLM's
+            # reason; the rename removes ambiguity now that vision
+            # per-screen + cross-screen also have their own reasons.
+            "llm_reason", "vision_reason",
+            # M7.0.a three-source architecture (migrations 013 + 015).
+            # Per-source verdicts persisted permanently; consensus
+            # computed from these columns. `llm_type` + `llm_confidence`
+            # preserve the LLM's primary verdict so rule-v2 iteration
+            # can recompute without re-classification.
+            "llm_type", "llm_confidence",
+            "vision_ps_type", "vision_ps_confidence", "vision_ps_reason",
+            "vision_cs_type", "vision_cs_confidence", "vision_cs_reason",
+            "vision_cs_evidence_json",
+            # Migration 017: SoM as 4th per-source verdict.
+            "vision_som_type", "vision_som_confidence", "vision_som_reason",
+            "consensus_method",
             "created_at",
         }
         assert columns == expected
@@ -110,6 +130,124 @@ class TestClassificationSchema:
             "VALUES (1, 1, 'n2', 'button/primary', 'INSTANCE', 1, 0)"
         )
         db.commit()
+
+
+def _seed_reviews_sci_row(db: sqlite3.Connection) -> None:
+    """Minimal seeding for tests that need a `screen_component_instances`
+    row to hang a review off of. Shared between
+    `TestClassificationReviewsTable` tests.
+    """
+    db.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'F')")
+    db.execute(
+        "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+        "VALUES (1, 1, 'n1', 'Screen 1', 428, 926)"
+    )
+    db.execute(
+        "INSERT INTO nodes (id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+        "VALUES (1, 1, 'n2', 'button/primary', 'INSTANCE', 1, 0)"
+    )
+    db.execute(
+        "INSERT INTO screen_component_instances "
+        "(id, screen_id, node_id, canonical_type, classification_source) "
+        "VALUES (1, 1, 1, 'button', 'formal')"
+    )
+    db.commit()
+
+
+class TestClassificationReviewsTable:
+    """Verify the `classification_reviews` table exists with correct
+    structure + constraints. One row per human decision — additive,
+    reversible; the consensus view joins against the latest review.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        yield conn
+        conn.close()
+
+    def test_table_exists(self, db: sqlite3.Connection):
+        row = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='classification_reviews'"
+        ).fetchone()
+        assert row is not None
+
+    def test_has_expected_columns(self, db: sqlite3.Connection):
+        cursor = db.execute("PRAGMA table_info(classification_reviews)")
+        columns = {row[1] for row in cursor.fetchall()}
+        expected = {
+            "id", "sci_id", "decided_at", "decided_by",
+            "decision_type", "decision_canonical_type",
+            "source_accepted", "notes",
+        }
+        assert columns == expected
+
+    def test_decision_type_enum_enforced(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO classification_reviews "
+                "(sci_id, decision_type) VALUES (1, 'bogus')"
+            )
+
+    def test_source_accepted_enum_enforced(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO classification_reviews "
+                "(sci_id, decision_type, source_accepted) "
+                "VALUES (1, 'accept_source', 'bogus_source')"
+            )
+
+    def test_sci_fk_cascades_on_delete(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type, decision_canonical_type) "
+            "VALUES (1, 'override', 'card')"
+        )
+        db.execute("DELETE FROM screen_component_instances WHERE id = 1")
+        row = db.execute(
+            "SELECT COUNT(*) FROM classification_reviews"
+        ).fetchone()
+        assert row[0] == 0
+
+    def test_decided_at_default_is_set(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type) VALUES (1, 'skip')"
+        )
+        row = db.execute(
+            "SELECT decided_at, decided_by FROM classification_reviews"
+        ).fetchone()
+        assert row[0] is not None and len(row[0]) > 0
+        assert row[1] == "human"
+
+    def test_reviews_index_on_sci(self, db: sqlite3.Connection):
+        row = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_reviews_sci'"
+        ).fetchone()
+        assert row is not None
+
+    def test_accept_source_decision_writes(self, db: sqlite3.Connection):
+        _seed_reviews_sci_row(db)
+        db.execute(
+            "INSERT INTO classification_reviews "
+            "(sci_id, decision_type, source_accepted, "
+            " decision_canonical_type, notes) "
+            "VALUES (1, 'accept_source', 'vision_ps', 'button', "
+            " 'visual glyph in the screenshot clinches it')"
+        )
+        row = db.execute(
+            "SELECT source_accepted, decision_canonical_type, notes "
+            "FROM classification_reviews WHERE sci_id = 1"
+        ).fetchone()
+        assert row[0] == "vision_ps"
+        assert row[1] == "button"
+        assert row[2].startswith("visual glyph")
 
 
 class TestClassificationSourceEnum:
@@ -419,6 +557,121 @@ class TestFormalMatching:
         )
         row = cursor.fetchone()
         assert row[0] is not None  # should be set to the button's catalog ID
+
+
+class TestFormalMatchingViaComponentKey:
+    """Verify classify_formal() can classify an INSTANCE via its
+    ``component_key`` lookup into ``component_key_registry`` when the
+    node's own ``name`` doesn't match any canonical type.
+
+    This closes the gap the archived T5 plan specified but was never
+    implemented — 27K+ INSTANCE nodes in the Dank corpus carry a
+    ``component_key`` that resolves to a canonical master name, and
+    the existing formal stage was leaving them un-classified when the
+    designer had overridden the instance name.
+    """
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        seed_catalog(conn)
+        conn.execute("INSERT INTO files (id, file_key, name) VALUES (1, 'fk', 'Dank')")
+        conn.execute(
+            "INSERT INTO screens (id, file_id, figma_node_id, name, width, height) "
+            "VALUES (1, 1, 's1', 'Home', 428, 926)"
+        )
+        # CKR is created lazily by `build_component_key_registry` in
+        # production. For this isolated unit test we materialize it
+        # directly — matches the schema emitted by dd/templates.py.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS component_key_registry ("
+            "component_key TEXT PRIMARY KEY, "
+            "figma_node_id TEXT, "
+            "name TEXT NOT NULL, "
+            "instance_count INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, ?, ?, ?)",
+            ("mkey-button-primary", "master-1", "button/primary/lg", 42),
+        )
+        # Node whose name is designer-overridden and doesn't match any
+        # canonical. Its component_key resolves to the CKR entry above.
+        conn.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (1, 1, 'n1', 'Call to Action', 'INSTANCE', 1, 0, 'mkey-button-primary')"
+        )
+        conn.commit()
+        yield conn
+        conn.close()
+
+    def test_classifies_via_ckr_when_name_is_overridden(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        result = classify_formal(db, screen_id=1)
+        assert result["classified"] == 1, (
+            f"Expected 1 classification via CKR lookup, got {result['classified']}"
+        )
+        cursor = db.execute(
+            "SELECT canonical_type, classification_source, confidence "
+            "FROM screen_component_instances WHERE node_id = 1"
+        )
+        row = cursor.fetchone()
+        assert row is not None, "No classification was recorded"
+        assert row[0] == "button", f"Expected canonical_type=button, got {row[0]!r}"
+        assert row[1] == "formal"
+        assert row[2] == 1.0
+
+    def test_node_name_still_preferred_when_both_match(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        """If the node's name already matches a canonical, use it.
+        Only fall back to CKR when the name doesn't match.
+        """
+        # Second node whose name DOES match. component_key points to a
+        # DIFFERENT registered name, to catch a bug where CKR would
+        # override a perfectly-good name match.
+        db.execute(
+            "INSERT INTO component_key_registry "
+            "(component_key, figma_node_id, name, instance_count) "
+            "VALUES (?, ?, ?, ?)",
+            ("mkey-icon-back", "master-2", "icon/back", 10),
+        )
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (2, 1, 'n2', 'card/sheet', 'INSTANCE', 1, 1, 'mkey-icon-back')"
+        )
+        db.commit()
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT canonical_type FROM screen_component_instances WHERE node_id = 2"
+        )
+        # Node's own name 'card/sheet' matches 'card' — should win over
+        # the CKR-registered 'icon/back'.
+        assert cursor.fetchone()[0] == "card"
+
+    def test_missing_ckr_entry_falls_through(self, db: sqlite3.Connection) -> None:
+        """A component_key that isn't in CKR shouldn't cause errors —
+        the node just falls through to the LLM stage (unclassified
+        from the formal stage's perspective).
+        """
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order, component_key) "
+            "VALUES (3, 1, 'n3', 'My Button', 'INSTANCE', 1, 2, 'mkey-unregistered')"
+        )
+        db.commit()
+        classify_formal(db, screen_id=1)
+        cursor = db.execute(
+            "SELECT id FROM screen_component_instances WHERE node_id = 3"
+        )
+        assert cursor.fetchone() is None, (
+            "Node with unregistered component_key should remain unclassified "
+            "by the formal stage"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -749,6 +1002,102 @@ class TestRunClassification:
         )
         assert cursor.fetchone()[0] == "heuristic"
 
+
+class TestTruncateAndResume:
+    """M7.0.a infrastructure: truncate path + since-resume."""
+
+    @pytest.fixture
+    def db(self) -> sqlite3.Connection:
+        conn = init_db(":memory:")
+        _seed_full_screen(conn)
+        yield conn
+        conn.close()
+
+    def test_truncate_clears_instances_and_skeletons(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        run_classification(db, file_id=1)
+        before_instances = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances"
+        ).fetchone()[0]
+        before_skeletons = db.execute(
+            "SELECT COUNT(*) FROM screen_skeletons"
+        ).fetchone()[0]
+        assert before_instances > 0
+        assert before_skeletons > 0
+
+        result = truncate_classifications(db)
+        assert result["instances_deleted"] == before_instances
+        assert result["skeletons_deleted"] == before_skeletons
+
+        after_instances = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances"
+        ).fetchone()[0]
+        after_skeletons = db.execute(
+            "SELECT COUNT(*) FROM screen_skeletons"
+        ).fetchone()[0]
+        assert after_instances == 0
+        assert after_skeletons == 0
+
+    def test_truncate_preserves_catalog_and_templates(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        """Truncate must NOT clear the catalog — vocabulary stays."""
+        run_classification(db, file_id=1)
+        catalog_before = db.execute(
+            "SELECT COUNT(*) FROM component_type_catalog"
+        ).fetchone()[0]
+        assert catalog_before > 0
+
+        truncate_classifications(db)
+        catalog_after = db.execute(
+            "SELECT COUNT(*) FROM component_type_catalog"
+        ).fetchone()[0]
+        assert catalog_after == catalog_before
+
+    def test_since_filter_skips_earlier_screens(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        # Seed a second screen with id=2 > 1.
+        db.execute(
+            "INSERT INTO screens "
+            "(id, file_id, figma_node_id, name, width, height) "
+            "VALUES (2, 1, 's2', 'Other', 428, 926)"
+        )
+        db.execute(
+            "INSERT INTO nodes "
+            "(id, screen_id, figma_node_id, name, node_type, depth, sort_order) "
+            "VALUES (99, 2, 'n99', 'button/primary', 'INSTANCE', 1, 0)"
+        )
+        db.commit()
+
+        result = run_classification(db, file_id=1, since_screen_id=2)
+        # Only screen 2 should have been processed; screen 1's nodes
+        # remain unclassified.
+        assert result["screens_processed"] == 1
+        row = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances "
+            "WHERE screen_id = 1"
+        ).fetchone()[0]
+        assert row == 0
+        row = db.execute(
+            "SELECT COUNT(*) FROM screen_component_instances "
+            "WHERE screen_id = 2 AND node_id = 99"
+        ).fetchone()[0]
+        assert row == 1
+
+    def test_progress_callback_fires_per_screen(
+        self, db: sqlite3.Connection,
+    ) -> None:
+        calls: list[tuple[int, int, int]] = []
+        run_classification(
+            db, file_id=1,
+            progress_callback=lambda i, n, sid, _r: calls.append((i, n, sid)),
+        )
+        assert len(calls) == 1
+        i, n, sid = calls[0]
+        assert i == 1 and n == 1 and sid == 1
+
     def test_skeleton_generated(self, db: sqlite3.Connection):
         run_classification(db, file_id=1)
         cursor = db.execute(
@@ -800,6 +1149,69 @@ class TestClassifyCLI:
         conn = sqlite3.connect(db_path)
         cursor = conn.execute("SELECT COUNT(*) FROM screen_component_instances")
         assert cursor.fetchone()[0] > 0
+
+    def test_three_source_flag_forwards_to_orchestrator(
+        self, tmp_path, monkeypatch,
+    ):
+        """`--three-source` passes through `_run_classify` into
+        `run_classification(three_source=True)`.
+        """
+        db_path = str(tmp_path / "three_source.declarative.db")
+        conn = init_db(db_path)
+        seed_catalog(conn)
+        conn.execute(
+            "INSERT INTO files (id, file_key, name) "
+            "VALUES (1, 'fk', 'F')"
+        )
+        conn.commit()
+        conn.close()
+
+        captured: dict = {}
+
+        def fake_run_classification(*args, **kwargs):
+            captured.update(kwargs)
+            return {
+                "screens_processed": 0,
+                "formal_classified": 0,
+                "heuristic_classified": 0,
+                "llm_classified": 0,
+                "parent_links": 0,
+                "vision": {"validated": 0, "agreed": 0, "disagreed": 0},
+                "skeletons_generated": 0,
+                "vision_ps_applied": 0,
+                "vision_cs_applied": 0,
+                "consensus": {},
+            }
+
+        import dd.classify as classify_mod
+        monkeypatch.setattr(
+            classify_mod, "run_classification", fake_run_classification,
+        )
+
+        # Patch the Anthropic client + screenshot fetcher so the CLI
+        # doesn't actually try to hit a live API.
+        import dd.cli as cli_mod
+
+        class _FakeAnthropic:
+            def __init__(self, *a, **k): ...
+
+        import types
+        fake_anthropic = types.SimpleNamespace(Anthropic=_FakeAnthropic)
+        monkeypatch.setitem(
+            __import__("sys").modules, "anthropic", fake_anthropic,
+        )
+        monkeypatch.setattr(
+            cli_mod, "make_figma_screenshot_fetcher",
+            lambda *a, **k: (lambda *x, **y: None),
+        )
+
+        from dd.cli import main
+        main([
+            "classify", "--db", db_path,
+            "--llm", "--vision", "--three-source",
+        ])
+
+        assert captured.get("three_source") is True
         conn.close()
 
 

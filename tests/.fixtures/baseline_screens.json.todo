@@ -1,0 +1,14 @@
+{
+  "_status": "TODO_PLACEHOLDER",
+  "_purpose": "List of 179 baseline screen IDs that round-trip cleanly (PARITY) on Dank-EXP-02. Used as the v0.4 acceptance baseline so 'no silent-drop regressions' has a concrete corpus to compare against.",
+  "_filename_note": "This file is intentionally named *.json.todo (not *.json) so the placeholder status is loud — code that loads tests/.fixtures/baseline_screens.json will fail-fast until the next session populates it.",
+  "_arithmetic": "179 = 204 app_screens MINUS 25 known-drift cluster (217-228 leaf-type-append cluster + outlier 180 per feedback_dank_corpus_drift_25.md, with 11 of those 25 since recovered by the type/role split per project_type_role_split.md → effective drift may now be 14, giving baseline 190; re-derive at population time).",
+  "_population_query": "// Run after a fresh round-trip sweep:\n// .venv/bin/python -m render_batch.sweep --all\n// sqlite3 Dank-EXP-02.declarative.db \"SELECT screen_id FROM round_trip_results WHERE is_parity=1 ORDER BY screen_id;\"\n// (Or pull from whatever table sweep.py writes to in the v0.3-integration tip — verify column names before running.)",
+  "_cross_refs": [
+    "feedback_dank_corpus_drift_25.md   (the 25-screen drift cluster)",
+    "feedback_ipad_component_frame_inlining.md (13 of 25 are this class)",
+    "project_type_role_split.md         (recovered 11 of 25 on 2026-04-22, baseline now ~190)"
+  ],
+  "_baseline_179_or_190": null,
+  "screen_ids": []
+}

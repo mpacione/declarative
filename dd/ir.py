@@ -125,7 +125,22 @@ def normalize_fills(
 def normalize_strokes(
     raw_json: str | None, bindings: list[dict[str, Any]], node: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Normalize Figma strokes JSON to IR stroke array."""
+    """Normalize Figma strokes JSON to IR stroke array.
+
+    Handles SOLID, GRADIENT_*, and IMAGE types. Pre-fix only SOLID was
+    handled — surfaced as the screen-68 missing_asset DRIFT (Ellipse 58
+    with GRADIENT_ANGULAR stroke rendered as empty 0x0 vector). Mirrors
+    normalize_fills for gradient stops and image asset hash, with
+    width + align added (stroke-specific).
+
+    NOTE: gradient strokes need `gradientTransform` from supplement
+    extraction (Plugin API only — REST handlePositions can't be
+    converted reliably). Until the supplement extractor is extended
+    to enrich strokes (mirroring fills), gradient stroke entries
+    carry stops + type but no transform; the renderer skips the
+    gradient body and emits strokeWeight only as a degraded
+    intermediate.
+    """
     if not raw_json or raw_json == "[]":
         return []
 
@@ -136,23 +151,75 @@ def normalize_strokes(
 
     binding_map = {b["property"]: b.get("token_name") for b in bindings if b.get("token_name")}
     result = []
+    width = int(node.get("stroke_weight") or 1)
+    align = node.get("stroke_align")
 
     for i, stroke in enumerate(strokes):
         if stroke.get("visible") is False:
             continue
-        if stroke.get("type") != "SOLID":
+
+        stroke_type = stroke.get("type", "")
+        paint_opacity = stroke.get("opacity", 1.0)
+
+        entry: dict[str, Any] | None = None
+
+        if stroke_type == "SOLID":
+            color = stroke.get("color", {})
+            hex_val = _figma_color_to_hex(color, 1.0)
+            token = binding_map.get(f"stroke.{i}.color")
+            entry = {
+                "type": "solid",
+                "color": f"{{{token}}}" if token else hex_val,
+            }
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+
+        elif stroke_type in _GRADIENT_TYPE_MAP:
+            stops = []
+            for j, stop in enumerate(stroke.get("gradientStops", [])):
+                stop_color = stop.get("color", {})
+                stop_hex = _figma_color_to_hex(stop_color, 1.0)
+                stop_token = binding_map.get(
+                    f"stroke.{i}.gradient.stop.{j}.color"
+                )
+                stops.append({
+                    "color": f"{{{stop_token}}}" if stop_token else stop_hex,
+                    "position": stop.get("position", 0.0),
+                })
+            entry = {
+                "type": _GRADIENT_TYPE_MAP[stroke_type],
+                "stops": stops,
+            }
+            handle_positions = stroke.get("gradientHandlePositions")
+            if handle_positions:
+                entry["handlePositions"] = handle_positions
+            # gradientTransform is Plugin-API-only (supplement extraction).
+            # Until the stroke-side supplement is implemented, this will
+            # usually be absent and the renderer must degrade gracefully.
+            gradient_transform = stroke.get("gradientTransform")
+            if gradient_transform:
+                entry["gradientTransform"] = gradient_transform
+            if paint_opacity < 1.0:
+                entry["opacity"] = paint_opacity
+
+        elif stroke_type == "IMAGE":
+            image_hash = stroke.get("imageHash") or stroke.get("imageRef")
+            if image_hash:
+                entry = {
+                    "type": "image",
+                    "asset_hash": image_hash,
+                    "scaleMode": (stroke.get("scaleMode") or "FILL").lower(),
+                }
+                image_transform = stroke.get("imageTransform")
+                if image_transform:
+                    entry["imageTransform"] = image_transform
+                if paint_opacity < 1.0:
+                    entry["opacity"] = paint_opacity
+
+        if entry is None:
             continue
 
-        color = stroke.get("color", {})
-        hex_val = _figma_color_to_hex(color, 1.0)
-        token = binding_map.get(f"stroke.{i}.color")
-
-        entry: dict[str, Any] = {
-            "type": "solid",
-            "color": f"{{{token}}}" if token else hex_val,
-            "width": int(node.get("stroke_weight") or 1),
-        }
-        align = node.get("stroke_align")
+        entry["width"] = width
         if align:
             entry["align"] = align.lower()
         result.append(entry)
@@ -289,20 +356,232 @@ _LAYOUT_BINDING_PROPERTIES = frozenset({
 })
 
 
-def _resolve_element_type(node: dict[str, Any]) -> str:
-    """Determine the IR element type for a DB node.
+def _resolve_primitive_type(node: dict[str, Any]) -> str:
+    """Return the structural primitive — what Figma node to create.
 
-    GROUP is special: Figma's transform-transparent group container is a
-    distinct concept from FRAME-based layout containers. The SCI classifier
-    might name-classify a GROUP as "container" (e.g. anything named "Group"),
-    but the renderer needs the GROUP semantic preserved so children get
-    the right coordinate space (grandparent-relative) and the right
-    creation API (figma.group() not figma.createFrame()).
+    Always sourced from ``node_type`` (the extractor-written,
+    deterministic column). Never affected by classifier opinion. This
+    is the dispatch-safe half of the type/role split (see
+    ``docs/plan-type-role-split.md``). Downstream renderers, verifiers,
+    and leaf-parent gates read this field.
+
+    GROUP is special: Figma's transform-transparent group container is
+    a distinct concept from FRAME-based layout containers. Children
+    get grandparent-relative coordinates and a different creation API
+    (``figma.group()`` vs ``figma.createFrame()``).
+    """
+    node_type_raw = node.get("node_type", "")
+    if node_type_raw == "GROUP":
+        return "group"
+    return node_type_raw.lower() or "frame"
+
+
+def _resolve_element_type(node: dict[str, Any]) -> str:
+    """Resolve the role-first identifier for eid naming.
+
+    Returns ``canonical_type`` when the classifier assigned one, else
+    falls through to the structural primitive. This is the grammar-
+    facing identifier namespace: eids like ``heading-2`` / ``card-1``
+    come from the classifier's label when available, ``frame-338`` /
+    ``text-2`` from structure otherwise.
+
+    Used by ``build_composition_spec`` for eid prefix counter keys.
+    For the dispatch-safe structural primitive, use
+    ``_resolve_primitive_type`` instead.
     """
     node_type_raw = node.get("node_type", "")
     if node_type_raw == "GROUP":
         return "group"
     return node.get("canonical_type") or node_type_raw.lower() or "frame"
+
+
+# A1.1 (provenance plan, Backlog #1): canonical mapping from
+# instance_overrides.property_type → registry figma_name. Source of
+# truth is the existing instance_overrides table; transport to the
+# renderer + verifier is the IR side-car ``element["_overrides"]``.
+#
+# Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26) confirmed
+# per-property granularity is correct: a STROKE_WEIGHT row does not
+# imply a STROKES row, etc. Each property in this map is verified
+# to correspond to a real registry entry; unmapped property_types
+# (e.g. INSTANCE_SWAP, BOOLEAN — which are handled via separate
+# paths) are intentionally absent and get silently dropped from the
+# _overrides side-car (fail-open, per
+# feedback_fail_open_not_closed.md).
+_INSTANCE_OVERRIDE_TO_FIGMA_NAME: dict[str, str] = {
+    # Visual paints
+    "FILLS": "fills",
+    "STROKES": "strokes",
+    # Stroke geometry
+    "STROKE_WEIGHT": "strokeWeight",
+    "STROKE_ALIGN": "strokeAlign",
+    # Effects
+    "EFFECTS": "effects",
+    # Geometry
+    "CORNER_RADIUS": "cornerRadius",
+    # Visual scalars
+    "OPACITY": "opacity",
+    "BLEND_MODE": "blendMode",
+    "CLIPS_CONTENT": "clipsContent",
+    # Sizing (will use per-axis logic in renderer)
+    "WIDTH": "width",
+    "HEIGHT": "height",
+    # Layout
+    "LAYOUT_SIZING_V": "layoutSizingVertical",
+    "LAYOUT_SIZING_H": "layoutSizingHorizontal",
+    # Text
+    "TEXT": "characters",
+    "FONT_SIZE": "fontSize",
+    "FONT_FAMILY": "fontFamily",
+    # Note: BOOLEAN (visibility) and INSTANCE_SWAP are NOT in this
+    # map — they're handled via PathOverride / swap paths, not via
+    # the head-node provenance side-car.
+    # Lowercase variants (some upstream code paths use already-
+    # canonicalized names from the registry side, not the SQL
+    # uppercase). Identity-pass these through.
+    "fills": "fills",
+    "strokes": "strokes",
+    "strokeWeight": "strokeWeight",
+    "strokeAlign": "strokeAlign",
+    "effects": "effects",
+    "cornerRadius": "cornerRadius",
+    "opacity": "opacity",
+    "blendMode": "blendMode",
+    "clipsContent": "clipsContent",
+    "width": "width",
+    "height": "height",
+    "characters": "characters",
+    "fontSize": "fontSize",
+    "fontFamily": "fontFamily",
+}
+
+
+def _expected_descendant_id(head_figma_id: str, target_path: str) -> str:
+    """C9: construct the expected descendant figma_node_id from an
+    instance head + a non-:self target path.
+
+    Per Codex 5.5 round-8 architectural fork: strict construction
+    (not suffix match) keeps nested instances unambiguous. The
+    Figma extraction format encodes instance descendants as
+    ``I<head_figma_id><target_path>`` with the ``;`` separator
+    already at the start of the target. Helper handles the case
+    where the head is itself a nested instance (figma_node_id
+    already starts with ``I``) — must not double-prefix.
+
+    Examples:
+      _expected_descendant_id("512:28223", ";157:1425")
+        → "I512:28223;157:1425"
+
+      _expected_descendant_id("512:28223", ";157:1424;64:299")
+        → "I512:28223;157:1424;64:299"
+
+      _expected_descendant_id("I512:28223;157:1424", ";64:299")
+        → "I512:28223;157:1424;64:299"  (no II prefix)
+    """
+    prefix = head_figma_id if head_figma_id.startswith("I") else f"I{head_figma_id}"
+    return f"{prefix}{target_path}"
+
+
+def build_descendant_routings(
+    nodes: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    """C9: build the descendant-override routing map from the IR's
+    instance_overrides rows (Pass 1 of the two-pass IR build).
+
+    Returns a map from descendant ``figma_node_id`` to a set of
+    canonical figma_names that should land on that descendant's
+    ``_overrides`` side-car.
+
+    Per Codex 5.5 round-8 option (i): scan every instance node, for
+    each non-``:self`` target compute the expected descendant id via
+    ``_expected_descendant_id``, and record the mapped figma_name
+    against that id. ``map_node_to_element`` (Pass 2 of the build)
+    consumes this map by figma_node_id lookup.
+
+    Properties not in ``_INSTANCE_OVERRIDE_TO_FIGMA_NAME`` (e.g.
+    BOOLEAN visibility, INSTANCE_SWAP) are silently dropped — they
+    have separate handling paths (PathOverride, swap manifest).
+    """
+    # Accept both the post-classification semantic label
+    # (``canonical_type == "instance"``) AND the pre-classification
+    # ground truth (``node_type == "INSTANCE"`` from extraction).
+    # C9 originally gated on canonical_type only, which silently
+    # skipped routing on un-classified DBs (e.g. fresh extracts
+    # before ``dd classify`` runs) — discovered via C11 sweep on
+    # /tmp/hgb-fresh-20260427.db.
+    routings: dict[str, set[str]] = {}
+    for node in nodes:
+        is_instance = (
+            node.get("canonical_type") == "instance"
+            or node.get("node_type") == "INSTANCE"
+        )
+        if not is_instance:
+            continue
+        head_figma_id = node.get("figma_node_id")
+        if not head_figma_id:
+            continue
+        for ov in node.get("instance_overrides") or []:
+            if not isinstance(ov, dict):
+                continue
+            target = ov.get("target")
+            if not target or target == ":self":
+                continue  # :self handled by _build_overrides_sidecar
+            prop = ov.get("property")
+            if not isinstance(prop, str):
+                continue
+            figma_name = _INSTANCE_OVERRIDE_TO_FIGMA_NAME.get(prop)
+            if not figma_name:
+                continue  # unmapped property type — fail-open
+            descendant_id = _expected_descendant_id(head_figma_id, target)
+            routings.setdefault(descendant_id, set()).add(figma_name)
+    return routings
+
+
+def _build_overrides_sidecar(
+    node: dict[str, Any], primitive_type: str,
+) -> list[str] | None:
+    """Build the ``_overrides`` side-car from instance_overrides rows.
+
+    Returns a sorted list of canonical figma_name strings — the
+    visual properties that have ``:self`` override rows on this
+    node — or ``None`` when no overrides apply (kept absent from
+    the element dict to keep the IR compact).
+
+    Scope: only ``primitive_type == "instance"`` heads get this
+    side-car. Provenance gating only matters for Mode 1 because
+    other modes don't have the snapshot-vs-master ambiguity.
+
+    Only ``:self`` targets count for the head node. Descendant
+    overrides (target like ``;126:10476``) are routed to the
+    addressed descendant via :func:`build_descendant_routings`
+    (Sprint 2 C9, Codex 5.5 round-8 option (i)). The renderer
+    + verifier code paths are unchanged — they read
+    ``element["_overrides"]`` per node either way.
+    """
+    if primitive_type != "instance":
+        return None
+
+    raw_overrides = node.get("instance_overrides") or []
+    if not raw_overrides:
+        return None
+
+    figma_names: set[str] = set()
+    for ov in raw_overrides:
+        if not isinstance(ov, dict):
+            continue
+        target = ov.get("target")
+        if target != ":self":
+            continue
+        prop = ov.get("property")
+        if not isinstance(prop, str):
+            continue
+        figma_name = _INSTANCE_OVERRIDE_TO_FIGMA_NAME.get(prop)
+        if figma_name:
+            figma_names.add(figma_name)
+
+    if not figma_names:
+        return None
+    return sorted(figma_names)
 
 
 def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
@@ -315,11 +594,19 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     bindings = node.get("bindings", [])
     binding_index = _build_binding_index(bindings)
 
-    resolved_type = _resolve_element_type(node)
+    # Type/role split (docs/plan-type-role-split.md): type is always
+    # the structural primitive; role is the classifier's semantic
+    # label, included only when it differs from type (redundancy
+    # elision). Downstream dispatch reads type; grammar/semantic
+    # consumers read role.
+    primitive_type = _resolve_primitive_type(node)
+    semantic_role = node.get("canonical_type")
 
     element: dict[str, Any] = {
-        "type": resolved_type,
+        "type": primitive_type,
     }
+    if semantic_role and semantic_role != primitive_type:
+        element["role"] = semantic_role
 
     # ADR-007 / Defect-1 residual: name-only classification (e.g. a FRAME
     # named "card/sheet/success") can promote the IR type to "card" even
@@ -360,31 +647,67 @@ def map_node_to_element(node: dict[str, Any]) -> dict[str, Any]:
     if node.get("visible") == 0:
         element["visible"] = False
 
+    # A1.1 (provenance plan, Backlog #1): provenance side-car for
+    # Mode-1 INSTANCE heads. Lists which visual properties have
+    # genuine override rows in instance_overrides — the renderer
+    # uses this to gate per-property emission and the verifier uses
+    # it to skip comparison on snapshot-only props (avoiding false
+    # positive fill_mismatch / stroke_mismatch errors of the
+    # extraction-snapshot-vs-master-default class).
+    overrides = _build_overrides_sidecar(node, primitive_type)
+    if overrides is not None:
+        element["_overrides"] = overrides
+
     return element
 
 
 def _build_visual(node: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build visual section — normalized fills/strokes/effects for verification.
+    """Build visual section — registry-driven for full verifier coverage.
 
     The verifier compares IR visual properties against rendered ones
-    per-eid. Only populates when the node has visible visual properties;
-    empty visual dicts are omitted to keep the IR compact.
+    per-eid. P1 (forensic-audit-2 findings 8-12): pre-fix this function
+    was hardcoded to fills/strokes/effects only, while the
+    renderer-side ``dd/visual.py:build_visual_from_db`` iterates the
+    registry and emits five additional visual props (opacity,
+    blendMode, rotation, isMask, cornerRadius). The verifier was blind
+    to drift on those five — exactly what bit us on the post-rextract
+    sweep when Mode-1 finally fired and surfaced 17 DRIFT screens.
+
+    Now we delegate to ``build_visual_from_db`` for registry-driven
+    coverage, then filter to keep only visual-category props (the
+    verifier-side IR has separate slots for layout / style /
+    constraints / props, populated elsewhere).
     """
-    visual: dict[str, Any] = {}
+    # Imported here (not at module top) to avoid a circular import:
+    # dd.visual imports the normalize_* helpers from this module.
+    from dd.property_registry import PROPERTIES
+    from dd.visual import build_visual_from_db
 
-    fills = normalize_fills(node.get("fills"), bindings)
-    if fills:
-        visual["fills"] = fills
+    # build_visual_from_db expects bindings inside node_visual under
+    # the 'bindings' key. The caller passes them separately, so splice.
+    node_visual = dict(node)
+    node_visual["bindings"] = bindings
 
-    strokes = normalize_strokes(node.get("strokes"), bindings, node)
-    if strokes:
-        visual["strokes"] = strokes
+    full_visual = build_visual_from_db(node_visual)
 
-    effects = normalize_effects(node.get("effects"), bindings)
-    if effects:
-        visual["effects"] = effects
+    # build_visual_from_db is renderer-agnostic and dumps every
+    # registry property (visual + layout + size + ...) into the
+    # output. The verifier-side IR has separate slots for layout /
+    # style / constraints / props, so keep only category=='visual'
+    # props plus the special complex-normalized entries
+    # (fills/strokes/effects/cornerRadius). This mirrors what the
+    # verifier (`dd/verify_figma.py`) actually consumes.
+    visual_keys = {
+        prop.figma_name
+        for prop in PROPERTIES
+        if prop.category == "visual"
+    }
+    # The complex-normalized keys come from custom code in
+    # build_visual_from_db, not the registry loop — preserve them.
+    complex_keys = {"fills", "strokes", "effects", "cornerRadius"}
+    keep_keys = visual_keys | complex_keys
 
-    return visual
+    return {k: v for k, v in full_visual.items() if k in keep_keys}
 
 
 def _build_layout(node: dict[str, Any], binding_index: dict[str, str]) -> dict[str, Any]:
@@ -636,24 +959,19 @@ def query_screen_visuals(conn: sqlite3.Connection, screen_id: int) -> dict[int, 
     instance_ids = [nid for nid, v in result.items() if v.get("component_key")]
     if instance_ids:
         ph = ",".join("?" for _ in instance_ids)
-        hidden_cursor = conn.execute(
-            f"SELECT root.id as instance_id, c.name "
-            f"FROM nodes root "
-            f"JOIN nodes p ON p.parent_id = root.id "
-            f"JOIN nodes c ON c.parent_id = p.id "
-            f"WHERE root.id IN ({ph}) AND c.visible = 0 "
-            f"UNION "
-            f"SELECT parent_id as instance_id, name "
-            f"FROM nodes "
-            f"WHERE parent_id IN ({ph}) AND visible = 0",
-            instance_ids + instance_ids,
-        )
-        for row in hidden_cursor.fetchall():
-            instance_id = row[0]
-            if instance_id in result:
-                if "hidden_children" not in result[instance_id]:
-                    result[instance_id]["hidden_children"] = []
-                result[instance_id]["hidden_children"].append({"name": row[1]})
+
+        # PR-1: the legacy `hidden_children` name-based descendant walk
+        # was deleted here. Its replacement — a unified resolver that
+        # pulls both `instance_overrides` BOOLEAN `:visible` rows
+        # (Source A) and `nodes.visible=0` descendants at arbitrary
+        # depth (Source B) — lives in
+        # `compress_l3._fetch_descendant_visibility_overrides`. The
+        # renderer consumes backend-neutral `.visible=bool`
+        # PathOverrides on CompRef heads and lowers them via the
+        # resolver's Figma-id side-car into stable
+        # `id.endsWith(";<fig>")` calls, sidestepping the
+        # name-ambiguity bug that `findOne(name=X)` hit on masters
+        # with multiple same-name descendants.
 
         # Instance overrides (text, visibility, instance swap from Plugin API)
         has_overrides = conn.execute(
@@ -1144,6 +1462,9 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     # Include relative_transform if the column exists (migration-gated)
     node_cols_local = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
     rt_col = "n.relative_transform, " if "relative_transform" in node_cols_local else ""
+    # Migration 021: nodes.role (type/role split — plan-type-role-split.md).
+    # Gated for DBs that haven't run the migration yet.
+    role_col = "n.role, " if "role" in node_cols_local else ""
     cursor = conn.execute(
         "SELECT n.id as node_id, n.name, n.node_type, n.depth, n.sort_order, "
         "n.x, n.y, n.width, n.height, "
@@ -1153,7 +1474,14 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
         "n.text_content, n.corner_radius, n.opacity, n.fills, n.strokes, n.effects, "
         "n.font_family, n.font_weight, n.font_size, "
         "n.parent_id, n.component_key, n.visible, "
+        # Sprint 2 C11 fix: figma_node_id required by C9's
+        # build_descendant_routings (Codex round-8 flagged this gap;
+        # the C11 sweep on un-classified DBs surfaced it). Without
+        # this column the SELECT yields figma_node_id=None on every
+        # node and the descendant-routing pass produces zero entries.
+        "n.figma_node_id, "
         f"{rt_col}"
+        f"{role_col}"
         "sci.canonical_type, sci.id as sci_id, sci.parent_instance_id "
         "FROM nodes n "
         "LEFT JOIN screen_component_instances sci ON sci.node_id = n.id AND sci.screen_id = n.screen_id "
@@ -1163,6 +1491,40 @@ def query_screen_for_ir(conn: sqlite3.Connection, screen_id: int) -> dict[str, A
     )
     columns = [desc[0] for desc in cursor.description]
     all_nodes = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    # Sprint 2 C11 fix: populate ``instance_overrides`` on each
+    # INSTANCE node per Codex round-8's C9 dependency. Without this,
+    # build_descendant_routings has nothing to scan and descendant
+    # overrides (text content "Reject" on ;157:1425 etc.) silently
+    # fail to route — which is what C11 surfaced on Dank/HGB.
+    has_overrides_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND "
+        "name='instance_overrides'"
+    ).fetchone()
+    if has_overrides_table:
+        instance_node_ids = [
+            n["node_id"] for n in all_nodes if n.get("node_type") == "INSTANCE"
+        ]
+        if instance_node_ids:
+            ph = ",".join("?" for _ in instance_node_ids)
+            override_cursor = conn.execute(
+                f"SELECT node_id, property_type, property_name, override_value "
+                f"FROM instance_overrides WHERE node_id IN ({ph})",
+                instance_node_ids,
+            )
+            overrides_by_node: dict[int, list[dict[str, Any]]] = {}
+            for row in override_cursor.fetchall():
+                target, prop = decompose_override(row[1], row[2])
+                overrides_by_node.setdefault(row[0], []).append({
+                    "target": target,
+                    "property": prop,
+                    "value": row[3],
+                })
+            for n in all_nodes:
+                if n.get("node_type") == "INSTANCE":
+                    n["instance_overrides"] = overrides_by_node.get(
+                        n["node_id"], []
+                    )
 
     bindings_cursor = conn.execute(
         "SELECT ntb.node_id, ntb.property, t.name as token_name, ntb.resolved_value "
@@ -1257,6 +1619,12 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
     sci_id_to_element_id: dict[int, str] = {}
     elements: dict[str, dict[str, Any]] = {}
 
+    # Sprint 2 C9 (Codex 5.5 round-8 option (i)): pass 1 of the two-pass
+    # build. Scan all nodes to collect non-:self override routings keyed
+    # by the DESCENDANT figma_node_id; pass 2 (the per-node loop below)
+    # merges these into each descendant's ``_overrides`` side-car.
+    descendant_routings = build_descendant_routings(nodes)
+
     for node in nodes:
         resolved_type = _resolve_element_type(node)
         type_counters[resolved_type] = type_counters.get(resolved_type, 0) + 1
@@ -1269,6 +1637,19 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
         element = map_node_to_element(node)
         if node.get("name"):
             element["_original_name"] = node["name"]
+
+        # Sprint 2 C9 pass 2: if any ancestor instance overrode this
+        # descendant via a path target, merge the routed figma_names
+        # into _overrides. The descendant might not be an instance
+        # itself (TEXT, RECTANGLE etc.) — that's fine; provenance
+        # gating downstream uses the side-car presence regardless of
+        # primitive_type at the node.
+        figma_node_id = node.get("figma_node_id")
+        if figma_node_id and figma_node_id in descendant_routings:
+            existing = set(element.get("_overrides") or [])
+            existing |= descendant_routings[figma_node_id]
+            element["_overrides"] = sorted(existing)
+
         elements[element_id] = element
 
     # Wire children: always use DB parent_id (L0 ground-truth tree structure).
@@ -1293,6 +1674,98 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
 
     for parent_eid, child_ids in children_map.items():
         elements[parent_eid]["children"] = child_ids
+
+    # Item 1 of the 13-item burn-down (Codex round-12 architectural fork):
+    # canonicalize unrenderable layoutSizing on the IR side. The source DB
+    # often has ``layout_sizing_h='HUG'`` or 'FILL' on nodes whose parent
+    # context can't honor that semantic — Figma's UI lets you set HUG/FILL
+    # on any node, but the rendered result depends on parent type. Pre-fix,
+    # the IR carried the unrenderable intent and Sprint 2 C11 surfaced
+    # 2,992 mismatches across three corpora. This canonicalization removes
+    # the unrenderable enums in favor of numeric pixels (the actual
+    # rendered shape).
+    #
+    # Validity rules per Plugin API docs (Codex round-12 lock):
+    #   - FILL is valid ONLY when parent is auto-layout
+    #   - HUG is valid for: text nodes, auto-layout frames (regardless of parent)
+    #   - Otherwise → canonicalize to numeric pixels
+
+    # Build a parent-lookup for the post-pass.
+    eid_to_parent_eid: dict[str, str] = {}
+    for parent_eid, child_ids in children_map.items():
+        for child_eid in child_ids:
+            eid_to_parent_eid[child_eid] = parent_eid
+
+    def _parent_is_autolayout(eid: str) -> bool:
+        parent_eid = eid_to_parent_eid.get(eid)
+        if parent_eid is None:
+            return False  # root: no parent to be auto-layout
+        parent_layout = elements.get(parent_eid, {}).get("layout") or {}
+        return parent_layout.get("direction") in ("horizontal", "vertical")
+
+    def _node_is_autolayout_frame(eid: str) -> bool:
+        own_layout = elements.get(eid, {}).get("layout") or {}
+        return own_layout.get("direction") in ("horizontal", "vertical")
+
+    def _canonicalize_axis(
+        sizing: dict[str, Any],
+        axis: str,
+        is_text: bool,
+        is_autolayout_frame: bool,
+        parent_is_al: bool,
+    ) -> None:
+        """Apply Codex round-12 validity rules to one sizing axis.
+
+        ``axis`` is "width" or "height". Mutates ``sizing`` in place.
+        If the enum is unrenderable in this context, swap it for the
+        numeric pixel value (read from ``<axis>Pixels`` if present).
+        """
+        value = sizing.get(axis)
+        if value not in ("fill", "hug"):
+            return  # numeric or absent — already canonical
+
+        # FILL requires auto-layout parent
+        if value == "fill" and not parent_is_al:
+            pixels = sizing.get(f"{axis}Pixels")
+            if pixels is not None:
+                sizing[axis] = pixels
+            else:
+                sizing.pop(axis, None)
+            sizing.pop(f"{axis}Pixels", None)
+            return
+
+        # HUG valid for text or auto-layout-frame; otherwise canonicalize
+        if value == "hug" and not (is_text or is_autolayout_frame):
+            pixels = sizing.get(f"{axis}Pixels")
+            if pixels is not None:
+                sizing[axis] = pixels
+            else:
+                sizing.pop(axis, None)
+            sizing.pop(f"{axis}Pixels", None)
+            return
+
+    for eid, element in elements.items():
+        layout = element.get("layout") or {}
+        sizing = layout.get("sizing")
+        if not sizing:
+            continue
+
+        is_text = element.get("type") == "text"
+        is_autolayout_frame = _node_is_autolayout_frame(eid)
+        parent_is_al = _parent_is_autolayout(eid)
+
+        _canonicalize_axis(
+            sizing, "width", is_text, is_autolayout_frame, parent_is_al,
+        )
+        _canonicalize_axis(
+            sizing, "height", is_text, is_autolayout_frame, parent_is_al,
+        )
+
+        # If sizing dict is now empty, remove it
+        if not sizing:
+            layout.pop("sizing", None)
+            if not layout:
+                element.pop("layout", None)
 
     # Root elements: containers + classified nodes that have no parent
     root_ids = [
@@ -1394,7 +1867,11 @@ def build_composition_spec(data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def generate_ir(
-    conn: sqlite3.Connection, screen_id: int, semantic: bool = False,
+    conn: sqlite3.Connection,
+    screen_id: int,
+    semantic: bool = False,
+    *,
+    filter_chrome: bool = True,
 ) -> dict[str, Any]:
     """Generate CompositionSpec IR for a single screen.
 
@@ -1402,11 +1879,27 @@ def generate_ir(
     tree with named slots, filters system chrome, and produces ~15-25
     elements instead of ~100+.
 
+    `filter_chrome=False` (semantic-only) keeps system-chrome nodes in
+    the spec — use this when you WANT the keyboard / safari bar / home
+    indicator / status bar as design content (per
+    `feedback_system_chrome_is_design.md`: system chrome is design,
+    not platform artifact). Synthetic-node filtering (Figma internal
+    spacers) is still applied unconditionally upstream via
+    `build_composition_spec`.
+
     Returns dict with 'spec' (the CompositionSpec dict) and 'json' (serialized).
     """
     import json as json_mod
+    import os
     data = query_screen_for_ir(conn, screen_id)
     spec = build_composition_spec(data)
+
+    # Priority 0 probe — when DD_MARKUP_ROUNDTRIP=1, pass the spec through
+    # the dd-markup serde before returning. Used to verify end-to-end
+    # pixel parity via the render sweep. Default off; no behavior change.
+    if os.environ.get("DD_MARKUP_ROUNDTRIP") == "1":
+        from dd.markup import parse_dd, serialize_ir
+        spec = parse_dd(serialize_ir(spec))
 
     if semantic:
         node_id_map = spec.get("_node_id_map", {})
@@ -1423,7 +1916,8 @@ def generate_ir(
                     "name": row[0],
                 }
 
-        spec = filter_system_chrome(spec, node_names)
+        if filter_chrome:
+            spec = filter_system_chrome(spec, node_names)
 
         slot_defs = query_slot_definitions(conn)
         spec = build_semantic_tree(spec, slot_defs, node_positions)

@@ -20,11 +20,17 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     Returns:
         Configured sqlite3.Connection object
     """
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
 
     # Set WAL mode for file-based DBs (skip for :memory:)
     if db_path != ":memory:":
         conn.execute("PRAGMA journal_mode = WAL")
+
+    # Busy timeout: when another connection holds the write lock,
+    # wait up to 30s before raising 'database is locked'. Covers
+    # multi-threaded servers, concurrent CLI + GUI browsers, long-
+    # running ingest jobs. Matches the socket timeout above.
+    conn.execute("PRAGMA busy_timeout = 30000")
 
     # Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON")
@@ -230,6 +236,39 @@ def run_migration(conn: sqlite3.Connection, migration_path: str) -> dict:
 
     conn.commit()
     return {"added": added, "skipped": skipped, "errors": errors}
+
+
+def backfill_nodes_role(conn: sqlite3.Connection) -> dict:
+    """Populate ``nodes.role`` from ``screen_component_instances.canonical_type``.
+
+    One-time backfill for Stage 0 of the type/role split (see
+    ``docs/plan-type-role-split.md``). After migration 021 adds the
+    ``role`` column, call this once on an existing DB to denormalize
+    classifier output onto ``nodes``. Going forward, the classifier
+    pipeline writes ``nodes.role`` alongside every SCI write.
+
+    Idempotent: re-running re-writes the same values. Nodes without an
+    SCI row stay ``role=NULL``.
+
+    Returns ``{"populated": N}`` where N is the count of non-NULL roles
+    after the backfill.
+    """
+    # UPDATE ... FROM is O(N) via hash join. The correlated-subquery
+    # form was O(N²) on a 86K-node DB without an sci(node_id) index
+    # and took minutes to run.
+    conn.execute(
+        """
+        UPDATE nodes
+        SET role = sci.canonical_type
+        FROM screen_component_instances sci
+        WHERE nodes.id = sci.node_id
+        """
+    )
+    conn.commit()
+    populated = conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE role IS NOT NULL"
+    ).fetchone()[0]
+    return {"populated": populated}
 
 
 def classify_screens(conn: sqlite3.Connection) -> dict:
