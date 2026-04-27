@@ -272,3 +272,127 @@ class TestRegressionVisibleRotationUnchanged:
         # Skip — covered by integration tests.
         # The point: don't accidentally couple visible to _overrides.
         assert "visible = false" not in script  # not set in fixture
+
+
+# ---------------------------------------------------------------------
+# Mode-1 head-overlay — head EDITs on comp-ref nodes must reach emission
+# ---------------------------------------------------------------------
+
+
+def _render_comp_ref_with_head_fill(head_fill: str | None) -> str:
+    """Render a comp-ref node where the AST head optionally carries
+    ``fill=<head_fill>``. Returns the generated script.
+
+    Drives the Mode-1 emission path with ``_overrides=[]`` (explicit
+    empty — no DB-side override) so the only way fill can reach the
+    rendered output is via the AST head. Pre-fix: fill is silently
+    dropped because ``_emit_mode1_create`` never reads
+    ``node.head.properties``. Post-fix: head visual props are
+    overlaid onto sparse_visual before emission."""
+    if head_fill is not None:
+        src = (
+            "screen #screen-1 {\n"
+            f"  -> button/primary #button-1 fill={head_fill}\n"
+            "}\n"
+        )
+    else:
+        src = (
+            "screen #screen-1 {\n"
+            "  -> button/primary #button-1\n"
+            "}\n"
+        )
+    doc = parse_l3(src)
+    spec_key_map: dict = {}
+    original_name_map: dict = {}
+    nid_map: dict = {}
+    db_visuals: dict = {}
+
+    for n in _iter_nodes(doc.top_level):
+        spec_key_map[id(n)] = n.head.eid or ""
+        original_name_map[id(n)] = n.head.eid or ""
+
+    element_extras = {
+        "type": "instance",
+        "_mode1_eligible": True,
+        "_overrides": [],  # explicit empty: no DB-side overrides
+    }
+    for n in _iter_nodes(doc.top_level):
+        if n.head.head_kind == "comp-ref":
+            spec_key_map[id(n)] = "button-1"
+            original_name_map[id(n)] = "Primary Button"
+            nid_map[id(n)] = 100
+            db_visuals[100] = {
+                "node_type": "INSTANCE",
+                "component_figma_id": "1:100",
+                "figma_node_id": "1:200",
+                "name": "Primary Button",
+                # DB has its own white fill — head EDIT must override.
+                "fills": '[{"type":"SOLID","color":{"r":1,"g":1,"b":1,"a":1}}]',
+            }
+
+    script, _refs = render_figma(
+        doc,
+        conn=None,
+        nid_map=nid_map,
+        fonts=[("Inter", "Regular")],
+        spec_key_map=spec_key_map,
+        original_name_map=original_name_map,
+        db_visuals=db_visuals,
+        ckr_built=True,
+        _spec_elements={"button-1": element_extras},
+    )
+    return script
+
+
+class TestMode1HeadOverlayBeatsRawVisual:
+    """When an LLM EDIT writes ``set @<eid> fill=<hex>`` against a
+    Mode-1 INSTANCE node (comp-ref), the head fill must reach the
+    rendered ``<inst>.fills = ...`` emission rather than being
+    silently dropped.
+
+    Codex 5.5 + Sonnet diagnosis 2026-04-27 (twin of the Mode-2 fix
+    in test_render_phase1_guards.py:TestPhase1HeadOverlayBeatsRawVisual):
+    Mode-1's ``_emit_mode1_create`` builds a sparse_visual from
+    ``raw_visual ∩ element["_overrides"]`` and never reads
+    ``node.head.properties`` — so head-supplied EDITs on comp-ref
+    nodes are invisible to the emission gate. Empirical bottleneck
+    surfaced in the synth-gen demo: variant 3 (Dark Playful) issued
+    ``set @nav-top-nav fill="#1A1A2E"`` against a comp-ref nav
+    instance, the head property persisted, but the rendered Figma
+    nav remained white because Mode-1 ignored the head EDIT.
+
+    Fix: after sparse_visual is built (lines 1486-1512), overlay
+    ``ast_head_to_element(node).get("visual")`` for the same 5 keys
+    as the Mode-2 fix (fills / strokes / strokeWeight /
+    cornerRadius / opacity). Strict head-only — replace whole.
+    """
+
+    def test_head_fill_beats_db_fill_on_mode1_instance(self) -> None:
+        """Head ``fill=#1A1A2E`` on a comp-ref node must emit a
+        SOLID dark fill on the instance var."""
+        script = _render_comp_ref_with_head_fill(head_fill="#1A1A2E")
+        # Renderer converts hex → RGB floats: #1A1A2E →
+        # r:0.102, g:0.102, b:0.1804.
+        assert "0.1804" in script, (
+            "Mode-1 head fill `#1A1A2E` did not reach emission. The "
+            "comp-ref's AST head has the EDIT but the renderer "
+            "ignored it. Excerpt:\n"
+            + "\n".join(
+                line for line in script.split("\n")
+                if ".fills = " in line and "createPage" not in line
+            )[:600]
+        )
+
+    def test_no_head_fill_keeps_empty_overrides_silent(self) -> None:
+        """No head fill + empty _overrides → no fills assignment on
+        instance head. Mode-1 master defaults stand."""
+        script = _render_comp_ref_with_head_fill(head_fill=None)
+        # The DB white fill must NOT leak (empty _overrides).
+        assert "color: {r:1.0,g:1.0,b:1.0}" not in script, (
+            "DB fill leaked through despite empty _overrides — the "
+            "head-overlay fix accidentally promoted DB fills.\n"
+            + "\n".join(
+                line for line in script.split("\n")
+                if ".fills = " in line and "createPage" not in line
+            )[:600]
+        )
