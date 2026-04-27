@@ -953,6 +953,38 @@ def _apply_template_to_parent(
         if key in style and key not in parent_style:
             parent_style[key] = style[key]
 
+    # A3.2 — silent-default-leak fix
+    # (audit/architectural-flow-matrix-20260426.md, Pattern A). The
+    # property registry knows how to emit ``opacity``,
+    # ``strokeWeight``, ``strokeAlign``, and ``dashPattern`` from a
+    # ``visual`` dict, but the IR-style overlay above only handles
+    # fill/stroke/cornerRadius — it has no path for these scalars.
+    # Forward them directly from ``template.style`` into
+    # ``element["visual"]`` so ``emit_from_registry`` picks them up.
+    #
+    # Setdefault-only: if ``element["visual"]`` already carries a
+    # value (e.g. from ``_apply_retrieved_root_visual`` splicing a
+    # corpus subtree), the template's default must not clobber the
+    # corpus-real value.
+    #
+    # We avoid creating an empty visual dict on elements that the
+    # template doesn't contribute to (Codex 5.5 caveat). The visual
+    # dict is the corpus-retrieval signal in ``build_template_visuals``
+    # — creating an empty dict here would falsely route every
+    # template-only element through the corpus-visual path.
+    #
+    # Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26): "seed
+    # element['visual'] directly. Do not widen the existing
+    # parent_style allowlist — render_figma_ast only overlays fill /
+    # stroke / radius from style. For opacity / strokeWeight /
+    # strokeAlign / dashPattern, seed element['visual']."
+    visual_keys = ("opacity", "strokeWeight", "strokeAlign", "dashPattern")
+    if any(key in style for key in visual_keys):
+        parent_visual = element.setdefault("visual", {})
+        for key in visual_keys:
+            if key in style and key not in parent_visual:
+                parent_visual[key] = style[key]
+
 
 def _mode3_synthesise_children(
     comp_type: str,
@@ -1250,7 +1282,21 @@ def build_template_visuals(
         # carries DB-native fills/strokes/effects/corner_radius/etc.
         # Prefer those over template lookup so the renderer paints with
         # real round-trip visuals instead of token refs.
-        corpus_visual = element.get("visual") if isinstance(element, dict) else None
+        #
+        # A3.2 (2026-04-26): the discriminator was previously
+        # ``if element.get("visual"):`` (truthiness). After A3.2,
+        # ``_apply_template_to_parent`` may seed ``element["visual"]``
+        # with template defaults (opacity / strokeWeight / etc.), so
+        # truthiness conflates "real corpus splice" with "template-only
+        # element with defaults." Use the corpus-only marker
+        # ``_corpus_source_node_id`` (set by
+        # ``_apply_retrieved_root_visual`` and ``_splice_subtree``) as
+        # the proper discriminator.
+        is_corpus_spliced = (
+            isinstance(element, dict)
+            and element.get("_corpus_source_node_id") is not None
+        )
+        corpus_visual = element.get("visual") if is_corpus_spliced else None
         if corpus_visual:
             visual_entry = {
                 "fills": corpus_visual.get("fills"),
