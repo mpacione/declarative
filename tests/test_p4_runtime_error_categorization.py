@@ -307,7 +307,23 @@ class TestConventionEnforcement:
         # the map but not in source (e.g. kinds that come from
         # external/historical walk payloads we still want to
         # categorize). Keep this list short.
-        ALLOWED_ORPHAN_MAP_ENTRIES: set[str] = set()
+        #
+        # group_*_failed kinds are emitted via Python variable
+        # interpolation (`kind:"{empty_kind}"` etc) in
+        # dd/render_figma_ast.py:1937-1939 — the scanner regex sees
+        # `kind:"{empty_kind}"` as a literal placeholder, not the
+        # underlying string value. The kinds ARE emitted at runtime;
+        # the scanner just can't see through the indirection. The
+        # right long-term fix is to extend the scanner to walk the
+        # Python AST for `*_kind = "..."` assignments that flow
+        # into JS templates, but the allowlist is the pragmatic
+        # short-term shape.
+        ALLOWED_ORPHAN_MAP_ENTRIES: set[str] = {
+            "group_create_failed",
+            "group_empty_append_failed",
+            "group_insert_failed",
+            "group_name_failed",
+        }
         unexpected = [
             k for k in orphan_map_entries
             if k not in ALLOWED_ORPHAN_MAP_ENTRIES
