@@ -56,6 +56,15 @@ from dd.structural_verbs import existing_eids
 _DEFAULT_MODEL = "claude-sonnet-4-6"
 _STALL_WINDOW = 3  # iters of no structural change → halt
 
+# Edit-pressure gate: after this many consecutive non-edit turns
+# (NAME / DRILL / CLIMB) AND zero successful EDITs in the session,
+# strip the focus primitives + emit_done from the tool list so the
+# next turn must commit to an edit verb. Tuning: 2 leaves room for 1
+# scoping move (DRILL or NAME) before forcing commitment, which is
+# what the system prompt's "targeting discipline" paragraph encourages
+# anyway.
+_NON_EDIT_PRESSURE_TURNS = 2
+
 
 # --------------------------------------------------------------------------- #
 # Result shape                                                                #
@@ -311,6 +320,7 @@ def _build_user_message(
     max_iters: int,
     recent_log_summary: list[str],
     project_vocab: Any = None,
+    force_edit_pressure: bool = False,
 ) -> str:
     """Construct the per-turn user message for Sonnet.
 
@@ -322,7 +332,14 @@ def _build_user_message(
     ``dd.project_vocabulary``); when supplied, its palette is
     surfaced in a dedicated section so the LLM picks fills/radii/
     spacings from the project's actual values instead of
-    hallucinating off-palette hex codes."""
+    hallucinating off-palette hex codes.
+
+    ``force_edit_pressure`` is set by the loop's edit-pressure gate
+    (see :data:`_NON_EDIT_PRESSURE_TURNS`). When True, the caller has
+    also stripped the focus primitives + ``emit_done`` from the tool
+    list — this kwarg adds a matching pressure line to the user
+    message so the LLM sees both the policy AND the available tools
+    pointing the same direction."""
     from dd.markup_l3 import emit_l3
     parts = [
         f"### Brief\n{brief}",
@@ -339,9 +356,22 @@ def _build_user_message(
             "\n### Recent moves (most recent last)\n"
             + "\n".join(f"- {line}" for line in recent_log_summary[-6:])
         )
-    parts.append(
-        "\nPick ONE tool to call. When complete, call emit_done."
-    )
+    if force_edit_pressure:
+        parts.append(
+            "\n### COMMIT NOW\n"
+            "You have not changed the document yet. This turn MUST "
+            "call one edit verb (`set` / `delete` / `append` / "
+            "`insert` / `move` / `swap` / `replace`). Use `append` or "
+            "`insert` for missing content the brief asks for; use "
+            "`set` to change a property on an existing element. The "
+            "focus primitives (drill / name / climb) are not "
+            "available this turn — pick the most-confident edit you "
+            "can make to move the design toward the brief."
+        )
+    else:
+        parts.append(
+            "\nPick ONE tool to call. When complete, call emit_done."
+        )
     return "\n".join(parts)
 
 
@@ -621,6 +651,19 @@ def run_session(
     recent_failures: list[bool] = []
     move_log_summary: list[str] = []
 
+    # Edit-pressure gate (Codex 5.5 + Sonnet diagnosis 2026-04-27): the
+    # agent can spend an entire session on NAME / DRILL / CLIMB without
+    # ever issuing a structural EDIT, because focus primitives don't
+    # feed the stall detector and `tool_choice={"type": "any"}` is
+    # always satisfied by them. After ``_NON_EDIT_PRESSURE_TURNS``
+    # consecutive non-edit turns AND zero successful edits in the
+    # session, force the next turn's tool list to edit verbs only and
+    # add a "you must edit now" line to the user message. The forced
+    # state still allows the LLM to refuse via no-tool-block (which
+    # halts via halt_no_tool); it just can't keep cognitively spinning.
+    successful_edit_count = 0
+    consecutive_non_edit_turns = 0
+
     # ── Loop ────────────────────────────────────────────────────────────
     for i in range(1, max_iters + 1):
         iterations = i
@@ -638,7 +681,23 @@ def run_session(
             except Exception:
                 # Don't let a broken stream abort a demo run.
                 pass
-        tools = build_loop_tools(focus.doc, list(component_paths))
+
+        force_edit_only = (
+            successful_edit_count == 0
+            and consecutive_non_edit_turns >= _NON_EDIT_PRESSURE_TURNS
+        )
+        if force_edit_only:
+            # Strip NAME / DRILL / CLIMB / DONE from the tool surface.
+            # The agent must commit an edit verb this turn or emit no
+            # tool block (which halts via halt_no_tool). emit_done is
+            # excluded too — a session that never edited shouldn't be
+            # allowed to "complete."
+            from dd.propose_edits import build_propose_edits_tools
+            tools = list(build_propose_edits_tools(
+                focus.doc, list(component_paths),
+            ))
+        else:
+            tools = build_loop_tools(focus.doc, list(component_paths))
         user_msg = _build_user_message(
             brief=active_brief or "",
             focus=focus,
@@ -646,6 +705,7 @@ def run_session(
             max_iters=max_iters,
             recent_log_summary=move_log_summary,
             project_vocab=project_vocab,
+            force_edit_pressure=force_edit_only,
         )
         resp = client.messages.create(
             model=model,
@@ -758,6 +818,17 @@ def run_session(
         recent_failures.append(not outcome.score["edit_applied"])
         if is_edit_turn:
             recent_edit_unproductive.append(is_edit_unproductive)
+
+        # Edit-pressure gate counters. A "successful edit" is an EDIT
+        # turn whose apply landed; anything else (NAME/DRILL/CLIMB or a
+        # failed EDIT) counts as a non-edit turn. Once the agent makes
+        # ANY successful edit in the session, the gate is permanently
+        # disarmed for that session (successful_edit_count > 0).
+        if is_edit_turn and outcome.score["edit_applied"]:
+            successful_edit_count += 1
+            consecutive_non_edit_turns = 0
+        else:
+            consecutive_non_edit_turns += 1
         if len(recent_failures) >= _STALL_WINDOW and all(
             recent_failures[-_STALL_WINDOW:]
         ):
