@@ -42,6 +42,39 @@ _ROTATION_TOLERANCE = 1e-3     # ~0.06° — covers walker conversion error
 _CORNER_RADIUS_TOLERANCE = 1e-3  # sub-pixel
 
 
+def _is_snapshot_skip(
+    rendered_type: str | None, prop_name: str, element: dict[str, Any],
+) -> bool:
+    """A1.3 (Backlog #1, provenance plan): per-property snapshot
+    gate for Mode-1 INSTANCE heads.
+
+    Returns ``True`` when the verifier should SKIP the comparison
+    because the IR value is an extraction-time snapshot of master
+    defaults rather than a real override directive.
+
+    Conditions for skip:
+    - rendered node IS an INSTANCE (only Mode-1 has the
+      snapshot-vs-master-default ambiguity)
+    - the property is NOT in ``element["_overrides"]``
+
+    When ``element["_overrides"]`` is missing entirely (legacy IR
+    pre-A1.1), default to "snapshot" — Codex 5.5: "missing
+    provenance on Mode-1 INSTANCE defaults to snapshot, not
+    override; safer to under-flag than over-flag false-positives."
+
+    Non-INSTANCE rendered nodes never get the gate. They don't
+    delegate visual rendering to a master, so the IR snapshot IS
+    the render-time directive.
+    """
+    if rendered_type != "INSTANCE":
+        return False
+    overrides = element.get("_overrides")
+    if overrides is None:
+        # Legacy IR: default snapshot (skip).
+        return True
+    return prop_name not in overrides
+
+
 # Text height tolerance before we flag a wrap.
 #
 # Real wraps observed in testing produce ratios of 3x or more (a 3-line
@@ -339,49 +372,19 @@ class FigmaRenderVerifier:
             # older walkers that omit fills don't trigger false positives.
             ir_fills = (element.get("visual") or {}).get("fills")
             rendered_fills = rendered.get("fills")
-            if isinstance(ir_fills, list) and isinstance(rendered_fills, list):
+            # A1.3 (Backlog #1, provenance plan): on a Mode-1 INSTANCE
+            # head, fills is a snapshot unless _overrides says
+            # otherwise. The narrow chip-1 token-gradient suppression
+            # that lived here pre-A1.3 is subsumed by this gate — the
+            # chip-1 case clears because chip-1 has no FILLS row in
+            # instance_overrides.
+            if _is_snapshot_skip(rendered.get("type"), "fills", element):
+                pass  # snapshot — skip comparison
+            elif isinstance(ir_fills, list) and isinstance(rendered_fills, list):
                 ir_solids = [f for f in ir_fills if f.get("type") == "solid"]
                 rd_solids = [f for f in rendered_fills if f.get("type") == "solid"]
 
-                # Phase E #2 fix (2026-04-26): Mode-1 INSTANCE heads
-                # delegate fill rendering to the master — the renderer
-                # never writes `n.fills` for instances. The IR's
-                # `visual.fills` for an instance is a SNAPSHOT of what
-                # extraction observed (which can be a token-bound
-                # gradient like {color.surface.14}), but the rendered
-                # tree shows whatever the master decides (which may be
-                # a flat solid). That divergence is NOT a renderer
-                # failure — it's the verifier comparing an extraction
-                # snapshot against a runtime master default.
-                # Codex 2026-04-26 (gpt-5.5): suppress fill_mismatch
-                # IFF rendered is INSTANCE AND IR has no solid fills
-                # AND all IR fills are token-referenced gradients.
-                # Cleared 3 chip-1 false positives on Phase E (screens
-                # 24, 25, 44 — same chip variant in different screens).
-                # Longer-term: tag extraction with override-vs-snapshot
-                # provenance so legitimate instance overrides still
-                # enforce.
-                is_instance_head = rendered.get("type") == "INSTANCE"
-                ir_all_token_gradients = bool(ir_fills) and all(
-                    isinstance(f.get("type"), str)
-                    and f.get("type", "").startswith("gradient-")
-                    and all(
-                        isinstance(stop.get("color"), str)
-                        and stop["color"].startswith("{")
-                        for stop in (f.get("stops") or [])
-                    )
-                    for f in ir_fills
-                )
-                if (
-                    is_instance_head
-                    and not ir_solids
-                    and ir_all_token_gradients
-                ):
-                    # Mode-1 master owns rendered fills; the IR's
-                    # token-bound gradient is a snapshot, not a
-                    # render-time directive. Skip the comparison.
-                    pass
-                elif len(ir_solids) != len(rd_solids):
+                if len(ir_solids) != len(rd_solids):
                     errors.append(StructuredError(
                         kind=KIND_FILL_MISMATCH,
                         id=eid,
@@ -416,9 +419,12 @@ class FigmaRenderVerifier:
                             ))
 
             # Stroke-color comparison: same shape as fill comparison.
+            # A1.3: same provenance gate as fills.
             ir_strokes = (element.get("visual") or {}).get("strokes")
             rendered_strokes = rendered.get("strokes")
-            if isinstance(ir_strokes, list) and isinstance(rendered_strokes, list):
+            if _is_snapshot_skip(rendered.get("type"), "strokes", element):
+                pass  # snapshot — skip comparison
+            elif isinstance(ir_strokes, list) and isinstance(rendered_strokes, list):
                 ir_ss = [s for s in ir_strokes if s.get("type") == "solid"]
                 rd_ss = [s for s in rendered_strokes if s.get("type") == "solid"]
 
@@ -488,9 +494,12 @@ class FigmaRenderVerifier:
             ir_visual = element.get("visual") or {}
 
             # Opacity drift — numeric tolerance to absorb float jitter.
+            # A1.3 provenance gate: skip on Mode-1 INSTANCE snapshot.
             ir_opacity = ir_visual.get("opacity")
             rd_opacity = rendered.get("opacity")
-            if (
+            if _is_snapshot_skip(rendered.get("type"), "opacity", element):
+                pass  # snapshot — skip
+            elif (
                 isinstance(ir_opacity, (int, float))
                 and isinstance(rd_opacity, (int, float))
             ):
@@ -506,9 +515,12 @@ class FigmaRenderVerifier:
                     ))
 
             # Blend mode drift — exact-string compare.
+            # A1.3 provenance gate.
             ir_blend = ir_visual.get("blendMode")
             rd_blend = rendered.get("blendMode")
-            if (
+            if _is_snapshot_skip(rendered.get("type"), "blendMode", element):
+                pass  # snapshot — skip
+            elif (
                 isinstance(ir_blend, str)
                 and isinstance(rd_blend, str)
                 and ir_blend != rd_blend
@@ -567,10 +579,13 @@ class FigmaRenderVerifier:
             # plus mixed (per-corner) when the walker reports
             # cornerRadiusMixed=true. Skip-emit if IR has no
             # cornerRadius opinion.
+            # A1.3 provenance gate.
             ir_cr = ir_visual.get("cornerRadius")
             rd_mixed = rendered.get("cornerRadiusMixed") is True
             rd_cr = rendered.get("cornerRadius")
-            if isinstance(ir_cr, (int, float)):
+            if _is_snapshot_skip(rendered.get("type"), "cornerRadius", element):
+                pass  # snapshot — skip
+            elif isinstance(ir_cr, (int, float)):
                 if rd_mixed:
                     # IR uniform vs rendered per-corner: compare
                     # each side to the IR uniform value.

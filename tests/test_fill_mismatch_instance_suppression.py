@@ -111,14 +111,21 @@ class TestInstanceFillCheckPreservesOtherSignals:
     """Defensive — the suppression must NOT swallow legitimate
     fill_mismatch errors."""
 
-    def test_instance_with_solid_ir_fill_still_checks(self):
-        """If the IR has a SOLID fill (extraction captured an
-        explicit color override), the fill check should still
-        compare against rendered."""
+    def test_instance_with_solid_ir_fill_and_override_still_checks(self):
+        """A1.3 update: pre-fix this test asserted INSTANCE with
+        solid IR fill always flagged. Post-A1.3 (provenance gating)
+        the comparison is gated on ``_overrides``: solid IR fill
+        WITHOUT the FILLS override row in instance_overrides is now
+        treated as a snapshot (correct — the IR captured the
+        master's defaults, not an explicit override). To still
+        assert the comparison fires, the IR must declare
+        ``_overrides=["fills"]``.
+        """
         ir = {
             "elements": {
                 "btn": {
                     "type": "instance",
+                    "_overrides": ["fills"],  # A1.3: explicit override
                     "visual": {
                         "fills": [{"type": "solid", "color": "#FF0000"}]
                     },
@@ -139,9 +146,9 @@ class TestInstanceFillCheckPreservesOtherSignals:
             e for e in report.errors if e.kind == KIND_FILL_MISMATCH
         ]
         assert fill_errs, (
-            "Defensive: INSTANCE with explicit solid IR fill should "
-            "still flag a color mismatch (the suppression only "
-            "covers token-bound gradient → solid divergence)."
+            "Defensive: INSTANCE with explicit solid IR fill AND "
+            "_overrides=['fills'] should still flag a color "
+            "mismatch — A1.3 gating only suppresses snapshots."
         )
 
     def test_non_instance_with_gradient_ir_still_checks_count(self):
@@ -187,13 +194,16 @@ class TestInstanceFillCheckPreservesOtherSignals:
             "to write fills explicitly for non-instance nodes."
         )
 
-    def test_instance_with_multiple_ir_fills_one_solid_still_checks(self):
-        """If IR has MIXED fills (some solid, some gradient), the
-        presence of any solid means the suppression doesn't fire."""
+    def test_instance_with_mixed_ir_fills_and_override_still_checks(self):
+        """A1.3 update: per the new per-property gate, mixed-fills
+        instance with FILLS in ``_overrides`` still flags the solid
+        color mismatch. Without the override row the comparison
+        is now skipped (snapshot, not directive)."""
         ir = {
             "elements": {
                 "card": {
                     "type": "instance",
+                    "_overrides": ["fills"],  # A1.3: explicit override
                     "visual": {
                         "fills": [
                             {"type": "solid", "color": "#FFFFFF"},
@@ -283,14 +293,18 @@ class TestInstanceFillCheckSpecificity:
             "master."
         )
 
-    def test_non_token_gradient_color_still_checks(self):
-        """Suppression requires gradient stops to have token-ref
-        colors (start with '{'). A literal hex gradient with
-        rendered solid is still a real mismatch."""
+    def test_non_token_gradient_color_with_override_still_checks(self):
+        """A1.3 update: pre-fix the narrow chip-1 suppression
+        REQUIRED gradient stops to have token-ref colors. Post-A1.3
+        the per-property gate is purely override-vs-snapshot —
+        literal-hex gradients on INSTANCE without a FILLS override
+        row are also treated as snapshots. To still assert the
+        comparison, declare ``_overrides=['fills']``."""
         ir = {
             "elements": {
                 "y": {
                     "type": "instance",
+                    "_overrides": ["fills"],  # A1.3: explicit override
                     "visual": {
                         "fills": [
                             {
