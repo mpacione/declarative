@@ -66,7 +66,7 @@
       },
       "station_2": "EMIT_DEFERRED",
       "station_3": "CAPTURED",
-      "station_4": "EXEMPT_REASON"
+      "station_4": "COMPARE_DISPATCH"
     },
     "clipsContent": {
       "capability_node_types": [
@@ -477,8 +477,8 @@
         "property": "layoutSizingHorizontal"
       },
       "station_2": "EMIT_DEFERRED",
-      "station_3": "NOT_CAPTURED_SUPPORTED",
-      "station_4": "EXEMPT_REASON"
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DISPATCH"
     },
     "layoutSizingVertical": {
       "capability_node_types": [
@@ -501,8 +501,8 @@
         "property": "layoutSizingVertical"
       },
       "station_2": "EMIT_DEFERRED",
-      "station_3": "NOT_CAPTURED_SUPPORTED",
-      "station_4": "EXEMPT_REASON"
+      "station_3": "CAPTURED",
+      "station_4": "COMPARE_DISPATCH"
     },
     "layoutWrap": {
       "capability_node_types": [

@@ -149,6 +149,19 @@ KIND_DASH_PATTERN_MISMATCH = "dash_pattern_mismatch"
 # get clipped) differs from rendered. A5: visible content
 # leak/clip; pre-A5 silent.
 KIND_CLIPS_CONTENT_MISMATCH = "clips_content_mismatch"
+# Sprint 2 C10: text content (characters) differs between IR and
+# rendered. The HGB button bug: IR carries override "Reject", master
+# default is "Send to Client", renderer fell through to master default.
+# Pre-C10 the verifier only checked empty/non-empty (KIND_MISSING_TEXT);
+# value-equality compare is the C10 graduation.
+KIND_TEXT_CONTENT_MISMATCH = "text_content_mismatch"
+# Sprint 2 C10: layout sizing horizontal mode (HUG/FILL/FIXED) differs
+# between IR and rendered. Width numbers can match while sizing mode
+# drifts — surfaces auto-layout regressions invisible to bounds compare.
+KIND_LAYOUT_SIZING_H_MISMATCH = "layout_sizing_h_mismatch"
+# Sprint 2 C10: layout sizing vertical mode (HUG/FILL/FIXED) differs.
+# Sibling of layout_sizing_h_mismatch.
+KIND_LAYOUT_SIZING_V_MISMATCH = "layout_sizing_v_mismatch"
 # Gradient fill has no Plugin API gradientTransform — the REST API
 # handlePositions can't be reliably converted. Renderer skips the
 # gradient rather than emitting a wrong matrix.

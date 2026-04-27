@@ -152,8 +152,10 @@ _EXPECTED_STATION_3: dict[str, str] = {
     "booleanOperation": "NOT_CAPTURED_SUPPORTED",
     "arcData": "NOT_CAPTURED_SUPPORTED",
     "visible": "NOT_CAPTURED_SUPPORTED",  # implicit via tree structure, not entry field
-    "layoutSizingHorizontal": "NOT_CAPTURED_SUPPORTED",  # graduates in C8
-    "layoutSizingVertical": "NOT_CAPTURED_SUPPORTED",  # graduates in C8
+    # Sprint 2 C8 graduated walker capture for these (envelope shape).
+    # C10 then graduated their station_4 to COMPARE_DISPATCH.
+    "layoutSizingHorizontal": "CAPTURED",
+    "layoutSizingVertical": "CAPTURED",
     "layoutMode": "NOT_CAPTURED_SUPPORTED",
     "primaryAxisAlignItems": "NOT_CAPTURED_SUPPORTED",
     "counterAxisAlignItems": "NOT_CAPTURED_SUPPORTED",
@@ -205,13 +207,16 @@ _EXPECTED_STATION_4: dict[str, str] = {
     "clipsContent": "COMPARE_DEDICATED",  # KIND_CLIPS_CONTENT_MISMATCH
     "effects": "COMPARE_DEDICATED",  # KIND_EFFECT_MISSING (count)
 
+    # === COMPARE_DISPATCH — Sprint 2 C10 graduations ===
+    # Read via the registry's compare_figma metadata + dispatch
+    # through dd/verify_figma.py:_COMPARATOR_IMPLS. Closes the HGB
+    # button bug and the layout-sizing-mode drift class observed
+    # in cross-corpus runs.
+    "characters": "COMPARE_DISPATCH",
+    "layoutSizingHorizontal": "COMPARE_DISPATCH",
+    "layoutSizingVertical": "COMPARE_DISPATCH",
     # === EXEMPT_REASON — no comparator today ===
-    # Sprint 2 graduates 3 of these to COMPARE_DISPATCH via C10
-    # (characters, layoutSizingHorizontal, layoutSizingVertical).
-    # All others stay EXEMPT_REASON until their family sprint.
-    "characters": "EXEMPT_REASON",  # graduates in C10
-    "layoutSizingHorizontal": "EXEMPT_REASON",  # graduates in C10
-    "layoutSizingVertical": "EXEMPT_REASON",  # graduates in C10
+    # Future sprints graduate families to COMPARE_DISPATCH.
     "strokeCap": "EXEMPT_REASON",
     "strokeJoin": "EXEMPT_REASON",
     "cornerSmoothing": "EXEMPT_REASON",
@@ -364,28 +369,31 @@ class TestInventorySummary:
         assert counts["NOT_EMITTABLE"] == 0
 
     def test_station_3_distribution(self, by_name):
-        """Walker coverage: the inventory's main finding — only
-        16/53 properties have walker capture today (3 dedicated +
-        13 captured). Sprint 3+ graduations will move properties
-        from NOT_CAPTURED_SUPPORTED to CAPTURED."""
+        """Walker coverage: post-Sprint-2-C8 the walker captures
+        15 properties via per-property entry.<name> assignment
+        (13 from earlier sprints + layoutSizingH/V graduated in
+        C8). Plus 3 DEDICATED_PATH (width, height, rotation).
+        Sprint 3+ family graduations move more properties from
+        NOT_CAPTURED_SUPPORTED to CAPTURED."""
         from collections import Counter
 
         counts = Counter(prop.station_3.name for prop in by_name.values())
         assert counts["DEDICATED_PATH"] == 3  # width, height, rotation
-        assert counts["CAPTURED"] == 13  # per-property entry.<name> captures
-        assert counts["NOT_CAPTURED_SUPPORTED"] == 37
+        assert counts["CAPTURED"] == 15  # 13 + C8 layoutSizingH/V
+        assert counts["NOT_CAPTURED_SUPPORTED"] == 35
         assert counts["NOT_CAPTURED_UNSUPPORTED"] == 0
 
     def test_station_4_distribution(self, by_name):
-        """Verifier coverage: today's hand-rolled comparators reach
-        14 properties. Sprint 2 graduates 3 more via COMPARE_DISPATCH
-        in C10. Future sprints graduate families."""
+        """Verifier coverage: hand-rolled comparators reach
+        14 properties (COMPARE_DEDICATED). Sprint 2 C10 graduated
+        3 more to COMPARE_DISPATCH (registry-driven dispatch via
+        compare_figma metadata). Future sprints graduate families."""
         from collections import Counter
 
         counts = Counter(prop.station_4.name for prop in by_name.values())
         assert counts["COMPARE_DEDICATED"] == 14  # bounds + visual props
-        assert counts["COMPARE_DISPATCH"] == 0  # C10 will move 3 here
-        assert counts["EXEMPT_REASON"] == 39
+        assert counts["COMPARE_DISPATCH"] == 3   # C10 graduations
+        assert counts["EXEMPT_REASON"] == 36
 
     def test_total_property_count_unchanged(self, by_name):
         """Sanity: C5 doesn't add or remove properties, only sets
@@ -394,42 +402,47 @@ class TestInventorySummary:
 
 
 class TestSprint2GraduationCandidates:
-    """The 3 properties Sprint 2 graduates (per plan §7) MUST be in
-    EXEMPT_REASON post-C5 — that's how C10 knows what to move to
-    COMPARE_DISPATCH."""
+    """The 3 properties Sprint 2 graduated (per plan §7).
+
+    Pre-C10: started as EXEMPT_REASON (no comparator).
+    Post-C10: graduated to COMPARE_DISPATCH (registry-driven).
+    """
 
     @pytest.mark.parametrize(
         "figma_name",
         ["characters", "layoutSizingHorizontal", "layoutSizingVertical"],
     )
-    def test_sprint_2_graduation_candidate_starts_exempt(
+    def test_sprint_2_graduation_landed(
         self, by_name, figma_name,
     ):
         from dd.property_registry import StationDisposition
 
         prop = by_name[figma_name]
-        assert prop.station_4 == StationDisposition.EXEMPT_REASON, (
-            f"{figma_name}: Sprint 2 graduation candidate must start "
-            f"as EXEMPT_REASON (post-C5); got {prop.station_4}"
+        assert prop.station_4 == StationDisposition.COMPARE_DISPATCH, (
+            f"{figma_name}: Sprint 2 graduation should be "
+            f"COMPARE_DISPATCH post-C10; got {prop.station_4}"
+        )
+        assert prop.compare_figma is not None, (
+            f"{figma_name}: COMPARE_DISPATCH requires compare_figma "
+            f"metadata"
         )
 
-    def test_graduation_candidates_have_walker_capture_or_dedicated(self, by_name):
-        """Pre-graduation invariant: a property can't graduate to
-        COMPARE_DISPATCH (C10) unless its walker capture is in place.
-        characters is captured today; layoutSizingH/V need walker
-        capture added in C8."""
+    def test_graduation_candidates_have_walker_capture(self, by_name):
+        """Post-Sprint-2 invariant: every COMPARE_DISPATCH property
+        must have walker capture in place (CAPTURED or
+        DEDICATED_PATH at station 3). Otherwise the dispatch
+        comparator has nothing to compare against."""
         from dd.property_registry import StationDisposition
 
-        # characters: walker captures today
-        chars = by_name["characters"]
-        assert chars.station_3 == StationDisposition.CAPTURED
-
-        # layoutSizingH/V: NOT captured today, need C8
-        for name in ("layoutSizingHorizontal", "layoutSizingVertical"):
+        for name in ("characters", "layoutSizingHorizontal",
+                     "layoutSizingVertical"):
             prop = by_name[name]
-            assert prop.station_3 == StationDisposition.NOT_CAPTURED_SUPPORTED, (
-                f"{name}: still NOT_CAPTURED_SUPPORTED post-C5; "
-                f"C8 will graduate to CAPTURED, then C10 to COMPARE_DISPATCH"
+            assert prop.station_3 in (
+                StationDisposition.CAPTURED,
+                StationDisposition.DEDICATED_PATH,
+            ), (
+                f"{name}: COMPARE_DISPATCH at station 4 requires "
+                f"CAPTURED/DEDICATED_PATH at station 3; got {prop.station_3}"
             )
 
 

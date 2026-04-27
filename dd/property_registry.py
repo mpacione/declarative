@@ -110,6 +110,47 @@ _FIGMA_AUTO_LAYOUT = _FIGMA_CONTAINERS
 
 
 @dataclass(frozen=True)
+class FigmaComparatorSpec:
+    """Sprint 2 C10 — declarative comparator metadata for the Figma
+    backend's verifier dispatch.
+
+    Per docs/plan-sprint-2-station-parity.md §3 (station model) and
+    Codex 5.5 round-9 architectural fork: the comparator implementation
+    map lives in dd/verify_figma.py keyed by ``comparator``; this spec
+    is purely declarative so the property registry stays serializable
+    and free of verifier-code imports.
+
+    Backend-shaped naming (``FigmaComparatorSpec`` / ``compare_figma``)
+    so future backends grow as sibling classes without forcing a
+    refactor of the existing surface.
+    """
+
+    comparator: str
+    """Implementation id. ``dd/verify_figma.py:_COMPARATOR_IMPLS``
+    holds the {id → callable} map."""
+
+    walker_key: str
+    """Field name in the rendered tree (per-node dict from
+    ``render_test/walk_ref.js``) where the comparator reads the
+    rendered value."""
+
+    kind: str
+    """``KIND_*`` string from ``dd/boundary.py`` — error kind this
+    comparator emits when it finds drift."""
+
+    tolerance: float | None = None
+    """For numeric comparators: absolute tolerance for float equality.
+    None means exact equality."""
+
+    skip_when_provenance_absent: bool = True
+    """A1.3 gate hook: on Mode-1 INSTANCE, skip comparison if the
+    property isn't in the head's ``_overrides`` side-car (i.e. the
+    IR value is a master-default snapshot, not an actual override).
+    Most visual comparators want this; bounds/structure comparators
+    set False."""
+
+
+@dataclass(frozen=True)
 class FigmaProperty:
     figma_name: str
     db_column: str | None
@@ -134,6 +175,10 @@ class FigmaProperty:
     station_2: StationDisposition = StationDisposition.NOT_EMITTABLE
     station_3: StationDisposition = StationDisposition.NOT_CAPTURED_SUPPORTED
     station_4: StationDisposition = StationDisposition.EXEMPT_REASON
+    # Sprint 2 C10 — comparator metadata for properties graduated to
+    # COMPARE_DISPATCH at station 4. None for COMPARE_DEDICATED
+    # (existing hand-rolled paths) or EXEMPT_REASON properties.
+    compare_figma: "FigmaComparatorSpec | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -236,14 +281,26 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   emit={"figma": _UNIFORM},
                   capabilities=_figma_caps(_FIGMA_AUTO_LAYOUT)),
     # Deferred: conditional on parent auto-layout context
+    # Sprint 2 C10: layoutSizingHorizontal/Vertical graduate to
+    # COMPARE_DISPATCH via the registry's enum_equality comparator.
     FigmaProperty("layoutSizingHorizontal", "layout_sizing_h",
                   ("layoutSizingHorizontal", "primaryAxisSizingMode"), "layout", "enum",
                   override_type="LAYOUT_SIZING_H",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE)),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE),
+                  compare_figma=FigmaComparatorSpec(
+                      comparator="enum_equality",
+                      walker_key="layoutSizingHorizontal",
+                      kind="layout_sizing_h_mismatch",
+                  )),
     FigmaProperty("layoutSizingVertical", "layout_sizing_v",
                   ("layoutSizingVertical", "counterAxisSizingMode"), "layout", "enum",
                   override_type="LAYOUT_SIZING_V",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE)),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE),
+                  compare_figma=FigmaComparatorSpec(
+                      comparator="enum_equality",
+                      walker_key="layoutSizingVertical",
+                      kind="layout_sizing_v_mismatch",
+                  )),
     FigmaProperty("primaryAxisAlignItems", "primary_align",
                   ("primaryAxisAlignItems",), "layout", "enum",
                   emit={"figma": _UNIFORM},
@@ -304,9 +361,17 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
 
     # === TEXT ===
     # Deferred: handled by _emit_text_props (progressive fallback, fontName composition)
+    # Sprint 2 C10: characters graduates to COMPARE_DISPATCH via the
+    # registry's text_equality comparator. Closes the HGB button bug
+    # (IR override "Reject" vs rendered master default "Send to Client").
     FigmaProperty("characters", "text_content", ("characters",), "text", "string",
                   override_type="TEXT",
-                  capabilities=_figma_caps(_FIGMA_TEXT)),
+                  capabilities=_figma_caps(_FIGMA_TEXT),
+                  compare_figma=FigmaComparatorSpec(
+                      comparator="text_equality",
+                      walker_key="characters",
+                      kind="text_content_mismatch",
+                  )),
     FigmaProperty("fontSize", "font_size", ("fontSize",), "text", "number",
                   emit={"figma": _UNIFORM},
                   capabilities=_figma_caps(_FIGMA_TEXT)),
@@ -470,8 +535,11 @@ _STATION_3_INVENTORY: dict[str, StationDisposition] = {
     "booleanOperation": StationDisposition.NOT_CAPTURED_SUPPORTED,
     "arcData": StationDisposition.NOT_CAPTURED_SUPPORTED,
     "visible": StationDisposition.NOT_CAPTURED_SUPPORTED,
-    "layoutSizingHorizontal": StationDisposition.NOT_CAPTURED_SUPPORTED,
-    "layoutSizingVertical": StationDisposition.NOT_CAPTURED_SUPPORTED,
+    # Sprint 2 C8 graduated layoutSizingH/V to CAPTURED (walker now
+    # emits {value, source} envelopes for these). C5 inventory shifted
+    # forward as part of the C10 keystone commit.
+    "layoutSizingHorizontal": StationDisposition.CAPTURED,
+    "layoutSizingVertical": StationDisposition.CAPTURED,
     "layoutMode": StationDisposition.NOT_CAPTURED_SUPPORTED,
     "primaryAxisAlignItems": StationDisposition.NOT_CAPTURED_SUPPORTED,
     "counterAxisAlignItems": StationDisposition.NOT_CAPTURED_SUPPORTED,
@@ -519,13 +587,16 @@ _STATION_4_INVENTORY: dict[str, StationDisposition] = {
     "cornerRadius": StationDisposition.COMPARE_DEDICATED,
     "clipsContent": StationDisposition.COMPARE_DEDICATED,
     "effects": StationDisposition.COMPARE_DEDICATED,
+    # === COMPARE_DISPATCH — Sprint 2 C10 graduations ===
+    # These read from the registry's compare_figma metadata and
+    # dispatch through dd/verify_figma.py:_COMPARATOR_IMPLS. The
+    # bug closure for the HGB button + the layout-sizing-mode drift
+    # class observed in cross-corpus runs.
+    "characters": StationDisposition.COMPARE_DISPATCH,
+    "layoutSizingHorizontal": StationDisposition.COMPARE_DISPATCH,
+    "layoutSizingVertical": StationDisposition.COMPARE_DISPATCH,
     # === EXEMPT_REASON — no comparator today ===
-    # Sprint 2 graduates 3 of these to COMPARE_DISPATCH via C10:
-    # characters, layoutSizingHorizontal, layoutSizingVertical.
-    # All others stay until their family sprint.
-    "characters": StationDisposition.EXEMPT_REASON,
-    "layoutSizingHorizontal": StationDisposition.EXEMPT_REASON,
-    "layoutSizingVertical": StationDisposition.EXEMPT_REASON,
+    # Future sprints graduate families to COMPARE_DISPATCH.
     "strokeCap": StationDisposition.EXEMPT_REASON,
     "strokeJoin": StationDisposition.EXEMPT_REASON,
     "cornerSmoothing": StationDisposition.EXEMPT_REASON,

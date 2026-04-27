@@ -38,12 +38,126 @@ from dd.boundary import (
     RenderReport,
     StructuredError,
 )
+from dd.property_registry import (
+    FigmaComparatorSpec,
+    PROPERTIES,
+    StationDisposition,
+)
 
 # Tolerances for the new P1c numeric comparators. Float jitter from
 # the deg→rad walker conversion + IR build paths needs slack.
 _OPACITY_TOLERANCE = 1e-3      # 0.001 — well below visible difference
 _ROTATION_TOLERANCE = 1e-3     # ~0.06° — covers walker conversion error
 _CORNER_RADIUS_TOLERANCE = 1e-3  # sub-pixel
+
+
+# ---------------------------------------------------------------------
+# Sprint 2 C10 — registry-driven comparator dispatch
+# ---------------------------------------------------------------------
+# Per docs/plan-sprint-2-station-parity.md §3 (station model) and
+# Codex 5.5 round-9 architectural fork: graduated properties (those
+# with station_4 == COMPARE_DISPATCH and a compare_figma spec) are
+# compared via this dispatch, NOT the hand-rolled paths above. The
+# 11 existing comparators (fills/strokes/cornerRadius/etc.) keep
+# their hand-rolled implementations because they pre-date Sprint 2
+# and bundling the migration with the rail risks scope-creep.
+#
+# Single comparator signature: ``(ir_value, rendered_value, element,
+# *, spec)`` — keyword-only spec lets generic comparators like
+# enum_equality emit different KIND_* errors per property. Closes
+# the bug class A1.3 left open: drift on uncompared properties.
+
+
+def _ir_value_for(element: dict[str, Any], figma_name: str) -> Any:
+    """Read the IR-side value for a graduated property.
+
+    Codex round-9 lock: helper switch (NOT declarative ir_path on
+    spec) because some properties need normalization across the
+    IR-vs-walker shape boundary. Layout sizing in particular: IR
+    stores ``"hug"/"fill"`` lowercase strings or numeric pixel
+    widths (FIXED); walker emits ``"HUG"/"FILL"/"FIXED"`` uppercase.
+    Helper normalizes IR side to walker's enum.
+
+    Returns ``None`` when the element has no value for the property —
+    the dispatch loop skips comparison rather than treating absence
+    as drift.
+    """
+    if figma_name == "characters":
+        return (element.get("props") or {}).get("text")
+
+    if figma_name in ("layoutSizingHorizontal", "layoutSizingVertical"):
+        sizing = (element.get("layout") or {}).get("sizing") or {}
+        axis_key = "width" if figma_name == "layoutSizingHorizontal" else "height"
+        raw = sizing.get(axis_key)
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            # IR lowercase ("hug" / "fill" / "fixed") → walker uppercase
+            return raw.upper()
+        if isinstance(raw, (int, float)):
+            # Numeric pixel value implies FIXED sizing mode in the IR
+            return "FIXED"
+        return None
+
+    return None  # unknown graduation; defensive
+
+
+def _compare_text_equality(
+    ir_value: Any, rendered_value: Any, element: dict[str, Any],
+    *, spec: "FigmaComparatorSpec",
+) -> "StructuredError | None":
+    """C10 graduation: text content equality. Used by ``characters``.
+
+    Empty strings compare normally per Codex round-9: empty == empty
+    is a match, empty IR vs non-empty rendered is a mismatch.
+    """
+    if ir_value == rendered_value:
+        return None
+    return StructuredError(
+        kind=spec.kind,
+        id=element.get("id", "?"),
+        error=(
+            f"text: IR={ir_value!r}, rendered={rendered_value!r}"
+        ),
+        context={
+            "ir_text": ir_value,
+            "rendered_text": rendered_value,
+        },
+    )
+
+
+def _compare_enum_equality(
+    ir_value: Any, rendered_value: Any, element: dict[str, Any],
+    *, spec: "FigmaComparatorSpec",
+) -> "StructuredError | None":
+    """C10 graduation: enum string equality. Used by
+    ``layoutSizingHorizontal/Vertical`` — same impl, different
+    ``spec.kind`` per property. The spec drives error metadata so
+    the comparator stays generic.
+    """
+    if ir_value == rendered_value:
+        return None
+    return StructuredError(
+        kind=spec.kind,
+        id=element.get("id", "?"),
+        error=(
+            f"{spec.walker_key}: IR={ir_value!r}, rendered={rendered_value!r}"
+        ),
+        context={
+            "ir_value": ir_value,
+            "rendered_value": rendered_value,
+        },
+    )
+
+
+# Registered comparator implementations, keyed by FigmaComparatorSpec.comparator.
+# Adding a new comparator id requires an entry here AND a registry
+# property pointing at it via compare_figma. The C10 coverage test
+# fails if any COMPARE_DISPATCH property points to an unregistered id.
+_COMPARATOR_IMPLS: dict[str, Any] = {
+    "text_equality": _compare_text_equality,
+    "enum_equality": _compare_enum_equality,
+}
 
 
 def _rendered_value(
@@ -756,6 +870,39 @@ class FigmaRenderVerifier:
                         "rendered_clips_content": rd_cc,
                     },
                 ))
+
+            # Sprint 2 C10 — registry-driven comparator dispatch for
+            # the 3 graduated properties (characters,
+            # layoutSizingHorizontal, layoutSizingVertical). Per plan
+            # §10 R2 (paired walker emission + verifier dispatch):
+            # this is where the cross-corpus bugs the user observed
+            # surface as KIND_TEXT_CONTENT_MISMATCH /
+            # KIND_LAYOUT_SIZING_*_MISMATCH errors. Hand-rolled
+            # comparators above are NOT migrated — they keep their
+            # paths to bound Sprint 2's scope (Codex round-9 lock).
+            for prop in PROPERTIES:
+                if prop.station_4 != StationDisposition.COMPARE_DISPATCH:
+                    continue
+                spec = prop.compare_figma
+                if spec is None:
+                    continue  # defensive — coverage test enforces this can't happen
+                # A1.3 provenance gate
+                if spec.skip_when_provenance_absent and _is_snapshot_skip(
+                    rendered.get("type"), spec.walker_key, element,
+                ):
+                    continue
+                ir_value = _ir_value_for(element, prop.figma_name)
+                rendered_value = _rendered_value(rendered, spec.walker_key, None)
+                # Skip only on None — empty strings/falsy values still compare
+                # (Codex round-9: "" vs "Hello" is a real mismatch).
+                if ir_value is None or rendered_value is None:
+                    continue
+                impl = _COMPARATOR_IMPLS.get(spec.comparator)
+                if impl is None:
+                    continue  # defensive; coverage test pins this
+                err = impl(ir_value, rendered_value, element, spec=spec)
+                if err is not None:
+                    errors.append(err)
 
         return RenderReport(
             backend=self.backend,
