@@ -2027,6 +2027,79 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "of the pretty-printed summary. Useful for `jq` piping.",
     )
 
+    # `dd design lateral <parent-variant-id> --brief A --brief B ...`
+    # — produce N sibling variants from one parent in a single CLI
+    # call. The seam between "agent edits a screen once" (resume) and
+    # "designer explores variants" (lateral). Each --brief becomes one
+    # `run_session` call rooted at the same parent_variant_id; the
+    # data model already supports siblings via `parent_id`, lateral
+    # is the CLI surface that exercises it.
+    design_lateral_parser = design_subparsers.add_parser(
+        "lateral",
+        help="Produce N sibling variants from one parent variant by "
+             "running the agent loop once per --brief (repeatable).",
+    )
+    design_lateral_parser.add_argument(
+        "parent_variant_id",
+        help="Parent variant ULID. Each --brief creates a sibling "
+             "child under this parent.",
+    )
+    design_lateral_parser.add_argument(
+        "--brief", action="append", default=None, dest="briefs",
+        help="Natural-language brief for one sibling variant. "
+             "Repeatable: pass --brief once per sibling. At least 2 "
+             "briefs required (lateral with 1 brief is just `dd "
+             "design resume`).",
+    )
+    design_lateral_parser.add_argument(
+        "--max-iters", type=int, default=3,
+        help="Max iterations per sibling session (default 3 — "
+             "demo-friendly).",
+    )
+    design_lateral_parser.add_argument("--db", help="Database path")
+    design_lateral_parser.add_argument(
+        "--starting-screen", type=int, default=None,
+        help="Screen ID in the project DB to use as the original-"
+             "render baseline. Required with --render-to-figma.",
+    )
+    design_lateral_parser.add_argument(
+        "--render-to-figma", action="store_true",
+        help="After all siblings produced, render each sibling's "
+             "final variant to its own Figma page via the plugin "
+             "bridge. Each variant lands on a distinct page.",
+    )
+    design_lateral_parser.add_argument(
+        "--project-db",
+        help="Path to the project DB (classified screens, tokens, "
+             "CKR). Defaults to --db when omitted.",
+    )
+    design_lateral_parser.add_argument(
+        "--dump-scripts",
+        metavar="DIR",
+        help="Write the generated JS render scripts per sibling to "
+             "<DIR>/<variant_id>/{original,variant,labels}.js for "
+             "inspection.",
+    )
+    design_lateral_parser.add_argument(
+        "--variant-only", action="store_true",
+        help="With --render-to-figma, skip the original-screen "
+             "render per sibling and ship only the variant.",
+    )
+    design_lateral_parser.add_argument(
+        "--no-labels",
+        dest="labels",
+        action="store_false",
+        default=True,
+        help="With --render-to-figma, suppress the demo-grade "
+             "ORIGINAL / VARIANT / brief labels on the rendered "
+             "page (default: labels ON).",
+    )
+    design_lateral_parser.add_argument(
+        "--bridge-port", type=int, default=9228,
+        help="WebSocket port for the Figma Desktop Bridge plugin "
+             "(default: 9228).",
+    )
+
     return parser
 
 
@@ -2206,6 +2279,22 @@ def _run_design(db_path: str, args) -> None:
             limit=args.limit,
             show_all=args.show_all,
             as_json=args.as_json,
+        )
+        return
+
+    if sub == "lateral":
+        _run_design_lateral(
+            db_path,
+            parent_variant_id=args.parent_variant_id,
+            briefs=args.briefs or [],
+            max_iters=args.max_iters,
+            starting_screen=args.starting_screen,
+            render_to_figma=args.render_to_figma,
+            project_db=args.project_db,
+            dump_scripts=args.dump_scripts,
+            variant_only=args.variant_only,
+            labels=args.labels,
+            bridge_port=args.bridge_port,
         )
         return
 
@@ -2951,6 +3040,155 @@ def _run_design_resume(
         f"final_variant: {result.final_variant_id}"
         f"{page_hint}"
     )
+
+
+def _run_design_lateral(
+    db_path: str,
+    *,
+    parent_variant_id: str,
+    briefs: list[str],
+    max_iters: int,
+    starting_screen: int | None = None,
+    render_to_figma: bool = False,
+    project_db: str | None = None,
+    dump_scripts: str | None = None,
+    variant_only: bool = False,
+    labels: bool = True,
+    bridge_port: int = 9228,
+) -> None:
+    """C3: produce N sibling variants from one parent in a single
+    CLI call. Each ``--brief`` becomes one ``run_session`` call rooted
+    at the same ``parent_variant_id`` — the variant data model already
+    supports siblings via ``parent_id``, this is the user-facing
+    surface that exercises it.
+
+    All sibling sessions share the same ``session_id`` (the parent's),
+    because ``run_session`` resolves ``session_id`` from
+    ``parent.session_id`` when ``parent_variant_id`` is supplied.
+
+    When ``--render-to-figma``, each leaf variant is rendered to its
+    own Figma page (page name keyed on session+leaf so siblings don't
+    stack on top of each other). The render path is the same as
+    ``--brief`` and ``resume``.
+    """
+    from dd.agent.loop import run_session
+    from dd.sessions import load_variant
+
+    # Defensive guard — parser already enforces this via append+later
+    # check, but a Python-level call to _run_design_lateral could
+    # bypass argparse and reach here with too few briefs.
+    if len(briefs) < 2:
+        print(
+            "dd design lateral: at least 2 --brief values required "
+            "(lateral with 1 sibling is `dd design resume`).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Mirror --brief / resume: rendering to Figma with no starting
+    # screen produces an empty-canvas demo. Fail loudly.
+    if render_to_figma and starting_screen is None:
+        print(
+            "dd design: --render-to-figma requires --starting-screen "
+            "<ID>. Rendering with no source screen produces an "
+            "empty-canvas demo.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Same auto-init contract as --brief / resume. Idempotent.
+    init_db(db_path).close()
+
+    client = _make_anthropic_client()
+    conn = get_connection(db_path)
+
+    # Verify parent exists before burning N Anthropic calls on a
+    # doomed session. ``run_session`` itself raises ValueError on
+    # missing parent, but it does so AFTER opening the client; this
+    # is the cheap fail-fast check.
+    parent = load_variant(conn, parent_variant_id)
+    if parent is None:
+        conn.close()
+        print(
+            f"dd design lateral: parent variant "
+            f"{parent_variant_id!r} not found.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    sibling_results = []
+    try:
+        for idx, brief in enumerate(briefs, start=1):
+            excerpt = (brief[:60] + "...") if len(brief) > 60 else brief
+            try:
+                print(
+                    f"[lateral {idx}/{len(briefs)}] brief: "
+                    f"\"{excerpt}\"",
+                    file=sys.stderr, flush=True,
+                )
+            except Exception:
+                pass
+
+            try:
+                result = run_session(
+                    conn,
+                    brief=brief,
+                    parent_variant_id=parent_variant_id,
+                    client=client,
+                    max_iters=max_iters,
+                    progress_stream=sys.stderr,
+                )
+            except ValueError as e:
+                print(f"dd design lateral: {e}", file=sys.stderr)
+                sys.exit(1)
+            sibling_results.append((brief, result))
+    finally:
+        conn.close()
+
+    # Render each sibling's leaf variant to its own Figma page.
+    # Done after all run_session calls complete so the agent loop
+    # latency doesn't interleave with bridge I/O latency.
+    page_names: dict[str, str | None] = {}
+    if render_to_figma:
+        for brief, result in sibling_results:
+            sibling_dump_dir: Path | None = None
+            if dump_scripts:
+                sibling_dump_dir = (
+                    Path(dump_scripts) / result.final_variant_id
+                )
+            page_name = _render_session_to_figma(
+                session_db_path=db_path,
+                project_db_path=project_db or db_path,
+                session_id=result.session_id,
+                final_variant_id=result.final_variant_id,
+                starting_screen_id=starting_screen,
+                dump_scripts=sibling_dump_dir,
+                variant_only=variant_only,
+                labels=labels,
+                brief=brief,
+                bridge_port=bridge_port,
+            )
+            page_names[result.final_variant_id] = page_name
+
+    # Summary block. Sibling sessions share session_id (run_session
+    # resolves it from parent.session_id), so the header lists one
+    # session_id + the parent variant; per-sibling lines list the
+    # leaf variant + brief excerpt + page name (when rendered).
+    shared_session_id = sibling_results[0][1].session_id
+    print(f"session: {shared_session_id}")
+    print(f"  root: {parent_variant_id}")
+    total = len(sibling_results)
+    for idx, (brief, result) in enumerate(sibling_results, start=1):
+        excerpt = (brief[:60] + "...") if len(brief) > 60 else brief
+        page_suffix = ""
+        if render_to_figma:
+            page_name = page_names.get(result.final_variant_id)
+            if page_name:
+                page_suffix = f"  page: {page_name}"
+        print(
+            f"  variant {idx}/{total}: {result.final_variant_id}  "
+            f"brief: \"{excerpt}\"{page_suffix}"
+        )
 
 
 def _run_design_score(db_path: str, *, session_id: str) -> None:
