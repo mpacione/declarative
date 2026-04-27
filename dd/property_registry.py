@@ -54,52 +54,6 @@ _FIGMA_AUTO_LAYOUT = _FIGMA_CONTAINERS
 
 
 @dataclass(frozen=True)
-class FigmaComparatorSpec:
-    """Declarative comparator metadata for the Figma backend's verifier.
-
-    Sprint-2 architectural seam (Codex 5.5 sequencing call): registry
-    declares ``compare_figma=`` per property; ``dd/verify_figma.py``
-    owns the implementation map keyed by ``comparator``. Keeps the
-    registry declarative — no verifier-code imports leak into the
-    property registry.
-
-    Backend-shaped naming: explicit ``compare_figma`` field +
-    ``FigmaComparatorSpec`` class so future backends grow as
-    sibling fields/classes (``compare_html``, ``HTMLComparatorSpec``)
-    rather than a forced refactor of the existing surface.
-
-    Promotability: if/when backend #2 lands and we see two real
-    examples of the comparator-shape, this collapses cleanly to
-    ``compare={"figma": ..., "html": ...}`` without re-shaping
-    callers.
-    """
-
-    comparator: str
-    """Implementation id. ``dd/verify_figma.py`` owns the map
-    ``{id → callable}``. Keeps registry declarative + serializable."""
-
-    walker_key: str
-    """Field name in the rendered tree (per-node dict from
-    ``render_test/walk_ref.js``) where the comparator reads the
-    rendered value."""
-
-    kind: str
-    """``KIND_*`` string from ``dd/boundary.py`` — what error kind
-    this comparator emits when it finds drift."""
-
-    tolerance: float | None = None
-    """For numeric comparators: absolute tolerance for float
-    equality. None means exact equality."""
-
-    skip_when_provenance_absent: bool = True
-    """Mirrors A1.3 (``_is_snapshot_skip``): on Mode-1 INSTANCE,
-    skip comparison if the property isn't in the head's
-    ``_overrides`` side-car (i.e. the IR value is a master-default
-    snapshot, not an actual override). Most visual comparators
-    want this; bounds/structure comparators set False."""
-
-
-@dataclass(frozen=True)
 class FigmaProperty:
     figma_name: str
     db_column: str | None
@@ -116,12 +70,6 @@ class FigmaProperty:
     # this property. Empty/missing entry means "not supported on that backend"
     # (fail closed at the output gate; extraction still fails open).
     capabilities: dict[str, frozenset[str]] = field(default_factory=dict)
-    # Sprint-2: how this property is verified on the Figma backend.
-    # ``None`` means the property has no comparator declared today —
-    # the coverage harness in tests/test_figma_verifier_coverage.py
-    # will require either a spec OR an explicit exemption per the
-    # sprint-2 ladder (commits 2-7 wire each existing/new comparator).
-    compare_figma: FigmaComparatorSpec | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -141,40 +89,20 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     FigmaProperty("fills", "fills", ("fills",), "visual", "json_array",
                   override_type="FILLS", default_value="[]", needs_json=True,
                   emit={"figma": HANDLER},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="paint_list_equality",
-                      walker_key="fills",
-                      kind="fill_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
 
     # === VISUAL: Strokes ===
     FigmaProperty("strokes", "strokes", ("strokes",), "visual", "json_array",
                   needs_json=True,
                   emit={"figma": HANDLER},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="paint_list_equality",
-                      walker_key="strokes",
-                      kind="stroke_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("strokeWeight", "stroke_weight", ("strokeWeight",), "visual", "number",
                   emit={"figma": _UNIFORM},
                   token_binding_path="strokeWeight",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="numeric_equality",
-                      walker_key="strokeWeight",
-                      kind="stroke_weight_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("strokeAlign", "stroke_align", ("strokeAlign",), "visual", "enum",
                   emit={"figma": _UNIFORM},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="enum_equality",
-                      walker_key="strokeAlign",
-                      kind="stroke_align_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("strokeCap", "stroke_cap", ("strokeCap",), "visual", "enum",
                   default_value="NONE",
                   emit={"figma": _UNIFORM},
@@ -186,45 +114,24 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     FigmaProperty("dashPattern", "dash_pattern", ("dashPattern",), "visual", "json_array",
                   needs_json=True,
                   emit={"figma": _UNIFORM},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="list_equality",
-                      walker_key="dashPattern",
-                      kind="dash_pattern_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
 
     # === VISUAL: Effects ===
     FigmaProperty("effects", "effects", ("effects",), "visual", "json_array",
                   needs_json=True,
                   emit={"figma": HANDLER},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="effect_count_equality",
-                      walker_key="effects",
-                      kind="effect_missing",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
 
     # === VISUAL: Appearance ===
     FigmaProperty("opacity", "opacity", ("opacity",), "visual", "number",
                   override_type="OPACITY", default_value=1.0,
                   emit={"figma": _UNIFORM},
                   token_binding_path="opacity",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="numeric_equality",
-                      walker_key="opacity",
-                      kind="opacity_mismatch",
-                      tolerance=0.001,
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("blendMode", "blend_mode", ("blendMode",), "visual", "enum",
                   default_value="PASS_THROUGH",
                   emit={"figma": _UNIFORM},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="enum_equality",
-                      walker_key="blendMode",
-                      kind="blendmode_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     # Deferred: handled in main generation loop (element.visible), not _emit_visual
     FigmaProperty("visible", "visible", ("visible",), "visual", "boolean",
                   override_type="BOOLEAN", default_value=True,
@@ -232,21 +139,11 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
     FigmaProperty("clipsContent", "clips_content", ("clipsContent",), "visual", "boolean",
                   default_value=True, skip_emit_if_default=False,
                   emit={"figma": HANDLER},
-                  capabilities=_figma_caps(_FIGMA_CONTAINERS),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="bool_equality",
-                      walker_key="clipsContent",
-                      kind="clips_content_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_CONTAINERS)),
     FigmaProperty("rotation", "rotation", ("rotation",), "visual", "number_radians",
                   default_value=0,
                   emit={"figma": _UNIFORM},
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="numeric_equality",
-                      walker_key="rotation",
-                      kind="rotation_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("isMask", "is_mask", ("isMask",), "visual", "boolean",
                   default_value=False,
                   emit={"figma": _UNIFORM},
@@ -268,12 +165,7 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
                   "number_or_mixed",
                   emit={"figma": HANDLER},
                   token_binding_path="cornerRadius",
-                  capabilities=_figma_caps(_FIGMA_CORNER_CAPABLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="corner_radius_equality",
-                      walker_key="cornerRadius",
-                      kind="cornerradius_mismatch",
-                  )),
+                  capabilities=_figma_caps(_FIGMA_CORNER_CAPABLE)),
 
     # === LAYOUT ===
     FigmaProperty("layoutMode", "layout_mode", ("layoutMode",), "layout", "enum",
@@ -327,27 +219,12 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
 
     # === SIZE ===
     # Deferred: resize() call in main loop
-    # Codex 5.5 sprint-2 round-4 call: wire bounds via compare_figma
-    # rather than exemption-as-dedicated-path, proving the dispatch
-    # model can target non-generic comparators.
     FigmaProperty("width", "width", ("width",), "size", "number",
                   override_type="WIDTH",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="bounds_equality",
-                      walker_key="width",
-                      kind="bounds_mismatch",
-                      skip_when_provenance_absent=False,
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("height", "height", ("height",), "size", "number",
                   override_type="HEIGHT",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
-                  compare_figma=FigmaComparatorSpec(
-                      comparator="bounds_equality",
-                      walker_key="height",
-                      kind="bounds_mismatch",
-                      skip_when_provenance_absent=False,
-                  )),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
     FigmaProperty("minWidth", "min_width", ("minWidth",), "size", "number",
                   emit={"figma": _UNIFORM},
                   capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE)),
