@@ -1,0 +1,1397 @@
+{
+  "total": 44,
+  "is_parity_true": 0,
+  "is_structural_parity_true": 8,
+  "is_parity_true_clean": 0,
+  "is_parity_false": 44,
+  "generate_failed": 0,
+  "walk_failed": 0,
+  "retried": 0,
+  "retried_recovered": 0,
+  "error_kinds": {
+    "layout_sizing_v_mismatch": 60,
+    "layout_sizing_h_mismatch": 59
+  },
+  "screens_with_runtime_errors": 33,
+  "total_runtime_errors": 588,
+  "runtime_error_kinds": {
+    "text_set_failed": 528,
+    "font_load_failed": 60
+  },
+  "runtime_error_categories": {
+    "text_op_failed": 528,
+    "font_health": 60
+  },
+  "walk_timed_out_count": 0,
+  "walk_failure_classes": {},
+  "walk_elapsed_ms_p50": 805,
+  "walk_elapsed_ms_p95": 2409,
+  "walk_elapsed_ms_max": 3605,
+  "per_screen": [
+    {
+      "screen_id": 1,
+      "name": "HGB - Customer - Complete Info - Desktop",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.95,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 40,
+      "rendered_node_count": 40,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 1392,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 2,
+      "name": "HGB - Customer - Complete Info - Tablet",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9444444444444444,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 36,
+      "rendered_node_count": 36,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 1232,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 3,
+      "name": "HGB - Customer - Complete Info - Mobile",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.975,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 80,
+      "rendered_node_count": 80,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 1116,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 4,
+      "name": "HGB - Customer - Provide Info - Detail",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9120879120879121,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 8,
+      "ir_node_count": 91,
+      "rendered_node_count": 91,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 862,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 5,
+      "name": "HGB - Customer - Provide Info - Detail - Hover",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9148936170212766,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 8,
+      "ir_node_count": 94,
+      "rendered_node_count": 94,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 754,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 6,
+      "name": "HGB - Customer - Provide Info - Detail - Text",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9139784946236559,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 8,
+      "ir_node_count": 93,
+      "rendered_node_count": 93,
+      "runtime_error_count": 2,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 1
+      },
+      "runtime_error_categories": {
+        "font_health": 1,
+        "text_op_failed": 1
+      },
+      "elapsed_ms": 736,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 7,
+      "name": "HGB - Customer - Provide Info - Detail - Dropdown",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9361702127659575,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 6,
+      "ir_node_count": 94,
+      "rendered_node_count": 94,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 752,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 8,
+      "name": "HGB - Customer - Provide Info - Detail - Date",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9354838709677419,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 6,
+      "ir_node_count": 93,
+      "rendered_node_count": 93,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 805,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 9,
+      "name": "HGB - Customer - Provide Info - Detail - Complete",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9130434782608695,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 8,
+      "ir_node_count": 92,
+      "rendered_node_count": 92,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 922,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 10,
+      "name": "HGB - Travel Request - Send to Client",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9607843137254902,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 51,
+      "rendered_node_count": 51,
+      "runtime_error_count": 13,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 11
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 11
+      },
+      "elapsed_ms": 638,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 11,
+      "name": "HGB - Travel Request - Price Details",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9210526315789473,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 6,
+      "ir_node_count": 76,
+      "rendered_node_count": 76,
+      "runtime_error_count": 32,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 30
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 30
+      },
+      "elapsed_ms": 761,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 12,
+      "name": "HGB - Travel Request - Change Traveler",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.8823529411764706,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 6,
+      "ir_node_count": 51,
+      "rendered_node_count": 51,
+      "runtime_error_count": 19,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 17
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 17
+      },
+      "elapsed_ms": 706,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 13,
+      "name": "HGB - Travel Request - Traveler Search",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.8823529411764706,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 6,
+      "ir_node_count": 51,
+      "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 18
+      },
+      "elapsed_ms": 850,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 14,
+      "name": "HGB - Travel Request - Reject",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9512195121951219,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 41,
+      "rendered_node_count": 41,
+      "runtime_error_count": 11,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 9
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 9
+      },
+      "elapsed_ms": 718,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 15,
+      "name": "HGB - Travel Request - Reject - Dropdown",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 42,
+      "rendered_node_count": 42,
+      "runtime_error_count": 15,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 13
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 13
+      },
+      "elapsed_ms": 642,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 16,
+      "name": "HGB - Travel Request - Reject - Reason",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9512195121951219,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 41,
+      "rendered_node_count": 41,
+      "runtime_error_count": 11,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 9
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 9
+      },
+      "elapsed_ms": 610,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 17,
+      "name": "HGB - Transactions - Unselected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9642857142857143,
+      "error_kinds": [
+        "layout_sizing_h_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 28,
+      "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 3
+      },
+      "elapsed_ms": 515,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 18,
+      "name": "HGB - Transactions - Create Request",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9607843137254902,
+      "error_kinds": [
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 51,
+      "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 18
+      },
+      "elapsed_ms": 1147,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 19,
+      "name": "HGB - Transactions - Create Request",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9607843137254902,
+      "error_kinds": [
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 51,
+      "rendered_node_count": 51,
+      "runtime_error_count": 20,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 18
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 18
+      },
+      "elapsed_ms": 1140,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 20,
+      "name": "HGB - Transactions - Selected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9642857142857143,
+      "error_kinds": [
+        "layout_sizing_h_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 28,
+      "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 3
+      },
+      "elapsed_ms": 545,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 21,
+      "name": "HGB - Transactions - Selected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9642857142857143,
+      "error_kinds": [
+        "layout_sizing_h_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 28,
+      "rendered_node_count": 28,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 3
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 3
+      },
+      "elapsed_ms": 501,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 22,
+      "name": "HGB - Login - Splash",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 12,
+      "rendered_node_count": 12,
+      "runtime_error_count": 2,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 1
+      },
+      "runtime_error_categories": {
+        "font_health": 1,
+        "text_op_failed": 1
+      },
+      "elapsed_ms": 224,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 23,
+      "name": "HGB - Login - Enter Credentials",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9444444444444444,
+      "error_kinds": [
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 18,
+      "rendered_node_count": 18,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 4
+      },
+      "runtime_error_categories": {
+        "font_health": 1,
+        "text_op_failed": 4
+      },
+      "elapsed_ms": 325,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 24,
+      "name": "HGB - Login - Filled Credentials",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9444444444444444,
+      "error_kinds": [
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 18,
+      "rendered_node_count": 18,
+      "runtime_error_count": 5,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 4
+      },
+      "runtime_error_categories": {
+        "font_health": 1,
+        "text_op_failed": 4
+      },
+      "elapsed_ms": 336,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 25,
+      "name": "HGB - Login - Invalid Credentials",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9473684210526315,
+      "error_kinds": [
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 19,
+      "rendered_node_count": 19,
+      "runtime_error_count": 6,
+      "runtime_error_kinds": {
+        "font_load_failed": 1,
+        "text_set_failed": 5
+      },
+      "runtime_error_categories": {
+        "font_health": 1,
+        "text_op_failed": 5
+      },
+      "elapsed_ms": 351,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 26,
+      "name": "HGB - Alternative Hotels - Select Room",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9661016949152542,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 59,
+      "rendered_node_count": 59,
+      "runtime_error_count": 15,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 13
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 13
+      },
+      "elapsed_ms": 652,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 27,
+      "name": "HGB - Alternative Flights - Two Way Horiz Scroll",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 79,
+      "rendered_node_count": 79,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 7
+      },
+      "elapsed_ms": 2248,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 28,
+      "name": "HGB - Alternative Flights - Muliple Options - Unselected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 58,
+      "rendered_node_count": 58,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 7
+      },
+      "elapsed_ms": 1613,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 29,
+      "name": "HGB - Alternative Flights - Unselected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 57,
+      "rendered_node_count": 57,
+      "runtime_error_count": 9,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 7
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 7
+      },
+      "elapsed_ms": 1687,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 30,
+      "name": "HGB - Alternative Flights - Filter",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9876543209876543,
+      "error_kinds": [
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 1,
+      "ir_node_count": 81,
+      "rendered_node_count": 81,
+      "runtime_error_count": 42,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 40
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 40
+      },
+      "elapsed_ms": 2818,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 31,
+      "name": "HGB - Alternative Flights - Selected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 57,
+      "rendered_node_count": 57,
+      "runtime_error_count": 10,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 8
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 8
+      },
+      "elapsed_ms": 1711,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 32,
+      "name": "HGB - Alternative Flights - Muliple Options - Selected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 60,
+      "rendered_node_count": 60,
+      "runtime_error_count": 10,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 8
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 8
+      },
+      "elapsed_ms": 1725,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 33,
+      "name": "HGB - Customer - Provide Info - Desktop 2",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.95,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 40,
+      "rendered_node_count": 40,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 1268,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 34,
+      "name": "HGB - Customer - Provide Info - Tablet",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9444444444444444,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 36,
+      "rendered_node_count": 36,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 1140,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 35,
+      "name": "HGB - Customer - Provide Info - Mobile",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.978494623655914,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 93,
+      "rendered_node_count": 93,
+      "runtime_error_count": 0,
+      "runtime_error_kinds": {},
+      "runtime_error_categories": {},
+      "elapsed_ms": 825,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 36,
+      "name": "HGB - Alternative Hotels - Unselected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9555555555555556,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 4,
+      "ir_node_count": 90,
+      "rendered_node_count": 90,
+      "runtime_error_count": 51,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 49
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 49
+      },
+      "elapsed_ms": 2266,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 37,
+      "name": "HGB - Alternative Hotels - Selected",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9555555555555556,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 4,
+      "ir_node_count": 90,
+      "rendered_node_count": 90,
+      "runtime_error_count": 51,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 49
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 49
+      },
+      "elapsed_ms": 2315,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 38,
+      "name": "HGB - Alternative Hotels - Clear Filter",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9555555555555556,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 4,
+      "ir_node_count": 90,
+      "rendered_node_count": 90,
+      "runtime_error_count": 52,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 50
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 50
+      },
+      "elapsed_ms": 2409,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 39,
+      "name": "HGB - Alternative Hotels - Filter",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9553571428571429,
+      "error_kinds": [
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 5,
+      "ir_node_count": 112,
+      "rendered_node_count": 112,
+      "runtime_error_count": 77,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 75
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 75
+      },
+      "elapsed_ms": 3605,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 40,
+      "name": "HGB - Alternative Hotels - Photo",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 1.0,
+      "error_kinds": [],
+      "error_count": 0,
+      "ir_node_count": 16,
+      "rendered_node_count": 16,
+      "runtime_error_count": 1,
+      "runtime_error_kinds": {
+        "font_load_failed": 1
+      },
+      "runtime_error_categories": {
+        "font_health": 1
+      },
+      "elapsed_ms": 345,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": true,
+      "attempt": 1
+    },
+    {
+      "screen_id": 41,
+      "name": "HGB - Travel Request",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9411764705882353,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 34,
+      "rendered_node_count": 34,
+      "runtime_error_count": 8,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 6
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 6
+      },
+      "elapsed_ms": 504,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 42,
+      "name": "HGB - Travel Request - Missing Info Added",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9583333333333334,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 48,
+      "rendered_node_count": 48,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 14
+      },
+      "elapsed_ms": 598,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 43,
+      "name": "HGB - Travel Request - Select Alternate",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.9655172413793104,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 2,
+      "ir_node_count": 58,
+      "rendered_node_count": 58,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 14
+      },
+      "elapsed_ms": 651,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    },
+    {
+      "screen_id": 44,
+      "name": "HGB - Travel Request - Multiple Options",
+      "stage": "verify",
+      "generate_ok": true,
+      "walk_ok": true,
+      "verify_ok": true,
+      "is_parity": false,
+      "parity_ratio": 0.95,
+      "error_kinds": [
+        "layout_sizing_h_mismatch",
+        "layout_sizing_h_mismatch",
+        "layout_sizing_v_mismatch"
+      ],
+      "error_count": 3,
+      "ir_node_count": 60,
+      "rendered_node_count": 60,
+      "runtime_error_count": 16,
+      "runtime_error_kinds": {
+        "font_load_failed": 2,
+        "text_set_failed": 14
+      },
+      "runtime_error_categories": {
+        "font_health": 2,
+        "text_op_failed": 14
+      },
+      "elapsed_ms": 662,
+      "walk_timed_out": false,
+      "walk_failure_class": null,
+      "failure": null,
+      "is_structural_parity": false,
+      "attempt": 1
+    }
+  ],
+  "elapsed_s": 63.4,
+  "db_path": "/private/tmp/hgb-fresh-20260427.db"
+}
