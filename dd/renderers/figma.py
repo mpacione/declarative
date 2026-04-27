@@ -867,10 +867,21 @@ _CORNER_MAP = {
 def _emit_corner_radius_figma(
     var: str, eid: str, value: Any, tokens: dict[str, Any],
 ) -> tuple[list[str], list[tuple[str, str, str]]]:
-    """Emit cornerRadius — uniform (number) or per-corner (dict)."""
+    """Emit cornerRadius — uniform (number) or per-corner (dict).
+
+    Surfaced by A5 verifier comparator on the post-sprint Nouns
+    sweep: 26 cornerradius_mismatch errors on FRAME nodes where
+    the IR carried e.g. 10.927369... and the rendered value was
+    10. Pre-fix the renderer truncated to int via ``int(value)``,
+    losing the fractional component. This is a real renderer
+    fidelity bug (sub-pixel cornerRadius is a real Figma value;
+    Figma's Plugin API accepts floats). Emit the value as-is so
+    floats round-trip. Per-corner dict path was already correct
+    (no int cast on the individual corners).
+    """
     lines: list[str] = []
     if isinstance(value, (int, float)):
-        lines.append(f"{var}.cornerRadius = {int(value)};")
+        lines.append(f"{var}.cornerRadius = {value};")
     elif isinstance(value, dict):
         for corner_key, figma_prop in _CORNER_MAP.items():
             lines.append(f"{var}.{figma_prop} = {value.get(corner_key, 0)};")

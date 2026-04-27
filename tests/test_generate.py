@@ -5895,3 +5895,47 @@ class TestEmitTextPropsPerOpGuards:
                 f"A2.3 contract: {prop!r} must be in its own try/catch; "
                 f"window before idx: {window!r}"
             )
+
+
+class TestCornerRadiusFloatPrecision:
+    """A5 surfaced (and Backlog #4 sprint resolved) a renderer bug:
+    ``_emit_corner_radius_figma`` was truncating uniform cornerRadius
+    via ``int(value)``, losing fractional component. Sub-pixel
+    cornerRadius IS a real Figma value (e.g. 10.927... px on
+    auto-layout-derived corners); the Plugin API accepts floats.
+
+    Pre-fix: 26 cornerradius_mismatch errors on the post-sprint
+    Nouns sweep, all the same shape (IR=10.927..., rendered=10).
+    Post-fix: float emission round-trips.
+    """
+
+    def test_uniform_corner_radius_preserves_float(self):
+        from dd.renderers.figma import _emit_corner_radius_figma
+        lines, _ = _emit_corner_radius_figma(
+            "v", "e", 10.927369117736816, {},
+        )
+        assert len(lines) == 1
+        # The float must NOT be truncated to int.
+        assert "10.927" in lines[0], (
+            "A5 cornerRadius fidelity: float must round-trip; "
+            f"got: {lines[0]!r}"
+        )
+        # And specifically, no `int(...)` truncation.
+        assert "= 10;" not in lines[0]
+
+    def test_uniform_corner_radius_integer_unchanged(self):
+        """Regression: integer values still emit cleanly."""
+        from dd.renderers.figma import _emit_corner_radius_figma
+        lines, _ = _emit_corner_radius_figma("v", "e", 8, {})
+        assert lines == ["v.cornerRadius = 8;"]
+
+    def test_per_corner_dict_unchanged(self):
+        """Regression: the dict path was already correct (no int
+        cast on the individual corners). Per-corner keys are
+        the short form ``tl/tr/bl/br`` per ``_CORNER_MAP``."""
+        from dd.renderers.figma import _emit_corner_radius_figma
+        value = {"tl": 4.5, "tr": 8, "bl": 4.5, "br": 8}
+        lines, _ = _emit_corner_radius_figma("v", "e", value, {})
+        joined = "\n".join(lines)
+        assert "topLeftRadius = 4.5" in joined
+        assert "topRightRadius = 8" in joined
