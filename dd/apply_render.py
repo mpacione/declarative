@@ -277,11 +277,18 @@ def rebuild_maps_after_edits(
 
     Algorithm:
 
-    1. If no edits or the applied doc is the original doc (``apply_edits``
-       short-circuits on an empty stmt list), return the old maps as-is.
-    2. Walk both trees in BFS. Pair up nodes by position — the AST
-       shape is stable across a swap (same children count, same
-       positions); only the objects along the edit path are new.
+    1. If the applied doc is the same Python object as the original
+       (``apply_edits`` short-circuits on an empty stmt list and returns
+       the input unchanged), return the old maps as-is — they're already
+       keyed on the right node identities.
+    2. Otherwise, walk applied + original by eid-path matching. The
+       walker covers two cases that both invalidate Python ``id()``-keyed
+       maps: (a) ``edits`` is non-empty and ``apply_edits`` produced a
+       new spliced AST; (b) ``edits=[]`` but ``applied_doc`` is a
+       separately-parsed clone of ``original_doc`` (the
+       ``_render_session_to_figma`` flow that re-parses a variant's
+       gzipped ``markup_blob`` — see Path 2 in
+       :func:`dd.cli._render_session_to_figma`).
     3. For each matched pair:
 
        - Head equal → carry forward ``old_nid_map`` /
@@ -302,7 +309,14 @@ def rebuild_maps_after_edits(
     will fall to the Mode-2 cheap-emission path, which is visible
     enough to catch in review but not catastrophic.
     """
-    if not edits or applied_doc is original_doc:
+    if applied_doc is original_doc:
+        # Same Python objects in both trees → maps are already keyed on
+        # the right ``id()`` values. Note: ``edits=[]`` alone is NOT
+        # sufficient — ``_render_session_to_figma`` parses the variant's
+        # ``markup_blob`` back to a fresh AST whose Python ``id()`` does
+        # not match ``original_doc`` even when the variant contributed
+        # no EDIT primitives (NAME / DRILL / CLIMB / REBRIEF chains).
+        # The path-walker below handles that case correctly.
         return AppliedRenderMaps(
             nid_map=dict(old_nid_map),
             spec_key_map=dict(old_spec_key_map),

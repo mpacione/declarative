@@ -33,7 +33,7 @@ from dd.apply_render import (
     render_applied_doc,
     walk_rendered_via_bridge,
 )
-from dd.markup_l3 import apply_edits, parse_l3
+from dd.markup_l3 import apply_edits, emit_l3, parse_l3
 
 
 def _parse_fixture() -> tuple[object, object, object, object]:
@@ -109,6 +109,73 @@ class TestRebuildMapsAfterEdits:
         assert out.spec_key_map == spec_key_map
         assert out.original_name_map == original_name_map
         assert out.db_visuals_patch == {}
+
+    def test_parsed_clone_with_no_edits_rekeys_maps_to_clone_ids(self) -> None:
+        """Regression: empty-edits + parse-back clone of original_doc.
+
+        When ``_render_session_to_figma`` loads a session variant with
+        only NAME / DRILL / CLIMB / REBRIEF in its chain (no EDIT
+        primitives), the cumulative edit list is empty AND
+        ``applied_doc`` is a fresh ``parse_l3(...)`` of the variant's
+        gzipped ``markup_blob`` — distinct Python objects from the
+        ``original_doc`` produced by ``_compress_to_l3_impl``.
+
+        Pre-fix, ``rebuild_maps_after_edits`` short-circuited on
+        ``not edits`` and returned the old nid_map keyed on
+        ``original_doc`` node ids. The renderer then walked
+        ``applied_doc`` calling ``nid_map.get(id(node))`` — every
+        lookup missed, every comp-ref hit ``mode1_dispatch_failed``,
+        every Mode-2 node had empty ``raw_visual``: the variant
+        rendered as empty grey rectangles.
+
+        Post-fix, the path-walker always runs (unless
+        ``applied_doc is original_doc``), eid-path-matches each clone
+        node to its original counterpart, and carries the old maps
+        forward onto the clone's ids."""
+        doc, screen, frame, button = _parse_fixture()
+        conn = sqlite3.connect(":memory:")
+        _setup_ckr(conn, [("k-lg", "fig-lg", "button/primary/lg")])
+
+        nid_map = {id(screen): 1001, id(frame): 1002, id(button): 1003}
+        spec_key_map = {
+            id(screen): "screen-1",
+            id(frame): "frame-1",
+            id(button): "button-1",
+        }
+        original_name_map = {
+            id(screen): "Screen",
+            id(frame): "Frame",
+            id(button): "Button/Primary/Lg",
+        }
+
+        clone = parse_l3(emit_l3(doc))
+        c_screen = clone.top_level[0]
+        c_frame = c_screen.block.statements[0]
+        c_button = c_frame.block.statements[0]
+
+        assert c_screen is not screen
+        assert id(c_screen) != id(screen)
+
+        out = rebuild_maps_after_edits(
+            applied_doc=clone,
+            original_doc=doc,
+            edits=[],
+            old_nid_map=nid_map,
+            old_spec_key_map=spec_key_map,
+            old_original_name_map=original_name_map,
+            conn=conn,
+        )
+
+        assert out.nid_map[id(c_screen)] == 1001
+        assert out.nid_map[id(c_frame)] == 1002
+        assert out.nid_map[id(c_button)] == 1003
+        assert id(screen) not in out.nid_map
+        assert id(frame) not in out.nid_map
+        assert id(button) not in out.nid_map
+
+        assert out.spec_key_map[id(c_screen)] == "screen-1"
+        assert out.spec_key_map[id(c_button)] == "button-1"
+        assert out.original_name_map[id(c_button)] == "Button/Primary/Lg"
 
     def test_swap_carries_sibling_path_maps_forward(self) -> None:
         """After a swap, the path from root to target has new ``id()``
