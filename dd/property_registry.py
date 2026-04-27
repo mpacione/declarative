@@ -15,6 +15,7 @@ Each property maps:
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +23,61 @@ from typing import Any
 # Sentinel: property is emitted by a handler function registered in the renderer.
 # The renderer's _FIGMA_HANDLERS dict maps figma_name → callable.
 HANDLER = object()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 2 — Station disposition vocabulary
+# ---------------------------------------------------------------------------
+# Per docs/plan-sprint-2-station-parity.md §4 (Codex 5.5 round-5
+# locked decision): every figma-emittable property has a known
+# disposition at every pipeline station. The registry is the
+# single source of truth; generated artifacts (walker manifest)
+# derive from it.
+#
+# C4 ships only the schema + safe defaults; C5 wires real values
+# per property; C6+ derives the walker manifest; C10 wires
+# verifier dispatch.
+
+class StationDisposition(enum.Enum):
+    # ===  Station 2 — Renderer (dd/renderers/figma.py) ===
+    EMIT_HANDLER = "emit_handler"
+    """Custom Python emit function registered in _FIGMA_HANDLERS."""
+
+    EMIT_UNIFORM = "emit_uniform"
+    """Emitted via the _UNIFORM template ``{var}.{figma_name} = {value};``."""
+
+    EMIT_DEFERRED = "emit_deferred"
+    """Capability gate or context (e.g. parent auto-layout) skips emission."""
+
+    NOT_EMITTABLE = "not_emittable"
+    """Capability table excludes this property from all node types."""
+
+    # ===  Station 3 — Walker (render_test/walk_ref.js) ===
+    CAPTURED = "captured"
+    """Walker reads this property from Figma DOM and includes in walk output."""
+
+    NOT_CAPTURED_SUPPORTED = "not_captured_supported"
+    """Walker COULD read but doesn't today (Sprint 3+ work item)."""
+
+    NOT_CAPTURED_UNSUPPORTED = "not_captured_unsupported"
+    """Figma Plugin API doesn't expose this property; walker cannot capture."""
+
+    DEDICATED_PATH = "dedicated_path"
+    """Captured via top-level rendered-tree fields (e.g. width/height
+    at entry root), not via figma_name lookup. Equivalent to
+    captured for verifier purposes but routes differently."""
+
+    # ===  Station 4 — Verifier (dd/verify_figma.py) ===
+    COMPARE_DISPATCH = "compare_dispatch"
+    """Compared via the registry's compare_figma metadata (Sprint-2 dispatch)."""
+
+    COMPARE_DEDICATED = "compare_dedicated"
+    """Compared via a dedicated KIND_* path (e.g. KIND_BOUNDS_MISMATCH,
+    KIND_MASK_MISMATCH). Equivalent to compared for ship gate purposes."""
+
+    EXEMPT_REASON = "exempt_reason"
+    """Documented exemption with reason code; verifier intentionally
+    skips comparison. Reason captured separately in test exemption table."""
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +126,14 @@ class FigmaProperty:
     # this property. Empty/missing entry means "not supported on that backend"
     # (fail closed at the output gate; extraction still fails open).
     capabilities: dict[str, frozenset[str]] = field(default_factory=dict)
+    # Sprint 2 — per-station disposition (see StationDisposition above
+    # and docs/plan-sprint-2-station-parity.md). C4 sets safe defaults
+    # (NOT_EMITTABLE / NOT_CAPTURED_SUPPORTED / EXEMPT_REASON) so this
+    # commit is no-op for every existing property; C5 inventories real
+    # values per property.
+    station_2: StationDisposition = StationDisposition.NOT_EMITTABLE
+    station_3: StationDisposition = StationDisposition.NOT_CAPTURED_SUPPORTED
+    station_4: StationDisposition = StationDisposition.EXEMPT_REASON
 
 
 # ---------------------------------------------------------------------------
