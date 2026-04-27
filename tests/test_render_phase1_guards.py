@@ -182,3 +182,140 @@ class TestPhase1PropertyWriteGuards:
             "Phase 1 guards are missing the eid field — proposer can't "
             "attribute the failure to the source node"
         )
+
+
+class TestPhase1HeadOverlayBeatsRawVisual:
+    """When an LLM EDIT writes ``set @<eid> fill=<hex>`` against a node
+    that ALSO has a DB row (i.e. ``raw_visual`` is non-empty), the head
+    fill must reach the rendered ``<var>.fills = ...`` emission rather
+    than being silently discarded.
+
+    Regression — before fix, ``render_figma_ast`` Phase 1 set
+    ``visual = build_visual_from_db(raw_visual)`` and then ran the
+    overlay block ``if ir_fill_ref and not visual.get("fills")`` —
+    which only fires for SYNTHETIC IR elements (where ``visual`` was
+    empty). For DB-backed nodes, the head-supplied fill on
+    ``element["visual"]["fills"]`` was thrown away and the DB's
+    original fill was emitted unchanged.
+
+    Empirically traced from the synth-gen demo: variant 3 (Dark
+    Playful) emitted ``set @frame-359 fill="#1A1A2E"`` etc. against
+    DB-backed Dank screen nodes. The stored ``markup_blob`` carried
+    the dark hex, but the rendered Figma frame retained Dank's
+    ``#F6F6F6`` original. ``ast_head_to_element`` correctly produced
+    ``element["visual"]["fills"] = [{"type":"solid","color":"#1A1A2E"}]``;
+    the renderer ignored it.
+
+    Fix: after ``visual = build_visual_from_db(raw_visual)``, overlay
+    head-supplied visual keys (``fills`` / ``strokes`` /
+    ``cornerRadius`` / ``opacity``) on top — using
+    ``ast_head_to_element`` directly so we know we're getting only
+    head-mentioned keys, not spec/db pollution. Replace whole, not
+    merge — Figma paint stacks are ordered.
+    """
+
+    def _render_with_db_fill(
+        self, *, head_fill: str | None, db_fill_hex: str,
+    ) -> str:
+        """Render a single-frame doc where the frame has a DB row with
+        ``db_fill_hex`` and (optionally) a head-overlaid ``head_fill``.
+        Returns the script."""
+        if head_fill is not None:
+            src = (
+                f'screen #screen-1 {{\n'
+                f'  frame #frame-1 fill={head_fill} $ext.nid=42\n'
+                f'}}'
+            )
+        else:
+            src = (
+                'screen #screen-1 {\n'
+                '  frame #frame-1 $ext.nid=42\n'
+                '}'
+            )
+        doc = parse_l3(src)
+
+        spec_key_map = {
+            id(n): (n.head.eid or "") for n in _iter_nodes(doc.top_level)
+        }
+        original_name_map = dict(spec_key_map)
+        # Build nid_map: only the inner frame has $ext.nid=42; screen
+        # has no DB counterpart in this fixture.
+        nid_map: dict[int, int] = {}
+        for n in _iter_nodes(doc.top_level):
+            if n.head.eid == "frame-1":
+                nid_map[id(n)] = 42
+
+        # DB row: a SOLID fill in the format build_visual_from_db
+        # consumes (raw_visual carries fills as JSON strings or list).
+        # Match the shape query_screen_visuals produces.
+        db_visuals = {
+            42: {
+                "fills": (
+                    f'[{{"type":"SOLID","color":'
+                    f'{{"r":1,"g":1,"b":1}}}}]'
+                ),
+                "node_type": "FRAME",
+            },
+        }
+
+        # Wire spec_elements minimally so the Phase 1 element-branch
+        # at line 1024 fires (without spec_elements, render_figma
+        # falls to the cheap-emission path that doesn't read
+        # raw_visual at all).
+        spec_elements = {
+            "screen-1": {"_walk_idx": 0},
+            "frame-1": {"_walk_idx": 1},
+        }
+
+        script, _refs = render_figma(
+            doc, conn=None, nid_map=nid_map,
+            fonts=[("Inter", "Regular")],
+            spec_key_map=spec_key_map,
+            original_name_map=original_name_map,
+            db_visuals=db_visuals,
+            _spec_elements=spec_elements,
+        )
+        return script
+
+    def test_head_fill_beats_db_fill(self) -> None:
+        """Head ``fill=#1A1A2E`` must override the DB's white fill.
+
+        Renderer converts hex → RGB floats: #1A1A2E →
+        r:0.102, g:0.102, b:0.1804.
+        """
+        script = self._render_with_db_fill(
+            head_fill="#1A1A2E", db_fill_hex="white",
+        )
+        # Fill must NOT be the DB's white {r:1, g:1, b:1}; must carry
+        # head's #1A1A2E (as RGB ~ 0.102, 0.1804) or the literal hex.
+        fill_lines = "\n".join(
+            line for line in script.split("\n")
+            if " n1.fills" in line  # the frame node, not screen
+        )
+        assert "0.1804" in fill_lines or "1A1A2E" in fill_lines.upper(), (
+            "Head-supplied fill `#1A1A2E` did not reach n1.fills "
+            "emission. Saw:\n" + fill_lines[:500]
+        )
+        # DB white {r:1,g:1,b:1} on n1 would be the bug — assert absent.
+        assert "r:1.0,g:1.0,b:1.0" not in fill_lines.replace(" ", ""), (
+            "DB white fill leaked through head overlay — the EDIT was "
+            "dropped:\n" + fill_lines[:500]
+        )
+
+    def test_no_head_fill_keeps_db_fill(self) -> None:
+        """When the head supplies no fill, the DB's fill is preserved
+        — head overlay must not drop existing DB fills."""
+        script = self._render_with_db_fill(
+            head_fill=None, db_fill_hex="white",
+        )
+        # White DB fill in script. Either as r:1.0,g:1.0,b:1.0 or hex.
+        assert ("r:1.0,g:1.0,b:1.0" in script.replace(" ", "")
+                or "FFFFFF" in script.upper()), (
+            "DB fill was lost when head supplied no fill — head "
+            "overlay accidentally clobbered the absent-key path.\n"
+            "Excerpt of fills assignments:\n"
+            + "\n".join(
+                line for line in script.split("\n")
+                if ".fills = " in line and "createPage" not in line
+            )[:1000]
+        )
