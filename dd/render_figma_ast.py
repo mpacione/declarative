@@ -1034,31 +1034,6 @@ def _emit_phase1(
                 visual = build_visual_from_db(raw_visual)
             else:
                 visual = dict(element.get("visual") or {})
-
-            # Head-overlay precedence: when the AST head supplies
-            # visual props (via an EDIT — e.g. `set @eid fill=#1A1A2E`),
-            # those values must beat both DB visuals (raw_visual above)
-            # and the sparse spec_elements visual. `ast_head_to_element`
-            # returns ONLY head-mentioned keys, so this overlay never
-            # clobbers absent keys. Codex 5.5 (2026-04-27 high
-            # reasoning): replace whole — Figma paint stacks are
-            # ordered, merging would corrupt them. Originally surfaced
-            # in the synth-gen demo where variant 3's
-            # `set @frame-359 fill="#1A1A2E"` was silently dropped
-            # because raw_visual rebuilt from DB clobbered the head
-            # overlay; verified by markup_blob containing the dark hex
-            # but the rendered Figma frame retaining Dank's original
-            # white. See test_render_phase1_guards.py
-            # `TestPhase1HeadOverlayBeatsRawVisual`.
-            from dd.ast_to_element import ast_head_to_element
-            head_only = ast_head_to_element(node).get("visual") or {}
-            for key in (
-                "fills", "strokes", "strokeWeight",
-                "cornerRadius", "opacity",
-            ):
-                if key in head_only:
-                    visual[key] = head_only[key]
-
             layout = element.get("layout") or {}
             style = element.get("style") or {}
             spec_key_for_emit = spec_key_map.get(id(node), eid)
