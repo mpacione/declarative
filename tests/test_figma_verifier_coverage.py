@@ -129,15 +129,23 @@ class TestFigmaPropertyCompareField:
     commit is no-op for every existing property."""
 
     def test_existing_property_has_compare_figma_field(self):
-        """Pick any registered property; the new attribute should
-        exist and default to None until commit 2 wires the
-        existing comparators."""
+        """Pick a not-yet-wired property; the new attribute should
+        exist on every FigmaProperty.
+
+        After C2: ``fills`` etc. have spec wired. C5/C6 will wire
+        more; deferred properties remain None. Use ``cornerSmoothing``
+        as the no-op example (deferred — no comparator planned in
+        this sprint)."""
         from dd.property_registry import PROPERTIES
 
-        prop = next(p for p in PROPERTIES if p.figma_name == "fills")
         # Field exists on every property
-        assert hasattr(prop, "compare_figma")
-        # Default: None (this is the no-op commit)
+        for prop in PROPERTIES:
+            assert hasattr(prop, "compare_figma"), (
+                f"{prop.figma_name} missing compare_figma attribute"
+            )
+
+        # Default for unwired property: None
+        prop = next(p for p in PROPERTIES if p.figma_name == "cornerSmoothing")
         assert prop.compare_figma is None
 
     def test_compare_figma_can_be_set_to_spec(self):
@@ -172,3 +180,87 @@ class TestFigmaPropertyCompareField:
             category="misc",
         )
         assert prop.compare_figma is None
+
+
+# ---------------------------------------------------------------------
+# C2 — annotate existing comparators (no behavior change)
+# ---------------------------------------------------------------------
+
+
+class TestExistingComparatorsRegistered:
+    """Sprint-1 comparators are already implemented in
+    ``dd/verify_figma.py`` — Sprint-2 C2 declares them in the
+    registry so future C3/C7 commits can validate / dispatch from
+    the registry. This commit changes no runtime behavior; it only
+    pins the metadata-vs-impl correspondence as a regression
+    guard."""
+
+    @pytest.fixture
+    def by_name(self):
+        from dd.property_registry import PROPERTIES
+
+        return {p.figma_name: p for p in PROPERTIES}
+
+    @pytest.mark.parametrize(
+        "figma_name, comparator, walker_key, kind",
+        [
+            ("fills", "paint_list_equality", "fills", "fill_mismatch"),
+            ("strokes", "paint_list_equality", "strokes", "stroke_mismatch"),
+            ("strokeWeight", "numeric_equality", "strokeWeight",
+             "stroke_weight_mismatch"),
+            ("strokeAlign", "enum_equality", "strokeAlign",
+             "stroke_align_mismatch"),
+            ("dashPattern", "list_equality", "dashPattern",
+             "dash_pattern_mismatch"),
+            ("clipsContent", "bool_equality", "clipsContent",
+             "clips_content_mismatch"),
+            ("opacity", "numeric_equality", "opacity",
+             "opacity_mismatch"),
+            ("blendMode", "enum_equality", "blendMode",
+             "blendmode_mismatch"),
+            ("cornerRadius", "corner_radius_equality", "cornerRadius",
+             "cornerradius_mismatch"),
+            ("rotation", "numeric_equality", "rotation",
+             "rotation_mismatch"),
+            ("effects", "effect_count_equality", "effects",
+             "effect_missing"),
+        ],
+    )
+    def test_existing_comparator_declared(
+        self, by_name, figma_name, comparator, walker_key, kind,
+    ):
+        """Each property already compared by FigmaRenderVerifier
+        must declare its comparator metadata."""
+        prop = by_name.get(figma_name)
+        assert prop is not None, f"property {figma_name!r} not in registry"
+        assert prop.compare_figma is not None, (
+            f"{figma_name}: compare_figma is None — "
+            f"sprint-2 C2 should have wired it"
+        )
+        assert prop.compare_figma.comparator == comparator, (
+            f"{figma_name}: comparator id mismatch"
+        )
+        assert prop.compare_figma.walker_key == walker_key, (
+            f"{figma_name}: walker_key mismatch"
+        )
+        assert prop.compare_figma.kind == kind, (
+            f"{figma_name}: kind mismatch"
+        )
+
+    def test_opacity_has_tolerance(self, by_name):
+        """Numeric float comparison needs tolerance — verifier
+        currently uses 0.001 for opacity per
+        ``_OPACITY_FLOAT_TOLERANCE``."""
+        prop = by_name["opacity"]
+        assert prop.compare_figma.tolerance == pytest.approx(0.001)
+
+    def test_provenance_gated_comparators_default_to_skip(self, by_name):
+        """Per A1.3: visual props on Mode-1 INSTANCE skip when
+        not in _overrides side-car. Default behavior."""
+        # Visual props that A1.3 gates
+        for figma_name in ("fills", "strokes", "opacity", "cornerRadius",
+                          "strokeWeight", "strokeAlign", "blendMode"):
+            prop = by_name[figma_name]
+            assert prop.compare_figma.skip_when_provenance_absent is True, (
+                f"{figma_name} should be A1.3-gated"
+            )
