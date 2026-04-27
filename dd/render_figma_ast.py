@@ -1484,29 +1484,20 @@ def _emit_mode1_create(
     # emit those onto the instance head after createInstance().
     # Build a sparse override visual and pass through _emit_visual."
     overrides_list = element.get("_overrides")
-    # Build sparse_visual from THREE possible sources (precedence
-    # bottom→top): DB _overrides (extraction provenance) → A1.2
-    # opacity-default patch → AST head EDITs (highest, head wins).
-    # The fix below runs regardless of whether _overrides is None,
-    # empty, or populated — head EDITs always sit at the top of the
-    # tower. Empirical: nav-top-nav in the synth-gen Dark Playful
-    # variant has spec_elements without an `_overrides` key at all
-    # (legacy IR shape), so the previous gate
-    # `if overrides_list is not None` skipped head EDITs entirely
-    # for the most common synth-gen case.
-    from dd.visual import build_visual_from_db
-    from dd.ast_to_element import ast_head_to_element
-
-    sparse_visual: dict[str, Any] = {}
-
-    # Layer 1: DB _overrides (extraction provenance). Only fires
-    # when the spec carries an explicit non-empty list.
     if overrides_list:
+        # Build sparse visual: only the props in _overrides, sourced
+        # from raw_visual via build_visual_from_db. The
+        # default-skip in build_visual_from_db can drop overridden
+        # props that happen to match the default (e.g. opacity=1.0
+        # explicitly overridden), so we patch those back below.
+        from dd.visual import build_visual_from_db
+
         full_visual = build_visual_from_db(raw_visual)
         # A1.2 gating set: visual props that get emitted on Mode-1
         # only when in _overrides. Excludes:
         # - rotation (own AST-conflict guard above)
         # - visible (PathOverride path; not in this set)
+        sparse_visual: dict[str, Any] = {}
         for prop_name in overrides_list:
             if prop_name in {"rotation", "visible"}:
                 continue
@@ -1520,62 +1511,37 @@ def _emit_mode1_create(
                 if isinstance(inst_opacity, (int, float)):
                     sparse_visual["opacity"] = inst_opacity
 
-    # Layer 2: AST head-overlay (highest precedence). Twin of the
-    # Mode-2 fix at lines ~1024-1080. AST head EDITs sit at the top
-    # of the Mode-1 precedence tower (master defaults → DB
-    # _overrides → spec instance props → AST head EDITs). When the
-    # LLM issues ``set @<eid> fill=<hex>`` against a comp-ref node,
-    # the head property persists but pre-fix `_emit_mode1_create`
-    # never read it — so the head fill was silently dropped and the
-    # rendered Figma instance kept the master's color. Codex 5.5
-    # (2026-04-27 high reasoning) sign-off: overlay
-    # ast_head_to_element(node).get("visual") for the same 5 keys
-    # as the Mode-2 fix (fills / strokes / strokeWeight /
-    # cornerRadius / opacity), strict head-only, replace whole —
-    # Figma paint stacks are ordered. Restricted to SELF/HEAD
-    # visual props; descendant overrides
-    # (`<inst>.button-icon.fill=...`) belong in
-    # `_emit_override_tree` with proper child-id scoping.
-    head_visual = ast_head_to_element(node).get("visual") or {}
-    for key in (
-        "fills", "strokes", "strokeWeight",
-        "cornerRadius", "opacity",
-    ):
-        if key in head_visual:
-            sparse_visual[key] = head_visual[key]
-
-    if sparse_visual:
-        visual_lines, visual_refs = _emit_visual(
-            var, err_eid, sparse_visual, {},
-            node_type="INSTANCE",
-        )
-        for vl in visual_lines:
-            # Wrap each in try/catch — Mode-1 instance prop writes
-            # can be rejected by Figma for various reasons
-            # (read-only on certain instance subtrees, type
-            # mismatch, etc.). Same kind as the existing
-            # phase1_mode1_prop_failed family.
-            lines.append(_guarded_op(
-                vl, err_eid, "phase1_mode1_prop_failed",
-            ))
-
-    if overrides_list is None and not head_visual.get("opacity"):
-        # A1.2: legacy IR (no _overrides field at all) preserves the
-        # historical opacity heuristic so un-migrated specs don't
-        # silently regress emission. Codex 5.5 framing: "Missing
-        # provenance defaults to snapshot" applies on the VERIFIER
-        # side (under-flag is safe). On the RENDERER side, missing
-        # provenance means "use the prior heuristic" because not
-        # emitting at all could remove a previously-rendered opacity
-        # value. New specs should always carry _overrides.
-        # Skipped when the head-overlay above already supplied an
-        # opacity — head EDIT wins over heuristic.
+        if sparse_visual:
+            visual_lines, visual_refs = _emit_visual(
+                var, err_eid, sparse_visual, {},
+                node_type="INSTANCE",
+            )
+            for vl in visual_lines:
+                # Wrap each in try/catch — Mode-1 instance prop
+                # writes can be rejected by Figma for various
+                # reasons (read-only on certain instance subtrees,
+                # type mismatch, etc.). Same kind as the existing
+                # phase1_mode1_prop_failed family.
+                lines.append(_guarded_op(
+                    vl, err_eid, "phase1_mode1_prop_failed",
+                ))
+    elif overrides_list is None:
+        # A1.2: legacy IR (no _overrides field at all) preserves
+        # the historical opacity heuristic so un-migrated specs
+        # don't silently regress emission. Codex 5.5 framing:
+        # "Missing provenance defaults to snapshot" applies on the
+        # VERIFIER side (under-flag is safe). On the RENDERER side,
+        # missing provenance means "use the prior heuristic" because
+        # not emitting at all could remove a previously-rendered
+        # opacity value. New specs should always carry _overrides.
         inst_opacity = raw_visual.get("opacity")
         if (
             isinstance(inst_opacity, (int, float))
             and inst_opacity < 1.0
         ):
             lines.append(f"{var}.opacity = {inst_opacity};")
+    # else: overrides_list == [] (explicit empty) → emit nothing,
+    # snapshot semantics. The Mode-1 master defaults stand.
 
     if element.get("visible") is False:
         lines.append(f"{var}.visible = false;")
