@@ -327,12 +327,27 @@ PROPERTIES: tuple[FigmaProperty, ...] = (
 
     # === SIZE ===
     # Deferred: resize() call in main loop
+    # Codex 5.5 sprint-2 round-4 call: wire bounds via compare_figma
+    # rather than exemption-as-dedicated-path, proving the dispatch
+    # model can target non-generic comparators.
     FigmaProperty("width", "width", ("width",), "size", "number",
                   override_type="WIDTH",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
+                  compare_figma=FigmaComparatorSpec(
+                      comparator="bounds_equality",
+                      walker_key="width",
+                      kind="bounds_mismatch",
+                      skip_when_provenance_absent=False,
+                  )),
     FigmaProperty("height", "height", ("height",), "size", "number",
                   override_type="HEIGHT",
-                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE)),
+                  capabilities=_figma_caps(_FIGMA_ALL_VISIBLE),
+                  compare_figma=FigmaComparatorSpec(
+                      comparator="bounds_equality",
+                      walker_key="height",
+                      kind="bounds_mismatch",
+                      skip_when_provenance_absent=False,
+                  )),
     FigmaProperty("minWidth", "min_width", ("minWidth",), "size", "number",
                   emit={"figma": _UNIFORM},
                   capabilities=_figma_caps(_FIGMA_ALL_VISIBLE - _FIGMA_GROUP - _FIGMA_LINE)),

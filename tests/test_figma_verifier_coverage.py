@@ -264,3 +264,346 @@ class TestExistingComparatorsRegistered:
             assert prop.compare_figma.skip_when_provenance_absent is True, (
                 f"{figma_name} should be A1.3-gated"
             )
+
+
+# ---------------------------------------------------------------------
+# C3 — registry-driven verifier coverage harness
+# ---------------------------------------------------------------------
+
+
+# Per Codex 5.5 sequencing call (round 4): Sprint 2 C3 is the
+# architectural rail. Each FigmaProperty that the registry says is
+# figma-emittable MUST either:
+#   - declare ``compare_figma=``, OR
+#   - appear on the typed exemption table below with a reason code.
+#
+# Reason codes (chosen to be distinguishable in CI output and
+# tractable at sprint-planning time):
+#
+#   dedicated_path
+#       Property is verified, but via a dedicated KIND_* path that
+#       isn't routed through compare_figma metadata yet.
+#       (e.g. width/height via KIND_BOUNDS_MISMATCH, isMask via
+#       KIND_MASK_MISMATCH.) Sprint 2 wires width/height; isMask
+#       remains a dedicated path until per-property routing is
+#       worth refactoring.
+#
+#   walker_missing_deferred_family
+#       Walker doesn't capture this property AND it belongs to
+#       a coherent family (auto-layout, text-styling) whose
+#       comparator work should land together as a unit, not
+#       sprinkled commit-by-commit.
+#
+#   low_frequency_deferred
+#       Walker doesn't capture; property is observed rarely on
+#       current corpora. NOTE: Codex flagged that "rare" is a weak
+#       reason — corpus frequency isn't a correctness argument
+#       (see VECTOR cornerRadius surfacing 23 drifts on Dank after
+#       being "absent on Nouns"). Use this category sparingly,
+#       and graduate to a real comparator on first observation.
+#
+#   out_of_scope_current_sprint
+#       Walker captures + comparator could be wired today but
+#       Sprint 2 deliberately scoped to text + sizing-mode bugs.
+#       Listed here so reviewers see the bounded scope.
+
+import enum
+
+
+class ExemptionReason(enum.Enum):
+    DEDICATED_PATH = "dedicated_path"
+    WALKER_MISSING_DEFERRED_FAMILY = "walker_missing_deferred_family"
+    LOW_FREQUENCY_DEFERRED = "low_frequency_deferred"
+    OUT_OF_SCOPE_CURRENT_SPRINT = "out_of_scope_current_sprint"
+
+
+# Properties that the registry says are emittable but the walker
+# doesn't capture, OR the walker captures but no per-property
+# comparator is wired (handled elsewhere). Each entry has a typed
+# reason code + a one-line note for the human reader.
+_WALKER_CAPTURE_EXEMPTIONS: dict[str, tuple[ExemptionReason, str]] = {
+    # === Dedicated comparator paths ===
+    # Sprint 2 wires width/height via compare_figma in C3; this
+    # entry exists for sentinel value (was originally an exemption
+    # candidate; keeping isMask as the example of dedicated_path
+    # exemption that remains).
+    "isMask": (
+        ExemptionReason.DEDICATED_PATH,
+        "compared via KIND_MASK_MISMATCH dedicated path; "
+        "structural-not-scalar comparison",
+    ),
+    "visible": (
+        ExemptionReason.DEDICATED_PATH,
+        "handled by element.visible structural skip + "
+        "hidden_children resolver — not a per-prop check",
+    ),
+
+    # === Auto-layout family — coherent Sprint 3 workstream ===
+    "paddingTop": (
+        ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+        "auto-layout family",
+    ),
+    "paddingRight": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                     "auto-layout family"),
+    "paddingBottom": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                      "auto-layout family"),
+    "paddingLeft": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                    "auto-layout family"),
+    "itemSpacing": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                    "auto-layout family"),
+    "counterAxisSpacing": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                           "auto-layout family"),
+    "layoutPositioning": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                          "auto-layout family"),
+    "layoutWrap": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                   "auto-layout family"),
+
+    # === Text-styling family — coherent future workstream ===
+    "fontFamily": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                   "text-styling family"),
+    "fontWeight": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                   "text-styling family"),
+    "fontSize": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                 "text-styling family"),
+    "fontStyle": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                  "text-styling family"),
+    "lineHeight": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                   "text-styling family"),
+    "letterSpacing": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                      "text-styling family"),
+    "paragraphSpacing": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                         "text-styling family"),
+    "textAlignHorizontal": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                            "text-styling family"),
+    "textAlignVertical": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                          "text-styling family"),
+    "textDecoration": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                       "text-styling family"),
+    "textCase": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                 "text-styling family"),
+    "textAutoResize": (
+        ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+        "text-styling family — walker DOES capture but defer "
+        "to text-styling sprint for coherent normalization",
+    ),
+    "leadingTrim": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                    "text-styling family"),
+
+    # === Constrained sizing family ===
+    "minWidth": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                 "min/max sizing family"),
+    "maxWidth": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                 "min/max sizing family"),
+    "minHeight": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                  "min/max sizing family"),
+    "maxHeight": (ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+                  "min/max sizing family"),
+
+    # === Constraint family (positioning hints, not rendered values) ===
+    "constraints.horizontal": (
+        ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+        "constraint family — positioning hints, "
+        "verifier-equivalent needs separate model",
+    ),
+    "constraints.vertical": (
+        ExemptionReason.WALKER_MISSING_DEFERRED_FAMILY,
+        "constraint family",
+    ),
+
+    # === Low-frequency deferrals (Codex: use sparingly; graduate
+    # on first observation) ===
+    "strokeCap": (ExemptionReason.LOW_FREQUENCY_DEFERRED,
+                  "no observed drift on current corpora"),
+    "strokeJoin": (ExemptionReason.LOW_FREQUENCY_DEFERRED,
+                   "no observed drift on current corpora"),
+    "cornerSmoothing": (ExemptionReason.LOW_FREQUENCY_DEFERRED,
+                        "sub-perceptual"),
+    "booleanOperation": (ExemptionReason.LOW_FREQUENCY_DEFERRED,
+                         "_BUILD_VISUAL_DEFERRED documented since pre-A1"),
+    "arcData": (ExemptionReason.LOW_FREQUENCY_DEFERRED,
+                "ELLIPSE-only; rare in extracted corpora"),
+
+    # === Out-of-scope (Sprint 2 deliberately doesn't tackle) ===
+    "layoutMode": (ExemptionReason.OUT_OF_SCOPE_CURRENT_SPRINT,
+                   "auto-layout structural property; bundle with family"),
+    "primaryAxisAlignItems": (ExemptionReason.OUT_OF_SCOPE_CURRENT_SPRINT,
+                              "auto-layout alignment; bundle with family"),
+    "counterAxisAlignItems": (ExemptionReason.OUT_OF_SCOPE_CURRENT_SPRINT,
+                              "auto-layout alignment; bundle with family"),
+}
+
+
+# Properties that the registry says are emittable AND the walker
+# captures, but no comparator is declared today. Each entry is a
+# Sprint 2 deliverable — when the comparator lands, the entry is
+# REMOVED from this dict. The harness fails loudly if a property
+# that should be exempted isn't, OR if an exempted property has
+# silently been comparator-wired (drift in either direction).
+_PENDING_COMPARATOR_EXEMPTIONS: dict[str, str] = {
+    "characters": (
+        "Sprint 2 C5 will close — text content equality. "
+        "Currently verify_figma only checks empty/non-empty "
+        "(KIND_MISSING_TEXT). User caught 'Reject' vs 'Send to Client' "
+        "drift on HGB by eyeball; cross-corpus result 6905383."
+    ),
+    "layoutSizingHorizontal": (
+        "Sprint 2 C6 will close — sizing mode equality (HUG/FIXED/FILL). "
+        "Currently invisible; bounds match but mode drifts."
+    ),
+    "layoutSizingVertical": (
+        "Sprint 2 C6 will close — sizing mode equality (HUG/FIXED/FILL). "
+        "Sibling of layoutSizingHorizontal, same root cause."
+    ),
+    # Layout properties that would benefit from comparators but are
+    # out of scope for Sprint 2's targeted observable bugs:
+    "layoutMode": (
+        "auto-layout mode; out of Sprint 2 scope; container-only; "
+        "low observed drift on Mode-1 INSTANCE corpus"
+    ),
+    "primaryAxisAlignItems": (
+        "auto-layout alignment; out of Sprint 2 scope; comparator deferred"
+    ),
+    "counterAxisAlignItems": (
+        "auto-layout alignment; out of Sprint 2 scope; comparator deferred"
+    ),
+}
+
+
+def _walker_captures(figma_name: str) -> bool:
+    """Static knowledge of which properties the walker
+    (render_test/walk_ref.js) captures today. This is a hand-
+    maintained list that mirrors the JS source. Sprint-2 doesn't
+    refactor the walker; it ensures the registry+verifier surface
+    matches what the walker reports."""
+    # Captured per render_test/walk_ref.js (verified 2026-04-27):
+    captured = frozenset({
+        "fills", "strokes", "strokeWeight", "strokeAlign", "dashPattern",
+        "effects", "opacity", "blendMode", "rotation", "cornerRadius",
+        "clipsContent", "isMask",
+        # Bounds — captured at rendered-tree top level (line 210-211)
+        "width", "height",
+        # Text content (the value, not the styling family)
+        "characters",
+        # Layout sizing modes
+        "layoutSizingHorizontal", "layoutSizingVertical",
+        # Auto-layout properties walker captures (mode + alignment)
+        "layoutMode", "primaryAxisAlignItems", "counterAxisAlignItems",
+        # Text auto-resize (lone text-styling capture; deferred to family)
+        "textAutoResize",
+    })
+    return figma_name in captured
+
+
+class TestRegistryDrivenVerifierCoverage:
+    """The architectural rail.
+
+    For each FigmaProperty registered as figma-emittable:
+      - declare ``compare_figma=`` OR
+      - appear on _WALKER_CAPTURE_EXEMPTIONS (typed) OR
+      - appear on _PENDING_COMPARATOR_EXEMPTIONS (Sprint 2 targets)
+
+    Otherwise the test fails — closing the directional asymmetry
+    between what the LLM may emit (is_capable) and what the
+    verifier checks.
+    """
+
+    def test_every_emittable_property_either_compared_or_exempted(self):
+        """The synth-gen-relevant assertion: every figma-emittable
+        property must be either (a) wired with compare_figma,
+        (b) typed-exempted in _WALKER_CAPTURE_EXEMPTIONS, or
+        (c) pending-exempted in _PENDING_COMPARATOR_EXEMPTIONS."""
+        from dd.property_registry import PROPERTIES
+
+        violations = []
+        for prop in PROPERTIES:
+            figma_caps = prop.capabilities.get("figma", frozenset())
+            if not figma_caps:
+                continue  # Not figma-emittable; not in scope
+            if prop.compare_figma is not None:
+                continue  # Comparator wired; covered
+            if prop.figma_name in _WALKER_CAPTURE_EXEMPTIONS:
+                continue  # Typed exemption with reason code
+            if prop.figma_name in _PENDING_COMPARATOR_EXEMPTIONS:
+                continue  # Sprint 2 target; will land via C5/C6
+            # Otherwise: silent gap — fail the test
+            violations.append(
+                f"{prop.figma_name}: emittable on figma + no "
+                f"compare_figma + no entry in _WALKER_CAPTURE_EXEMPTIONS "
+                f"or _PENDING_COMPARATOR_EXEMPTIONS"
+            )
+        if violations:
+            pytest.fail(
+                "Registry-driven verifier coverage violations:\n  - "
+                + "\n  - ".join(violations)
+            )
+
+    def test_no_stale_pending_exemptions(self):
+        """If a property is on _PENDING_COMPARATOR_EXEMPTIONS but
+        ALSO has compare_figma wired, the exemption is stale.
+        Catches the case where a comparator lands without removing
+        the exemption."""
+        from dd.property_registry import PROPERTIES
+
+        by_name = {p.figma_name: p for p in PROPERTIES}
+        stale = []
+        for figma_name in _PENDING_COMPARATOR_EXEMPTIONS:
+            prop = by_name.get(figma_name)
+            if prop and prop.compare_figma is not None:
+                stale.append(figma_name)
+        assert not stale, (
+            f"Stale pending exemptions (compare_figma now wired): "
+            f"{stale}"
+        )
+
+    def test_no_stale_walker_exemptions(self):
+        """Same idea: if a walker-exempted property has compare_figma
+        wired, the exemption is stale. (Note: a property can be
+        walker-captured AND walker-exempted with reason
+        DEDICATED_PATH — that's not stale, it just routes via a
+        non-compare_figma path.)"""
+        from dd.property_registry import PROPERTIES
+
+        by_name = {p.figma_name: p for p in PROPERTIES}
+        stale = []
+        for figma_name, (reason, _note) in _WALKER_CAPTURE_EXEMPTIONS.items():
+            prop = by_name.get(figma_name)
+            if prop is None:
+                continue  # Property may be a synthetic/derived name
+            # DEDICATED_PATH exemptions are allowed even when the
+            # property has compare_figma — that's fine.
+            if prop.compare_figma is not None and reason != ExemptionReason.DEDICATED_PATH:
+                stale.append((figma_name, reason.value))
+        assert not stale, (
+            f"Stale walker exemptions (compare_figma wired but "
+            f"reason isn't DEDICATED_PATH): {stale}"
+        )
+
+    def test_pending_comparator_exemption_known_targets(self):
+        """The pending list is Sprint-2's plan made concrete.
+        characters and layoutSizingHorizontal/Vertical MUST be on
+        the pending list to make C5/C6 = remove-and-add pairs."""
+        for sprint2_target in ("characters", "layoutSizingHorizontal",
+                              "layoutSizingVertical"):
+            assert sprint2_target in _PENDING_COMPARATOR_EXEMPTIONS, (
+                f"Sprint 2 plans to add {sprint2_target} comparator; "
+                f"must be in _PENDING_COMPARATOR_EXEMPTIONS until "
+                f"C5/C6 lands"
+            )
+
+    def test_walker_exemption_categories_are_typed(self):
+        """Every walker-exemption uses ExemptionReason enum, not
+        free-form strings. Codex's call: typed reason codes make
+        the inventory tractable at sprint-planning time."""
+        for figma_name, entry in _WALKER_CAPTURE_EXEMPTIONS.items():
+            assert isinstance(entry, tuple) and len(entry) == 2, (
+                f"{figma_name}: walker exemption must be "
+                f"(ExemptionReason, note); got {entry!r}"
+            )
+            reason, note = entry
+            assert isinstance(reason, ExemptionReason), (
+                f"{figma_name}: reason must be ExemptionReason; "
+                f"got {type(reason).__name__}"
+            )
+            assert isinstance(note, str) and note, (
+                f"{figma_name}: note must be a non-empty string"
+            )
