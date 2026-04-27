@@ -1895,6 +1895,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "fallback ports are in use; check `figma_get_status` "
              "for the active port.",
     )
+    # C5 — project-vocabulary snapping. Off by default; demo toggles
+    # on. When enabled, the rendered spec's untokenized literal hex /
+    # radius / spacing / fontSize values are snapped to the nearest
+    # project-canonical value (top-K by frequency from --project-db).
+    # See dd/project_vocabulary.py for thresholds + scope.
+    design_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values in the rendered IR to "
+             "the nearest project-canonical value (top-K by frequency "
+             "from --project-db). Affects fills (SOLID hex), corner "
+             "radii, padding/itemSpacing, and font sizes. Default: "
+             "OFF — preserves the agent's emitted IR verbatim. With "
+             "this flag, generated variants look native to the source "
+             "design system at the cost of some emission fidelity.",
+    )
 
     design_resume_parser = design_subparsers.add_parser(
         "resume",
@@ -1985,6 +2000,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--bridge-port", type=int, default=9228,
         help="WebSocket port for the Figma Desktop Bridge plugin "
              "(default: 9228).",
+    )
+    # C5 — same snap toggle on resume so the same flag works
+    # whether the user kicks off with --brief or continues a session.
+    design_resume_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values to project-canonical "
+             "vocab (top-K by frequency from --project-db). See "
+             "`dd design --help` for full description.",
     )
 
     design_score_parser = design_subparsers.add_parser(
@@ -2098,6 +2121,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--bridge-port", type=int, default=9228,
         help="WebSocket port for the Figma Desktop Bridge plugin "
              "(default: 9228).",
+    )
+    # C5 — project-vocab snap on lateral siblings. The demo headline
+    # flag: each sibling's render reflects project-native colors /
+    # radii / spacing / font sizes, making the synthesised variants
+    # look native to the source design system.
+    design_lateral_parser.add_argument(
+        "--use-project-vocab", action="store_true",
+        help="Snap untokenized literal values in each sibling's "
+             "rendered IR to project-canonical vocab. The demo "
+             "headline flag: variants look native to the source "
+             "design system. See `dd design --help` for thresholds.",
     )
 
     return parser
@@ -2249,6 +2283,7 @@ def _run_design(db_path: str, args) -> None:
             variant_only=args.variant_only,
             labels=args.labels,
             bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
         )
         return
 
@@ -2265,6 +2300,7 @@ def _run_design(db_path: str, args) -> None:
             labels=args.labels,
             override_brief=args.brief,
             bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
         )
         return
 
@@ -2295,6 +2331,7 @@ def _run_design(db_path: str, args) -> None:
             variant_only=args.variant_only,
             labels=args.labels,
             bridge_port=args.bridge_port,
+            use_project_vocab=args.use_project_vocab,
         )
         return
 
@@ -2326,6 +2363,7 @@ def _run_design_brief(
     variant_only: bool = False,
     labels: bool = True,
     bridge_port: int = 9228,
+    use_project_vocab: bool = False,
 ) -> None:
     """M1 of the authoring-loop Figma round-trip (docs/rationale/
     stage-3-session-loop.md + Codex sign-off 2026-04-24).
@@ -2407,6 +2445,7 @@ def _run_design_brief(
             labels=labels,
             brief=brief,
             bridge_port=bridge_port,
+            use_project_vocab=use_project_vocab,
         )
         if variant_only:
             page_hint = (
@@ -2628,6 +2667,7 @@ def _render_session_to_figma(
     labels: bool = True,
     brief: str | None = None,
     bridge_port: int = 9228,
+    use_project_vocab: bool = False,
 ) -> str:
     """Render the starting screen + the session's final variant to
     a new Figma page via the plugin bridge. Returns the page name.
@@ -2745,6 +2785,34 @@ def _render_session_to_figma(
         # generate_screen builds internally.
         ir_result = generate_ir(project_conn, starting_screen_id)
         spec = ir_result["spec"]
+        # C5 — project-vocabulary snap (option (c) per Codex round-13).
+        # Snap the spec's untokenized literal values to the nearest
+        # project-canonical value BEFORE _compress_to_l3_impl consumes
+        # it. The session DB stays untouched; only the render-time
+        # spec reflects the snapped values. Same variant rendered with
+        # vs. without --use-project-vocab produces visibly different
+        # output, demonstrating the design-system snap is firing.
+        if use_project_vocab:
+            from dd.project_vocabulary import (
+                build_project_vocabulary, snap_ir_to_vocabulary,
+            )
+            vocab = build_project_vocabulary(project_conn, file_id=1)
+            print(
+                f"project vocab: {len(vocab.chromatic_fills)} "
+                f"chromatic / {len(vocab.neutral_fills)} neutral / "
+                f"{len(vocab.radii)} radii / {len(vocab.spacings)} "
+                f"spacing / {len(vocab.font_sizes)} fontSize values "
+                f"loaded",
+                file=sys.stderr,
+            )
+            spec, snap_report = snap_ir_to_vocabulary(spec, vocab)
+            print(
+                f"project vocab: fills {snap_report.fills_snapped}, "
+                f"radii {snap_report.radii_snapped}, "
+                f"spacing {snap_report.spacing_snapped}, "
+                f"fontSize {snap_report.font_size_snapped} snapped",
+                file=sys.stderr,
+            )
         visuals = query_screen_visuals(project_conn, starting_screen_id)
         ckr_exists = project_conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' "
@@ -2937,6 +3005,7 @@ def _run_design_resume(
     labels: bool = True,
     override_brief: str | None = None,
     bridge_port: int = 9228,
+    use_project_vocab: bool = False,
 ) -> None:
     """M2 demo-blocker: resume must support the same Figma round-trip
     flag family as --brief so the multi-turn iteration story lands.
@@ -3020,6 +3089,7 @@ def _run_design_resume(
             labels=labels,
             brief=session_brief,
             bridge_port=bridge_port,
+            use_project_vocab=use_project_vocab,
         )
         if variant_only:
             page_hint = (
@@ -3055,6 +3125,7 @@ def _run_design_lateral(
     variant_only: bool = False,
     labels: bool = True,
     bridge_port: int = 9228,
+    use_project_vocab: bool = False,
 ) -> None:
     """C3: produce N sibling variants from one parent in a single
     CLI call. Each ``--brief`` becomes one ``run_session`` call rooted
@@ -3167,6 +3238,7 @@ def _run_design_lateral(
                 labels=labels,
                 brief=brief,
                 bridge_port=bridge_port,
+                use_project_vocab=use_project_vocab,
             )
             page_names[result.final_variant_id] = page_name
 
