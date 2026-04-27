@@ -2139,6 +2139,178 @@ def _walk_elements(spec: dict[str, Any]) -> list[tuple[str, dict, str | None]]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# A2.2: per-property dispatch for `_emit_layout()`
+# ---------------------------------------------------------------------------
+# Forensic-audit-2 found that the original `_emit_layout()` bundled all
+# auto-layout container properties into one emission, which blocked
+# per-property provenance gating (Backlog #1). Codex 5.5 review:
+# "Lower semantic layout names → Figma names via dispatch table, then
+# emit per-property through registry capability gates. Use a small
+# dispatch table rather than many bespoke functions."
+#
+# Each entry is a dict (data, not callables) describing one property:
+#   semantic_key     — the IR key on `layout` (or path tuple for padding)
+#   figma_name       — Plugin API property name (matches registry)
+#   format_kind      — value formatter selector:
+#                        "direction"  : map via _DIRECTION_MAP, quoted enum
+#                        "alignment"  : map via _ALIGNMENT_MAP w/ upper()
+#                                       fallback, quoted enum
+#                        "wrap"       : passthrough quoted enum, skip
+#                                       NO_WRAP (Plugin API default)
+#                        "number"     : raw numeric, supports tokens
+#   error_kind       — `_guarded_op` failure tag
+#   token_ref_label  — semantic label for the (eid, label, token) tuple
+#                      (preserves pre-split labels like "padding.top",
+#                      not the figma_name; downstream consumers compare
+#                      on the semantic label)
+#   phase            — "pre_resize" or "post_resize"; pre-split, alignment
+#                      props ran AFTER resize. Preserve that order.
+#
+# The dispatch is the future hook for Backlog #1 per-property provenance
+# gating: each entry's figma_name maps cleanly to `_overrides`.
+_LAYOUT_DISPATCH: tuple[dict[str, Any], ...] = (
+    {
+        "semantic_key": "direction",
+        "figma_name": "layoutMode",
+        "format_kind": "direction",
+        "error_kind": "layout_mode_failed",
+        "token_ref_label": "layoutMode",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "wrap",
+        "figma_name": "layoutWrap",
+        "format_kind": "wrap",
+        "error_kind": "layout_wrap_failed",
+        "token_ref_label": "layoutWrap",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "gap",
+        "figma_name": "itemSpacing",
+        "format_kind": "number",
+        "error_kind": "item_spacing_failed",
+        "token_ref_label": "itemSpacing",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "counterAxisGap",
+        "figma_name": "counterAxisSpacing",
+        "format_kind": "number",
+        "error_kind": "counter_axis_spacing_failed",
+        "token_ref_label": "counterAxisSpacing",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "top"),
+        "figma_name": "paddingTop",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.top",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "right"),
+        "figma_name": "paddingRight",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.right",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "bottom"),
+        "figma_name": "paddingBottom",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.bottom",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": ("padding", "left"),
+        "figma_name": "paddingLeft",
+        "format_kind": "number",
+        "error_kind": "padding_failed",
+        "token_ref_label": "padding.left",
+        "phase": "pre_resize",
+    },
+    {
+        "semantic_key": "mainAxisAlignment",
+        "figma_name": "primaryAxisAlignItems",
+        "format_kind": "alignment",
+        "error_kind": "primary_axis_align_failed",
+        "token_ref_label": "primaryAxisAlignItems",
+        "phase": "post_resize",
+    },
+    {
+        "semantic_key": "crossAxisAlignment",
+        "figma_name": "counterAxisAlignItems",
+        "format_kind": "alignment",
+        "error_kind": "counter_axis_align_failed",
+        "token_ref_label": "counterAxisAlignItems",
+        "phase": "post_resize",
+    },
+)
+
+
+def _extract_layout_value(layout: dict[str, Any], semantic_key: Any) -> Any:
+    """Pull the raw value for a dispatch entry from the IR `layout` dict.
+
+    `semantic_key` is either a flat string (e.g. "gap") or a path tuple
+    (e.g. ("padding", "top")) for nested values. Returns the raw value or
+    None if absent.
+    """
+    if isinstance(semantic_key, tuple):
+        cur: Any = layout
+        for part in semantic_key:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(part)
+            if cur is None:
+                return None
+        return cur
+    return layout.get(semantic_key)
+
+
+def _format_layout_value(
+    raw_value: Any, format_kind: str,
+) -> tuple[str | None, bool]:
+    """Convert a raw IR value into a JS literal for the dispatch entry.
+
+    Returns (formatted_str, is_emittable). is_emittable=False means the
+    raw value resolved to a default-skip case (e.g. NO_WRAP, unknown
+    direction enum, falsy alignment string) and the line MUST NOT emit
+    even if a token ref still appended.
+    """
+    if format_kind == "direction":
+        figma_dir = _DIRECTION_MAP.get(raw_value)
+        if not figma_dir:
+            return (None, False)
+        return (f'"{figma_dir}"', True)
+    if format_kind == "alignment":
+        # Falsy alignment string is gated upstream; map known enums via
+        # _ALIGNMENT_MAP, fall back to upper() for unknown values
+        # (preserves pre-split behaviour for forward-compat enums).
+        if not raw_value:
+            return (None, False)
+        mapped = _ALIGNMENT_MAP.get(raw_value, str(raw_value).upper())
+        return (f'"{mapped}"', True)
+    if format_kind == "wrap":
+        # NO_WRAP is the Plugin API default; pre-split skipped emit on
+        # both falsy values and the explicit default. Preserve that.
+        if not raw_value or raw_value == "NO_WRAP":
+            return (None, False)
+        return (f'"{raw_value}"', True)
+    if format_kind == "number":
+        # Raw number passthrough. resolve_style_value already returned
+        # the resolved scalar; format with str() to mirror the original
+        # f"{resolved}" interpolation (handles int + float identically).
+        if raw_value is None:
+            return (None, False)
+        return (f"{raw_value}", True)
+    return (None, False)
+
+
 def _emit_layout(
     var: str, eid: str, layout: dict[str, Any], tokens: dict[str, Any],
     text_auto_resize: str | None = None,
@@ -2166,11 +2338,40 @@ def _emit_layout(
     IR never has layout.direction set on leaf nodes so this preserves
     existing behaviour for the extraction path. Synthetic-generation
     callers must pass etype to get the gate.
+
+    A2.2 (forensic-audit-2 architectural followon, 2026-04-26):
+    Auto-layout container properties go through the per-property
+    `_LAYOUT_DISPATCH` table — each entry independently extracted,
+    capability-gated, formatted, and emitted. Pre-split this function
+    bundled all properties into a single `not is_leaf` block, which
+    blocked Backlog #1 (per-property provenance gating: emit padding
+    when only PADDING override exists, not coupled to itemSpacing).
+
+    The leaf-type pre-gate is preserved as defense-in-depth: the IR-to-
+    Figma-type bridge has gaps for `star`, `polygon`, `image` (they
+    default to FRAME via `ir_to_figma_type`, where `is_capable` would
+    erroneously return True). Fixing the bridge widens the blast radius
+    of A2.2 to other code paths (`_emit_visual` capability gating); kept
+    as a separate follow-up.
+
+    Codex 5.5 review (gpt-5.5 high reasoning, 2026-04-26):
+    "Lower semantic layout names → Figma names via dispatch table, then
+    emit per-property through registry capability gates. Don't drag
+    resize() into the layout gate (different ordering + parent context
+    semantics). Use a small dispatch table rather than many bespoke
+    functions."
     """
+    from dd.property_registry import is_capable
+
     lines: list[str] = []
     refs: list[tuple[str, str, str]] = []
 
+    # Defense-in-depth: leaf etypes (text, rectangle, ...) skip the
+    # auto-layout dispatch entirely. Per-property capability gates below
+    # are the new precision mechanism for non-leaf etypes; the pre-gate
+    # backstops the bridge gap for star/polygon/image (see docstring).
     is_leaf = etype in _LEAF_TYPES if etype is not None else False
+    figma_node_type = ir_to_figma_type(etype) if etype is not None else None
 
     # Every op below was NAKED before Tier E-followup. A single
     # "object is not extensible" throw (auto-layout prop on a
@@ -2178,57 +2379,44 @@ def _emit_layout(
     # try/catch, cascading through Phase 1 + Phase 2 and leaving
     # the screen orphaned from the page. All guarded now so one
     # bad op produces one __errors entry; neighbours still run.
-    if not is_leaf:
-        direction = layout.get("direction", "")
-        figma_dir = _DIRECTION_MAP.get(direction)
-        if figma_dir:
-            lines.append(_guarded_op(
-                f'{var}.layoutMode = "{figma_dir}";',
-                eid, "layout_mode_failed",
-            ))
-
-        wrap = layout.get("wrap")
-        if wrap and wrap != "NO_WRAP":
-            lines.append(_guarded_op(
-                f'{var}.layoutWrap = "{wrap}";',
-                eid, "layout_wrap_failed",
-            ))
-
-        gap_val = layout.get("gap")
-        if gap_val is not None:
-            resolved, token_name = resolve_style_value(gap_val, tokens)
-            if resolved is not None:
+    def _emit_dispatch_entries(phase: str) -> None:
+        if is_leaf:
+            return
+        for entry in _LAYOUT_DISPATCH:
+            if entry["phase"] != phase:
+                continue
+            figma_name = entry["figma_name"]
+            # Per-property capability gate — registry is authoritative.
+            # Skipped when figma_node_type is None (legacy caller path:
+            # preserves pre-A2.2 "emit everything" back-compat).
+            if figma_node_type is not None and not is_capable(
+                figma_name, "figma", figma_node_type,
+            ):
+                continue
+            raw_value = _extract_layout_value(layout, entry["semantic_key"])
+            if raw_value is None:
+                continue
+            # Token resolution only meaningful for tokenizable formats
+            # (number for now; direction/alignment/wrap are enum strings
+            # that don't pass through the token resolver in the pre-split
+            # code either).
+            format_kind = entry["format_kind"]
+            if format_kind == "number":
+                resolved, token_name = resolve_style_value(raw_value, tokens)
+            else:
+                resolved, token_name = raw_value, None
+            formatted, is_emittable = _format_layout_value(
+                resolved, format_kind,
+            )
+            if is_emittable and formatted is not None:
                 lines.append(_guarded_op(
-                    f"{var}.itemSpacing = {resolved};",
-                    eid, "item_spacing_failed",
+                    f"{var}.{figma_name} = {formatted};",
+                    eid, entry["error_kind"],
                 ))
             if token_name:
-                refs.append((eid, "itemSpacing", token_name))
+                refs.append((eid, entry["token_ref_label"], token_name))
 
-        cas_val = layout.get("counterAxisGap")
-        if cas_val is not None:
-            resolved, token_name = resolve_style_value(cas_val, tokens)
-            if resolved is not None:
-                lines.append(_guarded_op(
-                    f"{var}.counterAxisSpacing = {resolved};",
-                    eid, "counter_axis_spacing_failed",
-                ))
-            if token_name:
-                refs.append((eid, "counterAxisSpacing", token_name))
-
-        padding = layout.get("padding", {})
-        for side in ("top", "right", "bottom", "left"):
-            val = padding.get(side)
-            if val is not None:
-                resolved, token_name = resolve_style_value(val, tokens)
-                figma_prop = f"padding{side.capitalize()}"
-                if resolved is not None:
-                    lines.append(_guarded_op(
-                        f"{var}.{figma_prop} = {resolved};",
-                        eid, "padding_failed",
-                    ))
-                if token_name:
-                    refs.append((eid, f"padding.{side}", token_name))
+    _emit_dispatch_entries("pre_resize")
 
     sizing = layout.get("sizing", {})
     # layoutSizing is NOT emitted here. It's a parent-context-dependent
@@ -2284,22 +2472,9 @@ def _emit_layout(
             eid, "resize_failed",
         ))
 
-    if not is_leaf:
-        main_align = layout.get("mainAxisAlignment")
-        if main_align:
-            mapped = _ALIGNMENT_MAP.get(main_align, main_align.upper())
-            lines.append(_guarded_op(
-                f'{var}.primaryAxisAlignItems = "{mapped}";',
-                eid, "primary_axis_align_failed",
-            ))
-
-        cross_align = layout.get("crossAxisAlignment")
-        if cross_align:
-            mapped = _ALIGNMENT_MAP.get(cross_align, cross_align.upper())
-            lines.append(_guarded_op(
-                f'{var}.counterAxisAlignItems = "{mapped}";',
-                eid, "counter_axis_align_failed",
-            ))
+    # Alignment props ran AFTER resize() in pre-split code — preserve
+    # that ordering via the dispatch entry's `phase` field.
+    _emit_dispatch_entries("post_resize")
 
     # Position is NOT emitted here — it must be set AFTER appendChild
     # because Figma interprets x/y as parent-relative only when the
