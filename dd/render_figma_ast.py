@@ -1428,6 +1428,10 @@ def _emit_mode1_create(
     # emits a full ``relativeTransform`` matrix that subsumes both
     # rotation and translation; emitting scalar ``rotation`` here
     # would race the matrix and leave an ambiguous pivot.
+    #
+    # A1.2 (Codex 5.5): rotation NOT gated on _overrides — it has
+    # its own AST-transform-conflict guard and isn't in
+    # _INSTANCE_OVERRIDE_TO_FIGMA_NAME. Keep current heuristic.
     ast_rotation = _ast_prop_py(node, "rotation")
     ast_mirror = _ast_prop_py(node, "mirror")
     has_ast_transform = (
@@ -1439,9 +1443,80 @@ def _emit_mode1_create(
             lines.append(
                 f"{var}.rotation = {-math.degrees(inst_rotation)};"
             )
-    inst_opacity = raw_visual.get("opacity")
-    if isinstance(inst_opacity, (int, float)) and inst_opacity < 1.0:
-        lines.append(f"{var}.opacity = {inst_opacity};")
+
+    # A1.2 (Backlog #1, provenance plan): per-property emission
+    # gating for visual props on Mode-1 INSTANCE heads. Pre-A1.2
+    # the renderer "delegated to master" for fills/strokes/etc. AND
+    # used a heuristic gate for opacity (`< 1.0` — the silent
+    # default leak the audit flagged). With _overrides on the IR
+    # (A1.1), per-prop emission is now correctly driven by
+    # extraction-time provenance.
+    #
+    # Codex 5.5 (gpt-5.5 high reasoning, 2026-04-26):
+    # "Mode 1 delegates to the master only for non-overridden
+    # props. If _overrides contains fills, strokes, strokeWeight,
+    # cornerRadius, blendMode, clipsContent, etc., Mode 1 should
+    # emit those onto the instance head after createInstance().
+    # Build a sparse override visual and pass through _emit_visual."
+    overrides_list = element.get("_overrides")
+    if overrides_list:
+        # Build sparse visual: only the props in _overrides, sourced
+        # from raw_visual via build_visual_from_db. The
+        # default-skip in build_visual_from_db can drop overridden
+        # props that happen to match the default (e.g. opacity=1.0
+        # explicitly overridden), so we patch those back below.
+        from dd.visual import build_visual_from_db
+
+        full_visual = build_visual_from_db(raw_visual)
+        # A1.2 gating set: visual props that get emitted on Mode-1
+        # only when in _overrides. Excludes:
+        # - rotation (own AST-conflict guard above)
+        # - visible (PathOverride path; not in this set)
+        sparse_visual: dict[str, Any] = {}
+        for prop_name in overrides_list:
+            if prop_name in {"rotation", "visible"}:
+                continue
+            if prop_name in full_visual:
+                sparse_visual[prop_name] = full_visual[prop_name]
+            elif prop_name == "opacity":
+                # Codex 5.5 caveat: opacity=1.0 explicit override
+                # gets dropped by build_visual_from_db's default-skip.
+                # Patch back from raw_visual.
+                inst_opacity = raw_visual.get("opacity")
+                if isinstance(inst_opacity, (int, float)):
+                    sparse_visual["opacity"] = inst_opacity
+
+        if sparse_visual:
+            visual_lines, visual_refs = _emit_visual(
+                var, err_eid, sparse_visual, {},
+                node_type="INSTANCE",
+            )
+            for vl in visual_lines:
+                # Wrap each in try/catch — Mode-1 instance prop
+                # writes can be rejected by Figma for various
+                # reasons (read-only on certain instance subtrees,
+                # type mismatch, etc.). Same kind as the existing
+                # phase1_mode1_prop_failed family.
+                lines.append(_guarded_op(
+                    vl, err_eid, "phase1_mode1_prop_failed",
+                ))
+    elif overrides_list is None:
+        # A1.2: legacy IR (no _overrides field at all) preserves
+        # the historical opacity heuristic so un-migrated specs
+        # don't silently regress emission. Codex 5.5 framing:
+        # "Missing provenance defaults to snapshot" applies on the
+        # VERIFIER side (under-flag is safe). On the RENDERER side,
+        # missing provenance means "use the prior heuristic" because
+        # not emitting at all could remove a previously-rendered
+        # opacity value. New specs should always carry _overrides.
+        inst_opacity = raw_visual.get("opacity")
+        if (
+            isinstance(inst_opacity, (int, float))
+            and inst_opacity < 1.0
+        ):
+            lines.append(f"{var}.opacity = {inst_opacity};")
+    # else: overrides_list == [] (explicit empty) → emit nothing,
+    # snapshot semantics. The Mode-1 master defaults stand.
 
     if element.get("visible") is False:
         lines.append(f"{var}.visible = false;")
